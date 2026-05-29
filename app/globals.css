@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+:root {
+  --bg-primary: #0a0a0f;
+  --bg-secondary: #0d0d14;
+  --accent: #6c47ff;
+  --accent-light: #8b6bff;
+  --accent-glow: rgba(108, 71, 255, 0.25);
+}
+
+@theme inline {
+  --font-sans: var(--font-geist);
+  --color-accent: var(--accent);
+}
+
+body {
+  font-family: var(--font-geist), Arial, sans-serif;
+  background: var(--bg-primary);
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-12px); }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 20px var(--accent-glow), 0 0 40px var(--accent-glow); }
+  50% { box-shadow: 0 0 40px var(--accent-glow), 0 0 80px var(--accent-glow); }
+}
+
+.float-anim { animation: float 4s ease-in-out infinite; }
+.glow-btn { animation: glow-pulse 2.5s ease-in-out infinite; }
+
+.glass {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, #a78bff 0%, #6c47ff 50%, #3b82f6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.hero-glow {
+  background: radial-gradient(ellipse 60% 40% at 50% 0%, rgba(108,71,255,0.18) 0%, transparent 70%);
+}
+
+.card-hover {
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 40px rgba(108, 71, 255, 0.2);
+}
+
+.auth-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  color: white;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.auth-input::placeholder { color: rgba(255,255,255,0.2); }
+.auth-input:focus {
+  border-color: rgba(139, 107, 255, 0.6);
+  box-shadow: 0 0 0 3px rgba(108, 71, 255, 0.15);
+}
+
+/* Compact input — dashboard form-уудад: padding/радиус багатай */
+.compact-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: white;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.compact-input::placeholder { color: rgba(255,255,255,0.25); }
+.compact-input:focus {
+  border-color: rgba(139, 107, 255, 0.5);
+  box-shadow: 0 0 0 2px rgba(108, 71, 255, 0.15);
+}
+/* Browser-н native dropdown-д option-ууд цайвар background дээр цагаан текстээр
+   хүндэгдэхээс сэргийлж — select бол dark background + readable text аар бичүүлнэ */
+select.auth-input option {
+  background-color: #0d0d14;
+  color: rgba(255, 255, 255, 0.92);
+}
+select.auth-input option:disabled {
+  color: rgba(255, 255, 255, 0.4);
+}
