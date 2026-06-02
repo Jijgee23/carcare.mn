@@ -6,6 +6,7 @@ import {
   validateReportData,
 } from "@/lib/diagnostics";
 import { collectReportData } from "@/lib/diagnostics-server";
+import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(req: Request) {
@@ -17,10 +18,7 @@ export async function GET(req: Request) {
   const customerId = url.searchParams.get("customerId")?.trim();
   const orderId = url.searchParams.get("orderId")?.trim();
   const filledByMe = url.searchParams.get("filledByMe") === "true";
-  const limit = Math.min(
-    Math.max(Number(url.searchParams.get("limit") ?? "50"), 1),
-    200,
-  );
+  const { page, pageSize, skip, take } = getApiPageInfo(url.searchParams);
 
   const where: Prisma.DiagnosticReportWhereInput = {
     tenantId: auth.user.tenantId,
@@ -30,29 +28,33 @@ export async function GET(req: Request) {
   if (orderId) where.orderId = orderId;
   if (filledByMe) where.filledById = auth.user.id;
 
-  const reports = await prisma.diagnosticReport.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-    take: limit,
-    select: {
-      id: true,
-      createdAt: true,
-      templateVersion: true,
-      mileageAtReport: true,
-      orderId: true,
-      template: { select: { id: true, name: true, type: true } },
-      customer: { select: { id: true, fullName: true, phone: true } },
-      vehicle: {
-        select: { id: true, plate: true, make: true, model: true },
+  const [reports, total] = await Promise.all([
+    prisma.diagnosticReport.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip,
+      take,
+      select: {
+        id: true,
+        createdAt: true,
+        templateVersion: true,
+        mileageAtReport: true,
+        orderId: true,
+        template: { select: { id: true, name: true, type: true } },
+        customer: { select: { id: true, fullName: true, phone: true } },
+        vehicle: {
+          select: { id: true, plate: true, make: true, model: true },
+        },
+        branch: { select: { id: true, name: true } },
+        filledBy: {
+          select: { id: true, firstName: true, lastName: true },
+        },
       },
-      branch: { select: { id: true, name: true } },
-      filledBy: {
-        select: { id: true, firstName: true, lastName: true },
-      },
-    },
-  });
+    }),
+    prisma.diagnosticReport.count({ where }),
+  ]);
 
-  return jsonOk({ reports });
+  return jsonOk({ reports, pagination: buildMeta(total, page, pageSize) });
 }
 
 export async function POST(req: Request) {

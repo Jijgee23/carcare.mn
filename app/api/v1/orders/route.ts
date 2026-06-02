@@ -1,5 +1,6 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser } from "@/lib/api";
+import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 
 const ORDER_SELECT = {
@@ -29,10 +30,9 @@ export async function GET(req: Request) {
   const branchId = url.searchParams.get("branchId")?.trim() || undefined;
   const vehicleId = url.searchParams.get("vehicleId")?.trim() || undefined;
   const customerId = url.searchParams.get("customerId")?.trim() || undefined;
-  const limit = Math.min(
-    Math.max(Number(url.searchParams.get("limit") ?? "50"), 1),
-    100,
-  );
+  const { page, pageSize, skip, take } = getApiPageInfo(url.searchParams, {
+    maxSize: 100,
+  });
 
   const where: Prisma.ServiceOrderWhereInput = {
     tenantId: auth.user.tenantId,
@@ -42,14 +42,18 @@ export async function GET(req: Request) {
     ...(customerId && { customerId }),
   };
 
-  const orders = await prisma.serviceOrder.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-    take: limit,
-    select: ORDER_SELECT,
-  });
+  const [orders, total] = await Promise.all([
+    prisma.serviceOrder.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip,
+      take,
+      select: ORDER_SELECT,
+    }),
+    prisma.serviceOrder.count({ where }),
+  ]);
 
-  return jsonOk({ orders });
+  return jsonOk({ orders, pagination: buildMeta(total, page, pageSize) });
 }
 
 export async function POST(req: Request) {

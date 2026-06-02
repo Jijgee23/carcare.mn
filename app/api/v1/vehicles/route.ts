@@ -1,5 +1,6 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser } from "@/lib/api";
+import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(req: Request) {
@@ -9,10 +10,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const q = url.searchParams.get("q")?.trim() ?? "";
   const customerId = url.searchParams.get("customerId")?.trim() ?? "";
-  const limit = Math.min(
-    Math.max(Number(url.searchParams.get("limit") ?? "50"), 1),
-    200,
-  );
+  const { page, pageSize, skip, take } = getApiPageInfo(url.searchParams);
 
   const where: Prisma.VehicleWhereInput = { tenantId: auth.user.tenantId };
   if (customerId) where.customerId = customerId;
@@ -25,24 +23,28 @@ export async function GET(req: Request) {
     ];
   }
 
-  const vehicles = await prisma.vehicle.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-    take: limit,
-    select: {
-      id: true,
-      plate: true,
-      vin: true,
-      make: true,
-      model: true,
-      year: true,
-      mileage: true,
-      customerId: true,
-      customer: { select: { id: true, fullName: true, phone: true } },
-    },
-  });
+  const [vehicles, total] = await Promise.all([
+    prisma.vehicle.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip,
+      take,
+      select: {
+        id: true,
+        plate: true,
+        vin: true,
+        make: true,
+        model: true,
+        year: true,
+        mileage: true,
+        customerId: true,
+        customer: { select: { id: true, fullName: true, phone: true } },
+      },
+    }),
+    prisma.vehicle.count({ where }),
+  ]);
 
-  return jsonOk({ vehicles });
+  return jsonOk({ vehicles, pagination: buildMeta(total, page, pageSize) });
 }
 
 export async function POST(req: Request) {

@@ -25,6 +25,8 @@ export const metadata: Metadata = {
     "OBD",
     "Mongolia",
   ],
+  // Icon-уудыг файлын конвенцоор (app/favicon.ico, app/icon.png,
+  // app/apple-icon.png) Next автоматаар <head>-д нэмнэ.
   openGraph: {
     title: "carcare.mn — Авто үйлчилгээний ухаалаг платформ",
     description:
@@ -33,6 +35,11 @@ export const metadata: Metadata = {
     siteName: "carcare.mn",
     locale: "mn_MN",
     type: "website",
+    // icon: [
+    //   { url: "/favicon.ico", type: "image/x-icon" },
+    //   { url: "/favicon-32x32.png", type: "image/png", sizes: "32x32" },
+    //   { url: "/favicon-16x16.png", type: "image/png", sizes: "16x16" },
+    // ],
   },
 };
 

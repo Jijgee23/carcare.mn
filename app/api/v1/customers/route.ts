@@ -1,5 +1,6 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser } from "@/lib/api";
+import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(req: Request) {
@@ -8,10 +9,7 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const q = url.searchParams.get("q")?.trim() ?? "";
-  const limit = Math.min(
-    Math.max(Number(url.searchParams.get("limit") ?? "50"), 1),
-    200,
-  );
+  const { page, pageSize, skip, take } = getApiPageInfo(url.searchParams);
 
   const where: Prisma.CustomerWhereInput = { tenantId: auth.user.tenantId };
   if (q) {
@@ -22,21 +20,25 @@ export async function GET(req: Request) {
     ];
   }
 
-  const customers = await prisma.customer.findMany({
-    where,
-    orderBy: { fullName: "asc" },
-    take: limit,
-    select: {
-      id: true,
-      fullName: true,
-      phone: true,
-      email: true,
-      note: true,
-      createdAt: true,
-    },
-  });
+  const [customers, total] = await Promise.all([
+    prisma.customer.findMany({
+      where,
+      orderBy: { fullName: "asc" },
+      skip,
+      take,
+      select: {
+        id: true,
+        fullName: true,
+        phone: true,
+        email: true,
+        note: true,
+        createdAt: true,
+      },
+    }),
+    prisma.customer.count({ where }),
+  ]);
 
-  return jsonOk({ customers });
+  return jsonOk({ customers, pagination: buildMeta(total, page, pageSize) });
 }
 
 export async function POST(req: Request) {

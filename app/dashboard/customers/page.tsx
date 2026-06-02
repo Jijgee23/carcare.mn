@@ -2,11 +2,13 @@ import { deleteCustomerAction } from "@/app/_actions/customers";
 import { Prisma } from "@/app/generated/prisma/client";
 import { ClickableRow } from "@/app/_components/clickable-row";
 import { ResetFilters, SearchBox } from "@/app/_components/list-filters";
+import { Pagination } from "@/app/_components/pagination";
 import {
   EmptyState,
   PageHeader,
   PrimaryLinkButton,
 } from "@/app/_components/page-header";
+import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canView } from "@/lib/auth/roles";
 import { redirect } from "next/navigation";
@@ -19,14 +21,14 @@ export const metadata = {
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; page?: string }>;
 }) {
   const user = await requireUser();
   if (!canView(user, "customers")) redirect("/dashboard");
   const canAdd = canCreate(user, "customers");
   const canRemove = canDelete(user, "customers");
 
-  const { q = "" } = await searchParams;
+  const { q = "", page: pageParam } = await searchParams;
   const where: Prisma.CustomerWhereInput = { tenantId: user.tenantId };
   if (q) {
     where.OR = [
@@ -36,13 +38,20 @@ export default async function CustomersPage({
     ];
   }
 
-  const customers = await prisma.customer.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-    include: {
-      _count: { select: { vehicles: true, serviceOrders: true } },
-    },
-  });
+  const { page, pageSize, skip, take } = getPageInfo(pageParam);
+  const [customers, total] = await Promise.all([
+    prisma.customer.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip,
+      take,
+      include: {
+        _count: { select: { vehicles: true, serviceOrders: true } },
+      },
+    }),
+    prisma.customer.count({ where }),
+  ]);
+  const meta = buildMeta(total, page, pageSize);
 
   return (
     <div className="p-6 sm:p-8 max-full flex-1 flex flex-col min-h-0 w-full">
@@ -161,6 +170,12 @@ export default async function CustomersPage({
               </tbody>
             </table>
           </div>
+          <Pagination
+            page={meta.page}
+            totalPages={meta.totalPages}
+            total={meta.total}
+            params={{ q }}
+          />
         </div>
       )}
     </div>

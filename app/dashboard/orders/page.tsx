@@ -10,6 +10,8 @@ import {
   PageHeader,
   PrimaryLinkButton,
 } from "@/app/_components/page-header";
+import { Pagination } from "@/app/_components/pagination";
+import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canView } from "@/lib/auth/roles";
 import { redirect } from "next/navigation";
@@ -54,6 +56,7 @@ export default async function OrdersPage({
     vehicleId?: string;
     dateFrom?: string;
     dateTo?: string;
+    page?: string;
   }>;
 }) {
   const user = await requireUser();
@@ -69,6 +72,7 @@ export default async function OrdersPage({
     vehicleId = "",
     dateFrom = "",
     dateTo = "",
+    page: pageParam,
   } = await searchParams;
   const status =
     statusParam && (ORDER_STATUSES as readonly string[]).includes(statusParam)
@@ -104,10 +108,14 @@ export default async function OrdersPage({
     ];
   }
 
-  const [orders, counts, branches, customers, vehicles] = await Promise.all([
+  const { page, pageSize, skip, take } = getPageInfo(pageParam);
+  const [orders, filteredTotal, counts, branches, customers, vehicles] =
+    await Promise.all([
     prisma.serviceOrder.findMany({
       where,
       orderBy: [{ scheduledAt: "desc" }, { createdAt: "desc" }],
+      skip,
+      take,
       include: {
         customer: { select: { fullName: true } },
         vehicle: { select: { plate: true, make: true, model: true } },
@@ -121,6 +129,7 @@ export default async function OrdersPage({
         _count: { select: { items: true } },
       },
     }),
+    prisma.serviceOrder.count({ where }),
     prisma.serviceOrder.groupBy({
       by: ["status"],
       where: { tenantId: user.tenantId },
@@ -147,6 +156,7 @@ export default async function OrdersPage({
     counts.map((c) => [c.status, c._count._all]),
   );
   const total = counts.reduce((a, c) => a + c._count._all, 0);
+  const meta = buildMeta(filteredTotal, page, pageSize);
 
   return (
     <div className="p-6 sm:p-8 max-full flex-1 flex flex-col min-h-0 w-full">
@@ -266,7 +276,7 @@ export default async function OrdersPage({
             );
           })}
           <div className="ml-auto text-xs text-white/30">
-            {orders.length} захиалга
+            {filteredTotal} захиалга
           </div>
         </div>
 
@@ -404,6 +414,22 @@ export default async function OrdersPage({
             </table>
           </div>
         )}
+
+        <Pagination
+          page={meta.page}
+          totalPages={meta.totalPages}
+          total={meta.total}
+          params={{
+            status: status ?? "",
+            q,
+            branchId,
+            customerId,
+            vehicleId,
+            paymentStatus,
+            dateFrom,
+            dateTo,
+          }}
+        />
       </div>
     </div>
   );

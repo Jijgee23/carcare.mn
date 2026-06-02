@@ -1,5 +1,6 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonOk, requireApiUser } from "@/lib/api";
+import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 
 const SERVICE_SELECT = {
@@ -27,6 +28,7 @@ export async function GET(req: Request) {
   const type = url.searchParams.get("type")?.trim() || undefined;
   const q = url.searchParams.get("q")?.trim() || undefined;
   const onlyActive = url.searchParams.get("isActive") !== "false";
+  const { page, pageSize, skip, take } = getApiPageInfo(url.searchParams);
 
   const where: Prisma.ServiceWhereInput = {
     tenantId: auth.user.tenantId,
@@ -41,12 +43,16 @@ export async function GET(req: Request) {
     }),
   };
 
-  const services = await prisma.service.findMany({
-    where,
-    orderBy: [{ type: "asc" }, { name: "asc" }],
-    take: 200,
-    select: SERVICE_SELECT,
-  });
+  const [services, total] = await Promise.all([
+    prisma.service.findMany({
+      where,
+      orderBy: [{ type: "asc" }, { name: "asc" }],
+      skip,
+      take,
+      select: SERVICE_SELECT,
+    }),
+    prisma.service.count({ where }),
+  ]);
 
-  return jsonOk({ services });
+  return jsonOk({ services, pagination: buildMeta(total, page, pageSize) });
 }

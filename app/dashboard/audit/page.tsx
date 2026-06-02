@@ -9,6 +9,7 @@ import {
   EmptyState,
   PageHeader,
 } from "@/app/_components/page-header";
+import { Pagination } from "@/app/_components/pagination";
 import { requireUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/auth/roles";
 import { prisma } from "@/lib/prisma";
@@ -278,56 +279,14 @@ export default async function AuditLogPage({
             </table>
           </div>
 
-          {totalPages > 1 ? (
-            <div className="px-5 py-3 border-t border-white/[0.06] flex items-center justify-end gap-2 text-xs">
-              <PageLink
-                page={page - 1}
-                disabled={page <= 1}
-                label="← Өмнөх"
-                searchParamsObj={{ q, action, entity, userId }}
-              />
-              <span className="text-white/40">
-                {page} / {totalPages}
-              </span>
-              <PageLink
-                page={page + 1}
-                disabled={page >= totalPages}
-                label="Дараах →"
-                searchParamsObj={{ q, action, entity, userId }}
-              />
-            </div>
-          ) : null}
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            params={{ q, action, entity, userId }}
+          />
         </div>
       )}
     </div>
-  );
-}
-
-function PageLink({
-  page,
-  disabled,
-  label,
-  searchParamsObj,
-}: {
-  page: number;
-  disabled: boolean;
-  label: string;
-  searchParamsObj: Record<string, string>;
-}) {
-  if (disabled) {
-    return <span className="text-white/20 px-3 py-1">{label}</span>;
-  }
-  const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(searchParamsObj)) {
-    if (v) params.set(k, v);
-  }
-  params.set("page", String(page));
-  return (
-    <a
-      href={`?${params.toString()}`}
-      className="text-white/60 hover:text-white px-3 py-1 rounded-md hover:bg-white/[0.04] transition-colors"
-    >
-      {label}
-    </a>
   );
 }

@@ -10,6 +10,8 @@ import {
   PageHeader,
   PrimaryLinkButton,
 } from "@/app/_components/page-header";
+import { Pagination } from "@/app/_components/pagination";
+import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canView } from "@/lib/auth/roles";
 import { redirect } from "next/navigation";
@@ -28,6 +30,7 @@ export default async function EmployeesPage({
     roleId?: string;
     branchId?: string;
     status?: string;
+    page?: string;
   }>;
 }) {
   const me = await requireUser();
@@ -35,7 +38,13 @@ export default async function EmployeesPage({
   const canAdd = canCreate(me, "employees");
   const canRemove = canDelete(me, "employees");
 
-  const { q = "", roleId = "", branchId = "", status = "" } = await searchParams;
+  const {
+    q = "",
+    roleId = "",
+    branchId = "",
+    status = "",
+    page: pageParam,
+  } = await searchParams;
 
   const where: Prisma.UserWhereInput = { tenantId: me.tenantId };
   if (q) {
@@ -65,15 +74,19 @@ export default async function EmployeesPage({
     where.activeUntil = { not: null };
   }
 
-  const [employees, branches, roles] = await Promise.all([
+  const { page, pageSize, skip, take } = getPageInfo(pageParam);
+  const [employees, total, branches, roles] = await Promise.all([
     prisma.user.findMany({
       where,
       orderBy: [{ isOwner: "desc" }, { createdAt: "asc" }],
+      skip,
+      take,
       include: {
         branch: { select: { id: true, name: true } },
         role: { select: { id: true, name: true } },
       },
     }),
+    prisma.user.count({ where }),
     prisma.branch.findMany({
       where: { tenantId: me.tenantId },
       orderBy: { name: "asc" },
@@ -85,6 +98,7 @@ export default async function EmployeesPage({
       select: { id: true, name: true },
     }),
   ]);
+  const meta = buildMeta(total, page, pageSize);
 
   return (
     <div className="p-6 sm:p-8 max-full flex-1 flex flex-col min-h-0 w-full">
@@ -287,6 +301,12 @@ export default async function EmployeesPage({
               </tbody>
             </table>
           </div>
+          <Pagination
+            page={meta.page}
+            totalPages={meta.totalPages}
+            total={meta.total}
+            params={{ q, roleId, branchId, status }}
+          />
         </div>
       )}
     </div>

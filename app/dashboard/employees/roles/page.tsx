@@ -7,6 +7,8 @@ import {
   PageHeader,
   PrimaryLinkButton,
 } from "@/app/_components/page-header";
+import { Pagination } from "@/app/_components/pagination";
+import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { requireUser } from "@/lib/auth";
 import { permissionLabel } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/prisma";
@@ -15,15 +17,28 @@ export const metadata = {
   title: "Хэрэглэгчийн үүргүүд",
 };
 
-export default async function RolesPage() {
+export default async function RolesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
   const me = await requireUser();
   if (!me.isOwner) redirect("/dashboard/employees");
 
-  const roles = await prisma.role.findMany({
-    where: { tenantId: me.tenantId },
-    orderBy: [{ isActive: "desc" }, { name: "asc" }],
-    include: { _count: { select: { users: true } } },
-  });
+  const { page: pageParam } = await searchParams;
+  const where = { tenantId: me.tenantId };
+  const { page, pageSize, skip, take } = getPageInfo(pageParam);
+  const [roles, total] = await Promise.all([
+    prisma.role.findMany({
+      where,
+      orderBy: [{ isActive: "desc" }, { name: "asc" }],
+      skip,
+      take,
+      include: { _count: { select: { users: true } } },
+    }),
+    prisma.role.count({ where }),
+  ]);
+  const meta = buildMeta(total, page, pageSize);
 
   return (
     <div className="p-6 sm:p-8 max-full flex-1 flex flex-col min-h-0 w-full">
@@ -142,6 +157,11 @@ export default async function RolesPage() {
               </tbody>
             </table>
           </div>
+          <Pagination
+            page={meta.page}
+            totalPages={meta.totalPages}
+            total={meta.total}
+          />
         </div>
       )}
     </div>

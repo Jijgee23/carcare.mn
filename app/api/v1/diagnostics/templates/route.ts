@@ -4,6 +4,7 @@ import {
   DIAGNOSTIC_TYPES,
   type DiagnosticType,
 } from "@/lib/diagnostics";
+import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(req: Request) {
@@ -15,6 +16,7 @@ export async function GET(req: Request) {
   const q = url.searchParams.get("q")?.trim();
   const includeInactive =
     url.searchParams.get("includeInactive") === "true";
+  const { page, pageSize, skip, take } = getApiPageInfo(url.searchParams);
 
   const where: Prisma.DiagnosticTemplateWhereInput = {
     tenantId: auth.user.tenantId,
@@ -30,21 +32,26 @@ export async function GET(req: Request) {
     ];
   }
 
-  const templates = await prisma.diagnosticTemplate.findMany({
-    where,
-    orderBy: [{ type: "asc" }, { name: "asc" }],
-    select: {
-      id: true,
-      name: true,
-      description: true,
-      type: true,
-      version: true,
-      isActive: true,
-      price: true,
-      durationMin: true,
-      updatedAt: true,
-    },
-  });
+  const [templates, total] = await Promise.all([
+    prisma.diagnosticTemplate.findMany({
+      where,
+      orderBy: [{ type: "asc" }, { name: "asc" }],
+      skip,
+      take,
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        type: true,
+        version: true,
+        isActive: true,
+        price: true,
+        durationMin: true,
+        updatedAt: true,
+      },
+    }),
+    prisma.diagnosticTemplate.count({ where }),
+  ]);
 
-  return jsonOk({ templates });
+  return jsonOk({ templates, pagination: buildMeta(total, page, pageSize) });
 }

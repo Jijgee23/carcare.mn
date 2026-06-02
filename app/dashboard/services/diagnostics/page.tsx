@@ -8,6 +8,8 @@ import {
   PageHeader,
   PrimaryLinkButton,
 } from "@/app/_components/page-header";
+import { Pagination } from "@/app/_components/pagination";
+import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canView } from "@/lib/auth/roles";
 import { redirect } from "next/navigation";
@@ -23,17 +25,30 @@ export const metadata = {
   title: "Оношилгоо — Үйлчилгээ",
 };
 
-export default async function DiagnosticsServicesPage() {
+export default async function DiagnosticsServicesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
   const user = await requireUser();
   if (!canView(user, "diagnostics")) redirect("/dashboard");
   const canAdd = canCreate(user, "diagnostics");
   const canRemove = canDelete(user, "diagnostics");
 
-  const templates = await prisma.diagnosticTemplate.findMany({
-    where: { tenantId: user.tenantId },
-    orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
-    include: { _count: { select: { reports: true } } },
-  });
+  const { page: pageParam } = await searchParams;
+  const where = { tenantId: user.tenantId };
+  const { page, pageSize, skip, take } = getPageInfo(pageParam);
+  const [templates, total] = await Promise.all([
+    prisma.diagnosticTemplate.findMany({
+      where,
+      orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
+      skip,
+      take,
+      include: { _count: { select: { reports: true } } },
+    }),
+    prisma.diagnosticTemplate.count({ where }),
+  ]);
+  const meta = buildMeta(total, page, pageSize);
 
   return (
     <div className="p-6 sm:p-8 max-full flex-1 flex flex-col min-h-0 w-full">
@@ -175,6 +190,11 @@ export default async function DiagnosticsServicesPage() {
               </tbody>
             </table>
           </div>
+          <Pagination
+            page={meta.page}
+            totalPages={meta.totalPages}
+            total={meta.total}
+          />
         </div>
       )}
     </div>

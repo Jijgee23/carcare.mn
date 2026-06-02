@@ -5,6 +5,8 @@ import {
   PageHeader,
   PrimaryLinkButton,
 } from "@/app/_components/page-header";
+import { Pagination } from "@/app/_components/pagination";
+import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canView } from "@/lib/auth/roles";
 import { redirect } from "next/navigation";
@@ -15,20 +17,33 @@ export const metadata = {
   title: "Салбарууд",
 };
 
-export default async function BranchesPage() {
+export default async function BranchesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
   const user = await requireUser();
   if (!canView(user, "branches")) redirect("/dashboard");
   const canAdd = canCreate(user, "branches");
   const canRemove = canDelete(user, "branches");
 
-  const branches = await prisma.branch.findMany({
-    where: { tenantId: user.tenantId },
-    orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
-    include: {
-      _count: { select: { users: true, serviceOrders: true } },
-      schedules: { select: { weekday: true, isOpen: true } },
-    },
-  });
+  const { page: pageParam } = await searchParams;
+  const where = { tenantId: user.tenantId };
+  const { page, pageSize, skip, take } = getPageInfo(pageParam);
+  const [branches, total] = await Promise.all([
+    prisma.branch.findMany({
+      where,
+      orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+      skip,
+      take,
+      include: {
+        _count: { select: { users: true, serviceOrders: true } },
+        schedules: { select: { weekday: true, isOpen: true } },
+      },
+    }),
+    prisma.branch.count({ where }),
+  ]);
+  const meta = buildMeta(total, page, pageSize);
 
   return (
     <div className="p-6 sm:p-8 max-full flex-1 flex flex-col min-h-0 w-full">
@@ -156,6 +171,11 @@ export default async function BranchesPage() {
               </tbody>
             </table>
           </div>
+          <Pagination
+            page={meta.page}
+            totalPages={meta.totalPages}
+            total={meta.total}
+          />
         </div>
       )}
     </div>

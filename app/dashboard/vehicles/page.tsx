@@ -12,6 +12,8 @@ import {
   PageHeader,
   PrimaryLinkButton,
 } from "@/app/_components/page-header";
+import { Pagination } from "@/app/_components/pagination";
+import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canView } from "@/lib/auth/roles";
 import { redirect } from "next/navigation";
@@ -24,14 +26,14 @@ export const metadata = {
 export default async function VehiclesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; assigned?: string }>;
+  searchParams: Promise<{ q?: string; assigned?: string; page?: string }>;
 }) {
   const user = await requireUser();
   if (!canView(user, "vehicles")) redirect("/dashboard");
   const canAdd = canCreate(user, "vehicles");
   const canRemove = canDelete(user, "vehicles");
 
-  const { q = "", assigned = "" } = await searchParams;
+  const { q = "", assigned = "", page: pageParam } = await searchParams;
   const where: Prisma.VehicleWhereInput = { tenantId: user.tenantId };
   if (q) {
     where.OR = [
@@ -46,14 +48,21 @@ export default async function VehiclesPage({
   if (assigned === "yes") where.customerId = { not: null };
   else if (assigned === "no") where.customerId = null;
 
-  const vehicles = await prisma.vehicle.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-    include: {
-      customer: { select: { id: true, fullName: true, phone: true } },
-      _count: { select: { serviceOrders: true } },
-    },
-  });
+  const { page, pageSize, skip, take } = getPageInfo(pageParam);
+  const [vehicles, total] = await Promise.all([
+    prisma.vehicle.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip,
+      take,
+      include: {
+        customer: { select: { id: true, fullName: true, phone: true } },
+        _count: { select: { serviceOrders: true } },
+      },
+    }),
+    prisma.vehicle.count({ where }),
+  ]);
+  const meta = buildMeta(total, page, pageSize);
 
   return (
     <div className="p-6 sm:p-8 max-full flex-1 flex flex-col min-h-0 w-full">
@@ -197,6 +206,12 @@ export default async function VehiclesPage({
               </tbody>
             </table>
           </div>
+          <Pagination
+            page={meta.page}
+            totalPages={meta.totalPages}
+            total={meta.total}
+            params={{ q, assigned }}
+          />
         </div>
       )}
     </div>

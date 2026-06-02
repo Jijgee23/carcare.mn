@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { PageHeader } from "@/app/_components/page-header";
+import { Pagination } from "@/app/_components/pagination";
 import { requireSuperAdmin } from "@/lib/auth/system";
 import { formatTugrik } from "@/lib/orders";
+import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 
 export const metadata = {
@@ -17,10 +19,10 @@ const PLAN_BADGE: Record<string, string> = {
 export default async function SystemTenantsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ filter?: string; q?: string }>;
+  searchParams: Promise<{ filter?: string; q?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
-  const { filter, q } = await searchParams;
+  const { filter, q, page: pageParam } = await searchParams;
 
   const where = {
     ...(filter === "suspended" ? { suspended: true } : {}),
@@ -36,20 +38,27 @@ export default async function SystemTenantsPage({
       : {}),
   };
 
-  const tenants = await prisma.tenant.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-    include: {
-      _count: {
-        select: {
-          users: true,
-          branches: true,
-          customers: true,
-          serviceOrders: true,
+  const { page, pageSize, skip, take } = getPageInfo(pageParam);
+  const [tenants, total] = await Promise.all([
+    prisma.tenant.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip,
+      take,
+      include: {
+        _count: {
+          select: {
+            users: true,
+            branches: true,
+            customers: true,
+            serviceOrders: true,
+          },
         },
       },
-    },
-  });
+    }),
+    prisma.tenant.count({ where }),
+  ]);
+  const meta = buildMeta(total, page, pageSize);
 
   // Тус бүрийн орлогыг тооцох
   const ids = tenants.map((t) => t.id);
@@ -69,7 +78,7 @@ export default async function SystemTenantsPage({
     <div className="p-6 sm:p-8 max-w-7xl">
       <PageHeader
         title="Байгууллагууд"
-        description={`Платформ дээр бүртгэлтэй ${tenants.length} байгууллага`}
+        description={`Платформ дээр бүртгэлтэй ${total} байгууллага`}
       />
 
       <div className="glass rounded-2xl overflow-hidden">
@@ -223,6 +232,13 @@ export default async function SystemTenantsPage({
             </table>
           </div>
         )}
+
+        <Pagination
+          page={meta.page}
+          totalPages={meta.totalPages}
+          total={meta.total}
+          params={{ filter: filter ?? "", q: q ?? "" }}
+        />
       </div>
     </div>
   );

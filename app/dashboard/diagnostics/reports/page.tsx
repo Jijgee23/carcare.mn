@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { EmptyState, PageHeader, PrimaryLinkButton } from "@/app/_components/page-header";
+import { Pagination } from "@/app/_components/pagination";
+import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { requireUser } from "@/lib/auth";
 import {
   DIAGNOSTIC_TYPE_BADGE,
@@ -12,22 +14,34 @@ export const metadata = {
   title: "Оношилгооны тайлангууд",
 };
 
-export default async function ReportsListPage() {
+export default async function ReportsListPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
   const user = await requireUser();
 
-  const reports = await prisma.diagnosticReport.findMany({
-    where: { tenantId: user.tenantId },
-    orderBy: { createdAt: "desc" },
-    take: 100,
-    include: {
-      template: { select: { name: true, type: true } },
-      customer: { select: { fullName: true } },
-      vehicle: { select: { plate: true, make: true, model: true } },
-      branch: { select: { name: true } },
-      filledBy: { select: { firstName: true, lastName: true } },
-      order: { select: { number: true } },
-    },
-  });
+  const { page: pageParam } = await searchParams;
+  const where = { tenantId: user.tenantId };
+  const { page, pageSize, skip, take } = getPageInfo(pageParam);
+  const [reports, total] = await Promise.all([
+    prisma.diagnosticReport.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip,
+      take,
+      include: {
+        template: { select: { name: true, type: true } },
+        customer: { select: { fullName: true } },
+        vehicle: { select: { plate: true, make: true, model: true } },
+        branch: { select: { name: true } },
+        filledBy: { select: { firstName: true, lastName: true } },
+        order: { select: { number: true } },
+      },
+    }),
+    prisma.diagnosticReport.count({ where }),
+  ]);
+  const meta = buildMeta(total, page, pageSize);
 
   return (
     <div className="p-6 sm:p-8 max-full flex-1 flex flex-col min-h-0 w-full">
@@ -141,6 +155,11 @@ export default async function ReportsListPage() {
               </tbody>
             </table>
           </div>
+          <Pagination
+            page={meta.page}
+            totalPages={meta.totalPages}
+            total={meta.total}
+          />
         </div>
       )}
     </div>

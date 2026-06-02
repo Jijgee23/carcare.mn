@@ -5,6 +5,8 @@ import {
   PageHeader,
   PrimaryLinkButton,
 } from "@/app/_components/page-header";
+import { Pagination } from "@/app/_components/pagination";
+import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canView } from "@/lib/auth/roles";
 import { redirect } from "next/navigation";
@@ -22,21 +24,35 @@ import {
   stockLevel,
 } from "@/lib/services";
 
-export async function ServiceList({ type }: { type: ServiceKind }) {
+export async function ServiceList({
+  type,
+  pageParam,
+}: {
+  type: ServiceKind;
+  pageParam?: string;
+}) {
   const user = await requireUser();
   if (!canView(user, "services")) redirect("/dashboard");
   const canAdd = canCreate(user, "services");
   const canRemove = canDelete(user, "services");
 
-  const services = await prisma.service.findMany({
-    where: { tenantId: user.tenantId, type },
-    orderBy: [{ isActive: "desc" }, { name: "asc" }],
-    include: {
-      _count: { select: { items: true } },
-      unit: { select: { name: true } },
-      durationUnit: { select: { name: true } },
-    },
-  });
+  const where = { tenantId: user.tenantId, type };
+  const { page, pageSize, skip, take } = getPageInfo(pageParam);
+  const [services, total] = await Promise.all([
+    prisma.service.findMany({
+      where,
+      orderBy: [{ isActive: "desc" }, { name: "asc" }],
+      skip,
+      take,
+      include: {
+        _count: { select: { items: true } },
+        unit: { select: { name: true } },
+        durationUnit: { select: { name: true } },
+      },
+    }),
+    prisma.service.count({ where }),
+  ]);
+  const meta = buildMeta(total, page, pageSize);
 
   const newHref = `/dashboard/services/new?type=${SERVICE_KIND_SLUG[type]}`;
   const isGoods = type === "GOODS";
@@ -192,6 +208,11 @@ export async function ServiceList({ type }: { type: ServiceKind }) {
               </tbody>
             </table>
           </div>
+          <Pagination
+            page={meta.page}
+            totalPages={meta.totalPages}
+            total={meta.total}
+          />
         </div>
       )}
     </div>
