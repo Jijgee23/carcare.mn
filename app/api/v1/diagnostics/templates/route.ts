@@ -12,6 +12,7 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const type = url.searchParams.get("type")?.trim();
+  const q = url.searchParams.get("q")?.trim();
   const includeInactive =
     url.searchParams.get("includeInactive") === "true";
 
@@ -21,6 +22,12 @@ export async function GET(req: Request) {
   if (!includeInactive) where.isActive = true;
   if (type && DIAGNOSTIC_TYPES.includes(type as DiagnosticType)) {
     where.type = type as DiagnosticType;
+  }
+  if (q) {
+    where.OR = [
+      { name: { contains: q, mode: "insensitive" } },
+      { description: { contains: q, mode: "insensitive" } },
+    ];
   }
 
   const templates = await prisma.diagnosticTemplate.findMany({
@@ -33,6 +40,8 @@ export async function GET(req: Request) {
       type: true,
       version: true,
       isActive: true,
+      price: true,
+      durationMin: true,
       updatedAt: true,
     },
   });
