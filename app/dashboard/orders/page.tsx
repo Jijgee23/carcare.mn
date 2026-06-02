@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Prisma } from "@/app/generated/prisma/client";
 import {
+  DateRangeFilter,
   FilterSelect,
   ResetFilters,
   SearchBox,
@@ -49,6 +50,10 @@ export default async function OrdersPage({
     q?: string;
     branchId?: string;
     paymentStatus?: string;
+    customerId?: string;
+    vehicleId?: string;
+    dateFrom?: string;
+    dateTo?: string;
   }>;
 }) {
   const user = await requireUser();
@@ -60,6 +65,10 @@ export default async function OrdersPage({
     q = "",
     branchId = "",
     paymentStatus = "",
+    customerId = "",
+    vehicleId = "",
+    dateFrom = "",
+    dateTo = "",
   } = await searchParams;
   const status =
     statusParam && (ORDER_STATUSES as readonly string[]).includes(statusParam)
@@ -71,12 +80,19 @@ export default async function OrdersPage({
     ...(status ? { status } : {}),
   };
   if (branchId) where.branchId = branchId;
+  if (customerId) where.customerId = customerId;
+  if (vehicleId) where.vehicleId = vehicleId;
   if (
     paymentStatus &&
     ["UNPAID", "PARTIAL", "PAID"].includes(paymentStatus)
   ) {
     where.paymentStatus = paymentStatus as PaymentStatus;
   }
+  // Огнооны муж — товлосон огноо (scheduledAt)-аар шүүнэ
+  const scheduledAt: Prisma.DateTimeFilter = {};
+  if (dateFrom) scheduledAt.gte = new Date(`${dateFrom}T00:00:00`);
+  if (dateTo) scheduledAt.lte = new Date(`${dateTo}T23:59:59.999`);
+  if (scheduledAt.gte || scheduledAt.lte) where.scheduledAt = scheduledAt;
   if (q) {
     where.OR = [
       { number: { contains: q, mode: "insensitive" } },
@@ -88,7 +104,7 @@ export default async function OrdersPage({
     ];
   }
 
-  const [orders, counts, branches] = await Promise.all([
+  const [orders, counts, branches, customers, vehicles] = await Promise.all([
     prisma.serviceOrder.findMany({
       where,
       orderBy: [{ scheduledAt: "desc" }, { createdAt: "desc" }],
@@ -114,6 +130,16 @@ export default async function OrdersPage({
       where: { tenantId: user.tenantId },
       orderBy: { name: "asc" },
       select: { id: true, name: true },
+    }),
+    prisma.customer.findMany({
+      where: { tenantId: user.tenantId },
+      orderBy: { fullName: "asc" },
+      select: { id: true, fullName: true, phone: true },
+    }),
+    prisma.vehicle.findMany({
+      where: { tenantId: user.tenantId },
+      orderBy: { plate: "asc" },
+      select: { id: true, plate: true, make: true, model: true },
     }),
   ]);
 
@@ -161,6 +187,7 @@ export default async function OrdersPage({
           alignItems: "center",
           gap: "0.5rem",
           marginBottom: "1rem",
+          flexWrap: "wrap",
         }}
       >
         <SearchBox placeholder="№, үйлчлүүлэгч, машинаар хайх" />
@@ -168,6 +195,28 @@ export default async function OrdersPage({
           paramName="branchId"
           placeholder="Бүх салбар"
           options={branches.map((b) => ({ value: b.id, label: b.name }))}
+        />
+        <FilterSelect
+          paramName="customerId"
+          placeholder="Бүх үйлчлүүлэгч"
+          searchable
+          searchPlaceholder="Үйлчлүүлэгч хайх..."
+          options={customers.map((c) => ({
+            value: c.id,
+            label: c.fullName,
+            hint: c.phone,
+          }))}
+        />
+        <FilterSelect
+          paramName="vehicleId"
+          placeholder="Бүх машин"
+          searchable
+          searchPlaceholder="Дугаар, маркаар хайх..."
+          options={vehicles.map((v) => ({
+            value: v.id,
+            label: v.plate,
+            hint: `${v.make} ${v.model}`,
+          }))}
         />
         <FilterSelect
           paramName="paymentStatus"
@@ -178,7 +227,19 @@ export default async function OrdersPage({
             { value: "PAID", label: PAYMENT_STATUS_LABEL.PAID },
           ]}
         />
-        <ResetFilters paramNames={["q", "branchId", "paymentStatus", "status"]} />
+        <DateRangeFilter label="Товлосон" />
+        <ResetFilters
+          paramNames={[
+            "q",
+            "branchId",
+            "customerId",
+            "vehicleId",
+            "paymentStatus",
+            "dateFrom",
+            "dateTo",
+            "status",
+          ]}
+        />
       </div>
 
       <div className="glass rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">

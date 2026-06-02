@@ -8,7 +8,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
  * уншиж Prisma where-руу буулгана.
  */
 
-type Option = { value: string; label: string };
+type Option = { value: string; label: string; hint?: string };
 
 function updateParam(
   params: URLSearchParams,
@@ -19,6 +19,20 @@ function updateParam(
   if (value) next.set(key, value);
   else next.delete(key);
   // Хайлт солих үед хуудасны pagination-ыг тэгшилнэ
+  next.delete("page");
+  return next;
+}
+
+// Олон параметрийг нэг дор шинэчилнэ (нэг л навигаци хийхийн тулд).
+function updateParams(
+  params: URLSearchParams,
+  entries: Record<string, string>,
+): URLSearchParams {
+  const next = new URLSearchParams(params.toString());
+  for (const [key, value] of Object.entries(entries)) {
+    if (value) next.set(key, value);
+    else next.delete(key);
+  }
   next.delete("page");
   return next;
 }
@@ -37,25 +51,39 @@ export function SearchBox({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [value, setValue] = useState(searchParams.get(paramName) ?? "");
+  // Объектын reference биш, ПРИМИТИВ string-ээс хамаарна. `useSearchParams()`
+  // dev-д render бүрт шинэ reference буцаах боломжтой тул объектыг effect-ийн
+  // dependency болгож болохгүй (тасралтгүй re-run → хүсэлтийн loop).
+  const urlValue = searchParams.get(paramName) ?? "";
+
+  const [value, setValue] = useState(urlValue);
   const [, startTransition] = useTransition();
 
-  useEffect(() => {
-    setValue(searchParams.get(paramName) ?? "");
-  }, [searchParams, paramName]);
+  // Бид өөрсдөө хамгийн сүүлд URL-руу бичсэн утга. Гаднаас (reset товч,
+  // шүүлтүүрийн линк) URL өөрчлөгдсөнийг өөрсдийн push-аас ялгахад хэрэглэнэ.
+  const lastUrlValue = useRef(urlValue);
 
+  // URL → input синк: ЗӨВХӨН URL утга үнэхээр өөрчлөгдсөн үед (объектын
+  // reference солигдоход биш). Ингэснээр хэрэглэгчийн бичилттэй зөрчилдөхгүй.
   useEffect(() => {
+    if (urlValue !== lastUrlValue.current) {
+      lastUrlValue.current = urlValue;
+      setValue(urlValue);
+    }
+  }, [urlValue]);
+
+  // input → URL: debounce-той push. Утга URL-тэй ижил бол push хийхгүй.
+  useEffect(() => {
+    if (value === urlValue) return;
     const t = setTimeout(() => {
-      const current = searchParams.get(paramName) ?? "";
-      if (current === value) return;
+      lastUrlValue.current = value; // өөрийн push гэдгийг тэмдэглэнэ
       const next = updateParam(searchParams, paramName, value);
       startTransition(() => {
         router.push(`${pathname}?${next.toString()}`, { scroll: false });
       });
     }, debounceMs);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value, debounceMs]);
+  }, [value, urlValue, debounceMs, paramName, pathname, router, searchParams]);
 
   return (
     <div className={`relative ${className ?? "flex-1 min-w-[10rem] sm:flex-none sm:w-56"}`}>
@@ -93,11 +121,15 @@ export function FilterSelect({
   options,
   placeholder = "Бүгд",
   className,
+  searchable = false,
+  searchPlaceholder = "Хайх...",
 }: {
   paramName: string;
   options: Option[];
   placeholder?: string;
   className?: string;
+  searchable?: boolean;
+  searchPlaceholder?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -106,6 +138,7 @@ export function FilterSelect({
   const [, startTransition] = useTransition();
 
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   const selectedLabel = options.find((o) => o.value === value)?.label;
@@ -127,6 +160,11 @@ export function FilterSelect({
     };
   }, [open]);
 
+  // Хаагдах үед хайлтын утгыг цэвэрлэнэ
+  useEffect(() => {
+    if (!open) setQuery("");
+  }, [open]);
+
   function pick(v: string) {
     setOpen(false);
     if (v === value) return;
@@ -135,6 +173,16 @@ export function FilterSelect({
       router.push(`${pathname}?${next.toString()}`, { scroll: false });
     });
   }
+
+  const q = query.trim().toLowerCase();
+  const filteredOptions =
+    searchable && q
+      ? options.filter(
+          (o) =>
+            o.label.toLowerCase().includes(q) ||
+            o.hint?.toLowerCase().includes(q),
+        )
+      : options;
 
   const hasValue = Boolean(value);
 
@@ -214,13 +262,34 @@ export function FilterSelect({
             padding: "0.25rem 0",
           }}
         >
+          {searchable ? (
+            <div style={{ padding: "0.25rem 0.5rem 0.375rem" }}>
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={searchPlaceholder}
+                autoFocus
+                style={{
+                  width: "100%",
+                  padding: "0.35rem 0.6rem",
+                  borderRadius: "0.45rem",
+                  border: "1px solid rgba(255, 255, 255, 0.12)",
+                  background: "rgba(255, 255, 255, 0.04)",
+                  color: "rgba(255, 255, 255, 0.92)",
+                  fontSize: "0.8125rem",
+                  outline: "none",
+                }}
+              />
+            </div>
+          ) : null}
           <DropdownOption
             label={placeholder}
             active={value === ""}
             onClick={() => pick("")}
             muted
           />
-          {options.length > 0 ? (
+          {filteredOptions.length > 0 ? (
             <div
               style={{
                 height: "1px",
@@ -230,14 +299,27 @@ export function FilterSelect({
             />
           ) : null}
           <div style={{ maxHeight: "18rem", overflowY: "auto" }}>
-            {options.map((o) => (
-              <DropdownOption
-                key={o.value}
-                label={o.label}
-                active={o.value === value}
-                onClick={() => pick(o.value)}
-              />
-            ))}
+            {filteredOptions.length === 0 ? (
+              <div
+                style={{
+                  padding: "0.5rem 0.75rem",
+                  fontSize: "0.8125rem",
+                  color: "rgba(255, 255, 255, 0.4)",
+                }}
+              >
+                Олдсонгүй
+              </div>
+            ) : (
+              filteredOptions.map((o) => (
+                <DropdownOption
+                  key={o.value}
+                  label={o.label}
+                  hint={o.hint}
+                  active={o.value === value}
+                  onClick={() => pick(o.value)}
+                />
+              ))
+            )}
           </div>
         </div>
       ) : null}
@@ -247,11 +329,13 @@ export function FilterSelect({
 
 function DropdownOption({
   label,
+  hint,
   active,
   onClick,
   muted = false,
 }: {
   label: string;
+  hint?: string;
   active: boolean;
   onClick: () => void;
   muted?: boolean;
@@ -299,6 +383,17 @@ function DropdownOption({
         }}
       >
         {label}
+        {hint ? (
+          <span
+            style={{
+              marginLeft: "0.4rem",
+              fontSize: "0.75rem",
+              color: "rgba(255, 255, 255, 0.4)",
+            }}
+          >
+            {hint}
+          </span>
+        ) : null}
       </span>
       {active ? (
         <svg
@@ -342,5 +437,79 @@ export function ResetFilters({
     >
       Цэвэрлэх
     </button>
+  );
+}
+
+/**
+ * Огнооны муж шүүлтүүр — `fromParam` / `toParam` (YYYY-MM-DD) query-г шинэчилнэ.
+ * Хоёр утгыг нэг л навигациар хадгалахын тулд `updateParams`-ыг ашиглана.
+ */
+export function DateRangeFilter({
+  fromParam = "dateFrom",
+  toParam = "dateTo",
+  label = "Огноо",
+  className,
+}: {
+  fromParam?: string;
+  toParam?: string;
+  label?: string;
+  className?: string;
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [, startTransition] = useTransition();
+
+  const from = searchParams.get(fromParam) ?? "";
+  const to = searchParams.get(toParam) ?? "";
+
+  function setRange(nextFrom: string, nextTo: string) {
+    const next = updateParams(searchParams, {
+      [fromParam]: nextFrom,
+      [toParam]: nextTo,
+    });
+    startTransition(() => {
+      router.push(`${pathname}?${next.toString()}`, { scroll: false });
+    });
+  }
+
+  const hasValue = Boolean(from || to);
+  const inputStyle: React.CSSProperties = {
+    padding: "0.3rem 0.5rem",
+    borderRadius: "0.45rem",
+    border: `1px solid ${hasValue ? "rgba(139, 107, 255, 0.45)" : "rgba(255, 255, 255, 0.12)"}`,
+    background: hasValue
+      ? "rgba(108, 71, 255, 0.12)"
+      : "rgba(255, 255, 255, 0.04)",
+    color: "rgba(255, 255, 255, 0.9)",
+    fontSize: "0.8125rem",
+    colorScheme: "dark",
+    outline: "none",
+  };
+
+  return (
+    <div
+      className={`relative shrink-0 ${className ?? ""}`}
+      style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}
+    >
+      <span className="text-xs text-white/40 shrink-0">{label}</span>
+      <input
+        type="date"
+        value={from}
+        max={to || undefined}
+        onChange={(e) => setRange(e.target.value, to)}
+        style={inputStyle}
+        aria-label={`${label} (эхлэх)`}
+      />
+      <span className="text-xs text-white/30">–</span>
+      <input
+        type="date"
+        value={to}
+        min={from || undefined}
+        onChange={(e) => setRange(from, e.target.value)}
+        style={inputStyle}
+        aria-label={`${label} (дуусах)`}
+      />
+    </div>
   );
 }
