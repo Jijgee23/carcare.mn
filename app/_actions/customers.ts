@@ -46,7 +46,7 @@ function validate(fd: FormData) {
   const note = s(fd, "note");
   const errors: Record<string, string> = {};
 
-  if (!fullName) errors.fullName = "Овог нэрээ оруулна уу.";
+  // Зөвхөн утас заавал. Овог нэр заавал биш — хоосон бол "" хадгална.
   if (!phone) errors.phone = "Утасны дугаар оруулна уу.";
   if (email && !isEmail(email)) errors.email = "Имэйл хаяг буруу.";
 
@@ -106,7 +106,7 @@ export async function createCustomerAction(
     entity: "Customer",
     entityId: created.id,
     action: "CREATE",
-    summary: data.fullName,
+    summary: data.fullName || data.phone,
     after: data,
   });
 
@@ -153,7 +153,7 @@ export async function updateCustomerAction(
     entity: "Customer",
     entityId: id,
     action: "UPDATE",
-    summary: data.fullName,
+    summary: data.fullName || data.phone,
     after: data,
   });
 

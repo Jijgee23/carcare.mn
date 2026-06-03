@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { deleteReportAction } from "@/app/_actions/diagnostic-reports";
 import { PageHeader } from "@/app/_components/page-header";
 import { requireUser } from "@/lib/auth";
+import { customerLabel } from "@/lib/customers";
 import {
   DIAGNOSTIC_TYPE_BADGE,
   DIAGNOSTIC_TYPE_LABEL,
@@ -68,7 +69,7 @@ export default async function ReportDetailPage({
             href={`/dashboard/customers/${report.customer.id}`}
             className="text-violet-300 hover:text-violet-200"
           >
-            {report.customer.fullName}
+            {customerLabel(report.customer)}
           </Link>
           <div className="text-xs text-white/40">{report.customer.phone}</div>
         </Row>

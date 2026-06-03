@@ -12,6 +12,7 @@ import {
 } from "@/app/_components/page-header";
 import { Pagination } from "@/app/_components/pagination";
 import { buildMeta, getPageInfo } from "@/lib/pagination";
+import { customerLabel } from "@/lib/customers";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canView } from "@/lib/auth/roles";
 import { redirect } from "next/navigation";
@@ -213,7 +214,7 @@ export default async function OrdersPage({
           searchPlaceholder="Үйлчлүүлэгч хайх..."
           options={customers.map((c) => ({
             value: c.id,
-            label: c.fullName,
+            label: customerLabel(c),
             hint: c.phone,
           }))}
         />
@@ -326,7 +327,7 @@ export default async function OrdersPage({
                       </Link>
                     </td>
                     <td className="px-5 py-4 text-sm text-white/80">
-                      {o.customer.fullName}
+                      {customerLabel(o.customer)}
                     </td>
                     <td className="px-5 py-4 text-sm">
                       <div className="text-white/80">

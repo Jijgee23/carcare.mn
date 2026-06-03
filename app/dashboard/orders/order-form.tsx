@@ -9,6 +9,7 @@ import {
 } from "@/app/_actions/orders";
 import { Field, FormError } from "@/app/_components/auth-shell";
 import { Select } from "@/app/_components/select";
+import { customerLabel } from "@/lib/customers";
 import {
   type CreatedCustomer,
   InlineCustomerForm,
@@ -163,7 +164,7 @@ export function OrderForm({
                 }
                 options={customers.map((c) => ({
                   value: c.id,
-                  label: c.fullName,
+                  label: customerLabel(c),
                   hint: c.phone,
                 }))}
               />

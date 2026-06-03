@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { PageHeader } from "@/app/_components/page-header";
 import { requireUser } from "@/lib/auth";
 import { canEdit } from "@/lib/auth/roles";
+import { customerLabel } from "@/lib/customers";
 import { prisma } from "@/lib/prisma";
 import { CustomerForm } from "../customer-form";
 
@@ -31,7 +32,7 @@ export default async function EditCustomerPage({
   return (
     <div className="p-6 sm:p-8 max-full flex-1 flex flex-col min-h-0 w-full">
       <PageHeader
-        title={customer.fullName}
+        title={customerLabel(customer)}
         description={`${customer.phone} · ${customer._count.serviceOrders} захиалга`}
       />
 

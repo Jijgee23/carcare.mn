@@ -14,6 +14,7 @@ import {
   DIAGNOSTIC_TYPE_LABEL,
   type DiagnosticType,
 } from "@/lib/diagnostics";
+import { customerLabel } from "@/lib/customers";
 import type { ServiceKind } from "@/lib/services";
 import {
   ITEM_KIND_BADGE,
@@ -186,7 +187,7 @@ export default async function OrderDetailPage({
     <div className="p-6 sm:p-8 max-full flex-1 flex flex-col min-h-0 w-full">
       <PageHeader
         title={`Захиалга #${order.number}`}
-        description={`${order.customer.fullName} · ${order.vehicle.plate}`}
+        description={`${customerLabel(order.customer)} · ${order.vehicle.plate}`}
         actions={
           <div className="flex items-center gap-2">
             <span
@@ -442,7 +443,7 @@ export default async function OrderDetailPage({
                   href={`/dashboard/customers/${order.customer.id}`}
                   className="text-violet-300 hover:text-violet-200"
                 >
-                  {order.customer.fullName}
+                  {customerLabel(order.customer)}
                 </Link>
                 <div className="text-xs text-white/40">
                   {order.customer.phone}

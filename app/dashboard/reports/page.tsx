@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PageHeader } from "@/app/_components/page-header";
 import { requireUser } from "@/lib/auth";
+import { customerLabel } from "@/lib/customers";
 import {
   ITEM_KIND_BADGE,
   ITEM_KIND_LABEL,
@@ -250,7 +251,7 @@ export default async function ReportsPage({
     const c = customerById.get(r.customerId);
     return {
       id: r.customerId,
-      name: c?.fullName ?? "—",
+      name: c ? customerLabel(c) : "—",
       phone: c?.phone ?? "",
       revenue: Number.parseFloat(r._sum.totalAmount?.toString() ?? "0"),
       count: r._count._all,

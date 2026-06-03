@@ -51,7 +51,7 @@ export async function quickCreateCustomerAction(input: {
   const note = input.note?.trim() || null;
 
   const errors: Record<string, string> = {};
-  if (!fullName) errors.fullName = "Овог нэрээ оруулна уу.";
+  // Зөвхөн утас заавал. Овог нэр заавал биш.
   if (!phone) errors.phone = "Утасны дугаар оруулна уу.";
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
     errors.email = "Имэйл хаяг буруу.";
@@ -76,7 +76,7 @@ export async function quickCreateCustomerAction(input: {
     entity: "Customer",
     entityId: created.id,
     action: "CREATE",
-    summary: `${fullName} (захиалгаас түргэн)`,
+    summary: `${fullName || phone} (захиалгаас түргэн)`,
     after: { fullName, phone, email, note },
   });
 

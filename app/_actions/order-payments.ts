@@ -42,7 +42,7 @@ export async function createOrderQPayInvoiceAction(
 
   const order = await prisma.serviceOrder.findFirst({
     where: { id: orderId, tenantId: user.tenantId },
-    include: { customer: { select: { fullName: true } } },
+    include: { customer: { select: { fullName: true, phone: true } } },
   });
   if (!order) return { ok: false, message: "Захиалга олдсонгүй." };
   if (order.paymentStatus === "PAID") {
@@ -80,7 +80,7 @@ export async function createOrderQPayInvoiceAction(
   const inv = await TenantQPayService.createInvoice({
     tenantId: user.tenantId,
     senderInvoiceNo: payment.id,
-    invoiceReceiverCode: order.customer.fullName,
+    invoiceReceiverCode: order.customer.fullName || order.customer.phone,
     invoiceDescription: `Захиалга #${order.number}`,
     amount: Number.parseFloat(remaining.toString()),
   });

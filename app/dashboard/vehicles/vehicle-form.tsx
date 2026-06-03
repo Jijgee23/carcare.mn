@@ -9,6 +9,7 @@ import {
 } from "@/app/_actions/vehicles";
 import { Field, FormError } from "@/app/_components/auth-shell";
 import { Select } from "@/app/_components/select";
+import { customerLabel } from "@/lib/customers";
 import { type HurVehicle, normalizeWheelPosition } from "@/lib/hur_service";
 
 // Монгол улсын дугаарын хэлбэр: 4 цифр + 3 үсэг (Кирилл эсвэл Латин).
@@ -155,7 +156,7 @@ export function VehicleForm({
             error={fe.customerId}
             options={customers.map((c) => ({
               value: c.id,
-              label: c.fullName,
+              label: customerLabel(c),
               hint: c.phone,
             }))}
           />

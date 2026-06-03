@@ -62,7 +62,7 @@ export async function POST(req: Request) {
   const noteStr = typeof note === "string" ? note.trim() : "";
 
   const fieldErrors: Record<string, string> = {};
-  if (!nameStr) fieldErrors.fullName = "Овог нэр шаардлагатай.";
+  // Зөвхөн утас заавал. Овог нэр заавал биш.
   if (!phoneStr) fieldErrors.phone = "Утас шаардлагатай.";
   if (Object.keys(fieldErrors).length > 0) {
     return jsonError(422, "Хүсэлт буруу.", { fieldErrors });

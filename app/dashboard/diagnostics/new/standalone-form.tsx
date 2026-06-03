@@ -7,6 +7,7 @@ import {
   type ReportActionState,
 } from "@/app/_actions/diagnostic-reports";
 import { Field, FormError, SubmitButton } from "@/app/_components/auth-shell";
+import { customerLabel } from "@/lib/customers";
 import {
   DIAGNOSTIC_TYPE_LABEL,
   type DiagnosticType,
@@ -111,7 +112,7 @@ export function StandaloneDiagnosticForm({
             <option value="">— Үйлчлүүлэгч сонгох —</option>
             {customers.map((c) => (
               <option key={c.id} value={c.id} className="bg-[#0d0d14]">
-                {c.fullName} · {c.phone}
+                {customerLabel(c)} · {c.phone}
               </option>
             ))}
           </select>

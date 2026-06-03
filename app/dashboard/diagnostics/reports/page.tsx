@@ -3,6 +3,7 @@ import { EmptyState, PageHeader, PrimaryLinkButton } from "@/app/_components/pag
 import { Pagination } from "@/app/_components/pagination";
 import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { requireUser } from "@/lib/auth";
+import { customerLabel } from "@/lib/customers";
 import {
   DIAGNOSTIC_TYPE_BADGE,
   DIAGNOSTIC_TYPE_LABEL,
@@ -120,7 +121,7 @@ export default async function ReportsListPage({
                         </div>
                       </td>
                       <td className="px-5 py-3 text-sm text-white/70">
-                        {r.customer.fullName}
+                        {customerLabel(r.customer)}
                       </td>
                       <td className="px-5 py-3 text-sm">
                         <div className="text-white/70">

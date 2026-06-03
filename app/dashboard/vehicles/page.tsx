@@ -14,6 +14,7 @@ import {
 } from "@/app/_components/page-header";
 import { Pagination } from "@/app/_components/pagination";
 import { buildMeta, getPageInfo } from "@/lib/pagination";
+import { customerLabel } from "@/lib/customers";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canView } from "@/lib/auth/roles";
 import { redirect } from "next/navigation";
@@ -169,7 +170,7 @@ export default async function VehiclesPage({
                           href={`/dashboard/customers/${v.customer.id}`}
                           className="text-white/70 hover:text-violet-300 transition-colors"
                         >
-                          {v.customer.fullName}
+                          {customerLabel(v.customer)}
                           <span className="text-white/30 text-xs ml-1">
                             · {v.customer.phone}
                           </span>

@@ -69,11 +69,10 @@ export function InlineCustomerForm({
       ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Овог нэр" htmlFor="qc-fullName" error={fieldErrors.fullName}>
+        <Field label="Овог нэр" htmlFor="qc-fullName" hint="заавал биш" error={fieldErrors.fullName}>
           <input
             id="qc-fullName"
             type="text"
-            required
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
             className={`compact-input ${fieldErrors.fullName ? "border-red-500/50" : ""}`}

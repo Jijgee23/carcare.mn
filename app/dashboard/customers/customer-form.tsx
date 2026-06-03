@@ -42,12 +42,11 @@ export function CustomerForm({ initial }: { initial?: Initial }) {
       <FormError message={state?.message} />
 
       <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        <Field label="Овог нэр" htmlFor="fullName" error={fe.fullName} className={fieldMaxWidth}>
+        <Field label="Овог нэр" htmlFor="fullName" hint="заавал биш" error={fe.fullName} className={fieldMaxWidth}>
           <input
             id="fullName"
             name="fullName"
             type="text"
-            required
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
             className={`compact-input ${fe.fullName ? "border-red-500/50" : ""}`}

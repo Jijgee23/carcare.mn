@@ -9,6 +9,7 @@ import {
   PrimaryLinkButton,
 } from "@/app/_components/page-header";
 import { buildMeta, getPageInfo } from "@/lib/pagination";
+import { customerLabel } from "@/lib/customers";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canView } from "@/lib/auth/roles";
 import { redirect } from "next/navigation";
@@ -128,10 +129,10 @@ export default async function CustomersPage({
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500/30 to-blue-500/30 flex items-center justify-center text-xs font-bold text-violet-300 shrink-0">
-                          {c.fullName[0]?.toUpperCase() ?? "?"}
+                          {customerLabel(c)[0]?.toUpperCase() ?? "?"}
                         </div>
                         <span className="text-sm font-medium text-white/90">
-                          {c.fullName}
+                          {customerLabel(c)}
                         </span>
                       </div>
                     </td>
