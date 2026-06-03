@@ -152,6 +152,16 @@ export async function checkOrderQPayPaymentAction(
     return { ok: true, paid: false };
   }
 
+  // Бодит төлсөн дүнг expected-тэй тулгана — хэсэгчилсэн төлбөрийг бүтэн гэж
+  // тооцож захиалгыг PAID болгохоос сэргийлнэ.
+  if (new Prisma.Decimal(check.paidAmount).lt(payment.amount)) {
+    return {
+      ok: true,
+      paid: false,
+      message: "Төлбөр бүрэн төлөгдөөгүй байна. Дахин шалгана уу.",
+    };
+  }
+
   // PAID — захиалгын төлбөрийн төлөвийг шинэчлэх
   const paidAt = check.paidAt ?? new Date();
   try {

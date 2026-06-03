@@ -1,4 +1,5 @@
-import { jsonError, jsonOk } from "@/lib/api";
+import { enforceRateLimit, jsonError, jsonOk } from "@/lib/api";
+import { checkUserActive } from "@/lib/auth/active";
 import {
   ACCESS_TOKEN_MAX_AGE_SECONDS,
   signApiToken,
@@ -10,7 +11,16 @@ import {
 } from "@/lib/auth/refresh-token";
 import { prisma } from "@/lib/prisma";
 
+const MAX_LOGIN_ATTEMPTS = 5;
+
 export async function POST(req: Request) {
+  // IP-ийн түвшний throttle (brute-force-ийн нэмэлт давхарга).
+  const limited = enforceRateLimit(req, "api-login", {
+    limit: 10,
+    windowMs: 60_000,
+  });
+  if (limited) return limited;
+
   let body: unknown;
   try {
     body = await req.json();
@@ -41,11 +51,53 @@ export async function POST(req: Request) {
   });
   if (!user) return jsonError(401, "Имэйл эсвэл нууц үг буруу.");
 
+  // Аккаунт түгжигдсэн эсэх (web login-тэй ижил DB-backed lockout).
+  if (user.lockedAt) {
+    return jsonError(
+      423,
+      "Хэт олон удаа буруу оролдсон тул аккаунт түгжигдсэн. Нууц үгээ сэргээнэ үү.",
+    );
+  }
+
   const ok = await verifyPassword(password, user.passwordHash);
-  if (!ok) return jsonError(401, "Имэйл эсвэл нууц үг буруу.");
+  if (!ok) {
+    const nextAttempts = user.failedLoginAttempts + 1;
+    const willLock = nextAttempts >= MAX_LOGIN_ATTEMPTS;
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        failedLoginAttempts: nextAttempts,
+        lockedAt: willLock ? new Date() : undefined,
+      },
+    });
+    if (willLock) {
+      return jsonError(
+        423,
+        "Хэт олон удаа буруу оролдсон тул аккаунт түгжигдсэн. Нууц үгээ сэргээнэ үү.",
+      );
+    }
+    return jsonError(401, "Имэйл эсвэл нууц үг буруу.");
+  }
 
   if (user.tenant.suspended) {
     return jsonError(403, "Таны байгууллага түр хугацаагаар зогссон байна.");
+  }
+
+  // Идэвхгүй / хугацаа дууссан ажилтан нэвтрэхгүй (web login-тэй ижил).
+  const active = checkUserActive({
+    isActive: user.isActive,
+    activeUntil: user.activeUntil,
+  });
+  if (!active.ok) {
+    return jsonError(403, active.message);
+  }
+
+  // Амжилттай — алдааны тоологчийг тэглэнэ.
+  if (user.failedLoginAttempts > 0 || user.lockedAt) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { failedLoginAttempts: 0, lockedAt: null },
+    });
   }
 
   const accessToken = await signApiToken({

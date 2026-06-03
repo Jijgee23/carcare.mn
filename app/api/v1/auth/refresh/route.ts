@@ -1,4 +1,4 @@
-import { jsonError, jsonOk } from "@/lib/api";
+import { enforceRateLimit, jsonError, jsonOk } from "@/lib/api";
 import {
   ACCESS_TOKEN_MAX_AGE_SECONDS,
   signApiToken,
@@ -17,6 +17,12 @@ import { prisma } from "@/lib/prisma";
  * (rotation). Хуучин token revoke болсон бол бүх token-ыг revoke хийж 401 буцаана.
  */
 export async function POST(req: Request) {
+  const limited = enforceRateLimit(req, "api-refresh", {
+    limit: 30,
+    windowMs: 60_000,
+  });
+  if (limited) return limited;
+
   let body: unknown;
   try {
     body = await req.json();

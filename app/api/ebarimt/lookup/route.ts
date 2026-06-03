@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { enforceRateLimit } from "@/lib/api";
 import { lookupOrgByRegno } from "@/lib/ebarimt";
 
 /**
@@ -8,6 +9,13 @@ import { lookupOrgByRegno } from "@/lib/ebarimt";
  * GET /api/ebarimt/lookup?regno=1234567
  */
 export async function GET(req: Request) {
+  // Нийтийн proxy тул IP-ээр throttle (upstream ban / DoS-аас сэргийлнэ).
+  const limited = enforceRateLimit(req, "ebarimt", {
+    limit: 20,
+    windowMs: 60_000,
+  });
+  if (limited) return limited;
+
   const url = new URL(req.url);
   const regno = url.searchParams.get("regno")?.trim() ?? "";
   if (!/^\d{7}$/.test(regno)) {

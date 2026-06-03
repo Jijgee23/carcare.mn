@@ -1,5 +1,5 @@
 import { Prisma } from "@/app/generated/prisma/client";
-import { jsonError, jsonOk, requireApiUser } from "@/lib/api";
+import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 import {
   ORDER_STATUS_TRANSITIONS,
@@ -79,6 +79,8 @@ export async function PATCH(
 ) {
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
+  const denied = requirePermission(auth.user, "orders.edit");
+  if (denied) return denied;
 
   const order = await prisma.serviceOrder.findFirst({
     where: { id: params.id, tenantId: auth.user.tenantId },

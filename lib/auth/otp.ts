@@ -13,6 +13,12 @@
 import { createHash, randomInt } from "node:crypto";
 import { Prisma } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { consumeRateLimit } from "@/lib/rate-limit";
+
+// OTP issuance throttle — SMS bombing / cost abuse-аас сэргийлнэ.
+const OTP_ISSUE_WINDOW_MS = 10 * 60_000; // 10 минут
+const OTP_MAX_PER_EMAIL = 3; // нэг имэйл+төрөлд 10 минутад
+const OTP_MAX_PER_IP = 10; // нэг IP-аас 10 минутад
 
 export type OtpType = "SIGNUP" | "CHANGE_PASSWORD" | "RESET_PASSWORD";
 
@@ -51,6 +57,28 @@ export async function issueOtp(
 ): Promise<{ code: string; expiresAt: Date }> {
   const email = normalizeEmail(opts.email);
   if (!email) throw new Error("Имэйл хоосон байж болохгүй.");
+
+  // Хэт олон код хүсэхээс сэргийлнэ (имэйл+төрөл, мөн боломжтой бол IP-аар).
+  const byEmail = consumeRateLimit(`otp:${opts.type}:${email}`, {
+    limit: OTP_MAX_PER_EMAIL,
+    windowMs: OTP_ISSUE_WINDOW_MS,
+  });
+  if (!byEmail.ok) {
+    throw new Error(
+      `Хэт олон код хүслээ. ${Math.ceil(byEmail.retryAfterSec / 60)} минутын дараа дахин оролдоно уу.`,
+    );
+  }
+  if (opts.ip) {
+    const byIp = consumeRateLimit(`otp-ip:${opts.ip}`, {
+      limit: OTP_MAX_PER_IP,
+      windowMs: OTP_ISSUE_WINDOW_MS,
+    });
+    if (!byIp.ok) {
+      throw new Error(
+        `Хэт олон код хүслээ. ${Math.ceil(byIp.retryAfterSec / 60)} минутын дараа дахин оролдоно уу.`,
+      );
+    }
+  }
 
   const code = generateCode();
   const codeHash = hashCode(code);

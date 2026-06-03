@@ -1,5 +1,6 @@
 import { PageHeader } from "@/app/_components/page-header";
 import { requireSuperAdmin } from "@/lib/auth/system";
+import { decryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/prisma";
 import { QPaySettingsForm } from "./qpay-form";
 
@@ -21,7 +22,7 @@ export default async function SystemQPayPage() {
         <QPaySettingsForm
           initial={{
             username: settings?.username ?? "",
-            password: settings?.password ?? "",
+            password: decryptSecret(settings?.password) ?? "",
             invoiceCode: settings?.invoiceCode ?? "",
             callbackUrl: settings?.callbackUrl ?? "",
             tokenExpiresAt: settings?.tokenExpiresAt?.toISOString() ?? null,

@@ -7,6 +7,7 @@
  *   - checkPayment(invoice_id): тухайн invoice PAID болсон эсэх + payment_id
  */
 
+import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/prisma";
 
 const QPAY_URL =
@@ -25,12 +26,13 @@ async function saveTokens(body: {
   await prisma.qPaySettings.update({
     where: { id: 1 },
     data: {
-      accessToken: body.access_token,
-      refreshToken: body.refresh_token,
+      accessToken: encryptSecret(body.access_token),
+      refreshToken: encryptSecret(body.refresh_token),
       tokenExpiresAt: expiresAt,
       refreshTokenExpiresAt: new Date(body.refresh_expires_in * 1000),
     },
   });
+  // Шууд хэрэглэхэд plaintext-ийг буцаана (DB-д шифрлэгдсэн).
   return { accessToken: body.access_token, expiresAt };
 }
 
@@ -101,26 +103,31 @@ export const QPayService = {
       };
     }
 
+    // Эмзэг утгуудыг тайлна (хуучин plaintext мөрийг ч дэмжинэ).
+    const password = decryptSecret(settings.password);
+    const accessToken = decryptSecret(settings.accessToken);
+    const refreshToken = decryptSecret(settings.refreshToken);
+
     const now = Date.now();
     const accessValid =
-      settings.accessToken &&
+      accessToken &&
       settings.tokenExpiresAt &&
       settings.tokenExpiresAt.getTime() - now > TOKEN_EXPIRY_BUFFER_MS;
     if (accessValid) {
       return {
-        accessToken: settings.accessToken!,
+        accessToken: accessToken!,
         expiresAt: settings.tokenExpiresAt!,
       };
     }
 
     const refreshValid =
-      settings.refreshToken &&
+      refreshToken &&
       settings.refreshTokenExpiresAt &&
       settings.refreshTokenExpiresAt.getTime() - now > TOKEN_EXPIRY_BUFFER_MS;
     if (refreshValid) {
-      return refreshAccessToken(settings.refreshToken!);
+      return refreshAccessToken(refreshToken!);
     }
-    return fetchNewToken(settings.username, settings.password);
+    return fetchNewToken(settings.username, password ?? "");
   },
 
   /**
@@ -167,7 +174,12 @@ export const QPayService = {
   async checkPayment(
     invoiceId: string,
   ): Promise<
-    | { paid: boolean; paymentId: string | null; paidAt: Date | null }
+    | {
+        paid: boolean;
+        paymentId: string | null;
+        paidAt: Date | null;
+        paidAmount: number;
+      }
     | { error: string }
   > {
     if (!invoiceId) return { error: "invoice_id шаардлагатай." };
@@ -183,7 +195,7 @@ export const QPayService = {
       body: JSON.stringify({
         object_type: "INVOICE",
         object_id: invoiceId,
-        offset: { page_number: 1, page_limit: 1 },
+        offset: { page_number: 1, page_limit: 100 },
       }),
     });
     if (!res.ok) {
@@ -195,6 +207,9 @@ export const QPayService = {
       paid: Boolean(paidRow),
       paymentId: paidRow?.payment_id ?? null,
       paidAt: paidRow?.paid_at ? new Date(paidRow.paid_at) : null,
+      // QPay-аас бодитоор төлөгдсөн нийт дүн — дуудагч талд expected-тэй
+      // тулгаж шалгана (хэсэгчилсэн төлбөрийг бүтэн гэж тооцохгүй).
+      paidAmount: typeof data.paid_amount === "number" ? data.paid_amount : 0,
     };
   },
 };

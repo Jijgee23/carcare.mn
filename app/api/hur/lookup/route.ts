@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { enforceRateLimit } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { HurService } from "@/lib/hur_service";
 
@@ -11,6 +12,15 @@ export async function GET(req: Request) {
   if (!session) {
     return NextResponse.json({ error: "Нэвтрэх шаардлагатай." }, { status: 401 });
   }
+
+  // PII scrape / квот шавхалтаас сэргийлж хэрэглэгч тус бүрээр throttle.
+  const limited = enforceRateLimit(
+    req,
+    "hur",
+    { limit: 20, windowMs: 60_000 },
+    session.userId,
+  );
+  if (limited) return limited;
 
   const url = new URL(req.url);
   const plate = url.searchParams.get("plate")?.trim() ?? "";

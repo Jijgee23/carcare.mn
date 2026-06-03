@@ -1,5 +1,5 @@
 import { Prisma } from "@/app/generated/prisma/client";
-import { jsonError, jsonOk, requireApiUser } from "@/lib/api";
+import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 
@@ -44,6 +44,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
+  const denied = requirePermission(auth.user, "customers.create");
+  if (denied) return denied;
 
   let body: unknown;
   try {

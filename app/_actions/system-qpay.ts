@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireSuperAdmin } from "@/lib/auth/system";
+import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/prisma";
 
 export type QPaySettingsActionState = {
@@ -36,7 +37,7 @@ export async function saveQPaySettingsAction(
   const existing = await prisma.qPaySettings.findUnique({ where: { id: 1 } });
   const tokensToReset = existing && (
     existing.username !== username ||
-    existing.password !== password ||
+    decryptSecret(existing.password) !== password ||
     existing.invoiceCode !== invoiceCode
   );
 
@@ -44,7 +45,7 @@ export async function saveQPaySettingsAction(
     where: { id: 1 },
     update: {
       username,
-      password,
+      password: encryptSecret(password),
       invoiceCode,
       callbackUrl: callbackUrl || null,
       // Шинэ creds бол хуучин token-уудыг хүчингүй болгоно
@@ -60,7 +61,7 @@ export async function saveQPaySettingsAction(
     create: {
       id: 1,
       username,
-      password,
+      password: encryptSecret(password),
       invoiceCode,
       callbackUrl: callbackUrl || null,
     },

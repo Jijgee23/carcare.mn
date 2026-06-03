@@ -1,4 +1,4 @@
-import { jsonError, jsonOk, requireApiUser } from "@/lib/api";
+import { enforceRateLimit, jsonError, jsonOk, requireApiUser } from "@/lib/api";
 import { HurService } from "@/lib/hur_service";
 
 /**
@@ -8,6 +8,16 @@ import { HurService } from "@/lib/hur_service";
 export async function GET(req: Request) {
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
+
+  // Үндэсний бүртгэлийн PII-г scrape хийх / нийтийн HUR квотыг шавхахаас
+  // сэргийлж хэрэглэгч тус бүрээр throttle.
+  const limited = enforceRateLimit(
+    req,
+    "hur",
+    { limit: 20, windowMs: 60_000 },
+    auth.user.id,
+  );
+  if (limited) return limited;
 
   const url = new URL(req.url);
   const plate = url.searchParams.get("plate")?.trim() ?? "";

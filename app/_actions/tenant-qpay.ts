@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
+import { encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/prisma";
 
 export type TenantQPayActionState = {
@@ -67,7 +68,7 @@ export async function saveTenantQPayAction(
       create: {
         tenantId: user.tenantId,
         username,
-        password,
+        password: encryptSecret(password),
         invoiceCode,
         callbackUrl: callbackUrl || null,
         enabled,
@@ -78,7 +79,7 @@ export async function saveTenantQPayAction(
         callbackUrl: callbackUrl || null,
         enabled,
         // Password хоосон ирвэл хуучныг үлдээнэ
-        ...(password ? { password } : {}),
+        ...(password ? { password: encryptSecret(password) } : {}),
         // Token cache-г шинэчилсэн үед арилгана
         accessToken: null,
         refreshToken: null,

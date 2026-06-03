@@ -133,6 +133,16 @@ export async function checkSubscriptionPaymentAction(
     return { ok: true, paid: false };
   }
 
+  // Бодит төлсөн дүнг expected-тэй тулгана — хэсэгчилсэн төлбөрөөр багц
+  // идэвхжихээс сэргийлнэ.
+  if (new Prisma.Decimal(check.paidAmount).lt(payment.amount)) {
+    return {
+      ok: true,
+      paid: false,
+      message: "Төлбөр бүрэн төлөгдөөгүй байна. Дахин шалгана уу.",
+    };
+  }
+
   // PAID — атомт: payment update + хуучин active sub-уудыг EXPIRED + шинэ ACTIVE
   // sub үүсгэх + tenant.plan sync.
   const start = check.paidAt ?? new Date();

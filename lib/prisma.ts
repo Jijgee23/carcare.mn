@@ -5,6 +5,24 @@ const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
 };
 
+/**
+ * pg pool-ийн нэгэн зэрэг холболтын дээд хязгаар.
+ *
+ * Serverless (Vercel) дээр instance бүр өөрийн pool нээдэг тул N instance × pool
+ * нь Postgres-ийн `max_connections`-г хурдан дүүргэж "too many clients" алдаа
+ * үүсгэдэг — иймд маш бага (1) байлгана. Урт амьдрах сервер (VPS / `next start`)
+ * дээр нэг л pool байх тул илүү өндөр (10) тохиромжтой. `DATABASE_POOL_MAX`-аар
+ * дарж тохируулж болно (ж: PgBouncer-ийн ард).
+ */
+function poolMax(): number {
+  const raw = process.env.DATABASE_POOL_MAX;
+  if (raw) {
+    const n = Number.parseInt(raw, 10);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return process.env.VERCEL ? 1 : 10;
+}
+
 function createClient(): PrismaClient {
   const url = process.env.DATABASE_URL;
   if (!url) {
@@ -14,7 +32,13 @@ function createClient(): PrismaClient {
   }
 
   return new PrismaClient({
-    adapter: new PrismaPg({ connectionString: url }),
+    adapter: new PrismaPg({
+      connectionString: url,
+      max: poolMax(),
+      // Сул холболтыг хурдан суллана (serverless дээр чухал).
+      idleTimeoutMillis: 10_000,
+      connectionTimeoutMillis: 10_000,
+    }),
     log:
       process.env.NODE_ENV === "development"
         ? ["query", "warn", "error"]
