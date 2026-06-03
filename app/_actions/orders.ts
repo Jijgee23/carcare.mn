@@ -10,6 +10,7 @@ import {
   ITEM_KINDS,
   ORDER_STATUS_TRANSITIONS,
   PAYMENT_STATUSES,
+  isOrderLocked,
   type ItemKind,
   type OrderStatus,
   type PaymentStatus,
@@ -294,6 +295,20 @@ export async function updateOrderAction(
   const refErrors = await validateRefs(user.tenantId, data);
   if (Object.keys(refErrors).length > 0) {
     return { ok: false, fieldErrors: refErrors };
+  }
+
+  const existing = await prisma.serviceOrder.findFirst({
+    where: { id, tenantId: user.tenantId },
+    select: { status: true },
+  });
+  if (!existing) {
+    return { ok: false, message: "Захиалга олдсонгүй." };
+  }
+  if (isOrderLocked(existing.status as OrderStatus)) {
+    return {
+      ok: false,
+      message: "Дууссан / цуцлагдсан захиалгын мэдээллийг засаж болохгүй.",
+    };
   }
 
   try {
@@ -589,7 +604,7 @@ export async function addOrderItemAction(
     select: { id: true, status: true },
   });
   if (!order) return { ok: false, message: "Захиалга олдсонгүй." };
-  if (order.status === "COMPLETED" || order.status === "CANCELLED") {
+  if (isOrderLocked(order.status as OrderStatus)) {
     return {
       ok: false,
       message: "Дууссан / цуцлагдсан захиалгад мөр нэмж болохгүй.",
@@ -679,7 +694,7 @@ export async function removeOrderItemAction(formData: FormData): Promise<void> {
     },
   });
   if (!item) return;
-  if (item.order.status === "COMPLETED" || item.order.status === "CANCELLED") {
+  if (isOrderLocked(item.order.status as OrderStatus)) {
     throw new Error("Дууссан захиалгын мөрийг устгаж болохгүй.");
   }
 

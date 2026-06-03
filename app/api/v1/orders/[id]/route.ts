@@ -1,7 +1,11 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
-import { ORDER_STATUS_TRANSITIONS, type OrderStatus } from "@/lib/orders";
+import {
+  ORDER_STATUS_TRANSITIONS,
+  isOrderLocked,
+  type OrderStatus,
+} from "@/lib/orders";
 
 const ORDER_DETAIL_SELECT = {
   id: true,
@@ -81,6 +85,12 @@ export async function PATCH(
     select: { id: true, status: true, startedAt: true },
   });
   if (!order) return jsonError(404, "Захиалга олдсонгүй.");
+  if (isOrderLocked(order.status as OrderStatus)) {
+    return jsonError(
+      422,
+      "Дууссан / цуцлагдсан захиалгын мэдээллийг засах боломжгүй.",
+    );
+  }
 
   let body: unknown;
   try {

@@ -33,6 +33,11 @@ export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   CANCELLED: [],
 };
 
+// Эцсийн (цоожтой) төлөв — захиалгын мэдээлэл засах, мөр нэмэх/устгах боломжгүй.
+export function isOrderLocked(status: OrderStatus): boolean {
+  return status === "COMPLETED" || status === "CANCELLED";
+}
+
 export const PAYMENT_STATUSES = ["UNPAID", "PARTIAL", "PAID"] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
