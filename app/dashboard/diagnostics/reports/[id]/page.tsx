@@ -7,8 +7,12 @@ import { customerLabel } from "@/lib/customers";
 import {
   DIAGNOSTIC_TYPE_BADGE,
   DIAGNOSTIC_TYPE_LABEL,
+  itemPositions,
+  positionedKey,
   type DiagnosticType,
   type ReportData,
+  type ReportEntry,
+  type TemplateItem,
   type TemplateSchema,
   emptySchema,
 } from "@/lib/diagnostics";
@@ -127,43 +131,30 @@ export default async function ReportDetailPage({
             </div>
             <div className="divide-y divide-white/[0.04]">
               {section.items.map((item) => {
-                const entry = data[item.id] ?? {};
+                const positions = itemPositions(item);
                 return (
                   <div
                     key={item.id}
                     className="px-5 py-3 flex flex-col gap-2"
                   >
                     <div className="text-xs text-white/40">{item.label}</div>
-                    <div className="text-sm text-white/90">
-                      {renderValue(item.type, entry.value)}
-                    </div>
-                    {entry.photos && entry.photos.length > 0 ? (
-                      <div className="flex flex-wrap gap-2 mt-1">
-                        {entry.photos.map((p, idx) => (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            key={idx}
-                            src={p}
-                            alt=""
-                            className="w-24 h-24 object-cover rounded-lg border border-white/[0.06]"
-                          />
+                    {positions ? (
+                      <div className="flex flex-col gap-3 pl-3 border-l border-white/[0.06]">
+                        {positions.map((pos) => (
+                          <div key={pos.code} className="flex flex-col gap-1">
+                            <div className="text-[11px] text-white/50">
+                              {pos.label}
+                            </div>
+                            <EntryView
+                              item={item}
+                              entry={data[positionedKey(item.id, pos.code)] ?? {}}
+                            />
+                          </div>
                         ))}
                       </div>
-                    ) : null}
-                    {item.type === "signature" &&
-                    typeof entry.value === "string" ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={entry.value}
-                        alt="Гарын үсэг"
-                        className="w-48 h-24 object-contain rounded-lg border border-white/[0.06] bg-white/[0.04]"
-                      />
-                    ) : null}
-                    {entry.note ? (
-                      <div className="text-xs text-white/50 italic">
-                        Тэмдэглэл: {entry.note}
-                      </div>
-                    ) : null}
+                    ) : (
+                      <EntryView item={item} entry={data[item.id] ?? {}} />
+                    )}
                   </div>
                 );
               })}
@@ -204,6 +195,49 @@ export default async function ReportDetailPage({
         </form>
       </div>
     </div>
+  );
+}
+
+// Нэг талбарын (item эсвэл байрлалын) утга/зураг/гарын үсэг/тэмдэглэлийг харуулна.
+function EntryView({
+  item,
+  entry,
+}: {
+  item: TemplateItem;
+  entry: ReportEntry;
+}) {
+  return (
+    <>
+      <div className="text-sm text-white/90">
+        {renderValue(item.type, entry.value)}
+      </div>
+      {entry.photos && entry.photos.length > 0 ? (
+        <div className="flex flex-wrap gap-2 mt-1">
+          {entry.photos.map((p, idx) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={idx}
+              src={p}
+              alt=""
+              className="w-24 h-24 object-cover rounded-lg border border-white/[0.06]"
+            />
+          ))}
+        </div>
+      ) : null}
+      {item.type === "signature" && typeof entry.value === "string" ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={entry.value}
+          alt="Гарын үсэг"
+          className="w-48 h-24 object-contain rounded-lg border border-white/[0.06] bg-white/[0.04]"
+        />
+      ) : null}
+      {entry.note ? (
+        <div className="text-xs text-white/50 italic">
+          Тэмдэглэл: {entry.note}
+        </div>
+      ) : null}
+    </>
   );
 }
 

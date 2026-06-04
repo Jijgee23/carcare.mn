@@ -10,6 +10,8 @@ import { Field, FormError, SubmitButton } from "@/app/_components/auth-shell";
 import { customerLabel } from "@/lib/customers";
 import {
   DIAGNOSTIC_TYPE_LABEL,
+  itemPositions,
+  positionedKey,
   type DiagnosticType,
   type TemplateItem,
   type TemplateSchema,
@@ -267,8 +269,7 @@ export function StandaloneDiagnosticForm({
 }
 
 function ItemControl({ item }: { item: TemplateItem }) {
-  const baseName = `data[${item.id}]`;
-  const [photoCount, setPhotoCount] = useState(0);
+  const positions = itemPositions(item);
 
   return (
     <div className="flex flex-col gap-2">
@@ -279,6 +280,40 @@ function ItemControl({ item }: { item: TemplateItem }) {
         ) : null}
       </div>
 
+      {positions ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {positions.map((pos) => (
+            <div
+              key={pos.code}
+              className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 flex flex-col gap-2"
+            >
+              <div className="text-xs font-medium text-white/55">
+                {pos.label}
+              </div>
+              <FieldInputs item={item} fieldId={positionedKey(item.id, pos.code)} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <FieldInputs item={item} fieldId={item.id} />
+      )}
+    </div>
+  );
+}
+
+// Нэг талбарын (item эсвэл байрлал-түлхүүрийн) оролтуудыг гаргана.
+function FieldInputs({
+  item,
+  fieldId,
+}: {
+  item: TemplateItem;
+  fieldId: string;
+}) {
+  const baseName = `data[${fieldId}]`;
+  const [photoCount, setPhotoCount] = useState(0);
+
+  return (
+    <>
       {item.type === "check" ? (
         <div className="flex flex-wrap gap-2">
           {(item.options ?? []).map((opt) => (
@@ -322,7 +357,7 @@ function ItemControl({ item }: { item: TemplateItem }) {
 
       {item.type === "photo" ? (
         <input
-          name={`photos[${item.id}]`}
+          name={`photos[${fieldId}]`}
           type="file"
           accept="image/png,image/jpeg,image/webp"
           multiple
@@ -337,7 +372,7 @@ function ItemControl({ item }: { item: TemplateItem }) {
 
       {item.type === "signature" ? (
         <input
-          name={`signatures[${item.id}]`}
+          name={`signatures[${fieldId}]`}
           type="file"
           accept="image/png,image/jpeg,image/webp"
           required={item.required}
@@ -351,6 +386,6 @@ function ItemControl({ item }: { item: TemplateItem }) {
         className="auth-input text-xs"
         placeholder="Нэмэлт тэмдэглэл (заавал биш)..."
       />
-    </div>
+    </>
   );
 }

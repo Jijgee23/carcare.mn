@@ -1,5 +1,8 @@
 import {
+  itemPositions,
+  positionedKey,
   type ReportEntry,
+  type TemplateItem,
   type TemplateSchema,
 } from "@/lib/diagnostics";
 import { saveUpload } from "@/lib/storage";
@@ -26,43 +29,16 @@ export async function collectReportData(
 
   for (const section of schema.sections) {
     for (const item of section.items) {
-      const entry: ReportEntry = {};
-      const valueKey = `data[${item.id}][value]`;
-      const noteKey = `data[${item.id}][note]`;
-      const photoKey = `photos[${item.id}]`;
-      const sigKey = `signatures[${item.id}]`;
-
-      if (item.type === "text" || item.type === "check") {
-        const v = fd.get(valueKey);
-        if (typeof v === "string" && v.trim()) entry.value = v.trim();
-      } else if (item.type === "number") {
-        const v = fd.get(valueKey);
-        if (typeof v === "string" && v.trim()) {
-          const n = Number(v);
-          if (!Number.isNaN(n)) entry.value = n;
+      const positions = itemPositions(item);
+      if (positions) {
+        // Байрлал тус бүрд нийлмэл түлхүүрээр (`<itemId>@<code>`) уншина.
+        for (const pos of positions) {
+          const key = positionedKey(item.id, pos.code);
+          data[key] = await collectEntry(fd, item, key);
         }
-      } else if (item.type === "photo") {
-        const files = fd.getAll(photoKey);
-        const urls: string[] = [];
-        for (const f of files) {
-          if (f instanceof File && f.size > 0) {
-            const saved = await saveUpload(f, "diagnostics");
-            urls.push(saved.path);
-          }
-        }
-        if (urls.length > 0) entry.photos = urls;
-      } else if (item.type === "signature") {
-        const f = fd.get(sigKey);
-        if (f instanceof File && f.size > 0) {
-          const saved = await saveUpload(f, "diagnostics/signatures");
-          entry.value = saved.path;
-        }
+      } else {
+        data[item.id] = await collectEntry(fd, item, item.id);
       }
-
-      const note = fd.get(noteKey);
-      if (typeof note === "string" && note.trim()) entry.note = note.trim();
-
-      data[item.id] = entry;
     }
   }
 
@@ -74,4 +50,50 @@ export async function collectReportData(
   }
 
   return { data, signatureUrl };
+}
+
+// Нэг талбарын (item эсвэл байрлал-түлхүүрийн) утга/файл/тэмдэглэлийг уншина.
+// `fieldId` нь энгийн item-д `item.id`, байрлалтай item-д `<itemId>@<code>`.
+async function collectEntry(
+  fd: FormData,
+  item: TemplateItem,
+  fieldId: string,
+): Promise<ReportEntry> {
+  const entry: ReportEntry = {};
+  const valueKey = `data[${fieldId}][value]`;
+  const noteKey = `data[${fieldId}][note]`;
+  const photoKey = `photos[${fieldId}]`;
+  const sigKey = `signatures[${fieldId}]`;
+
+  if (item.type === "text" || item.type === "check") {
+    const v = fd.get(valueKey);
+    if (typeof v === "string" && v.trim()) entry.value = v.trim();
+  } else if (item.type === "number") {
+    const v = fd.get(valueKey);
+    if (typeof v === "string" && v.trim()) {
+      const n = Number(v);
+      if (!Number.isNaN(n)) entry.value = n;
+    }
+  } else if (item.type === "photo") {
+    const files = fd.getAll(photoKey);
+    const urls: string[] = [];
+    for (const f of files) {
+      if (f instanceof File && f.size > 0) {
+        const saved = await saveUpload(f, "diagnostics");
+        urls.push(saved.path);
+      }
+    }
+    if (urls.length > 0) entry.photos = urls;
+  } else if (item.type === "signature") {
+    const f = fd.get(sigKey);
+    if (f instanceof File && f.size > 0) {
+      const saved = await saveUpload(f, "diagnostics/signatures");
+      entry.value = saved.path;
+    }
+  }
+
+  const note = fd.get(noteKey);
+  if (typeof note === "string" && note.trim()) entry.note = note.trim();
+
+  return entry;
 }

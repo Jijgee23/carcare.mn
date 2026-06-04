@@ -62,6 +62,48 @@ export type ShowWhen = {
   values: string[]; // дор хаяж нэгтэй нь тэнцвэл харагдана
 };
 
+// --- Байрлалын багц (зүүн/баруун, урд/хойд, 4 булан) ----------------------
+// Нэг эд ангийг (ж: "Дугуй") байрлал бүрээр давтаж шалгахад зориулсан. Item-д
+// `positionSet` тохируулбал бөглөх UI байрлал тус бүрд талбар гаргаж, тайланд
+// утга нь `<itemId>@<code>` нийлмэл түлхүүрээр хадгалагдана — report.data-ийн
+// хавтгай бүтэц хэвээр, DB-д өөрчлөлт шаардахгүй.
+
+export type PositionDef = { code: string; label: string };
+
+export const POSITION_SETS = {
+  LR: {
+    label: "Зүүн / Баруун",
+    positions: [
+      { code: "L", label: "Зүүн" },
+      { code: "R", label: "Баруун" },
+    ],
+  },
+  FB: {
+    label: "Урд / Хойд",
+    positions: [
+      { code: "F", label: "Урд" },
+      { code: "B", label: "Хойд" },
+    ],
+  },
+  CORNERS: {
+    label: "4 булан",
+    positions: [
+      { code: "FL", label: "Урд зүүн" },
+      { code: "FR", label: "Урд баруун" },
+      { code: "RL", label: "Хойд зүүн" },
+      { code: "RR", label: "Хойд баруун" },
+    ],
+  },
+} satisfies Record<string, { label: string; positions: PositionDef[] }>;
+
+export type PositionSetKey = keyof typeof POSITION_SETS;
+
+export const POSITION_SET_KEYS = Object.keys(POSITION_SETS) as PositionSetKey[];
+
+export function isPositionSetKey(v: unknown): v is PositionSetKey {
+  return typeof v === "string" && v in POSITION_SETS;
+}
+
 export type TemplateItem = {
   id: string;
   label: string;
@@ -69,7 +111,18 @@ export type TemplateItem = {
   required: boolean;
   options?: string[]; // зөвхөн check төрөлд
   showWhen?: ShowWhen; // дээд талын check item-ийн хариунаас хамаарч харагдана
+  positionSet?: PositionSetKey; // байрлал бүрээр давтаж шалгах (зүүн/баруун г.м.)
 };
+
+/** Item-ийн байрлалын жагсаалт. positionSet байхгүй бол null. */
+export function itemPositions(item: TemplateItem): PositionDef[] | null {
+  return item.positionSet ? POSITION_SETS[item.positionSet].positions : null;
+}
+
+/** Байрлалтай item-ийн тайлан дахь нийлмэл түлхүүр (`<itemId>@<code>`). */
+export function positionedKey(itemId: string, code: string): string {
+  return `${itemId}@${code}`;
+}
 
 export type TemplateSection = {
   id: string;
@@ -149,6 +202,7 @@ export function validateSchema(raw: unknown): TemplateSchema {
         required?: unknown;
         options?: unknown;
         showWhen?: unknown;
+        positionSet?: unknown;
       };
       const itemId =
         typeof it.id === "string" && it.id ? it.id : newId("item");
@@ -162,6 +216,9 @@ export function validateSchema(raw: unknown): TemplateSchema {
       if (typeof type !== "string" || !ITEM_TYPES.includes(type as ItemType))
         throw new Error(`"${label}" асуултын төрөл буруу.`);
       const required = Boolean(it.required);
+      const positionSet = isPositionSetKey(it.positionSet)
+        ? it.positionSet
+        : undefined;
       let options: string[] | undefined;
       if (type === "check") {
         const opts = Array.isArray(it.options)
@@ -170,7 +227,9 @@ export function validateSchema(raw: unknown): TemplateSchema {
             )
           : [];
         options = opts.length > 0 ? opts : DEFAULT_CHECK_OPTIONS.slice();
-        checkItemOptions.set(itemId, options);
+        // Байрлалтай check item нь олон утгатай тул showWhen-ийн эх сурвалж
+        // болгохгүй (хамаарал нь нэг утгатай check-ээс хамаарна).
+        if (!positionSet) checkItemOptions.set(itemId, options);
       }
 
       // showWhen — өмнөх check item-ийн id, дор хаяж нэг утга
@@ -208,6 +267,7 @@ export function validateSchema(raw: unknown): TemplateSchema {
         required,
         options,
         showWhen,
+        positionSet,
       };
     });
 
@@ -239,6 +299,33 @@ export function isItemVisible(
  * Тайлангийн өгөгдлийг template-тэй харьцуулан шалгана.
  * `showWhen`-р далдлагдсан item-ийг хариунаас хасаж required check-ийг алгасна.
  */
+// Нэг талбарын (item эсвэл байрлал-түлхүүрийн) хариуг цэвэрлэж шалгана.
+function validateEntry(
+  obj: Record<string, unknown>,
+  fieldId: string,
+  required: boolean,
+  label: string,
+): ReportEntry {
+  const raw = obj[fieldId];
+  const entry: ReportEntry = {};
+  if (raw && typeof raw === "object") {
+    const r = raw as ReportEntry;
+    if (r.value !== undefined) entry.value = r.value;
+    if (Array.isArray(r.photos))
+      entry.photos = r.photos.filter((p): p is string => typeof p === "string");
+    if (typeof r.note === "string" && r.note.trim()) entry.note = r.note.trim();
+  }
+  if (required) {
+    const hasValue =
+      (entry.value !== undefined &&
+        entry.value !== "" &&
+        entry.value !== null) ||
+      (entry.photos && entry.photos.length > 0);
+    if (!hasValue) throw new Error(`"${label}" заавал бөглөх ёстой.`);
+  }
+  return entry;
+}
+
 export function validateReportData(
   schema: TemplateSchema,
   data: unknown,
@@ -254,28 +341,21 @@ export function validateReportData(
         // Далдлагдсан item — хариуг хадгалахгүй, required-ыг шалгахгүй
         continue;
       }
-      const raw = obj[item.id];
-      const entry: ReportEntry = {};
-      if (raw && typeof raw === "object") {
-        const r = raw as ReportEntry;
-        if (r.value !== undefined) entry.value = r.value;
-        if (Array.isArray(r.photos))
-          entry.photos = r.photos.filter(
-            (p): p is string => typeof p === "string",
+      const positions = itemPositions(item);
+      if (positions) {
+        // Байрлал тус бүрийг нийлмэл түлхүүрээр шалгаж хадгална.
+        for (const pos of positions) {
+          const key = positionedKey(item.id, pos.code);
+          out[key] = validateEntry(
+            obj,
+            key,
+            item.required,
+            `${item.label} — ${pos.label}`,
           );
-        if (typeof r.note === "string" && r.note.trim())
-          entry.note = r.note.trim();
+        }
+      } else {
+        out[item.id] = validateEntry(obj, item.id, item.required, item.label);
       }
-      if (item.required) {
-        const hasValue =
-          (entry.value !== undefined &&
-            entry.value !== "" &&
-            entry.value !== null) ||
-          (entry.photos && entry.photos.length > 0);
-        if (!hasValue)
-          throw new Error(`"${item.label}" заавал бөглөх ёстой.`);
-      }
-      out[item.id] = entry;
     }
   }
   return out;

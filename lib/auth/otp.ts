@@ -40,6 +40,38 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
+// --- Dev-only OTP харагдац ------------------------------------------------
+// DB-д зөвхөн codeHash (sha256) хадгалагддаг тул raw кодыг харуулах боломжгүй.
+// Хөгжүүлэлтэд SMS-гүйгээр нэвтрэхэд тусдаа raw кодыг санах ойд (DB БИШ) барьж,
+// /system/otp хуудсанд харуулна. Production-д ХЭЗЭЭ Ч бичигдэхгүй / хадгалагдахгүй.
+
+export type DevOtpEntry = {
+  email: string;
+  type: OtpType;
+  code: string;
+  createdAt: Date;
+  expiresAt: Date;
+};
+
+const DEV_OTP_LIMIT = 50;
+const devOtpHolder = globalThis as unknown as {
+  __carcareDevOtps?: DevOtpEntry[];
+};
+
+function recordDevOtp(entry: DevOtpEntry): void {
+  if (process.env.NODE_ENV === "production") return;
+  const list =
+    devOtpHolder.__carcareDevOtps ?? (devOtpHolder.__carcareDevOtps = []);
+  list.push(entry);
+  if (list.length > DEV_OTP_LIMIT) list.splice(0, list.length - DEV_OTP_LIMIT);
+}
+
+/** Хөгжүүлэлтэд үүсгэсэн OTP кодуудын жагсаалт (шинэ нь эхэнд). Prod-д хоосон. */
+export function getDevOtps(): DevOtpEntry[] {
+  if (process.env.NODE_ENV === "production") return [];
+  return [...(devOtpHolder.__carcareDevOtps ?? [])].reverse();
+}
+
 export type IssueOtpOptions = {
   email: string;
   type: OtpType;
@@ -83,6 +115,13 @@ export async function issueOtp(
   const code = generateCode();
   const codeHash = hashCode(code);
   const expiresAt = new Date(Date.now() + OTP_MAX_AGE_SECONDS * 1000);
+
+  // Хөгжүүлэлтэд SMS хүргэхгүй / хүрэхгүй байж болзошгүй тул кодыг сервер
+  // console + /system/otp хуудсанд харуулна. Production-д ХЭЗЭЭ Ч хийхгүй.
+  if (process.env.NODE_ENV !== "production") {
+    recordDevOtp({ email, type: opts.type, code, createdAt: new Date(), expiresAt });
+    console.info(`\n🔑 [OTP] ${opts.type} · ${email} → ${code}\n`);
+  }
 
   await prisma.$transaction(async (tx) => {
     // Өмнөх идэвхтэй OTP-уудыг хүчингүй болго (зөвхөн хамгийн сүүлийн нь л зөв)

@@ -15,8 +15,11 @@ import {
   DIAGNOSTIC_TYPE_LABEL,
   ITEM_TYPES,
   ITEM_TYPE_LABEL,
+  POSITION_SETS,
+  POSITION_SET_KEYS,
   type DiagnosticType,
   type ItemType,
+  type PositionSetKey,
   type TemplateItem,
   type TemplateSchema,
   type TemplateSection,
@@ -372,7 +375,9 @@ export function TemplateEditor({ initial }: { initial?: Initial }) {
                           // Энэ section-ы хувьд өөрөөсөө доорхыг хасаж зогсоно
                           break;
                         }
-                        if (pi.type === "check" && pi.options) {
+                        // Байрлалтай check item олон утгатай тул хамаарлын
+                        // эх сурвалж болохгүй.
+                        if (pi.type === "check" && pi.options && !pi.positionSet) {
                           priorCheckItems.push({
                             id: pi.id,
                             label: pi.label,
@@ -499,6 +504,27 @@ function ItemRow({
           {ITEM_TYPES.map((t) => (
             <option key={t} value={t} className="bg-[#0d0d14]">
               {ITEM_TYPE_LABEL[t]}
+            </option>
+          ))}
+        </select>
+        <select
+          value={item.positionSet ?? ""}
+          onChange={(e) =>
+            onChange({
+              positionSet: e.target.value
+                ? (e.target.value as PositionSetKey)
+                : undefined,
+            })
+          }
+          title="Байрлал бүрээр давтах (зүүн/баруун, 4 булан г.м.)"
+          className="text-xs bg-white/[0.06] border border-white/[0.08] rounded-md px-2 py-1 text-white/70"
+        >
+          <option value="" className="bg-[#0d0d14]">
+            Байрлалгүй
+          </option>
+          {POSITION_SET_KEYS.map((k) => (
+            <option key={k} value={k} className="bg-[#0d0d14]">
+              {POSITION_SETS[k].label}
             </option>
           ))}
         </select>

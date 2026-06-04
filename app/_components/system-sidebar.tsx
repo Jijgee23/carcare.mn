@@ -59,6 +59,23 @@ const navItems: NavItem[] = [
       </svg>
     ),
   },
+  // Зөвхөн хөгжүүлэлтэд — SMS-гүйгээр нэвтрэх OTP кодуудыг харах.
+  ...(process.env.NODE_ENV !== "production"
+    ? [
+        {
+          href: "/system/otp",
+          label: "OTP (dev)",
+          icon: (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="7.5" cy="15.5" r="4.5" />
+              <path d="m10.5 12.5 7-7" />
+              <path d="m17 7 2 2" />
+              <path d="m14 8 2 2" />
+            </svg>
+          ),
+        },
+      ]
+    : []),
 ];
 
 export function SystemSidebar({
