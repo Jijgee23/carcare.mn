@@ -1,5 +1,6 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
+import { branchScopeId } from "@/lib/auth/roles";
 import { prisma } from "@/lib/prisma";
 import {
   ORDER_STATUS_TRANSITIONS,
@@ -59,13 +60,19 @@ const ORDER_DETAIL_SELECT = {
 
 export async function GET(
   req: Request,
-  { params }: { params: { id: string } },
+  ctx: { params: Promise<{ id: string }> },
 ) {
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
+  const { id } = await ctx.params;
+  const scope = branchScopeId(auth.user);
 
   const order = await prisma.serviceOrder.findFirst({
-    where: { id: params.id, tenantId: auth.user.tenantId },
+    where: {
+      id,
+      tenantId: auth.user.tenantId,
+      ...(scope ? { branchId: scope } : {}),
+    },
     select: ORDER_DETAIL_SELECT,
   });
 
@@ -75,15 +82,21 @@ export async function GET(
 
 export async function PATCH(
   req: Request,
-  { params }: { params: { id: string } },
+  ctx: { params: Promise<{ id: string }> },
 ) {
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
   const denied = requirePermission(auth.user, "orders.edit");
   if (denied) return denied;
+  const { id } = await ctx.params;
+  const scope = branchScopeId(auth.user);
 
   const order = await prisma.serviceOrder.findFirst({
-    where: { id: params.id, tenantId: auth.user.tenantId },
+    where: {
+      id,
+      tenantId: auth.user.tenantId,
+      ...(scope ? { branchId: scope } : {}),
+    },
     select: { id: true, status: true, startedAt: true },
   });
   if (!order) return jsonError(404, "Захиалга олдсонгүй.");
@@ -133,7 +146,7 @@ export async function PATCH(
   }
 
   const updated = await prisma.serviceOrder.update({
-    where: { id: params.id },
+    where: { id },
     data: updates,
     select: ORDER_DETAIL_SELECT,
   });

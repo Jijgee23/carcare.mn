@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
-import { canCreate, canDelete, canEdit } from "@/lib/auth/roles";
+import { branchScopeId, canCreate, canDelete, canEdit } from "@/lib/auth/roles";
 import {
   ITEM_KINDS,
   ORDER_STATUS_TRANSITIONS,
@@ -52,9 +52,37 @@ async function authorize(action: "create" | "edit" | "delete") {
   return user;
 }
 
+/**
+ * Захиалгад товлох оношилгооны template id-уудыг уншиж, тенант + идэвхтэйг
+ * шалгаад буцаана. Буруу / идэвхгүйг чимээгүй хасна.
+ */
+async function parseDiagnosticTemplateIds(
+  tenantId: string,
+  formData: FormData,
+): Promise<string[]> {
+  const raw = formData
+    .getAll("diagnosticTemplateIds")
+    .filter((v): v is string => typeof v === "string" && v.length > 0);
+  const ids = [...new Set(raw)];
+  if (ids.length === 0) return [];
+  const found = await prisma.diagnosticTemplate.findMany({
+    where: { id: { in: ids }, tenantId, isActive: true },
+    select: { id: true },
+  });
+  return found.map((t) => t.id);
+}
+
 async function nextOrderNumber(tenantId: string): Promise<string> {
-  const count = await prisma.serviceOrder.count({ where: { tenantId } });
-  return String(count + 1).padStart(5, "0");
+  // Хамгийн өндөр дугаар дээр нэмнэ — count ашиглавал устгасан захиалгын улмаас
+  // дугаар давхцаж (P2002) болзошгүй. Дугаарууд тэгээр гүйцээсэн тул desc эрэмбэ
+  // нь тоон утгын дарааллыг өгнө.
+  const last = await prisma.serviceOrder.findFirst({
+    where: { tenantId },
+    orderBy: { number: "desc" },
+    select: { number: true },
+  });
+  const lastNum = last ? Number.parseInt(last.number, 10) || 0 : 0;
+  return String(lastNum + 1).padStart(5, "0");
 }
 
 async function recomputeTotal(orderId: string): Promise<void> {
@@ -184,6 +212,15 @@ export async function createOrderAction(
     return { ok: false, fieldErrors: refErrors };
   }
 
+  // Салбараар хязгаарлагдсан ажилтан зөвхөн өөрийн салбарт захиалга үүсгэнэ.
+  const scope = branchScopeId(user);
+  if (scope && data.branchId !== scope) {
+    return {
+      ok: false,
+      fieldErrors: { branchId: "Зөвхөн өөрийн салбарт захиалга үүсгэх боломжтой." },
+    };
+  }
+
   // Багцын хязгаар: daily_orders + max_active_orders
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
@@ -252,6 +289,21 @@ export async function createOrderAction(
     return { ok: false, message: "Захиалгын дугаар үүсгэж чадсангүй. Дахин оролдоно уу." };
   }
 
+  // Сонгосон оношилгоонуудыг товлоно (бөглөхгүй — захиалга эхэлсний дараа бөглөнө).
+  const diagnosticTemplateIds = await parseDiagnosticTemplateIds(
+    user.tenantId,
+    formData,
+  );
+  if (diagnosticTemplateIds.length > 0) {
+    await prisma.orderDiagnostic.createMany({
+      data: diagnosticTemplateIds.map((templateId) => ({
+        orderId: createdId!,
+        templateId,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
   await logAudit({
     tenantId: user.tenantId,
     userId: user.id,
@@ -297,8 +349,23 @@ export async function updateOrderAction(
     return { ok: false, fieldErrors: refErrors };
   }
 
+  // Салбараар хязгаарлагдсан ажилтан өөр салбарын захиалгыг засах / өөр
+  // салбар руу шилжүүлэх боломжгүй.
+  const scope = branchScopeId(user);
+  if (scope && data.branchId !== scope) {
+    return {
+      ok: false,
+      fieldErrors: { branchId: "Зөвхөн өөрийн салбарын захиалгыг засах боломжтой." },
+    };
+  }
+  const scopedOrderWhere = {
+    id,
+    tenantId: user.tenantId,
+    ...(scope ? { branchId: scope } : {}),
+  };
+
   const existing = await prisma.serviceOrder.findFirst({
-    where: { id, tenantId: user.tenantId },
+    where: scopedOrderWhere,
     select: { status: true },
   });
   if (!existing) {
@@ -313,7 +380,7 @@ export async function updateOrderAction(
 
   try {
     const updated = await prisma.serviceOrder.updateMany({
-      where: { id, tenantId: user.tenantId },
+      where: scopedOrderWhere,
       data,
     });
     if (updated.count === 0) {
@@ -324,6 +391,30 @@ export async function updateOrderAction(
       ok: false,
       message: e instanceof Error ? e.message : "Шинэчлэх явцад алдаа гарлаа.",
     };
+  }
+
+  // Зөвхөн эхлээгүй (SCHEDULED) захиалгад товлосон оношилгоог засна.
+  if (existing.status === "SCHEDULED") {
+    const wantIds = await parseDiagnosticTemplateIds(user.tenantId, formData);
+    const current = await prisma.orderDiagnostic.findMany({
+      where: { orderId: id },
+      select: { templateId: true },
+    });
+    const currentIds = new Set(current.map((c) => c.templateId));
+    const wantSet = new Set(wantIds);
+    const toAdd = wantIds.filter((t) => !currentIds.has(t));
+    const toRemove = [...currentIds].filter((t) => !wantSet.has(t));
+    if (toRemove.length > 0) {
+      await prisma.orderDiagnostic.deleteMany({
+        where: { orderId: id, templateId: { in: toRemove } },
+      });
+    }
+    if (toAdd.length > 0) {
+      await prisma.orderDiagnostic.createMany({
+        data: toAdd.map((templateId) => ({ orderId: id, templateId })),
+        skipDuplicates: true,
+      });
+    }
   }
 
   await logAudit({
@@ -349,21 +440,43 @@ export async function updateOrderAction(
 
 // --- STATUS CHANGE --------------------------------------------------------
 
-export async function changeOrderStatusAction(formData: FormData): Promise<void> {
-  const user = await authorize("edit");
+export async function changeOrderStatusAction(
+  _prev: OrderActionState,
+  formData: FormData,
+): Promise<OrderActionState> {
+  let user;
+  try {
+    user = await authorize("edit");
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
   const id = s(formData, "id");
   const next = s(formData, "status") as OrderStatus;
-  if (!id || !next) return;
+  if (!id || !next) return { ok: false, message: "Буруу хүсэлт." };
 
   const order = await prisma.serviceOrder.findFirst({
     where: { id, tenantId: user.tenantId },
     select: { id: true, status: true },
   });
-  if (!order) return;
+  if (!order) return { ok: false, message: "Захиалга олдсонгүй." };
 
   const allowed = ORDER_STATUS_TRANSITIONS[order.status as OrderStatus];
   if (!allowed?.includes(next)) {
-    throw new Error("Энэ статус руу шилжих боломжгүй.");
+    return { ok: false, message: "Энэ статус руу шилжих боломжгүй." };
+  }
+
+  // Дуусгахаас өмнө бүртгэсэн оношилгоо бүгд бөглөгдсөн байх ёстой.
+  if (next === "COMPLETED") {
+    const pending = await prisma.orderDiagnostic.count({
+      where: { orderId: order.id },
+    });
+    if (pending > 0) {
+      return {
+        ok: false,
+        message:
+          "Бөглөгдөөгүй оношилгоо байна. Бүх оношилгоог бөглөсний дараа захиалгыг дуусгана уу.",
+      };
+    }
   }
 
   const updates: Prisma.ServiceOrderUpdateInput = { status: next };
@@ -397,6 +510,68 @@ export async function changeOrderStatusAction(formData: FormData): Promise<void>
   revalidatePath("/dashboard/orders");
   revalidatePath(`/dashboard/orders/${id}`);
   revalidatePath("/dashboard");
+  return { ok: true, message: "Статус шинэчлэгдлээ." };
+}
+
+// --- ORDER DIAGNOSTIC PLAN (ад-хок оношилгоо товлох) ----------------------
+
+export type AddOrderDiagnosticState =
+  | { status: "added" | "duplicate" | "error"; message: string }
+  | null;
+
+// Захиалгад оношилгоо товлоно (бөглөхгүй — жагсаалтад нэмнэ). Дараа нь "Бөглөх"
+// дарж тайлан үүсгэнэ. Аль хэдийн товлогдсон бол duplicate буцаана.
+export async function addOrderDiagnosticAction(
+  _prev: AddOrderDiagnosticState,
+  formData: FormData,
+): Promise<AddOrderDiagnosticState> {
+  let user;
+  try {
+    user = await authorize("edit");
+  } catch (e) {
+    return { status: "error", message: e instanceof Error ? e.message : "Алдаа" };
+  }
+  const orderId = s(formData, "orderId");
+  const templateId = s(formData, "templateId");
+  if (!orderId || !templateId) {
+    return { status: "error", message: "Буруу хүсэлт." };
+  }
+
+  const scope = branchScopeId(user);
+  const order = await prisma.serviceOrder.findFirst({
+    where: {
+      id: orderId,
+      tenantId: user.tenantId,
+      ...(scope ? { branchId: scope } : {}),
+    },
+    select: { id: true, status: true },
+  });
+  if (!order) return { status: "error", message: "Захиалга олдсонгүй." };
+  if (isOrderLocked(order.status as OrderStatus)) {
+    return { status: "error", message: "Дууссан / цуцлагдсан захиалга." };
+  }
+
+  const tpl = await prisma.diagnosticTemplate.findFirst({
+    where: { id: templateId, tenantId: user.tenantId, isActive: true },
+    select: { id: true, name: true },
+  });
+  if (!tpl) return { status: "error", message: "Загвар олдсонгүй." };
+
+  const existing = await prisma.orderDiagnostic.findUnique({
+    where: { orderId_templateId: { orderId, templateId } },
+    select: { id: true },
+  });
+  if (existing) {
+    return {
+      status: "duplicate",
+      message: `«${tpl.name}» аль хэдийн нэмэгдсэн байна.`,
+    };
+  }
+
+  await prisma.orderDiagnostic.create({ data: { orderId, templateId } });
+
+  revalidatePath(`/dashboard/orders/${orderId}`);
+  return { status: "added", message: `«${tpl.name}» жагсаалтад нэмлээ.` };
 }
 
 // --- PAYMENT STATUS -------------------------------------------------------

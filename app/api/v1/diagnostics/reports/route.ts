@@ -1,5 +1,6 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser } from "@/lib/api";
+import { branchScopeId } from "@/lib/auth/roles";
 import {
   type ReportEntry,
   type TemplateSchema,
@@ -20,8 +21,10 @@ export async function GET(req: Request) {
   const filledByMe = url.searchParams.get("filledByMe") === "true";
   const { page, pageSize, skip, take } = getApiPageInfo(url.searchParams);
 
+  const scope = branchScopeId(auth.user);
   const where: Prisma.DiagnosticReportWhereInput = {
     tenantId: auth.user.tenantId,
+    ...(scope ? { branchId: scope } : {}),
   };
   if (vehicleId) where.vehicleId = vehicleId;
   if (customerId) where.customerId = customerId;
@@ -88,13 +91,20 @@ export async function POST(req: Request) {
   });
   if (!template) return jsonError(404, "Загвар олдсонгүй.");
 
+  // Салбараар хязгаарлагдсан ажилтан зөвхөн өөрийн салбарт оношилгоо хийнэ.
+  const scope = branchScopeId(auth.user);
+
   let finalCustomerId = customerId;
   let finalVehicleId = vehicleId;
   let finalBranchId = branchId;
 
   if (orderId) {
     const order = await prisma.serviceOrder.findFirst({
-      where: { id: orderId, tenantId: auth.user.tenantId },
+      where: {
+        id: orderId,
+        tenantId: auth.user.tenantId,
+        ...(scope ? { branchId: scope } : {}),
+      },
       select: {
         customerId: true,
         vehicleId: true,
@@ -112,6 +122,10 @@ export async function POST(req: Request) {
       422,
       "customerId, vehicleId, branchId шаардлагатай (эсвэл orderId илгээнэ үү).",
     );
+  }
+
+  if (scope && finalBranchId !== scope) {
+    return jsonError(403, "Зөвхөн өөрийн салбарт оношилгоо бүртгэх боломжтой.");
   }
 
   const [cust, veh, br] = await Promise.all([

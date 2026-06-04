@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { deleteReportAction } from "@/app/_actions/diagnostic-reports";
 import { PageHeader } from "@/app/_components/page-header";
 import { requireUser } from "@/lib/auth";
+import { branchScopeId } from "@/lib/auth/roles";
 import { customerLabel } from "@/lib/customers";
 import {
   DIAGNOSTIC_TYPE_BADGE,
@@ -29,9 +30,14 @@ export default async function ReportDetailPage({
 }) {
   const user = await requireUser();
   const { id } = await params;
+  const scopeBranchId = branchScopeId(user);
 
   const report = await prisma.diagnosticReport.findFirst({
-    where: { id, tenantId: user.tenantId },
+    where: {
+      id,
+      tenantId: user.tenantId,
+      ...(scopeBranchId ? { branchId: scopeBranchId } : {}),
+    },
     include: {
       template: { select: { id: true, name: true, schema: true, type: true } },
       filledBy: { select: { firstName: true, lastName: true } },

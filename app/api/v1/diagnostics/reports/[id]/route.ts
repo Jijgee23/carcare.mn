@@ -1,5 +1,5 @@
 import { jsonError, jsonOk, requireApiUser } from "@/lib/api";
-import { canDelete } from "@/lib/auth/roles";
+import { branchScopeId, canDelete } from "@/lib/auth/roles";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(
@@ -9,9 +9,14 @@ export async function GET(
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
   const { id } = await ctx.params;
+  const scope = branchScopeId(auth.user);
 
   const report = await prisma.diagnosticReport.findFirst({
-    where: { id, tenantId: auth.user.tenantId },
+    where: {
+      id,
+      tenantId: auth.user.tenantId,
+      ...(scope ? { branchId: scope } : {}),
+    },
     include: {
       template: {
         select: {
@@ -42,9 +47,14 @@ export async function DELETE(
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
   const { id } = await ctx.params;
+  const scope = branchScopeId(auth.user);
 
   const report = await prisma.diagnosticReport.findFirst({
-    where: { id, tenantId: auth.user.tenantId },
+    where: {
+      id,
+      tenantId: auth.user.tenantId,
+      ...(scope ? { branchId: scope } : {}),
+    },
     select: { id: true, filledById: true },
   });
   if (!report) return jsonError(404, "Тайлан олдсонгүй.");

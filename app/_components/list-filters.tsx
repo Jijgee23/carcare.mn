@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
+import { DatePicker } from "@/app/_components/date-picker";
 
 /**
  * URL-н query string-аар жагсаалт шүүх — server component-ууд `searchParams`-аас
@@ -473,42 +474,14 @@ export function DateRangeFilter({
     });
   }
 
-  const hasValue = Boolean(from || to);
-  const inputStyle: React.CSSProperties = {
-    padding: "0.3rem 0.5rem",
-    borderRadius: "0.45rem",
-    border: `1px solid ${hasValue ? "rgba(139, 107, 255, 0.45)" : "rgba(255, 255, 255, 0.12)"}`,
-    background: hasValue
-      ? "rgba(108, 71, 255, 0.12)"
-      : "rgba(255, 255, 255, 0.04)",
-    color: "rgba(255, 255, 255, 0.9)",
-    fontSize: "0.8125rem",
-    colorScheme: "dark",
-    outline: "none",
-  };
-
   return (
-    <div
-      className={`relative shrink-0 ${className ?? ""}`}
-      style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}
-    >
+    <div className={`relative flex shrink-0 items-center gap-1.5 ${className ?? ""}`}>
       <span className="text-xs text-white/40 shrink-0">{label}</span>
-      <input
-        type="date"
-        value={from}
-        max={to || undefined}
-        onChange={(e) => setRange(e.target.value, to)}
-        style={inputStyle}
-        aria-label={`${label} (эхлэх)`}
-      />
-      <span className="text-xs text-white/30">–</span>
-      <input
-        type="date"
-        value={to}
-        min={from || undefined}
-        onChange={(e) => setRange(from, e.target.value)}
-        style={inputStyle}
-        aria-label={`${label} (дуусах)`}
+      <DatePicker
+        mode="range"
+        value={{ from, to }}
+        onChange={(v) => setRange(v.from, v.to)}
+        className="w-[14rem]"
       />
     </div>
   );

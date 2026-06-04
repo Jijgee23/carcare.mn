@@ -1,13 +1,18 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  changeOrderStatusAction,
   deleteOrderAction,
   removeOrderItemAction,
 } from "@/app/_actions/orders";
 import { PageHeader } from "@/app/_components/page-header";
 import { requireUser } from "@/lib/auth";
-import { ORDER_ASSIGNABLE_WHERE, canDelete, canEdit, canView } from "@/lib/auth/roles";
+import {
+  ORDER_ASSIGNABLE_WHERE,
+  branchScopeId,
+  canDelete,
+  canEdit,
+  canView,
+} from "@/lib/auth/roles";
 import { redirect } from "next/navigation";
 import {
   DIAGNOSTIC_TYPE_BADGE,
@@ -27,32 +32,18 @@ import {
   type ItemKind,
   type OrderStatus,
   type PaymentStatus,
+  canFillDiagnostics,
   formatTugrik,
 } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
 import { AddItemForm } from "./add-item-form";
 import { PaymentControls } from "./payment-controls";
 import { QPayWidget } from "./qpay-widget";
+import { StatusControls } from "./status-controls";
 import { OrderForm } from "../order-form";
 
 export const metadata = {
   title: "Захиалгын дэлгэрэнгүй",
-};
-
-const STATUS_BTN_STYLE: Record<OrderStatus, string> = {
-  SCHEDULED: "bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30",
-  IN_PROGRESS: "bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30",
-  WAITING_PARTS: "bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30",
-  COMPLETED: "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30",
-  CANCELLED: "bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30",
-};
-
-const STATUS_BTN_LABEL: Record<OrderStatus, string> = {
-  SCHEDULED: "Товлох",
-  IN_PROGRESS: "Эхлүүлэх",
-  WAITING_PARTS: "Сэлбэг хүлээх",
-  COMPLETED: "Дуусгах",
-  CANCELLED: "Цуцлах",
 };
 
 export default async function OrderDetailPage({
@@ -65,11 +56,16 @@ export default async function OrderDetailPage({
   const canEditOrder = canEdit(user, "orders");
   const canDeleteOrder = canDelete(user, "orders");
   const canEditPayments = canEdit(user, "payments");
+  const scopeBranchId = branchScopeId(user);
   const { id } = await params;
 
   const [order, branches, customers, vehicles, technicians, services, reports, activeTemplateCount, diagnosticTemplates] = await Promise.all([
     prisma.serviceOrder.findFirst({
-      where: { id, tenantId: user.tenantId },
+      where: {
+        id,
+        tenantId: user.tenantId,
+        ...(scopeBranchId ? { branchId: scopeBranchId } : {}),
+      },
       include: {
         items: { orderBy: { createdAt: "asc" } },
         customer: { select: { id: true, fullName: true, phone: true } },
@@ -84,10 +80,17 @@ export default async function OrderDetailPage({
         },
         branch: { select: { name: true } },
         assignedTo: { select: { firstName: true, lastName: true } },
+        plannedDiagnostics: {
+          orderBy: { createdAt: "asc" },
+          include: { template: { select: { id: true, name: true, type: true } } },
+        },
       },
     }),
     prisma.branch.findMany({
-      where: { tenantId: user.tenantId },
+      where: {
+        tenantId: user.tenantId,
+        ...(scopeBranchId ? { id: scopeBranchId } : {}),
+      },
       orderBy: { createdAt: "asc" },
       select: { id: true, name: true },
     }),
@@ -137,6 +140,8 @@ export default async function OrderDetailPage({
         price: true,
         stock: true,
         unit: { select: { name: true } },
+        laborCategoryId: true,
+        laborCategory: { select: { name: true } },
       },
     }),
     prisma.diagnosticReport.findMany({
@@ -182,6 +187,8 @@ export default async function OrderDetailPage({
   const paymentStatus = order.paymentStatus as PaymentStatus;
   const allowedTransitions = ORDER_STATUS_TRANSITIONS[status];
   const isEditable = status !== "COMPLETED" && status !== "CANCELLED";
+  const diagnosticsFillable = canFillDiagnostics(status);
+  const plannedDiagnostics = order.plannedDiagnostics;
 
   return (
     <div className="p-6 sm:p-8 max-full flex-1 flex flex-col min-h-0 w-full">
@@ -207,16 +214,32 @@ export default async function OrderDetailPage({
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 flex flex-col gap-6">
           <section className="glass rounded-xl relative z-10">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
+            <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-white/[0.06]">
               <div>
                 <h2 className="font-semibold">Үйлчилгээ</h2>
                 <p className="text-xs text-white/40 mt-0.5">
-                  {order.items.length} үйлчилгээ · нийт{" "}
+                  {order.items.length} үйлчилгээ · {reports.length}/
+                  {plannedDiagnostics.length + reports.length} оношилгоо · нийт{" "}
                   <strong className="text-white">
                     {formatTugrik(order.totalAmount?.toString() ?? "0")}
                   </strong>
                 </p>
               </div>
+              {diagnosticsFillable && activeTemplateCount > 0 ? (
+                <Link
+                  href={`/dashboard/orders/${order.id}/diagnostics/new`}
+                  className="shrink-0 text-xs bg-violet-600 hover:bg-violet-500 transition-colors px-3 py-1.5 rounded-lg font-medium"
+                >
+                  + Шинэ оношилгоо
+                </Link>
+              ) : activeTemplateCount === 0 && canEditOrder ? (
+                <Link
+                  href="/dashboard/services/diagnostics/new"
+                  className="shrink-0 text-xs text-violet-300 hover:text-violet-200"
+                >
+                  Загвар үүсгэх →
+                </Link>
+              ) : null}
             </div>
 
             {order.items.length === 0 ? (
@@ -230,6 +253,88 @@ export default async function OrderDetailPage({
               />
             )}
 
+            {/* Оношилгооны хуудас — товлосон (Бөглөх) ба бөглөгдсөн тайлан */}
+            {plannedDiagnostics.length > 0 || reports.length > 0 ? (
+              <div className="border-t border-white/[0.06]">
+                <div className="px-5 py-2 text-[11px] font-medium uppercase tracking-wide text-white/35 bg-white/[0.02]">
+                  Оношилгооны хуудас
+                </div>
+                <div className="divide-y divide-white/[0.04]">
+                  {plannedDiagnostics.map((p) => {
+                    const tp = p.template.type as DiagnosticType;
+                    return (
+                      <div
+                        key={p.id}
+                        className="flex items-center justify-between gap-3 px-5 py-3"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-full ${DIAGNOSTIC_TYPE_BADGE[tp]}`}
+                          >
+                            {DIAGNOSTIC_TYPE_LABEL[tp]}
+                          </span>
+                          <div>
+                            <div className="text-sm text-white/90">
+                              {p.template.name}
+                            </div>
+                            <div className="text-xs text-amber-300/70">
+                              Бөглөгдөөгүй
+                            </div>
+                          </div>
+                        </div>
+                        {diagnosticsFillable ? (
+                          <Link
+                            href={`/dashboard/orders/${order.id}/diagnostics/new?templateId=${p.template.id}`}
+                            className="shrink-0 text-xs bg-violet-600 hover:bg-violet-500 transition-colors px-3 py-1.5 rounded-lg font-medium"
+                          >
+                            Бөглөх
+                          </Link>
+                        ) : (
+                          <span className="shrink-0 text-[11px] text-white/30">
+                            {status === "SCHEDULED"
+                              ? "Захиалга эхэлсний дараа"
+                              : "—"}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {reports.map((r) => {
+                    const tp = r.template.type as DiagnosticType;
+                    return (
+                      <Link
+                        key={r.id}
+                        href={`/dashboard/diagnostics/reports/${r.id}`}
+                        className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-white/[0.02] transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-full ${DIAGNOSTIC_TYPE_BADGE[tp]}`}
+                          >
+                            {DIAGNOSTIC_TYPE_LABEL[tp]}
+                          </span>
+                          <div>
+                            <div className="text-sm text-white/90">
+                              {r.template.name}
+                            </div>
+                            <div className="text-xs text-white/40">
+                              {r.filledBy
+                                ? `${r.filledBy.lastName} ${r.filledBy.firstName}`
+                                : "—"}{" "}
+                              · {r.createdAt.toLocaleString("mn-MN")}
+                            </div>
+                          </div>
+                        </div>
+                        <span className="shrink-0 text-xs text-violet-300">
+                          Үзэх →
+                        </span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
             {isEditable && canEditOrder ? (
               <div className="px-5 py-4 border-t border-white/[0.06] bg-white/[0.02]">
                 <AddItemForm
@@ -242,6 +347,8 @@ export default async function OrderDetailPage({
                     unit: s.unit?.name ?? "",
                     price: s.price.toString(),
                     stock: s.stock != null ? s.stock.toString() : null,
+                    laborCategoryId: s.laborCategoryId,
+                    laborCategoryName: s.laborCategory?.name ?? null,
                   }))}
                   diagnosticTemplates={diagnosticTemplates.map((t) => ({
                     id: t.id,
@@ -252,73 +359,6 @@ export default async function OrderDetailPage({
                 />
               </div>
             ) : null}
-          </section>
-
-          <section className="glass rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
-              <div>
-                <h2 className="font-semibold">Оношилгоо</h2>
-                <p className="text-xs text-white/40 mt-0.5">
-                  {reports.length} тайлан
-                </p>
-              </div>
-              {activeTemplateCount > 0 ? (
-                <Link
-                  href={`/dashboard/orders/${order.id}/diagnostics/new`}
-                  className="text-xs bg-violet-600 hover:bg-violet-500 transition-colors px-3 py-1.5 rounded-lg font-medium"
-                >
-                  + Шинэ оношилгоо
-                </Link>
-              ) : canEditOrder ? (
-                <Link
-                  href="/dashboard/services/diagnostics/new"
-                  className="text-xs text-violet-300 hover:text-violet-200"
-                >
-                  Загвар үүсгэх →
-                </Link>
-              ) : null}
-            </div>
-
-            {reports.length === 0 ? (
-              <div className="px-5 py-8 text-center text-sm text-white/40">
-                {activeTemplateCount === 0
-                  ? "Идэвхтэй загвар алга. Эхлээд оношилгооны загвар үүсгэнэ үү."
-                  : "Тайлан бүртгээгүй байна."}
-              </div>
-            ) : (
-              <div className="divide-y divide-white/[0.04]">
-                {reports.map((r) => {
-                  const tp = r.template.type as DiagnosticType;
-                  return (
-                    <Link
-                      key={r.id}
-                      href={`/dashboard/diagnostics/reports/${r.id}`}
-                      className="flex items-center justify-between px-5 py-3 hover:bg-white/[0.02] transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full ${DIAGNOSTIC_TYPE_BADGE[tp]}`}
-                        >
-                          {DIAGNOSTIC_TYPE_LABEL[tp]}
-                        </span>
-                        <div>
-                          <div className="text-sm text-white/90">
-                            {r.template.name}
-                          </div>
-                          <div className="text-xs text-white/40">
-                            {r.filledBy
-                              ? `${r.filledBy.lastName} ${r.filledBy.firstName}`
-                              : "—"}{" "}
-                            · {r.createdAt.toLocaleString("mn-MN")}
-                          </div>
-                        </div>
-                      </div>
-                      <span className="text-xs text-violet-300">Үзэх →</span>
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
           </section>
 
           {isEditable && canEditOrder ? (
@@ -338,6 +378,15 @@ export default async function OrderDetailPage({
                 customers={customers}
                 vehicles={vehicles}
                 technicians={technicians}
+                diagnosticTemplates={diagnosticTemplates.map((t) => ({
+                  id: t.id,
+                  name: t.name,
+                  type: t.type as DiagnosticType,
+                }))}
+                initialDiagnosticTemplateIds={plannedDiagnostics.map(
+                  (p) => p.template.id,
+                )}
+                allowDiagnosticEdit={status === "SCHEDULED"}
                 backHref="/dashboard/orders"
               />
             </section>
@@ -352,21 +401,11 @@ export default async function OrderDetailPage({
                 Энэ статус эцсийн төлөв.
               </p>
             ) : (
-              <div className="flex flex-col gap-2">
-                {allowedTransitions.map((next) => (
-                  <form key={next} action={changeOrderStatusAction}>
-                    <input type="hidden" name="id" value={order.id} />
-                    <input type="hidden" name="status" value={next} />
-                    <button
-                      type="submit"
-                      disabled={!canEditOrder}
-                      className={`w-full text-sm font-medium px-4 py-2 rounded-xl transition-colors disabled:opacity-50 ${STATUS_BTN_STYLE[next]}`}
-                    >
-                      {STATUS_BTN_LABEL[next]}
-                    </button>
-                  </form>
-                ))}
-              </div>
+              <StatusControls
+                orderId={order.id}
+                transitions={allowedTransitions}
+                disabled={!canEditOrder}
+              />
             )}
           </div>
 

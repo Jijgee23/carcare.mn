@@ -23,13 +23,14 @@ const SERVICE_DETAIL_SELECT = {
 
 export async function GET(
   req: Request,
-  { params }: { params: { id: string } },
+  ctx: { params: Promise<{ id: string }> },
 ) {
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
+  const { id } = await ctx.params;
 
   const service = await prisma.service.findFirst({
-    where: { id: params.id, tenantId: auth.user.tenantId },
+    where: { id, tenantId: auth.user.tenantId },
     select: SERVICE_DETAIL_SELECT,
   });
 

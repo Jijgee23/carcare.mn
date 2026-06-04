@@ -8,8 +8,15 @@ import {
   updateOrderAction,
 } from "@/app/_actions/orders";
 import { Field, FormError } from "@/app/_components/auth-shell";
+import { DatePicker } from "@/app/_components/date-picker";
 import { Select } from "@/app/_components/select";
 import { customerLabel } from "@/lib/customers";
+import {
+  DIAGNOSTIC_TYPES,
+  DIAGNOSTIC_TYPE_BADGE,
+  DIAGNOSTIC_TYPE_LABEL,
+  type DiagnosticType,
+} from "@/lib/diagnostics";
 import {
   type CreatedCustomer,
   InlineCustomerForm,
@@ -39,6 +46,7 @@ type Vehicle = {
   customerId: string | null;
 };
 type Tech = { id: string; firstName: string; lastName: string };
+type DiagTemplate = { id: string; name: string; type: DiagnosticType };
 
 const FIELD_MW = "max-w-xs";
 
@@ -54,6 +62,9 @@ export function OrderForm({
   customers: initialCustomers,
   vehicles: initialVehicles,
   technicians,
+  diagnosticTemplates = [],
+  initialDiagnosticTemplateIds = [],
+  allowDiagnosticEdit = true,
   backHref = "/dashboard/orders",
 }: {
   initial?: Initial;
@@ -61,6 +72,9 @@ export function OrderForm({
   customers: Customer[];
   vehicles: Vehicle[];
   technicians: Tech[];
+  diagnosticTemplates?: DiagTemplate[];
+  initialDiagnosticTemplateIds?: string[];
+  allowDiagnosticEdit?: boolean;
   backHref?: string;
 }) {
   const isEdit = Boolean(initial?.id);
@@ -83,6 +97,19 @@ export function OrderForm({
 
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [showVehicleForm, setShowVehicleForm] = useState(false);
+
+  const [selectedDiagnostics, setSelectedDiagnostics] = useState<Set<string>>(
+    () => new Set(initialDiagnosticTemplateIds),
+  );
+  function toggleDiagnostic(id: string) {
+    setSelectedDiagnostics((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  const showDiagnostics = allowDiagnosticEdit && diagnosticTemplates.length > 0;
 
   const fe = state?.fieldErrors ?? {};
 
@@ -235,12 +262,12 @@ export function OrderForm({
           error={fe.scheduledAt}
           className={FIELD_MW}
         >
-          <input
+          <DatePicker
             id="scheduledAt"
             name="scheduledAt"
-            type="datetime-local"
+            withTime
             defaultValue={toLocalDatetimeInput(initial?.scheduledAt ?? null)}
-            className={`compact-input ${fe.scheduledAt ? "border-red-500/50" : ""}`}
+            error={Boolean(fe.scheduledAt)}
           />
         </Field>
       </div>
@@ -270,6 +297,58 @@ export function OrderForm({
           placeholder="Гомдол, тусгай хүсэлт..."
         />
       </Field>
+
+      {showDiagnostics ? (
+        <div className="max-w-2xl flex flex-col gap-2">
+          {[...selectedDiagnostics].map((id) => (
+            <input
+              key={id}
+              type="hidden"
+              name="diagnosticTemplateIds"
+              value={id}
+            />
+          ))}
+          <div className="text-sm font-medium text-white/80">Оношилгоо</div>
+          <p className="text-xs text-white/40 -mt-1">
+            Хийх оношилгоог товлоно (бөглөхгүй). Захиалга эхэлсний дараа бөглөнө.
+          </p>
+          <div className="flex flex-col gap-3 mt-1">
+            {DIAGNOSTIC_TYPES.map((tp) => {
+              const list = diagnosticTemplates.filter((t) => t.type === tp);
+              if (list.length === 0) return null;
+              return (
+                <div key={tp} className="flex flex-col gap-2">
+                  <span
+                    className={`self-start text-[10px] px-2 py-0.5 rounded-full ${DIAGNOSTIC_TYPE_BADGE[tp]}`}
+                  >
+                    {DIAGNOSTIC_TYPE_LABEL[tp]}
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {list.map((t) => {
+                      const on = selectedDiagnostics.has(t.id);
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => toggleDiagnostic(t.id)}
+                          className={`text-sm px-3 py-1.5 rounded-lg border transition-colors ${
+                            on
+                              ? "bg-violet-600/30 text-violet-200 border-violet-500/40"
+                              : "bg-white/[0.04] text-white/60 border-white/10 hover:border-white/20"
+                          }`}
+                        >
+                          {on ? "✓ " : "+ "}
+                          {t.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
 
       <div className="flex gap-2 pt-3 border-t border-white/[0.05]">
         <Link

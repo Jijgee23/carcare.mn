@@ -1,5 +1,7 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
+import { branchScopeId } from "@/lib/auth/roles";
+import type { OrderStatus } from "@/lib/orders";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 
@@ -34,10 +36,13 @@ export async function GET(req: Request) {
     maxSize: 100,
   });
 
+  // Салбараар хязгаарлагдсан ажилтан зөвхөн өөрийн салбарын захиалгыг харна.
+  const scope = branchScopeId(auth.user);
+
   const where: Prisma.ServiceOrderWhereInput = {
     tenantId: auth.user.tenantId,
-    ...(status && { status: status as any }),
-    ...(branchId && { branchId }),
+    ...(status && { status: status as OrderStatus }),
+    ...(scope ? { branchId: scope } : branchId ? { branchId } : {}),
     ...(vehicleId && { vehicleId }),
     ...(customerId && { customerId }),
   };
@@ -88,6 +93,14 @@ export async function POST(req: Request) {
   if (!vehicleId) fieldErrors.vehicleId = "Машинаа сонгоно уу.";
   if (Object.keys(fieldErrors).length)
     return jsonError(422, "Хүсэлт буруу.", { fieldErrors });
+
+  // Салбараар хязгаарлагдсан ажилтан зөвхөн өөрийн салбарт захиалга үүсгэнэ.
+  const scope = branchScopeId(auth.user);
+  if (scope && branchId !== scope) {
+    return jsonError(422, "Хүсэлт буруу.", {
+      fieldErrors: { branchId: "Зөвхөн өөрийн салбарт захиалга үүсгэх боломжтой." },
+    });
+  }
 
   const [branch, customer, vehicle] = await Promise.all([
     prisma.branch.findFirst({

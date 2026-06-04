@@ -1,5 +1,6 @@
 import { PageHeader } from "@/app/_components/page-header";
 import { requireUser } from "@/lib/auth";
+import { branchScopeId } from "@/lib/auth/roles";
 import {
   type DiagnosticType,
   type TemplateSchema,
@@ -14,10 +15,14 @@ export const metadata = {
 
 export default async function NewDiagnosticPage() {
   const user = await requireUser();
+  const scopeBranchId = branchScopeId(user);
 
   const [branches, customers, vehicles, templates] = await Promise.all([
     prisma.branch.findMany({
-      where: { tenantId: user.tenantId },
+      where: {
+        tenantId: user.tenantId,
+        ...(scopeBranchId ? { id: scopeBranchId } : {}),
+      },
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),

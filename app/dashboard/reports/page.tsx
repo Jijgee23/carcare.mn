@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { DatePicker } from "@/app/_components/date-picker";
 import { PageHeader } from "@/app/_components/page-header";
 import { requireUser } from "@/lib/auth";
+import { branchScopeId } from "@/lib/auth/roles";
 import { customerLabel } from "@/lib/customers";
 import {
   ITEM_KIND_BADGE,
@@ -94,14 +96,19 @@ export default async function ReportsPage({
   const params = await searchParams;
   const range = parseRange(params);
 
+  const scopeBranchId = branchScopeId(user);
+  const branchFilter = scopeBranchId ? { branchId: scopeBranchId } : {};
+
   const completedWhere = {
     tenantId: user.tenantId,
+    ...branchFilter,
     status: "COMPLETED" as const,
     completedAt: { gte: range.from, lte: range.to },
   };
 
   const allInRangeWhere = {
     tenantId: user.tenantId,
+    ...branchFilter,
     OR: [
       { completedAt: { gte: range.from, lte: range.to } },
       { createdAt: { gte: range.from, lte: range.to } },
@@ -300,22 +307,19 @@ export default async function ReportsPage({
         })}
 
         <form className="ml-auto flex items-center gap-2" action="/dashboard/reports">
-          <input
-            type="date"
-            name="from"
-            defaultValue={params.from ?? fmt(range.from)}
-            className="auth-input !py-1.5 !text-xs"
-          />
-          <span className="text-white/30 text-xs">→</span>
-          <input
-            type="date"
-            name="to"
-            defaultValue={params.to ?? fmt(range.to)}
-            className="auth-input !py-1.5 !text-xs"
+          <DatePicker
+            mode="range"
+            fromName="from"
+            toName="to"
+            defaultValue={{
+              from: params.from ?? fmt(range.from),
+              to: params.to ?? fmt(range.to),
+            }}
+            className="w-[15rem]"
           />
           <button
             type="submit"
-            className="text-xs bg-violet-600 hover:bg-violet-500 transition-colors px-3 py-1.5 rounded-lg font-medium"
+            className="text-xs bg-violet-600 hover:bg-violet-500 transition-colors px-3 py-1.5 rounded-lg font-medium shrink-0"
           >
             Хэрэгжүүлэх
           </button>

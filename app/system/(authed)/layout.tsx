@@ -21,7 +21,8 @@ export default async function SystemAdminLayout({
         adminEmail={admin.email}
         initials={initials}
       />
-      <div className="flex-1 lg:ml-60 min-h-screen flex flex-col">
+      <div className="flex-1 lg:ml-60 min-h-screen flex flex-col relative isolate">
+        <div aria-hidden className="content-bg-layer" />
         <SystemMobileTopbar adminName={adminName} initials={initials} />
         <main className="flex-1">{children}</main>
       </div>

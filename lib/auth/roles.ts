@@ -69,6 +69,21 @@ export function userRoleLabel(user: {
 }
 
 /**
+ * Салбараар хязгаарлах scope-ийн branchId.
+ *
+ * Админ (isOwner) бол null — бүх салбарын мэдээллийг хардаг. Админ биш ч салбар
+ * оноогоогүй (branchId == null) ажилтан мөн null — бүх тенантын мэдээллийг хардаг.
+ * Үүнээс бусад тохиолдолд ажилтны branchId-г буцаах ба ServiceOrder /
+ * DiagnosticReport зэрэг салбартай холбоотой өгөгдлийг үүгээр шүүнэ.
+ */
+export function branchScopeId(user: {
+  isOwner: boolean;
+  branchId: string | null;
+}): string | null {
+  return !user.isOwner && user.branchId ? user.branchId : null;
+}
+
+/**
  * Захиалгад хариуцагч болж болох хэрэглэгчдийн filter (Prisma where-д).
  * isOwner=true бүх админ + `orders.assignable` permission-той Role-той ажилтнууд.
  */

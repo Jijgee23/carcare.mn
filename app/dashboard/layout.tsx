@@ -41,7 +41,8 @@ export default async function DashboardLayout({
           tenantName={user.tenant.name}
           tenantLogoUrl={user.tenant.logoUrl}
         />
-        <div className="flex-1 lg:ml-60 min-h-screen flex flex-col">
+        <div className="flex-1 lg:ml-60 min-h-screen flex flex-col relative isolate">
+          <div aria-hidden className="content-bg-layer" />
           <MobileTopbar
             tenantName={user.tenant.name}
             tenantLogoUrl={user.tenant.logoUrl}

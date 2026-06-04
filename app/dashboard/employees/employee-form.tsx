@@ -8,6 +8,7 @@ import {
   updateEmployeeAction,
 } from "@/app/_actions/employees";
 import { Field, FormError } from "@/app/_components/auth-shell";
+import { DatePicker } from "@/app/_components/date-picker";
 import { Select } from "@/app/_components/select";
 
 type Initial = {
@@ -158,13 +159,12 @@ export function EmployeeForm({
           error={fe.activeUntil}
           className={fieldMaxWidth}
         >
-          <input
+          <DatePicker
             id="activeUntil"
             name="activeUntil"
-            type="date"
             value={activeUntil}
-            onChange={(e) => setActiveUntil(e.target.value)}
-            className={`compact-input ${fe.activeUntil ? "border-red-500/50" : ""}`}
+            onChange={setActiveUntil}
+            error={Boolean(fe.activeUntil)}
           />
         </Field>
         <Field

@@ -14,7 +14,7 @@ import { Pagination } from "@/app/_components/pagination";
 import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { customerLabel } from "@/lib/customers";
 import { requireUser } from "@/lib/auth";
-import { canCreate, canView } from "@/lib/auth/roles";
+import { branchScopeId, canCreate, canView } from "@/lib/auth/roles";
 import { redirect } from "next/navigation";
 import {
   ITEM_KIND_BADGE,
@@ -80,11 +80,15 @@ export default async function OrdersPage({
       ? (statusParam as OrderStatus)
       : null;
 
+  // Салбараар хязгаарлагдсан ажилтан зөвхөн өөрийн салбарын захиалгыг харна.
+  const scopeBranchId = branchScopeId(user);
+
   const where: Prisma.ServiceOrderWhereInput = {
     tenantId: user.tenantId,
     ...(status ? { status } : {}),
   };
-  if (branchId) where.branchId = branchId;
+  if (scopeBranchId) where.branchId = scopeBranchId;
+  else if (branchId) where.branchId = branchId;
   if (customerId) where.customerId = customerId;
   if (vehicleId) where.vehicleId = vehicleId;
   if (
@@ -133,11 +137,17 @@ export default async function OrdersPage({
     prisma.serviceOrder.count({ where }),
     prisma.serviceOrder.groupBy({
       by: ["status"],
-      where: { tenantId: user.tenantId },
+      where: {
+        tenantId: user.tenantId,
+        ...(scopeBranchId ? { branchId: scopeBranchId } : {}),
+      },
       _count: { _all: true },
     }),
     prisma.branch.findMany({
-      where: { tenantId: user.tenantId },
+      where: {
+        tenantId: user.tenantId,
+        ...(scopeBranchId ? { id: scopeBranchId } : {}),
+      },
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),

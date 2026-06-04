@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
+import { branchScopeId } from "@/lib/auth/roles";
 import { canDelete as canDeletePerm } from "@/lib/auth/roles";
 import {
   type ReportEntry,
@@ -11,6 +12,7 @@ import {
   validateReportData,
 } from "@/lib/diagnostics";
 import { collectReportData } from "@/lib/diagnostics-server";
+import { canFillDiagnostics, isOrderLocked, type OrderStatus } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
 
 export type ReportActionState = {
@@ -54,18 +56,42 @@ export async function createReportAction(
   });
   if (!template) return { ok: false, message: "Загвар олдсонгүй." };
 
+  // Салбараар хязгаарлагдсан ажилтан зөвхөн өөрийн салбарт оношилгоо хийнэ.
+  const scope = branchScopeId(user);
+
   // orderId өгөгдсөн бол захиалгаас customer/vehicle/branch-г өвлөнө
   if (orderId) {
     const order = await prisma.serviceOrder.findFirst({
-      where: { id: orderId, tenantId: user.tenantId },
+      where: {
+        id: orderId,
+        tenantId: user.tenantId,
+        ...(scope ? { branchId: scope } : {}),
+      },
       select: {
         id: true,
+        status: true,
         customerId: true,
         vehicleId: true,
         branchId: true,
       },
     });
     if (!order) return { ok: false, message: "Захиалга олдсонгүй." };
+
+    // Захиалга эхэлсний дараа л оношилгоо бөглөнө.
+    const status = order.status as OrderStatus;
+    if (isOrderLocked(status)) {
+      return {
+        ok: false,
+        message: "Дууссан / цуцлагдсан захиалгад оношилгоо бөглөх боломжгүй.",
+      };
+    }
+    if (!canFillDiagnostics(status)) {
+      return {
+        ok: false,
+        message: "Захиалга эхлээгүй байна. Эхлүүлсний дараа оношилгоо бөглөнө.",
+      };
+    }
+
     customerId = order.customerId;
     vehicleId = order.vehicleId;
     branchId = order.branchId;
@@ -75,6 +101,13 @@ export async function createReportAction(
     return {
       ok: false,
       message: "Үйлчлүүлэгч, машин, салбар заавал шаардлагатай.",
+    };
+  }
+
+  if (scope && branchId !== scope) {
+    return {
+      ok: false,
+      message: "Зөвхөн өөрийн салбарт оношилгоо бүртгэх боломжтой.",
     };
   }
 
@@ -150,6 +183,14 @@ export async function createReportAction(
       ok: false,
       message: e instanceof Error ? e.message : "Хадгалахад алдаа гарлаа.",
     };
+  }
+
+  // Захиалгад товлосон байсан бол тухайн оношилгоог бөглөгдсөн гэж тооцоод
+  // plan мөрийг устгана (товлогдсон → бөглөгдсөн тайлан болж шилжинэ).
+  if (orderId) {
+    await prisma.orderDiagnostic.deleteMany({
+      where: { orderId, templateId: template.id },
+    });
   }
 
   await logAudit({

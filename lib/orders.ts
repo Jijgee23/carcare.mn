@@ -38,6 +38,12 @@ export function isOrderLocked(status: OrderStatus): boolean {
   return status === "COMPLETED" || status === "CANCELLED";
 }
 
+// Захиалга эхэлсэн үү — оношилгоо бөглөх боломжтой эсэх. Зөвхөн эхэлсэн идэвхтэй
+// төлөвт (SCHEDULED биш, дууссан/цуцлагдсан биш) бөглөнө.
+export function canFillDiagnostics(status: OrderStatus): boolean {
+  return status === "IN_PROGRESS" || status === "WAITING_PARTS";
+}
+
 export const PAYMENT_STATUSES = ["UNPAID", "PARTIAL", "PAID"] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 

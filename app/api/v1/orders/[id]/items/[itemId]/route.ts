@@ -1,12 +1,13 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
+import { branchScopeId } from "@/lib/auth/roles";
 import { logAudit } from "@/lib/audit";
 import { isOrderLocked, type OrderStatus } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
 
 export async function DELETE(
   req: Request,
-  { params }: { params: { id: string; itemId: string } },
+  ctx: { params: Promise<{ id: string; itemId: string }> },
 ) {
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
@@ -14,9 +15,11 @@ export async function DELETE(
   if (denied) return denied;
 
   const tenantId = auth.user.tenantId;
+  const { id, itemId } = await ctx.params;
+  const scope = branchScopeId(auth.user);
 
   const order = await prisma.serviceOrder.findFirst({
-    where: { id: params.id, tenantId },
+    where: { id, tenantId, ...(scope ? { branchId: scope } : {}) },
     select: { id: true, status: true },
   });
   if (!order) return jsonError(404, "Захиалга олдсонгүй.");
@@ -28,7 +31,7 @@ export async function DELETE(
   }
 
   const item = await prisma.serviceItem.findFirst({
-    where: { id: params.itemId, orderId: order.id },
+    where: { id: itemId, orderId: order.id },
     select: {
       id: true,
       serviceId: true,

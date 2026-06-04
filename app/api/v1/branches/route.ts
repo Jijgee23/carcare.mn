@@ -1,4 +1,5 @@
 import { jsonOk, requireApiUser } from "@/lib/api";
+import { branchScopeId } from "@/lib/auth/roles";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 
@@ -8,7 +9,12 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const { page, pageSize, skip, take } = getApiPageInfo(url.searchParams);
-  const where = { tenantId: auth.user.tenantId };
+  // Салбараар хязгаарлагдсан ажилтан зөвхөн өөрийн салбараа харна.
+  const scope = branchScopeId(auth.user);
+  const where = {
+    tenantId: auth.user.tenantId,
+    ...(scope ? { id: scope } : {}),
+  };
 
   const [branches, total] = await Promise.all([
     prisma.branch.findMany({

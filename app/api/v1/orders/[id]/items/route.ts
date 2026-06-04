@@ -1,5 +1,6 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
+import { branchScopeId } from "@/lib/auth/roles";
 import { logAudit } from "@/lib/audit";
 import { ITEM_KINDS, isOrderLocked, type ItemKind, type OrderStatus } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
@@ -40,7 +41,7 @@ function str(v: unknown): string {
 
 export async function POST(
   req: Request,
-  { params }: { params: { id: string } },
+  ctx: { params: Promise<{ id: string }> },
 ) {
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
@@ -48,9 +49,11 @@ export async function POST(
   if (denied) return denied;
 
   const tenantId = auth.user.tenantId;
+  const { id } = await ctx.params;
+  const scope = branchScopeId(auth.user);
 
   const order = await prisma.serviceOrder.findFirst({
-    where: { id: params.id, tenantId },
+    where: { id, tenantId, ...(scope ? { branchId: scope } : {}) },
     select: { id: true, status: true },
   });
   if (!order) return jsonError(404, "Захиалга олдсонгүй.");

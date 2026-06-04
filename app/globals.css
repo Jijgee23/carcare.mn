@@ -18,6 +18,39 @@ body {
   background: var(--bg-primary);
 }
 
+/* Main-content gradient backdrop.
+   Fixed + static => promoted to its own compositor layer, painted once and
+   never re-rasterized on scroll. No blur/animation/filter, so it's cheap. */
+.content-bg-layer {
+  position: fixed;
+  inset: 0;
+  z-index: -10;
+  pointer-events: none;
+  background-color: var(--bg-primary);
+  background-image:
+    radial-gradient(
+      60rem 48rem at 18% 0%,
+      rgba(108, 71, 255, 0.13),
+      transparent 60%
+    ),
+    radial-gradient(
+      52rem 44rem at 100% 8%,
+      rgba(59, 130, 246, 0.09),
+      transparent 55%
+    ),
+    radial-gradient(
+      48rem 48rem at 90% 100%,
+      rgba(139, 107, 255, 0.06),
+      transparent 60%
+    );
+}
+@media (min-width: 1024px) {
+  /* Clear the 15rem sidebar so the backdrop only covers the content column. */
+  .content-bg-layer {
+    left: 15rem;
+  }
+}
+
 @keyframes float {
   0%, 100% { transform: translateY(0px); }
   50% { transform: translateY(-12px); }

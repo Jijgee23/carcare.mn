@@ -5,7 +5,12 @@ import {
   PageHeader,
 } from "@/app/_components/page-header";
 import { requireUser } from "@/lib/auth";
-import { ORDER_ASSIGNABLE_WHERE, canCreate } from "@/lib/auth/roles";
+import {
+  ORDER_ASSIGNABLE_WHERE,
+  branchScopeId,
+  canCreate,
+} from "@/lib/auth/roles";
+import { type DiagnosticType } from "@/lib/diagnostics";
 import { prisma } from "@/lib/prisma";
 import { OrderForm } from "../order-form";
 
@@ -16,10 +21,15 @@ export const metadata = {
 export default async function NewOrderPage() {
   const user = await requireUser();
   if (!canCreate(user, "orders")) redirect("/dashboard/orders");
+  const scopeBranchId = branchScopeId(user);
 
-  const [branches, customers, vehicles, technicians] = await Promise.all([
+  const [branches, customers, vehicles, technicians, diagnosticTemplates] =
+    await Promise.all([
     prisma.branch.findMany({
-      where: { tenantId: user.tenantId },
+      where: {
+        tenantId: user.tenantId,
+        ...(scopeBranchId ? { id: scopeBranchId } : {}),
+      },
       orderBy: { createdAt: "asc" },
       select: { id: true, name: true },
     }),
@@ -53,6 +63,11 @@ export default async function NewOrderPage() {
         isOwner: true,
         role: { select: { name: true } },
       },
+    }),
+    prisma.diagnosticTemplate.findMany({
+      where: { tenantId: user.tenantId, isActive: true },
+      orderBy: [{ type: "asc" }, { name: "asc" }],
+      select: { id: true, name: true, type: true },
     }),
   ]);
 
@@ -91,6 +106,11 @@ export default async function NewOrderPage() {
           customers={customers}
           vehicles={vehicles}
           technicians={technicians}
+          diagnosticTemplates={diagnosticTemplates.map((t) => ({
+            id: t.id,
+            name: t.name,
+            type: t.type as DiagnosticType,
+          }))}
         />
       </div>
     </div>

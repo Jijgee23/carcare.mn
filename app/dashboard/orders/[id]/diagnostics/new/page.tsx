@@ -1,18 +1,15 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { PageHeader } from "@/app/_components/page-header";
 import { requireUser } from "@/lib/auth";
+import { canFillDiagnostics, type OrderStatus } from "@/lib/orders";
 import {
-  DIAGNOSTIC_TYPES,
-  DIAGNOSTIC_TYPE_BADGE,
-  DIAGNOSTIC_TYPE_DESCRIPTION,
-  DIAGNOSTIC_TYPE_LABEL,
-  type DiagnosticType,
   type TemplateSchema,
   emptySchema,
 } from "@/lib/diagnostics";
 import { prisma } from "@/lib/prisma";
 import { DiagnosticForm } from "../diagnostic-form";
+import { AddDiagnosticList } from "../add-diagnostic-list";
 
 export const metadata = {
   title: "Оношилгоо хийх",
@@ -34,10 +31,16 @@ export default async function NewReportPage({
     select: {
       id: true,
       number: true,
+      status: true,
       vehicle: { select: { plate: true, make: true, model: true } },
     },
   });
   if (!order) notFound();
+
+  // Захиалга эхэлсний дараа л оношилгоо бөглөнө (UI-аас гадуур хандсан хамгаалалт).
+  if (!canFillDiagnostics(order.status as OrderStatus)) {
+    redirect(`/dashboard/orders/${orderId}`);
+  }
 
   const backHref = `/dashboard/orders/${orderId}`;
 
@@ -83,22 +86,16 @@ export default async function NewReportPage({
     select: { id: true, name: true, description: true, type: true },
   });
 
-  const byType: Record<DiagnosticType, typeof templates> = {
-    INTAKE: [],
-    POST_SERVICE: [],
-    ROUTINE: [],
-    DAMAGE_REPORT: [],
-  };
-  for (const t of templates) {
-    byType[t.type as DiagnosticType].push(t);
-  }
-
   return (
     <div className="p-6 sm:p-8 max-full flex-1 flex flex-col min-h-0 w-full">
       <PageHeader
         title="Оношилгооны загвар сонгох"
         description={`Захиалга #${order.number} · ${order.vehicle.plate}`}
       />
+
+      <p className="text-sm text-white/40 -mt-2 mb-4">
+        Сонгосон оношилгоо жагсаалтад нэмэгдэнэ. Дараа нь «Бөглөх» дарж бөглөнө.
+      </p>
 
       {templates.length === 0 ? (
         <div className="glass rounded-2xl p-10 text-center">
@@ -113,50 +110,7 @@ export default async function NewReportPage({
           </Link>
         </div>
       ) : (
-        <div className="flex flex-col gap-5">
-          {DIAGNOSTIC_TYPES.map((tp) => {
-            const list = byType[tp];
-            if (list.length === 0) return null;
-            return (
-              <section
-                key={tp}
-                className="glass rounded-2xl border border-white/[0.08] overflow-hidden"
-              >
-                <div className="px-5 py-3 flex items-center gap-3 border-b border-white/[0.06]">
-                  <span
-                    className={`text-xs px-2.5 py-1 rounded-full ${DIAGNOSTIC_TYPE_BADGE[tp]}`}
-                  >
-                    {DIAGNOSTIC_TYPE_LABEL[tp]}
-                  </span>
-                  <span className="text-xs text-white/40">
-                    {DIAGNOSTIC_TYPE_DESCRIPTION[tp]}
-                  </span>
-                </div>
-                <div className="divide-y divide-white/[0.04]">
-                  {list.map((t) => (
-                    <Link
-                      key={t.id}
-                      href={`/dashboard/orders/${orderId}/diagnostics/new?templateId=${t.id}`}
-                      className="flex items-center justify-between px-5 py-3 hover:bg-white/[0.02] transition-colors"
-                    >
-                      <div>
-                        <div className="text-sm font-medium text-white/90">
-                          {t.name}
-                        </div>
-                        {t.description ? (
-                          <div className="text-xs text-white/40 mt-0.5">
-                            {t.description}
-                          </div>
-                        ) : null}
-                      </div>
-                      <span className="text-xs text-violet-300">Сонгох →</span>
-                    </Link>
-                  ))}
-                </div>
-              </section>
-            );
-          })}
-        </div>
+        <AddDiagnosticList orderId={orderId} templates={templates} />
       )}
 
       <div className="mt-6">

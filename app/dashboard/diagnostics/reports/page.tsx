@@ -3,6 +3,7 @@ import { EmptyState, PageHeader, PrimaryLinkButton } from "@/app/_components/pag
 import { Pagination } from "@/app/_components/pagination";
 import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { requireUser } from "@/lib/auth";
+import { branchScopeId } from "@/lib/auth/roles";
 import { customerLabel } from "@/lib/customers";
 import {
   DIAGNOSTIC_TYPE_BADGE,
@@ -23,7 +24,11 @@ export default async function ReportsListPage({
   const user = await requireUser();
 
   const { page: pageParam } = await searchParams;
-  const where = { tenantId: user.tenantId };
+  const scopeBranchId = branchScopeId(user);
+  const where = {
+    tenantId: user.tenantId,
+    ...(scopeBranchId ? { branchId: scopeBranchId } : {}),
+  };
   const { page, pageSize, skip, take } = getPageInfo(pageParam);
   const [reports, total] = await Promise.all([
     prisma.diagnosticReport.findMany({

@@ -9,6 +9,7 @@ import {
   deleteTenantAction,
   suspendTenantAction,
 } from "@/app/_actions/system-tenants";
+import { DatePicker } from "@/app/_components/date-picker";
 import { PageHeader } from "@/app/_components/page-header";
 import { requireSuperAdmin } from "@/lib/auth/system";
 import { formatTugrik } from "@/lib/orders";
@@ -373,23 +374,18 @@ export default async function SystemTenantDetailPage({
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <label className="text-[10px] text-white/40">
+                <div className="text-[10px] text-white/40">
                   Эхэлсэн
-                  <input
-                    type="date"
+                  <DatePicker
                     name="startsAt"
                     defaultValue={todayISO}
-                    className="auth-input !py-2 !text-sm mt-1"
+                    className="mt-1"
                   />
-                </label>
-                <label className="text-[10px] text-white/40">
+                </div>
+                <div className="text-[10px] text-white/40">
                   Дуусах
-                  <input
-                    type="date"
-                    name="endsAt"
-                    className="auth-input !py-2 !text-sm mt-1"
-                  />
-                </label>
+                  <DatePicker name="endsAt" className="mt-1" />
+                </div>
               </div>
               <input
                 type="text"

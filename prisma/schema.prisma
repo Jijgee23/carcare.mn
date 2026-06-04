@@ -126,7 +126,7 @@ model Role {
 
   @@unique([tenantId, name])
   @@index([tenantId, isActive])
-}
+} 
 
 // --- Branch ---------------------------------------------------------------
 
@@ -280,9 +280,10 @@ model ServiceOrder {
   assignedToId String?
   assignedTo   User?   @relation("AssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
 
-  items    ServiceItem[]
-  reports  DiagnosticReport[]
-  payments OrderPayment[]
+  items               ServiceItem[]
+  reports             DiagnosticReport[]
+  plannedDiagnostics  OrderDiagnostic[]
+  payments            OrderPayment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -405,7 +406,8 @@ model DiagnosticTemplate {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  reports DiagnosticReport[]
+  reports       DiagnosticReport[]
+  plannedOrders OrderDiagnostic[]
 
   @@index([tenantId, type, isActive])
 }
@@ -458,6 +460,24 @@ model DiagnosticReport {
   @@index([customerId])
   @@index([branchId])
   @@index([templateId])
+}
+
+// --- OrderDiagnostic (захиалгад товлосон, бөглөгдөөгүй оношилгоо) ---------
+// Захиалга үүсгэх үед оношилгоо нэмбэл энд бүртгэгдэнэ (бөглөхгүй). Захиалга
+// эхэлсний дараа бөглөж DiagnosticReport үүсгэхэд тухайн мөр устгагдана.
+model OrderDiagnostic {
+  id String @id @default(cuid())
+
+  orderId String
+  order   ServiceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  templateId String
+  template   DiagnosticTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([orderId, templateId])
+  @@index([orderId])
 }
 
 // --- LaborCategory (ажлын ангилал — зөвхөн LABOR төрлийн Service-д) ------
