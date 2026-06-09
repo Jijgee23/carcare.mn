@@ -18,6 +18,8 @@ export async function GET(
       type: true,
       version: true,
       isActive: true,
+      price: true,
+      durationMin: true,
       schema: true,
       updatedAt: true,
     },
