@@ -29,7 +29,7 @@ const ITEMS = [
 
 export function Faq() {
   return (
-    <section id="faq" className="py-24 px-4 sm:px-6 lg:px-8">
+    <section id="faq" className="scroll-mt-24 py-24 px-4 sm:px-6 lg:px-8">
       <div className="max-w-3xl mx-auto">
         <SectionLabel>Асуулт хариулт</SectionLabel>
         <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">

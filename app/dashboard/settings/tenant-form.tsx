@@ -13,6 +13,7 @@ type Initial = {
   email: string;
   phone1: string;
   phone2: string | null;
+  acceptsOnlineBooking: boolean;
 };
 
 const FIELD_MW = "max-w-xs";
@@ -102,6 +103,24 @@ export function TenantForm({ initial }: { initial: Initial }) {
           />
         </Field>
       </div>
+
+      <label className="flex items-start gap-3 p-3 rounded-lg border border-white/[0.06] bg-white/[0.02] cursor-pointer hover:bg-white/[0.04] max-w-md">
+        <input
+          type="checkbox"
+          name="acceptsOnlineBooking"
+          defaultChecked={initial.acceptsOnlineBooking}
+          className="mt-0.5 h-4 w-4 accent-violet-500"
+        />
+        <span className="flex flex-col gap-0.5">
+          <span className="text-sm font-medium text-white/80">
+            Онлайн цаг захиалга хүлээн авах
+          </span>
+          <span className="text-xs text-white/40">
+            Идэвхжүүлбэл байгууллага хэрэглэгчийн вэб дэх каталог
+            (/discover)-т харагдаж, үйлчлүүлэгчид онлайнаар цаг захиална.
+          </span>
+        </span>
+      </label>
 
       <div className="flex pt-2">
         <button

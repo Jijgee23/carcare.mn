@@ -18,10 +18,40 @@ export const metadata = {
   title: "Шинэ захиалга",
 };
 
-export default async function NewOrderPage() {
+export default async function NewOrderPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    branchId?: string;
+    customerId?: string;
+    vehicleId?: string;
+    scheduledAt?: string;
+    note?: string;
+    appointmentId?: string;
+  }>;
+}) {
   const user = await requireUser();
   if (!canCreate(user, "orders")) redirect("/dashboard/orders");
   const scopeBranchId = branchScopeId(user);
+
+  const sp = await searchParams;
+  // Цаг захиалгаас ирсэн prefill (customer/branch/цаг). Ямар нэг утга байвал
+  // OrderForm-д initial дамжуулна — vehicle-ийг ажилтан сонгоно.
+  const prefillScheduled = sp.scheduledAt ? new Date(sp.scheduledAt) : null;
+  const initial =
+    sp.customerId || sp.branchId || sp.scheduledAt || sp.note
+      ? {
+          branchId: sp.branchId ?? "",
+          customerId: sp.customerId ?? "",
+          vehicleId: sp.vehicleId ?? "",
+          assignedToId: null,
+          scheduledAt:
+            prefillScheduled && Number.isFinite(prefillScheduled.getTime())
+              ? prefillScheduled
+              : null,
+          notes: sp.note ?? null,
+        }
+      : undefined;
 
   const [branches, customers, vehicles, technicians, diagnosticTemplates] =
     await Promise.all([
@@ -73,7 +103,7 @@ export default async function NewOrderPage() {
 
   if (branches.length === 0) {
     return (
-      <div className="p-6 sm:p-8 max-full flex-1 flex flex-col min-h-0 w-full">
+      <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
         <PageHeader
           title="Шинэ захиалга"
           description="Эхлээд салбар үүсгэх шаардлагатай."
@@ -95,13 +125,15 @@ export default async function NewOrderPage() {
   }
 
   return (
-    <div className="p-6 sm:p-8 max-full flex-1 flex flex-col min-h-0 w-full">
+    <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
       <PageHeader
         title="Шинэ захиалга"
         description="Үйлчилгээний захиалгын үндсэн мэдээллийг оруулна уу. Ажил, сэлбэгийн мөрийг дараа нь нэмнэ."
       />
       <div className="glass rounded-xl p-4 sm:p-5 border border-white/[0.08]">
         <OrderForm
+          initial={initial}
+          appointmentId={sp.appointmentId}
           branches={branches}
           customers={customers}
           vehicles={vehicles}

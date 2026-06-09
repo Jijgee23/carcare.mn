@@ -51,7 +51,7 @@ export default async function DiagnosticsServicesPage({
   const meta = buildMeta(total, page, pageSize);
 
   return (
-    <div className="p-6 sm:p-8 max-full flex-1 flex flex-col min-h-0 w-full">
+    <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
       <PageHeader
         title="Оношилгоо"
         description="Оношилгооны үйлчилгээний жагсаалт. Үнэ ба бүтэц тус бүрд тохируулна."

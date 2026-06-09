@@ -12,6 +12,10 @@ import {
 import { issueOtp, revokeAllOtps, verifyOtp } from "@/lib/auth/otp";
 import { revokeAllForUser } from "@/lib/auth/refresh-token";
 import { signSession } from "@/lib/auth/session";
+import {
+  createUserSession,
+  revokeUserSession,
+} from "@/lib/auth/user-session";
 import { prisma } from "@/lib/prisma";
 import { sendOtpSms } from "@/lib/sms";
 import { saveUpload } from "@/lib/storage";
@@ -412,10 +416,20 @@ export async function signInAction(
     });
   }
 
+  // Web session-ийг DB-д бүртгэж (төхөөрөмж/түүх), JWT-д sid шигтгэнэ.
+  const h = await headers();
+  const ua = h.get("user-agent");
+  const ip =
+    h.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    h.get("x-real-ip") ||
+    null;
+  const session = await createUserSession({ userId: user.id, userAgent: ua, ip });
+
   const token = await signSession({
     userId: user.id,
     tenantId: user.tenantId,
     isOwner: user.isOwner,
+    sid: session.id,
   });
   await setSessionCookie(token);
 
@@ -439,6 +453,10 @@ export async function signOutAction(): Promise<void> {
     const { getSession } = await import("@/lib/auth");
     const session = await getSession();
     if (session) {
+      // Энэ төхөөрөмжийн session-ийг revoke (идэвхтэй жагсаалтаас хасна).
+      if (session.sid) {
+        await revokeUserSession(session.sid, session.userId);
+      }
       await logAudit({
         tenantId: session.tenantId,
         userId: session.userId,

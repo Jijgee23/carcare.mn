@@ -55,7 +55,7 @@ export default async function EditServicePage({
   const stockNum = svc.stock ? Number.parseFloat(svc.stock.toString()) : 0;
 
   return (
-    <div className="p-6 sm:p-8 max-full flex-1 flex flex-col min-h-0 w-full">
+    <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
       <PageHeader
         title={svc.name}
         description={svc.code ? `Код: ${svc.code}` : undefined}

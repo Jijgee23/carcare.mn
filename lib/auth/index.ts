@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { checkUserActive } from "./active";
 import { clearSessionCookie, getSessionCookie } from "./cookies";
 import { verifySession, type SessionPayload } from "./session";
+import { validateUserSession } from "./user-session";
 
 export type { SessionPayload } from "./session";
 
@@ -14,7 +15,12 @@ export type { SessionPayload } from "./session";
 export const getSession = cache(async (): Promise<SessionPayload | null> => {
   const token = await getSessionCookie();
   if (!token) return null;
-  return verifySession(token);
+  const payload = await verifySession(token);
+  if (!payload) return null;
+  // sid-тэй (шинэ) token бол DB session-ийг шалгана — revoke/expire-д шууд гарна.
+  // sid-гүй хуучин token-ийг JWT хүчинтэй хэвээр (backward-compat) үлдээнэ.
+  if (payload.sid && !(await validateUserSession(payload.sid))) return null;
+  return payload;
 });
 
 /**

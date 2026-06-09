@@ -40,7 +40,7 @@ export default async function EditEmployeePage({
   // Тенант админы үүргийг засах боломжгүй (зөвхөн профайлаар нэр/нууц үг солино).
   if (employee.isOwner) {
     return (
-      <div className="p-6 sm:p-8 max-full flex-1 flex flex-col min-h-0 w-full">
+      <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
         <PageHeader
           title="Ажилтан засах"
           description={`${employee.lastName} ${employee.firstName} · Админ`}
@@ -57,7 +57,7 @@ export default async function EditEmployeePage({
   }
 
   return (
-    <div className="p-6 sm:p-8 max-full flex-1 flex flex-col min-h-0 w-full">
+    <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
       <PageHeader
         title="Ажилтан засах"
         description={`${employee.lastName} ${employee.firstName}`}

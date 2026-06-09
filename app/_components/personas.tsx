@@ -1,4 +1,4 @@
-import { SectionLabel } from "./section-label";
+import { SectionHeading } from "./section-heading";
 
 const PERSONAS = [
   {
@@ -24,11 +24,11 @@ const PERSONAS = [
 export function Personas() {
   return (
     <section className="py-24 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-6xl mx-auto">
-        <SectionLabel>Хэнд зориулсан</SectionLabel>
-        <h2 className="text-3xl sm:text-4xl font-bold text-center mb-16">
-          Сервистэй холбоотой хүн бүхэнд
-        </h2>
+      <div className="max-w-7xl mx-auto">
+        <SectionHeading
+          label="Хэнд зориулсан"
+          title="Сервистэй холбоотой хүн бүхэнд"
+        />
 
         <div className="grid md:grid-cols-3 gap-6">
           {PERSONAS.map((p) => (

@@ -1,14 +1,12 @@
 export function BrandMark({ size = "md" }: { size?: "sm" | "md" }) {
-  const cls =
-    size === "sm"
-      ? "w-7 h-7 text-xs"
-      : "w-8 h-8 text-sm";
+  const cls = size === "sm" ? "w-7 h-7" : "w-8 h-8";
   return (
-    <div
-      className={`${cls} rounded-lg bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center font-bold`}
-    >
-      C
-    </div>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/icon.png"
+      alt="carcare"
+      className={`${cls} rounded-lg object-contain`}
+    />
   );
 }
 

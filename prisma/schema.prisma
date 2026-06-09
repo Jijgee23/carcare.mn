@@ -23,6 +23,7 @@ model Tenant {
   logoUrl        String?
   plan           Plan     @default(FREE)
   suspended      Boolean  @default(false) // super admin-аар түр зогсоосон эсэх
+  acceptsOnlineBooking Boolean @default(false) // Онлайн цаг захиалгын каталогт харагдах эсэх
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -42,6 +43,8 @@ model Tenant {
   auditLogs           AuditLog[]
   qpaySettings        TenantQPaySettings?
   orderPayments       OrderPayment[]
+  appointments        Appointment[]
+  notifications       Notification[]
 }
 
 enum Plan {
@@ -93,6 +96,9 @@ model User {
   diagnosticTemplates DiagnosticTemplate[] @relation("DiagnosticTemplateCreatedBy")
   diagnosticReports   DiagnosticReport[]   @relation("DiagnosticReportFilledBy")
   refreshTokens       RefreshToken[]
+  sessions            UserSession[]
+  devices             Device[]
+  notifications       Notification[]
   auditLogs           AuditLog[]           @relation("AuditLogActor")
 
   @@index([tenantId])
@@ -151,6 +157,10 @@ model Branch {
   openTime  String? // "HH:MM" (24 цагийн) — default
   closeTime String? // "HH:MM" (24 цагийн) — default
 
+  // --- Онлайн цаг захиалгын slot тохиргоо ---
+  slotMinutes  Int? // нэг цагийн нүхний урт (минут). null бол 30.
+  slotCapacity Int? // нэг нүхэнд зэрэг авах захиалгын тоо. null бол 1.
+
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -162,6 +172,7 @@ model Branch {
   diagnosticReports DiagnosticReport[]
   schedules         BranchSchedule[]
   auditLogs         AuditLog[]
+  appointments      Appointment[]
 
   @@index([tenantId])
 }
@@ -211,13 +222,20 @@ model Customer {
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  // Онлайн цаг захиалгын global Account-той гүүр. null бол ажилтан гар аргаар
+  // үүсгэсэн (аккаунтгүй) Customer. Тенант тус бүрд нэг Account-д нэг Customer.
+  accountId String?
+  account   Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   vehicles          Vehicle[]
   serviceOrders     ServiceOrder[]
   diagnosticReports DiagnosticReport[]
+  appointments      Appointment[]
 
+  @@unique([tenantId, accountId])
   @@index([tenantId, phone])
 }
 
@@ -245,6 +263,7 @@ model Vehicle {
 
   serviceOrders     ServiceOrder[]
   diagnosticReports DiagnosticReport[]
+  appointments      Appointment[]
 
   @@unique([tenantId, plate])
   @@index([tenantId])
@@ -284,6 +303,7 @@ model ServiceOrder {
   reports             DiagnosticReport[]
   plannedDiagnostics  OrderDiagnostic[]
   payments            OrderPayment[]
+  appointment         Appointment?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -772,11 +792,15 @@ enum OtpType {
   SIGNUP
   CHANGE_PASSWORD
   RESET_PASSWORD
+  CONSUMER_LOGIN // онлайн цаг захиалгын Account утсаар нэвтрэх
 }
 
 model Otp {
   id         String   @id @default(cuid())
-  email      String   // хүлээн авагч (signup-д хэрэглэгч хараахан үүсээгүй учраас email-ээр л холбоно)
+  // Хүлээн авагчийг email ЭСВЭЛ phone-оор холбоно. Ажилтан/тенантын урсгал
+  // (SIGNUP/CHANGE/RESET) email-ээр, Account-ийн CONSUMER_LOGIN утсаар явна.
+  email      String?
+  phone      String?  // 8 оронтой канон формат (lib/phone.ts)
   codeHash   String   // зургаан оронтой код-н sha256 hex (раw код DB-д хадгалахгүй)
   type       OtpType
   attempts   Int      @default(0) // буруу баталгаажуулсан удаа
@@ -787,12 +811,124 @@ model Otp {
 
   // Тэмдэглэлүүд — аудит, "хэн илгээсэн" болон шинэ нууц үг боловсруулахдаа useful
   userId     String?  // байгаа хэрэглэгчийн change/reset үед бичнэ (signup-д null)
+  accountId  String?  // CONSUMER_LOGIN — байгаа Account-д бичнэ (анхны нэвтрэлтэд null)
   ip         String?
   userAgent  String?
 
   @@index([email, type])
+  @@index([phone, type])
   @@index([expiresAt])
   @@index([userId])
+}
+
+// --- Account (эцсийн хэрэглэгч — олон тенант хооронд цаг захиалагч) --------
+// Тенантаас үл хамаарах global бүртгэл. Утсаар (OTP) нэвтэрнэ — нууц үггүй.
+// Цаг захиалах үед тухайн тенантын [[Customer]]-той утсаар нь холбогдоно
+// (Customer.accountId). User (ажилтан) болон SuperAdmin-аас тусдаа principal.
+model Account {
+  id        String  @id @default(cuid())
+  phone     String  @unique // 8 оронтой канон формат (lib/phone.ts)
+  name      String?
+  email     String?
+  avatarUrl String?
+  isActive  Boolean @default(true) // false бол нэвтрэлт блоклогдоно
+
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  customers    Customer[]
+  appointments Appointment[]
+  vehicles     AccountVehicle[]
+  devices      Device[]
+  notifications Notification[]
+}
+
+// --- AccountVehicle (хэрэглэгчийн global машин) ---------------------------
+// Account-ийн өөрийн машинууд. Цаг захиалахад сонгоно; ажилтан баталгаажуулах
+// үед тухайн тенантын [[Vehicle]] руу snapshot хийгдэнэ ([tenantId, plate]).
+model AccountVehicle {
+  id            String  @id @default(cuid())
+  plate         String
+  make          String
+  model         String
+  year          Int?
+  vin           String?
+  fuelType      String?
+  wheelPosition String? // "Зүүн" / "Баруун" (HUR-аас)
+  mileage       Int?
+
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  appointments Appointment[]
+
+  @@unique([accountId, plate])
+  @@index([accountId])
+}
+
+// --- Appointment (онлайн цаг захиалгын хүсэлт) ----------------------------
+// Account вэб/аппаас цаг хүсэхэд PENDING-ээр үүснэ. Ажилтан баталгаажуулахад
+// тенантын [[Customer]]-той утсаар нь холбогдож (Customer.accountId), дараа нь
+// одоо байгаа [[ServiceOrder]] урсгалаар бодит захиалга үүснэ.
+enum AppointmentStatus {
+  PENDING   // хэрэглэгч илгээсэн, ажилтан хариу өгөөгүй
+  CONFIRMED // ажилтан баталгаажуулсан
+  REJECTED  // ажилтан татгалзсан
+  CANCELLED // хэрэглэгч цуцалсан
+  NO_SHOW   // товлосон цагт ирээгүй
+}
+
+model Appointment {
+  id          String            @id @default(cuid())
+  status      AppointmentStatus @default(PENDING)
+  requestedAt DateTime // хэрэглэгчийн хүссэн цаг
+  note        String?
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  // Онлайн захиалгад Account-той. Ажилтан утсаар бүртгэсэн (phone-in) бол null —
+  // энэ тохиолдолд customerId-г шууд оноож, status CONFIRMED-ээр үүснэ.
+  accountId String?
+  account   Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  // Онлайн: баталгаажуулах үед утсаар resolve хийгдэнэ. Phone-in: шууд оноогдоно.
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  // Онлайн захиалгад хэрэглэгчийн сонгосон global машин (заавал биш).
+  accountVehicleId String?
+  accountVehicle   AccountVehicle? @relation(fields: [accountVehicleId], references: [id], onDelete: SetNull)
+
+  // Баталгаажуулахад тенантын Vehicle руу snapshot хийгдсэн машин.
+  vehicleId String?
+  vehicle   Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+
+  // Баталгаажсаны дараа үүсгэсэн захиалга (1:1).
+  serviceOrderId String?       @unique
+  serviceOrder   ServiceOrder? @relation(fields: [serviceOrderId], references: [id], onDelete: SetNull)
+
+  // Ажилтны хариу — хурдан унших талбарууд (дэлгэрэнгүй нь AuditLog-д).
+  respondedAt   DateTime?
+  respondedById String?
+
+  // Сануулга SMS илгээсэн эсэх (cron давхар илгээхгүйн тулд).
+  reminderSentAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, status])
+  @@index([branchId, requestedAt])
+  @@index([accountId])
+  @@index([status, requestedAt, reminderSentAt])
 }
 
 // --- RefreshToken (мобайл клиентэд зориулсан, эргүүлдэг token) -----------
@@ -814,6 +950,105 @@ model RefreshToken {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+// --- UserSession (ажилтны web нэвтрэлт — төхөөрөмж/түүх + revoke) --------
+// Web cookie session-ийг DB-д хөтөлж, "нэвтэрсэн төхөөрөмжүүд"-ийг харах,
+// тус бүрийг алсаас "гаргах" (revoke) боломжтой болгоно. JWT-д session id (sid)
+// шигтгэж, getSession бүрт энэ бичлэгийг шалгана.
+model UserSession {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  userAgent String?
+  ip        String?
+
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// --- Device (web/мобайл төхөөрөмж — push notification-д) -----------------
+// FCM (firebase) token + төхөөрөмжийн мета. Эзэн нь User (ажилтан) ЭСВЭЛ
+// Account (хэрэглэгч). Клиент `deviceId`-аар upsert хийж, нэвтрэх бүрт эзнийг
+// шинэчилнэ (нэг install дээр өөр хэрэглэгч нэвтэрвэл эзэн дамждаг).
+enum DevicePlatform {
+  WEB
+  ANDROID
+  IOS
+}
+
+model Device {
+  id            String         @id @default(cuid())
+  deviceId      String         @unique // клиентийн үүсгэсэн install id
+  platform      DevicePlatform
+  firebaseToken String? // FCM push token
+  name          String? // "Bat's iPhone"
+  model         String? // "iPhone 14 Pro" / "SM-G991B"
+  os            String? // "iOS 17.2" / "Android 14" / "Windows"
+
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId String?
+  account   Account? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  lastSeenAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([accountId])
+  @@index([firebaseToken])
+}
+
+// --- Notification (мэдэгдэлийн төв + түүх — ажилтан ба Account хоёуланд) ----
+// Илгээгдсэн push мэдэгдэл бүрийг хадгална. Эзэн нь User (ажилтан) ЭСВЭЛ Account
+// (хэрэглэгч) — `Device` model шиг яг нэг нь утгатай (XOR check constraint-аар
+// баталгаажна). Уншаагүй тоо/жагсаалт/түүхэнд ашиглана. Шинэ мэдэгдэл нь хүлээн
+// авагч тус бүрд нэг мөр (fan-out) болж үүснэ.
+model Notification {
+  id String @id @default(cuid())
+
+  // Ажилтны мөрд тенант/салбарын context (cleanup, шүүлтэд). Account-д null.
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Хүлээн авагч — яг нэг нь утгатай (migration дахь XOR check constraint).
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  accountId String?
+  account   Account? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  type  String // registry key — "appointment_confirmed", "appointment_created" г.м.
+  title String
+  body  String
+  data  Json? // deep-link бүтээхэд — { appointmentId, orderId, ... }
+
+  // Идемпотент event-д давхар үүсэхээс сэргийлнэ ("type:appointmentId"). Бусдад null.
+  dedupeKey String? @unique
+
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt])
+  @@index([accountId, readAt])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([accountId, createdAt(sort: Desc)])
+}
+
+// --- PlatformSetting (нэг мөртэй global тохиргоо — SuperAdmin засна) ------
+// Landing/footer-т харагдах сошиал холбоос г.м. Нэг л мөр (id="default").
+model PlatformSetting {
+  id          String   @id @default("default")
+  facebookUrl String?
+  youtubeUrl  String?
+  updatedAt   DateTime @updatedAt
 }
 
 // --- SuperAdmin (carcare.mn-ын платформын эзэн) ---------------------------

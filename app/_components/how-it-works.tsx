@@ -1,4 +1,4 @@
-import { SectionLabel } from "./section-label";
+import { SectionHeading } from "./section-heading";
 
 const STEPS = [
   {
@@ -20,12 +20,12 @@ const STEPS = [
 
 export function HowItWorks() {
   return (
-    <section id="how" className="py-24 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-6xl mx-auto">
-        <SectionLabel>Хэрхэн ажилладаг</SectionLabel>
-        <h2 className="text-3xl sm:text-4xl font-bold text-center mb-16">
-          3 алхамд үйлчилгээгээ онлайн болго
-        </h2>
+    <section id="how" className="scroll-mt-24 py-24 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto">
+        <SectionHeading
+          label="Хэрхэн ажилладаг"
+          title="3 алхамд үйлчилгээгээ онлайн болго"
+        />
 
         <div className="grid md:grid-cols-3 gap-6">
           {STEPS.map((step) => (

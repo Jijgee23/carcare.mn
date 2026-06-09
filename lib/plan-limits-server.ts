@@ -10,6 +10,8 @@ import {
 } from "./plan-limits";
 import { prisma } from "./prisma";
 
+const ALL_PLANS: Plan[] = ["FREE", "BUSINESS", "ENTERPRISE"];
+
 /**
  * Тенантын идэвхтэй plan-аас хязгаарыг авна. PlanLimit-д бичлэг байхгүй бол
  * DEFAULT_PLAN_LIMITS-аас уншина.
@@ -74,4 +76,22 @@ export async function isFeatureEnabled(
 ): Promise<boolean> {
   const { boolValue } = await getLimit(tenantId, code);
   return boolValue === true;
+}
+
+/**
+ * Тухайн BOOLEAN feature идэвхтэй байгаа бүх plan-уудыг буцаана (override +
+ * default). Каталог гэх мэт олон тенантыг нэг where-ээр шүүхэд:
+ *   where: { plan: { in: await plansWithFeature("online_booking") } }
+ */
+export async function plansWithFeature(code: PlanLimitCode): Promise<Plan[]> {
+  const overrides = await prisma.planLimit.findMany({
+    where: { code },
+    select: { plan: true, boolValue: true },
+  });
+  const overrideMap = new Map(overrides.map((o) => [o.plan, o.boolValue]));
+  return ALL_PLANS.filter((p) => {
+    const ov = overrideMap.get(p);
+    if (ov != null) return ov === true;
+    return DEFAULT_PLAN_LIMITS[p][code].boolValue === true;
+  });
 }

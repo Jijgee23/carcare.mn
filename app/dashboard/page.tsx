@@ -157,7 +157,7 @@ export default async function DashboardPage({
   const employeeTrend = dailyTrend(employeeDates.map((e) => e.createdAt));
 
   return (
-    <div className="p-6 sm:p-8">
+    <div className="p-4 sm:p-6">
       <PageHeader
         title={`Сайн байна уу, ${user.firstName}!`}
         description={`${user.tenant.name} · ${userRoleLabel(user)}`}

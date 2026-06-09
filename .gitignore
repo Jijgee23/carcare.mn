@@ -34,6 +34,11 @@ yarn-error.log*
 .env*
 !.env.example
 
+# Firebase service account / secrets — НЭ ХЭЗЭЭ Ч commit хийхгүй
+*firebase-adminsdk*.json
+serviceAccount*.json
+*-service-account*.json
+
 # vercel
 .vercel
 

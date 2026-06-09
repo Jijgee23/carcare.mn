@@ -58,7 +58,7 @@ export default async function SystemOverviewPage() {
   );
 
   return (
-    <div className="p-6 sm:p-8 max-w-7xl">
+    <div className="p-6 sm:p-8 max-screen">
       <PageHeader
         title={`Сайн байна уу, ${admin.firstName}`}
         description="carcare.mn платформын ерөнхий тойм"

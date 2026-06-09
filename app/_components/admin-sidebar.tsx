@@ -5,13 +5,30 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { signOutAction } from "@/app/_actions/auth";
 import { Brand } from "./brand";
+import { StaffNotificationBell } from "./staff-notification-bell";
 
 type NavLeaf = {
   href: string;
   label: string;
   icon?: React.ReactNode;
   exact?: boolean;
+  // Харагдах эрх: resource key (ж: "orders"), "audit", "owner", эсвэл undefined
+  // (бүгдэд харагдана). Owner үргэлж бүгдийг харна.
+  view?: string;
 };
+
+// Тухайн нав item-ийг хэрэглэгч харах эрхтэй эсэх.
+function canSeeView(
+  view: string | undefined,
+  isOwner: boolean,
+  perms: string[],
+): boolean {
+  if (!view) return true;
+  if (isOwner) return true;
+  if (view === "owner") return false;
+  if (view === "audit") return perms.includes("audit.view");
+  return perms.includes(`${view}.view`);
+}
 
 type NavGroup = NavLeaf & {
   children: NavLeaf[];
@@ -39,6 +56,7 @@ const navItems: NavItem[] = [
   },
   {
     href: "/dashboard/branches",
+    view: "branches",
     label: "Салбарууд",
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -51,6 +69,7 @@ const navItems: NavItem[] = [
   },
   {
     href: "/dashboard/employees",
+    view: "employees",
     label: "Ажилтнууд",
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -63,6 +82,7 @@ const navItems: NavItem[] = [
   },
   {
     href: "/dashboard/orders",
+    view: "orders",
     label: "Захиалга",
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -72,7 +92,20 @@ const navItems: NavItem[] = [
     ),
   },
   {
+    href: "/dashboard/appointments",
+    view: "appointments",
+    label: "Цаг захиалга",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2" />
+        <path d="M16 2v4M8 2v4M3 10h18" />
+        <path d="M12 14v3M10.5 15.5h3" />
+      </svg>
+    ),
+  },
+  {
     href: "/dashboard/customers",
+    view: "customers",
     label: "Үйлчлүүлэгчид",
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -83,6 +116,7 @@ const navItems: NavItem[] = [
   },
   {
     href: "/dashboard/vehicles",
+    view: "vehicles",
     label: "Машинууд",
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -95,6 +129,7 @@ const navItems: NavItem[] = [
   },
   {
     href: "/dashboard/services",
+    view: "services",
     label: "Үйлчилгээ",
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -113,6 +148,16 @@ const navItems: NavItem[] = [
 
 const secondaryItems: NavItem[] = [
   {
+    href: "/dashboard/notifications",
+    label: "Мэдэгдэл",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+        <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+      </svg>
+    ),
+  },
+  {
     href: "/dashboard/reports",
     label: "Тайлан",
     icon: (
@@ -124,6 +169,7 @@ const secondaryItems: NavItem[] = [
   },
   {
     href: "/dashboard/audit",
+    view: "audit",
     label: "Аудит лог",
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -134,6 +180,7 @@ const secondaryItems: NavItem[] = [
   },
   {
     href: "/dashboard/settings",
+    view: "owner",
     label: "Тохиргоо",
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -169,11 +216,11 @@ function flatten(items: NavItem[]): NavLeaf[] {
     if (hasChildren(it)) {
       const childMatchesParent = it.children.some((c) => c.href === it.href);
       if (!childMatchesParent) {
-        out.push({ href: it.href, label: it.label, icon: it.icon, exact: it.exact });
+        out.push({ href: it.href, label: it.label, icon: it.icon, exact: it.exact, view: it.view });
       }
-      for (const c of it.children) out.push(c);
+      for (const c of it.children) out.push({ ...c, view: c.view ?? it.view });
     } else {
-      out.push({ href: it.href, label: it.label, icon: it.icon, exact: it.exact });
+      out.push({ href: it.href, label: it.label, icon: it.icon, exact: it.exact, view: it.view });
     }
   }
   return out;
@@ -198,14 +245,26 @@ export function AdminSidebar({
   initials,
   tenantName,
   tenantLogoUrl,
+  isOwner,
+  permissions,
+  notificationUnread,
 }: {
   userName: string;
   userEmail: string;
   initials: string;
   tenantName: string;
   tenantLogoUrl?: string | null;
+  isOwner: boolean;
+  permissions: string[];
+  notificationUnread: number;
 }) {
   const pathname = usePathname();
+  const visibleNav = navItems.filter((it) =>
+    canSeeView(it.view, isOwner, permissions),
+  );
+  const visibleSecondary = secondaryItems.filter((it) =>
+    canSeeView(it.view, isOwner, permissions),
+  );
 
   // Group expansion төлөв. Server-ийн анхны render-тэй (бид localStorage-г уншихгүй)
   // зөрөхгүйн тулд анхны утгыг үргэлж {} болгож, хэрэглэгчийн хадгалсан сонголтыг
@@ -261,7 +320,7 @@ export function AdminSidebar({
         <div className="text-[10px] text-white/30 leading-none">Админ</div>
       </Link>
 
-      <div className="px-4 pt-4 pb-2 flex items-center gap-2 text-xs text-white/40 min-w-0">
+      <div className="px-3 pt-3 pb-2 flex items-center gap-2 text-xs text-white/40 min-w-0">
         {tenantLogoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -270,11 +329,12 @@ export function AdminSidebar({
             className="w-5 h-5 rounded object-contain bg-white/[0.04] border border-white/[0.06] shrink-0"
           />
         ) : null}
-        <span className="truncate">{tenantName}</span>
+        <span className="truncate flex-1 min-w-0">{tenantName}</span>
+        <StaffNotificationBell initialUnread={notificationUnread} align="left" />
       </div>
 
       <nav className="flex-1 overflow-y-auto pb-4 px-3 space-y-0.5">
-        {navItems.map((item) =>
+        {visibleNav.map((item) =>
           hasChildren(item) ? (
             <NavGroupItem
               key={item.href}
@@ -288,11 +348,13 @@ export function AdminSidebar({
           ),
         )}
 
-        <div className="pt-4 pb-2 px-3 text-[10px] text-white/30 uppercase tracking-wider">
-          Бусад
-        </div>
+        {visibleSecondary.length > 0 ? (
+          <div className="pt-4 pb-2 px-3 text-[10px] text-white/30 uppercase tracking-wider">
+            Бусад
+          </div>
+        ) : null}
 
-        {secondaryItems.map((item) =>
+        {visibleSecondary.map((item) =>
           hasChildren(item) ? (
             <NavGroupItem
               key={item.href}
@@ -343,14 +405,14 @@ function NavLeafLink({
   return (
     <Link
       href={item.href}
-      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+      className={`nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
         active
-          ? "bg-violet-600/20 text-violet-300 border border-violet-500/25"
-          : "text-white/50 hover:text-white/80 hover:bg-white/[0.04]"
+          ? "is-active bg-violet-600/20 text-violet-300 border border-violet-500/25"
+          : "text-white/50 hover:text-white"
       }`}
     >
       {item.icon ? (
-        <span className={active ? "text-violet-400" : "text-white/40"}>
+        <span className={`nav-icon ${active ? "text-violet-400" : "text-white/40"}`}>
           {item.icon}
         </span>
       ) : null}
@@ -377,15 +439,15 @@ function NavGroupItem({
       <button
         type="button"
         onClick={onToggle}
-        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+        className={`nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
           parentActive
-            ? "bg-violet-600/20 text-violet-300 border border-violet-500/25"
-            : "text-white/50 hover:text-white/80 hover:bg-white/[0.04]"
+            ? "is-active bg-violet-600/20 text-violet-300 border border-violet-500/25"
+            : "text-white/50 hover:text-white"
         }`}
         aria-expanded={open}
       >
         {item.icon ? (
-          <span className={parentActive ? "text-violet-400" : "text-white/40"}>
+          <span className={`nav-icon ${parentActive ? "text-violet-400" : "text-white/40"}`}>
             {item.icon}
           </span>
         ) : null}
@@ -415,10 +477,10 @@ function NavGroupItem({
               <Link
                 key={child.href}
                 href={child.href}
-                className={`flex items-center px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                className={`nav-item flex items-center px-3 py-1.5 rounded-lg text-sm ${
                   childActive
-                    ? "bg-violet-500/10 text-violet-200"
-                    : "text-white/45 hover:text-white/75 hover:bg-white/[0.03]"
+                    ? "is-active bg-violet-500/10 text-violet-200"
+                    : "text-white/45 hover:text-white"
                 }`}
               >
                 {child.label}
@@ -435,12 +497,21 @@ export function MobileTopbar({
   tenantName,
   tenantLogoUrl,
   initials,
+  isOwner,
+  permissions,
+  notificationUnread,
 }: {
   tenantName: string;
   tenantLogoUrl?: string | null;
   initials: string;
+  isOwner: boolean;
+  permissions: string[];
+  notificationUnread: number;
 }) {
   const pathname = usePathname();
+  const items = allItems.filter((item) =>
+    canSeeView(item.view, isOwner, permissions),
+  );
 
   return (
     <header className="lg:hidden sticky top-0 z-30 glass border-b border-white/[0.06]">
@@ -463,6 +534,7 @@ export function MobileTopbar({
               {tenantName}
             </div>
           </div>
+          <StaffNotificationBell initialUnread={notificationUnread} />
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-xs font-bold shrink-0">
             {initials}
           </div>
@@ -470,7 +542,7 @@ export function MobileTopbar({
       </div>
 
       <nav className="px-2 pb-2 flex gap-1 overflow-x-auto">
-        {allItems.map((item) => {
+        {items.map((item) => {
           const active = item.exact
             ? pathname === item.href
             : pathname.startsWith(item.href);

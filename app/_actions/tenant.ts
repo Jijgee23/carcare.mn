@@ -6,6 +6,8 @@ import path from "node:path";
 import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
+import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
+import { isFeatureEnabled } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
 import { saveUpload } from "@/lib/storage";
 
@@ -48,6 +50,7 @@ export async function updateTenantAction(
   const email = s(formData, "email");
   const phone1 = s(formData, "phone1");
   const phone2 = s(formData, "phone2");
+  const acceptsOnlineBooking = formData.get("acceptsOnlineBooking") === "on";
 
   const fieldErrors: Record<string, string> = {};
   if (!name) fieldErrors.name = "Нэрээ оруулна уу.";
@@ -60,6 +63,21 @@ export async function updateTenantAction(
     return { ok: false, fieldErrors };
   }
 
+  // Онлайн цаг захиалга нь багцаас хамаарна — багц дэмжихгүй бол идэвхжүүлэхгүй.
+  if (acceptsOnlineBooking) {
+    const allowed = await isFeatureEnabled(
+      user.tenantId,
+      PLAN_LIMIT_CODES.ONLINE_BOOKING,
+    );
+    if (!allowed) {
+      return {
+        ok: false,
+        message:
+          "Таны багц онлайн цаг захиалгыг дэмжихгүй байна. Багцаа сайжруулна уу.",
+      };
+    }
+  }
+
   try {
     await prisma.tenant.update({
       where: { id: user.tenantId },
@@ -69,6 +87,7 @@ export async function updateTenantAction(
         email,
         phone1,
         phone2: phone2 || null,
+        acceptsOnlineBooking,
       },
     });
   } catch (e) {
@@ -95,7 +114,14 @@ export async function updateTenantAction(
     entityId: user.tenantId,
     action: "UPDATE",
     summary: `Үндсэн мэдээлэл шинэчлэв: ${name}`,
-    after: { name, registerNumber, email, phone1, phone2: phone2 || null },
+    after: {
+      name,
+      registerNumber,
+      email,
+      phone1,
+      phone2: phone2 || null,
+      acceptsOnlineBooking,
+    },
   });
 
   revalidatePath("/dashboard/settings");

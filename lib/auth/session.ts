@@ -8,6 +8,7 @@ export type SessionPayload = {
   userId: string;
   tenantId: string;
   isOwner: boolean;
+  sid?: string; // UserSession id — төхөөрөмж/revoke хөтлөлтөд (хуучин token-д байхгүй)
 };
 
 function getSecret(): Uint8Array {
@@ -40,6 +41,7 @@ export async function verifySession(
       userId: payload.userId,
       tenantId: payload.tenantId,
       isOwner: Boolean(payload.isOwner),
+      sid: typeof payload.sid === "string" ? payload.sid : undefined,
     };
   } catch {
     return null;

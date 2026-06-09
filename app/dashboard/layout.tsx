@@ -31,6 +31,10 @@ export default async function DashboardLayout({
   });
   const activeSub = resolveActiveSubscription(subscriptions);
 
+  const unreadNotifications = await prisma.notification.count({
+    where: { userId: user.id, readAt: null },
+  });
+
   return (
     <ToastProvider>
       <div className="min-h-screen bg-[#0a0a0f] flex">
@@ -40,6 +44,9 @@ export default async function DashboardLayout({
           initials={initials.toUpperCase()}
           tenantName={user.tenant.name}
           tenantLogoUrl={user.tenant.logoUrl}
+          isOwner={user.isOwner}
+          permissions={user.role?.permissions ?? []}
+          notificationUnread={unreadNotifications}
         />
         <div className="flex-1 lg:ml-60 min-h-screen flex flex-col relative isolate">
           <div aria-hidden className="content-bg-layer" />
@@ -47,6 +54,9 @@ export default async function DashboardLayout({
             tenantName={user.tenant.name}
             tenantLogoUrl={user.tenant.logoUrl}
             initials={initials.toUpperCase()}
+            isOwner={user.isOwner}
+            permissions={user.role?.permissions ?? []}
+            notificationUnread={unreadNotifications}
           />
           <TrialBanner active={activeSub} plan={user.tenant.plan} />
           <main className="flex-1 flex flex-col">{children}</main>

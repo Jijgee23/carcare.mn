@@ -12,6 +12,7 @@
 
 import { createHash, randomInt } from "node:crypto";
 import { Prisma } from "@/app/generated/prisma/client";
+import { normalizePhone } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
 import { consumeRateLimit } from "@/lib/rate-limit";
 
@@ -20,7 +21,11 @@ const OTP_ISSUE_WINDOW_MS = 10 * 60_000; // 10 минут
 const OTP_MAX_PER_EMAIL = 3; // нэг имэйл+төрөлд 10 минутад
 const OTP_MAX_PER_IP = 10; // нэг IP-аас 10 минутад
 
-export type OtpType = "SIGNUP" | "CHANGE_PASSWORD" | "RESET_PASSWORD";
+export type OtpType =
+  | "SIGNUP"
+  | "CHANGE_PASSWORD"
+  | "RESET_PASSWORD"
+  | "CONSUMER_LOGIN";
 
 export const OTP_CODE_LENGTH = 6;
 export const OTP_MAX_AGE_SECONDS = 60 * 10; // 10 минут
@@ -46,7 +51,8 @@ function normalizeEmail(email: string): string {
 // /system/otp хуудсанд харуулна. Production-д ХЭЗЭЭ Ч бичигдэхгүй / хадгалагдахгүй.
 
 export type DevOtpEntry = {
-  email: string;
+  email?: string;
+  phone?: string;
   type: OtpType;
   code: string;
   createdAt: Date;
@@ -233,4 +239,137 @@ export async function revokeAllOtps(
     data: { consumedAt: new Date() },
   });
   return r.count;
+}
+
+// --- Утсаар ажиллах OTP (Account-ийн CONSUMER_LOGIN) ----------------------
+// Дээрх email-д суурилсан урсгалтай ижил зарчим, гэхдээ `phone`-оор
+// түлхүүрлэнэ. Бүх дугаар lib/phone.ts-ийн канон форматтай байх ёстой.
+
+export type IssuePhoneOtpOptions = {
+  phone: string; // канон 8 орон (lib/phone.ts)
+  type: Extract<OtpType, "CONSUMER_LOGIN">;
+  accountId?: string | null;
+  userAgent?: string | null;
+  ip?: string | null;
+};
+
+/**
+ * Утсанд шинэ OTP үүсгэж, раw кодыг буцаана (SMS илгээгчид зориулсан).
+ * Өмнөх consumed биш бүх OTP-уудыг хүчингүй болгоно.
+ */
+export async function issuePhoneOtp(
+  opts: IssuePhoneOtpOptions,
+): Promise<{ code: string; expiresAt: Date }> {
+  const phone = normalizePhone(opts.phone);
+  if (!phone) throw new Error("Утасны дугаар буруу байна.");
+
+  const byPhone = consumeRateLimit(`otp:${opts.type}:${phone}`, {
+    limit: OTP_MAX_PER_EMAIL,
+    windowMs: OTP_ISSUE_WINDOW_MS,
+  });
+  if (!byPhone.ok) {
+    throw new Error(
+      `Хэт олон код хүслээ. ${Math.ceil(byPhone.retryAfterSec / 60)} минутын дараа дахин оролдоно уу.`,
+    );
+  }
+  if (opts.ip) {
+    const byIp = consumeRateLimit(`otp-ip:${opts.ip}`, {
+      limit: OTP_MAX_PER_IP,
+      windowMs: OTP_ISSUE_WINDOW_MS,
+    });
+    if (!byIp.ok) {
+      throw new Error(
+        `Хэт олон код хүслээ. ${Math.ceil(byIp.retryAfterSec / 60)} минутын дараа дахин оролдоно уу.`,
+      );
+    }
+  }
+
+  const code = generateCode();
+  const codeHash = hashCode(code);
+  const expiresAt = new Date(Date.now() + OTP_MAX_AGE_SECONDS * 1000);
+
+  if (process.env.NODE_ENV !== "production") {
+    recordDevOtp({ phone, type: opts.type, code, createdAt: new Date(), expiresAt });
+    console.info(`\n🔑 [OTP] ${opts.type} · ${phone} → ${code}\n`);
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.otp.updateMany({
+      where: { phone, type: opts.type, consumedAt: null },
+      data: { consumedAt: new Date() },
+    });
+    await tx.otp.create({
+      data: {
+        phone,
+        codeHash,
+        type: opts.type,
+        accountId: opts.accountId ?? null,
+        userAgent: opts.userAgent ?? null,
+        ip: opts.ip ?? null,
+        expiresAt,
+      },
+    });
+  });
+
+  return { code, expiresAt };
+}
+
+/**
+ * Утасны OTP-г баталгаажуулна. Зөв тохиолдолд consume хийж дахин ашиглахгүй.
+ */
+export async function verifyPhoneOtp(input: {
+  phone: string;
+  type: Extract<OtpType, "CONSUMER_LOGIN">;
+  code: string;
+}): Promise<VerifyOtpResult> {
+  const phone = normalizePhone(input.phone);
+  const code = (input.code ?? "").trim();
+  if (!phone || !/^\d{6}$/.test(code)) {
+    return { ok: false, reason: "invalid" };
+  }
+  const codeHash = hashCode(code);
+
+  const otp = await prisma.otp.findFirst({
+    where: { phone, type: input.type, consumedAt: null },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      codeHash: true,
+      attempts: true,
+      expiresAt: true,
+      accountId: true,
+    },
+  });
+  if (!otp) return { ok: false, reason: "invalid" };
+
+  if (otp.expiresAt.getTime() <= Date.now()) {
+    await prisma.otp.update({
+      where: { id: otp.id },
+      data: { consumedAt: new Date() },
+    });
+    return { ok: false, reason: "expired" };
+  }
+
+  if (otp.attempts >= OTP_MAX_ATTEMPTS) {
+    await prisma.otp.update({
+      where: { id: otp.id },
+      data: { consumedAt: new Date() },
+    });
+    return { ok: false, reason: "too_many_attempts" };
+  }
+
+  if (otp.codeHash !== codeHash) {
+    await prisma.otp.update({
+      where: { id: otp.id },
+      data: { attempts: { increment: 1 } },
+    });
+    return { ok: false, reason: "invalid" };
+  }
+
+  await prisma.otp.update({
+    where: { id: otp.id },
+    data: { consumedAt: new Date() },
+  });
+  // accountId-г userId талбарт буцаахгүй — дуудагч accountId-р resolve хийнэ.
+  return { ok: true, otpId: otp.id, userId: otp.accountId };
 }

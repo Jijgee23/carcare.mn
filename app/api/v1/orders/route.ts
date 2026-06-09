@@ -127,25 +127,49 @@ export async function POST(req: Request) {
       fieldErrors: { vehicleId: "Машин олдсонгүй." },
     });
 
-  // Generate sequential order number per tenant
-  const count = await prisma.serviceOrder.count({
-    where: { tenantId: auth.user.tenantId },
-  });
-  const number = String(count + 1).padStart(5, "0");
+  // Дугаарыг хамгийн өндөр дугаар дээр нэмж үүсгэнэ (count ашиглавал устгасан
+  // захиалгын улмаас давхцаж P2002 өгнө). Зэрэгцээ үүсгэлтэд давхцвал 3 удаа
+  // дахин оролдоно.
+  let order: Prisma.ServiceOrderGetPayload<{
+    select: typeof ORDER_SELECT;
+  }> | null = null;
+  for (let attempt = 0; attempt < 3 && !order; attempt++) {
+    const last = await prisma.serviceOrder.findFirst({
+      where: { tenantId: auth.user.tenantId },
+      orderBy: { number: "desc" },
+      select: { number: true },
+    });
+    const lastNum = last ? Number.parseInt(last.number, 10) || 0 : 0;
+    const number = String(lastNum + 1).padStart(5, "0");
 
-  const order = await prisma.serviceOrder.create({
-    data: {
-      number,
-      tenantId: auth.user.tenantId,
-      branchId,
-      customerId,
-      vehicleId,
-      ...(assignedToId && { assignedToId }),
-      ...(scheduledAt && { scheduledAt }),
-      ...(notes && { notes }),
-    },
-    select: ORDER_SELECT,
-  });
+    try {
+      order = await prisma.serviceOrder.create({
+        data: {
+          number,
+          tenantId: auth.user.tenantId,
+          branchId,
+          customerId,
+          vehicleId,
+          ...(assignedToId && { assignedToId }),
+          ...(scheduledAt && { scheduledAt }),
+          ...(notes && { notes }),
+        },
+        select: ORDER_SELECT,
+      });
+    } catch (e) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === "P2002"
+      ) {
+        continue; // дугаар давхцсан — дахин оролдоно
+      }
+      throw e;
+    }
+  }
+
+  if (!order) {
+    return jsonError(500, "Захиалгын дугаар үүсгэж чадсангүй. Дахин оролдоно уу.");
+  }
 
   return jsonOk({ order }, { status: 201 });
 }

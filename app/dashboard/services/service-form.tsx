@@ -16,6 +16,7 @@ import {
   SERVICE_KIND_SLUG,
   type ServiceKind,
 } from "@/lib/services";
+import { SYSTEM_UNIT_NAMES } from "@/lib/units";
 
 type Initial = {
   id?: string;
@@ -74,9 +75,17 @@ export function ServiceForm({
   const [laborCategoryId, setLaborCategoryId] = useState<string>(
     initial?.laborCategoryId ?? "",
   );
-  const [unitId, setUnitId] = useState<string>(initial?.unitId ?? "");
+  // Шинэ бичлэгт хэмжих нэгжийг `хүн/цаг`-аар анхдагчаар сонгоно.
+  const defaultUnitId =
+    units.find((u) => u.isActive && SYSTEM_UNIT_NAMES.has(u.name))?.id ?? "";
+  const [unitId, setUnitId] = useState<string>(
+    initial?.unitId ?? (isEdit ? "" : defaultUnitId),
+  );
+  // Шинэ бичлэгт хугацааны нэгжийг `мин`-ээр анхдагчаар сонгоно.
+  const defaultDurationUnitId =
+    units.find((u) => u.isActive && u.name === "мин")?.id ?? "";
   const [durationUnitId, setDurationUnitId] = useState<string>(
-    initial?.durationUnitId ?? "",
+    initial?.durationUnitId ?? (isEdit ? "" : defaultDurationUnitId),
   );
 
   // Controlled — action амжилтгүй болсон үед утгууд цэвэрлэгдэхгүй

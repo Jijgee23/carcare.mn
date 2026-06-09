@@ -23,6 +23,7 @@ export const PLAN_LIMIT_CODES = {
   ENABLE_DIAGNOSTICS: "enable_diagnostics",
   ENABLE_REPORTS: "enable_reports",
   ENABLE_API: "enable_api",
+  ONLINE_BOOKING: "online_booking",
 } as const;
 
 export type PlanLimitCode =
@@ -105,6 +106,12 @@ export const PLAN_LIMIT_META: Record<
     kind: "BOOLEAN",
     sortOrder: 120,
   },
+  online_booking: {
+    label: "Онлайн цаг захиалга",
+    description: "Хэрэглэгчийн вэб каталогт харагдаж, онлайнаар цаг авах",
+    kind: "BOOLEAN",
+    sortOrder: 130,
+  },
 };
 
 export const ALL_LIMIT_CODES: PlanLimitCode[] = Object.values(PLAN_LIMIT_CODES);
@@ -132,6 +139,7 @@ export const DEFAULT_PLAN_LIMITS: Record<
     enable_diagnostics: { intValue: null, boolValue: true },
     enable_reports: { intValue: null, boolValue: false },
     enable_api: { intValue: null, boolValue: false },
+    online_booking: { intValue: null, boolValue: false },
   },
   BUSINESS: {
     max_users: { intValue: 20, boolValue: null },
@@ -145,6 +153,7 @@ export const DEFAULT_PLAN_LIMITS: Record<
     enable_diagnostics: { intValue: null, boolValue: true },
     enable_reports: { intValue: null, boolValue: true },
     enable_api: { intValue: null, boolValue: false },
+    online_booking: { intValue: null, boolValue: true },
   },
   ENTERPRISE: {
     max_users: { intValue: null, boolValue: null },
@@ -158,5 +167,6 @@ export const DEFAULT_PLAN_LIMITS: Record<
     enable_diagnostics: { intValue: null, boolValue: true },
     enable_reports: { intValue: null, boolValue: true },
     enable_api: { intValue: null, boolValue: true },
+    online_booking: { intValue: null, boolValue: true },
   },
 };

@@ -107,6 +107,18 @@ export class HurService {
   }
 }
 
+export type PublicHurVehicle = Omit<HurVehicle, "owner">;
+
+/**
+ * Эцсийн хэрэглэгчид буцаах HUR мэдээлэл — өмчлөгчийн PII-г (нэр, утас, регистр)
+ * хасна. Зөвхөн машины техникийн мэдээллийг үлдээнэ.
+ */
+export function toPublicVehicle(v: HurVehicle): PublicHurVehicle {
+  const rest = { ...v };
+  delete (rest as Partial<HurVehicle>).owner;
+  return rest;
+}
+
 // HUR-аас ирэх wheelPosition string-ийг "Зүүн" / "Баруун" хэлбэрт оруулна.
 // Танигдаагүй бол raw утгыг үлдээнэ.
 export function normalizeWheelPosition(raw: string | null): string | null {

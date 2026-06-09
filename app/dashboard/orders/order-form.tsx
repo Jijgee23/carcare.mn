@@ -66,6 +66,7 @@ export function OrderForm({
   initialDiagnosticTemplateIds = [],
   allowDiagnosticEdit = true,
   backHref = "/dashboard/orders",
+  appointmentId,
 }: {
   initial?: Initial;
   branches: Branch[];
@@ -76,6 +77,8 @@ export function OrderForm({
   initialDiagnosticTemplateIds?: string[];
   allowDiagnosticEdit?: boolean;
   backHref?: string;
+  // Цаг захиалгаас үүсгэж буй бол — үүсгэсэн захиалгыг буцаан холбоно.
+  appointmentId?: string;
 }) {
   const isEdit = Boolean(initial?.id);
   const action = isEdit
@@ -133,6 +136,9 @@ export function OrderForm({
 
   return (
     <form action={formAction} className="flex flex-col gap-4" noValidate>
+      {appointmentId && !isEdit ? (
+        <input type="hidden" name="appointmentId" value={appointmentId} />
+      ) : null}
       {state?.ok ? (
         <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 text-sm text-emerald-300">
           {state.message ?? "Хадгалагдлаа."}

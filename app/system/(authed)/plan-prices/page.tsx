@@ -25,7 +25,7 @@ export default async function SystemPlanPricesPage() {
   ]);
 
   return (
-    <div className="p-6 sm:p-8 max-w-7xl flex flex-col gap-6">
+    <div className="p-6 sm:p-8 max-w-screen flex flex-col gap-6">
       <PageHeader
         title="Багц / Үнэ / Боломж / Хязгаар"
         description="SuperAdmin: үнэ + хязгаар + дэлгэцийн боломжийн жагсаалт."

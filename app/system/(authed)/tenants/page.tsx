@@ -75,7 +75,7 @@ export default async function SystemTenantsPage({
   );
 
   return (
-    <div className="p-6 sm:p-8 max-w-7xl">
+    <div className="p-6 sm:p-8 max-w-screen">
       <PageHeader
         title="Байгууллагууд"
         description={`Платформ дээр бүртгэлтэй ${total} байгууллага`}

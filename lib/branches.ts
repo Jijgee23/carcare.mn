@@ -62,6 +62,23 @@ export function formatWorkDays(
     .join(", ");
 }
 
+/**
+ * Салбарын ажилладаг гарагуудыг тооцоолно. BranchSchedule бичлэг байвал isOpen,
+ * үгүй бол салбарын default нээх/хаах цаг тохируулсан эсэхээр.
+ * (Booking календарын disabled гарагтай нийцнэ.)
+ */
+export function openWeekdaysOf(b: {
+  openTime: string | null;
+  closeTime: string | null;
+  schedules: { weekday: string; isOpen: boolean }[];
+}): Weekday[] {
+  const hasDefault = Boolean(b.openTime && b.closeTime);
+  return ALL_WEEKDAYS.filter((w) => {
+    const s = b.schedules.find((x) => x.weekday === w);
+    return s ? s.isOpen : hasDefault;
+  });
+}
+
 /** Хаягийг "Хот, Дүүрэг, Хороо, Гудамж" нэг мөрөнд. */
 export function formatAddress(b: {
   city?: string | null;

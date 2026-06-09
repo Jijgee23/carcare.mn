@@ -53,6 +53,8 @@ type Parsed = {
   longitude: number | null;
   openTime: string | null;
   closeTime: string | null;
+  slotMinutes: number | null;
+  slotCapacity: number | null;
   openDays: Weekday[];
   isPrimary: boolean;
   errors: Record<string, string>;
@@ -108,6 +110,24 @@ function validate(fd: FormData): Parsed {
   if (closeTime && !isValidTime(closeTime))
     errors.closeTime = "Цагийн форматыг HH:MM (24 цаг) хэлбэрээр оруулна уу.";
 
+  // Онлайн цаг захиалгын slot тохиргоо (заавал биш)
+  const slotMinutesRaw = s(fd, "slotMinutes");
+  const slotCapacityRaw = s(fd, "slotCapacity");
+  let slotMinutes: number | null = null;
+  if (slotMinutesRaw) {
+    const n = Number.parseInt(slotMinutesRaw, 10);
+    if (!Number.isFinite(n) || n < 5 || n > 480)
+      errors.slotMinutes = "5-480 минут хооронд байна.";
+    else slotMinutes = n;
+  }
+  let slotCapacity: number | null = null;
+  if (slotCapacityRaw) {
+    const n = Number.parseInt(slotCapacityRaw, 10);
+    if (!Number.isFinite(n) || n < 1 || n > 100)
+      errors.slotCapacity = "1-100 хооронд байна.";
+    else slotCapacity = n;
+  }
+
   // Ажиллах өдрүүд (workDays нь олон утгатай checkbox-уудаар Weekday enum-ээр ирнэ)
   const rawDays = fd.getAll("workDays");
   const openDaysSet = new Set<Weekday>();
@@ -128,6 +148,8 @@ function validate(fd: FormData): Parsed {
     longitude,
     openTime,
     closeTime,
+    slotMinutes,
+    slotCapacity,
     openDays,
     isPrimary: fd.get("isPrimary") === "on",
     errors,
@@ -146,6 +168,8 @@ function toBranchData(p: Parsed) {
     longitude: p.longitude,
     openTime: p.openTime,
     closeTime: p.closeTime,
+    slotMinutes: p.slotMinutes,
+    slotCapacity: p.slotCapacity,
     isPrimary: p.isPrimary,
   };
 }

@@ -320,6 +320,20 @@ export async function createOrderAction(
     },
   });
 
+  // Цаг захиалгаас үүсгэсэн бол буцаан холбоно (Appointment → ServiceOrder).
+  const appointmentId = s(formData, "appointmentId");
+  if (appointmentId) {
+    await prisma.appointment.updateMany({
+      where: {
+        id: appointmentId,
+        tenantId: user.tenantId,
+        serviceOrderId: null,
+      },
+      data: { serviceOrderId: createdId, status: "CONFIRMED" },
+    });
+    revalidatePath("/dashboard/appointments");
+  }
+
   revalidatePath("/dashboard/orders");
   revalidatePath("/dashboard");
   redirect(`/dashboard/orders/${createdId}`);

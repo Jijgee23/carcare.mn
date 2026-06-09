@@ -9,7 +9,14 @@ import {
   updateBranchAction,
 } from "@/app/_actions/branches";
 import { Field, FormError } from "@/app/_components/auth-shell";
+import { Select } from "@/app/_components/select";
 import { DEFAULT_OPEN_DAYS, WEEK_DAYS, type Weekday } from "@/lib/branches";
+
+// Ажиллах цагийн сонголт — 30 минутын алхамтай, 24 цагийн формат (00:00–23:30).
+const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
+  const v = `${String(Math.floor(i / 2)).padStart(2, "0")}:${i % 2 === 0 ? "00" : "30"}`;
+  return { value: v, label: v };
+});
 
 // Leaflet нь window-д шууд хандах учир SSR хийгдэхгүйгээр lazy load
 const LocationPicker = dynamic(
@@ -36,6 +43,8 @@ type Initial = {
   longitude: number | null;
   openTime: string | null;
   closeTime: string | null;
+  slotMinutes?: number | null;
+  slotCapacity?: number | null;
   openDays: Weekday[];
   isPrimary: boolean;
 };
@@ -68,6 +77,12 @@ export function BranchForm({ initial }: { initial?: Initial }) {
   const [address, setAddress] = useState(initial?.address ?? "");
   const [openTime, setOpenTime] = useState(initial?.openTime ?? "");
   const [closeTime, setCloseTime] = useState(initial?.closeTime ?? "");
+  const [slotMinutes, setSlotMinutes] = useState(
+    initial?.slotMinutes != null ? String(initial.slotMinutes) : "",
+  );
+  const [slotCapacity, setSlotCapacity] = useState(
+    initial?.slotCapacity != null ? String(initial.slotCapacity) : "",
+  );
   const [isPrimary, setIsPrimary] = useState(initial?.isPrimary ?? false);
 
   function onMapPick(coords: { lat: number; lng: number } | null) {
@@ -266,33 +281,73 @@ export function BranchForm({ initial }: { initial?: Initial }) {
           <Field
             label="Эхлэх цаг"
             htmlFor="openTime"
-            hint="HH:MM"
+            hint="30 мин алхам"
             error={fe.openTime}
             className={FIELD_MW}
           >
-            <input
+            <Select
               id="openTime"
               name="openTime"
-              type="time"
               value={openTime}
-              onChange={(e) => setOpenTime(e.target.value)}
-              className={`compact-input ${fe.openTime ? "border-red-500/50" : ""}`}
+              onChange={setOpenTime}
+              error={fe.openTime}
+              placeholder="—"
+              options={TIME_OPTIONS}
             />
           </Field>
           <Field
             label="Дуусах цаг"
             htmlFor="closeTime"
-            hint="HH:MM"
+            hint="30 мин алхам"
             error={fe.closeTime}
             className={FIELD_MW}
           >
-            <input
+            <Select
               id="closeTime"
               name="closeTime"
-              type="time"
               value={closeTime}
-              onChange={(e) => setCloseTime(e.target.value)}
-              className={`compact-input ${fe.closeTime ? "border-red-500/50" : ""}`}
+              onChange={setCloseTime}
+              error={fe.closeTime}
+              placeholder="—"
+              options={TIME_OPTIONS}
+            />
+          </Field>
+          <Field
+            label="Цагийн алхам"
+            htmlFor="slotMinutes"
+            hint="минут (default 30)"
+            error={fe.slotMinutes}
+            className={FIELD_MW}
+          >
+            <input
+              id="slotMinutes"
+              name="slotMinutes"
+              type="number"
+              min={5}
+              max={480}
+              value={slotMinutes}
+              onChange={(e) => setSlotMinutes(e.target.value)}
+              className={`compact-input ${fe.slotMinutes ? "border-red-500/50" : ""}`}
+              placeholder="30"
+            />
+          </Field>
+          <Field
+            label="Зэрэг авах тоо"
+            htmlFor="slotCapacity"
+            hint="нэг цагт (default 1)"
+            error={fe.slotCapacity}
+            className={FIELD_MW}
+          >
+            <input
+              id="slotCapacity"
+              name="slotCapacity"
+              type="number"
+              min={1}
+              max={100}
+              value={slotCapacity}
+              onChange={(e) => setSlotCapacity(e.target.value)}
+              className={`compact-input ${fe.slotCapacity ? "border-red-500/50" : ""}`}
+              placeholder="1"
             />
           </Field>
         </div>

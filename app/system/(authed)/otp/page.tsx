@@ -14,6 +14,7 @@ const TYPE_LABEL: Record<OtpType, string> = {
   SIGNUP: "Бүртгэл",
   CHANGE_PASSWORD: "Нууц үг солих",
   RESET_PASSWORD: "Нууц үг сэргээх",
+  CONSUMER_LOGIN: "Нэвтрэх (Account)",
 };
 
 export default async function SystemOtpPage() {
@@ -57,7 +58,7 @@ export default async function SystemOtpPage() {
           <table className="w-full min-w-[640px]">
             <thead>
               <tr className="border-b border-white/[0.06]">
-                {["Код", "Төрөл", "Имэйл", "Үүссэн", "Төлөв"].map((h) => (
+                {["Код", "Төрөл", "Имэйл / Утас", "Үүссэн", "Төлөв"].map((h) => (
                   <th
                     key={h}
                     className="text-left text-xs text-white/30 font-medium px-5 py-3"
@@ -87,7 +88,9 @@ export default async function SystemOtpPage() {
                     <td className="px-5 py-4 text-sm text-white/70">
                       {TYPE_LABEL[o.type]}
                     </td>
-                    <td className="px-5 py-4 text-sm text-white/70">{o.email}</td>
+                    <td className="px-5 py-4 text-sm text-white/70">
+                      {o.email ?? o.phone}
+                    </td>
                     <td className="px-5 py-4 text-xs text-white/40">
                       {o.createdAt.toLocaleTimeString("mn-MN")}
                     </td>
