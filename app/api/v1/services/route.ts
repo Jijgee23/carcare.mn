@@ -1,5 +1,5 @@
 import { Prisma } from "@/app/generated/prisma/client";
-import { jsonOk, requireApiUser } from "@/lib/api";
+import { jsonError, jsonOk, requireApiUser } from "@/lib/api";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 
@@ -55,4 +55,50 @@ export async function GET(req: Request) {
   ]);
 
   return jsonOk({ services, pagination: buildMeta(total, page, pageSize) });
+}
+
+const KINDS = ["LABOR", "GOODS", "DIAGNOSTIC"] as const;
+
+// POST /api/v1/services
+export async function POST(req: Request) {
+  const auth = await requireApiUser(req);
+  if (auth.response) return auth.response;
+
+  const body = await req.json().catch(() => null);
+  if (!body) return jsonError(400, "Буруу өгөгдөл");
+
+  const {
+    type, name, code, price, costPrice, stock, description, isActive,
+    unitId, laborCategoryId, durationValue, durationUnitId,
+  } = body as Record<string, unknown>;
+
+  if (!type || !(KINDS as readonly string[]).includes(type as string))
+    return jsonError(400, "Төрөл буруу байна (LABOR | GOODS | DIAGNOSTIC)");
+  if (!name || typeof name !== "string" || !name.trim())
+    return jsonError(400, "Нэр заавал шаардлагатай");
+
+  const priceNum = Number(price);
+  if (isNaN(priceNum) || priceNum < 0)
+    return jsonError(400, "Үнэ буруу байна");
+
+  const service = await prisma.service.create({
+    data: {
+      type: type as (typeof KINDS)[number],
+      name: (name as string).trim(),
+      code: typeof code === "string" && code.trim() ? code.trim() : null,
+      price: priceNum,
+      costPrice: costPrice !== undefined && costPrice !== "" ? Number(costPrice) || null : null,
+      stock: stock !== undefined && stock !== "" ? Number(stock) || null : null,
+      description: typeof description === "string" && description.trim() ? description.trim() : null,
+      isActive: isActive !== false,
+      unitId: typeof unitId === "string" && unitId ? unitId : null,
+      laborCategoryId: typeof laborCategoryId === "string" && laborCategoryId ? laborCategoryId : null,
+      durationValue: durationValue !== undefined && durationValue !== "" ? Number(durationValue) || null : null,
+      durationUnitId: typeof durationUnitId === "string" && durationUnitId ? durationUnitId : null,
+      tenantId: auth.user.tenantId,
+    },
+    select: SERVICE_SELECT,
+  });
+
+  return jsonOk({ service });
 }

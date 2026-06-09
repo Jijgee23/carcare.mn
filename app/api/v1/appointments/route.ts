@@ -20,7 +20,8 @@ const APPT_SELECT = {
 } satisfies Prisma.AppointmentSelect;
 
 // GET /api/v1/appointments
-// Query: status?, date? (YYYY-MM-DD), branchId?, page?, pageSize?
+// Query: status?, date? (YYYY-MM-DD), month? (YYYY-MM), branchId?, page?, pageSize?
+// month= → returns { dates: string[] } (per-appointment YYYY-MM-DD for dot counts)
 // Permission: appointments.view
 export async function GET(req: Request) {
   const auth = await requireApiUser(req);
@@ -29,6 +30,33 @@ export async function GET(req: Request) {
   if (denied) return denied;
 
   const url = new URL(req.url);
+  const scope = branchScopeId(auth.user);
+  const branchIdParam = url.searchParams.get("branchId")?.trim() || undefined;
+
+  // ── Month counts mode ─────────────────────────────────────────────────────
+  const monthParam = url.searchParams.get("month")?.trim();
+  if (monthParam && /^\d{4}-\d{2}$/.test(monthParam)) {
+    const [y, m] = monthParam.split("-").map(Number);
+    const monthStart = new Date(y, m - 1, 1);
+    const monthEnd = new Date(y, m, 1);
+
+    const rows = await prisma.appointment.findMany({
+      where: {
+        tenantId: auth.user.tenantId,
+        requestedAt: { gte: monthStart, lt: monthEnd },
+        ...(scope ? { branchId: scope } : branchIdParam ? { branchId: branchIdParam } : {}),
+      },
+      select: { requestedAt: true },
+    });
+
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const dates = rows.map(
+      (r) => `${r.requestedAt.getFullYear()}-${pad(r.requestedAt.getMonth() + 1)}-${pad(r.requestedAt.getDate())}`,
+    );
+    return jsonOk({ dates });
+  }
+
+  // ── Day list mode ─────────────────────────────────────────────────────────
   const statusParam = url.searchParams.get("status")?.trim();
   const status =
     statusParam &&
@@ -36,13 +64,9 @@ export async function GET(req: Request) {
       ? (statusParam as AppointmentStatus)
       : null;
   const dateParam = url.searchParams.get("date")?.trim();
-  const branchIdParam = url.searchParams.get("branchId")?.trim() || undefined;
   const { page, pageSize, skip, take } = getApiPageInfo(url.searchParams, {
     maxSize: 100,
   });
-
-  // Салбараар хязгаарлагдсан ажилтан зөвхөн өөрийн салбарын захиалгыг харна.
-  const scope = branchScopeId(auth.user);
 
   const where: Prisma.AppointmentWhereInput = {
     tenantId: auth.user.tenantId,
