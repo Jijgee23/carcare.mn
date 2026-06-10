@@ -1,14 +1,7 @@
 import { enforceRateLimit, jsonError, jsonOk } from "@/lib/api";
 import { checkUserActive } from "@/lib/auth/active";
-import {
-  ACCESS_TOKEN_MAX_AGE_SECONDS,
-  signApiToken,
-} from "@/lib/auth/api-token";
+import { buildApiLoginResponse } from "@/lib/auth/api-login";
 import { verifyPassword } from "@/lib/auth/password";
-import {
-  REFRESH_TOKEN_MAX_AGE_SECONDS,
-  issueRefreshToken,
-} from "@/lib/auth/refresh-token";
 import { prisma } from "@/lib/prisma";
 
 const MAX_LOGIN_ATTEMPTS = 5;
@@ -108,52 +101,5 @@ export async function POST(req: Request) {
     });
   }
 
-  const accessToken = await signApiToken({
-    userId: user.id,
-    tenantId: user.tenantId,
-    isOwner: user.isOwner,
-  });
-
-  const userAgent = req.headers.get("user-agent");
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    req.headers.get("x-real-ip") ||
-    null;
-
-  const { token: refreshToken, expiresAt: refreshExpiresAt } =
-    await issueRefreshToken({
-      userId: user.id,
-      userAgent,
-      ip,
-    });
-
-  return jsonOk({
-    accessToken,
-    accessTokenExpiresInSeconds: ACCESS_TOKEN_MAX_AGE_SECONDS,
-    // Backwards-compat alias
-    expiresInSeconds: ACCESS_TOKEN_MAX_AGE_SECONDS,
-    refreshToken,
-    refreshTokenExpiresInSeconds: REFRESH_TOKEN_MAX_AGE_SECONDS,
-    refreshTokenExpiresAt: refreshExpiresAt.toISOString(),
-    user: {
-      id: user.id,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      phone: user.phone,
-      isOwner: user.isOwner,
-      role: user.role
-        ? {
-            id: user.role.id,
-            name: user.role.name,
-            permissions: user.role.permissions,
-          }
-        : null,
-      branchId: user.branchId,
-      tenant: {
-        id: user.tenant.id,
-        name: user.tenant.name,
-      },
-    },
-  });
+  return jsonOk(await buildApiLoginResponse(user, req));
 }

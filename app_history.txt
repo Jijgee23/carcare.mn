@@ -9,6 +9,27 @@ CARCARE.MN — Хөгжүүлэлтийн түүх (Dev history)
 2026-06-10  ·  суурь: 4497dec "mobile api" (2026-06-09)  ·  commit хийгдээгүй
 ------------------------------------------------------------------------
 
+ГОЛ ФИЧЕР: Ажилтны анхны нэвтрэлт — МОБАЙЛ API (шинэ)
+-----------------------------------------------------
+Веб дэх идэвхжүүлэх урсгалыг (checkLoginEmailAction / requestActivationAction /
+activateAccountAction) мобайл API болгон гаргав. Cookie бус, токен (access +
+refresh) буцаана.
+
+- lib/auth/api-login.ts (шинэ): buildApiLoginResponse(user, req) — нэвтрэлт
+  амжилттай үед буцах нэгдсэн payload (access + refresh token + user).
+  /auth/login болон /auth/activate хоёул үүнийг ашиглана (зөрөхгүй).
+- app/api/v1/auth/login/route.ts: токен буцаах хэсгийг buildApiLoginResponse-р
+  орлуулж рефактор хийв (зан төлөв хэвээр).
+- app/api/v1/auth/check-email/route.ts (шинэ): POST { email } →
+  status: password | activate | not_registered. activate үед SET_PASSWORD OTP
+  илгээж maskedPhone/otpSent буцаана.
+- app/api/v1/auth/activate/request-otp/route.ts (шинэ): POST { email } — OTP
+  дахин илгээх (enumeration-safe, throttle үед 429).
+- app/api/v1/auth/activate/route.ts (шинэ): POST { email, code, password } →
+  OTP+нууц үг шалгаж verified=true болгон шууд нэвтрүүлж токен буцаана.
+- lib/phone.ts: maskPhone() экспортлов (мобайл route-уудад дахин ашиглах).
+- Бүгдэд IP-ийн rate limit (enforceRateLimit) тавьсан.
+
 ГОЛ ФИЧЕР: Ажилтны анхны нэвтрэлт — OTP-ээр идэвхжүүлж нууц үг үүсгэх урсгал
 --------------------------------------------------------------------------
 Админ ажилтан үүсгэхдээ нууц үг тавихаа больсон. Ажилтан анх удаа өөрийн

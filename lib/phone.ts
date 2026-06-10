@@ -46,3 +46,13 @@ export function formatPhone(canonical: string): string {
   if (!d) return canonical;
   return `${d.slice(0, 4)}-${d.slice(4)}`;
 }
+
+/**
+ * Утсыг маскална — сүүлийн 2 цифрээс бусдыг "*"-аар нуух (ж: "******33").
+ * OTP илгээсэн дугаарыг бүтнээр нь ил болгохгүйгээр сануулахад хэрэглэнэ.
+ */
+export function maskPhone(phone: string): string {
+  const digits = (phone ?? "").replace(/\D+/g, "");
+  if (digits.length < 4) return digits.replace(/./g, "*");
+  return `${"*".repeat(Math.max(0, digits.length - 2))}${digits.slice(-2)}`;
+}
