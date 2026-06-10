@@ -7,6 +7,7 @@ import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
+import { isValidPhone, normalizePhone } from "@/lib/phone";
 import { isFeatureEnabled } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
 import { saveUpload } from "@/lib/storage";
@@ -58,10 +59,17 @@ export async function updateTenantAction(
     fieldErrors.registerNumber = "Регистр яг 7 оронтой тоо байх ёстой.";
   if (!isEmail(email)) fieldErrors.email = "Имэйл хаяг буруу.";
   if (!phone1) fieldErrors.phone1 = "Утасны дугаар оруулна уу.";
+  else if (!isValidPhone(phone1))
+    fieldErrors.phone1 = "Утасны дугаар 8 оронтой тоо байх ёстой.";
+  if (phone2 && !isValidPhone(phone2))
+    fieldErrors.phone2 = "Утасны дугаар 8 оронтой тоо байх ёстой.";
 
   if (Object.keys(fieldErrors).length > 0) {
     return { ok: false, fieldErrors };
   }
+
+  const normPhone1 = normalizePhone(phone1) ?? phone1;
+  const normPhone2 = phone2 ? normalizePhone(phone2) : null;
 
   // Онлайн цаг захиалга нь багцаас хамаарна — багц дэмжихгүй бол идэвхжүүлэхгүй.
   if (acceptsOnlineBooking) {
@@ -85,8 +93,8 @@ export async function updateTenantAction(
         name,
         registerNumber,
         email,
-        phone1,
-        phone2: phone2 || null,
+        phone1: normPhone1,
+        phone2: normPhone2,
         acceptsOnlineBooking,
       },
     });
@@ -94,7 +102,9 @@ export async function updateTenantAction(
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
       const target = (e.meta?.target as string[] | undefined)?.join(",") ?? "";
       const fe: Record<string, string> = {};
-      if (target.includes("registerNumber"))
+      if (target.includes("name"))
+        fe.name = "Энэ нэртэй байгууллага аль хэдийн бүртгэгдсэн байна.";
+      else if (target.includes("registerNumber"))
         fe.registerNumber = "Энэ регистр өөр байгууллагад ашиглагдсан байна.";
       else if (target.includes("email"))
         fe.email = "Энэ Gmail өөр байгууллагад ашиглагдсан байна.";
@@ -118,8 +128,8 @@ export async function updateTenantAction(
       name,
       registerNumber,
       email,
-      phone1,
-      phone2: phone2 || null,
+      phone1: normPhone1,
+      phone2: normPhone2,
       acceptsOnlineBooking,
     },
   });

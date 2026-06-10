@@ -15,7 +15,7 @@ datasource db {
 model Tenant {
   id             String   @id @default(cuid())
   slug           String   @unique
-  name           String
+  name           String   @unique
   registerNumber String   @unique // 7 оронтой улсын бүртгэлийн дугаар (string-р хадгална)
   email          String   @unique
   phone1         String
@@ -60,8 +60,14 @@ model User {
   email        String  @unique
   firstName    String // Нэр
   lastName     String // Овог
-  phone        String
-  passwordHash String
+  // Канон 8 оронтой формат (lib/phone.ts). Бүх ажилтанд давхцахгүй (глобал).
+  phone        String  @unique
+  // Админ ажилтан үүсгэхэд нууц үг тавихгүй — ажилтан анх удаа нэвтрэхдээ
+  // өөрөө үүсгэнэ (OTP-ээр). Тиймээс идэвхжих хүртэл null.
+  passwordHash String?
+  // Ажилтан утсаараа OTP авч нууц үгээ үүсгэж аккаунтаа идэвхжүүлсэн эсэх.
+  // false бол паролиар нэвтэрч чадахгүй — эхлээд идэвхжүүлэх ёстой.
+  verified Boolean @default(false)
 
   // Тенант бүртгүүлсэн админ. Бүх эрхтэй, ямар ч role-той эсэхээс үл хамаарна.
   // Үүрэг сольж болохгүй, устгахгүй (сүүлийн админыг үлдээх ёстой).
@@ -793,6 +799,7 @@ enum OtpType {
   CHANGE_PASSWORD
   RESET_PASSWORD
   CONSUMER_LOGIN // онлайн цаг захиалгын Account утсаар нэвтрэх
+  SET_PASSWORD // ажилтны анхны нэвтрэлт — нууц үг үүсгэж аккаунт идэвхжүүлэх
 }
 
 model Otp {

@@ -252,6 +252,9 @@ export function SignUpForm() {
               id="phone1"
               name="phone1"
               type="tel"
+              inputMode="numeric"
+              maxLength={8}
+              pattern="[0-9]{8}"
               required
               defaultValue={state?.values?.phone1 ?? ""}
               className={`auth-input ${fe.phone1 ? "border-red-500/50" : ""}`}
@@ -269,6 +272,9 @@ export function SignUpForm() {
               id="phone2"
               name="phone2"
               type="tel"
+              inputMode="numeric"
+              maxLength={8}
+              pattern="[0-9]{8}"
               defaultValue={state?.values?.phone2 ?? ""}
               className="auth-input"
               placeholder="88000000"
@@ -346,6 +352,9 @@ export function SignUpForm() {
               id="adminPhone"
               name="adminPhone"
               type="tel"
+              inputMode="numeric"
+              maxLength={8}
+              pattern="[0-9]{8}"
               required
               defaultValue={state?.values?.adminPhone ?? ""}
               className={`auth-input ${fe.adminPhone ? "border-red-500/50" : ""}`}

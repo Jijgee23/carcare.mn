@@ -82,6 +82,9 @@ export function TenantForm({ initial }: { initial: Initial }) {
             id="phone1"
             name="phone1"
             type="tel"
+            inputMode="numeric"
+            maxLength={8}
+            pattern="[0-9]{8}"
             required
             defaultValue={initial.phone1}
             className={`compact-input ${fe.phone1 ? "border-red-500/50" : ""}`}
@@ -98,6 +101,9 @@ export function TenantForm({ initial }: { initial: Initial }) {
             id="phone2"
             name="phone2"
             type="tel"
+            inputMode="numeric"
+            maxLength={8}
+            pattern="[0-9]{8}"
             defaultValue={initial.phone2 ?? ""}
             className="compact-input"
           />

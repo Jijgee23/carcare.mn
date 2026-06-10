@@ -59,6 +59,14 @@ export async function POST(req: Request) {
     );
   }
 
+  // Идэвхжээгүй (нууц үгээ үүсгээгүй) ажилтан — эхлээд анхны нэвтрэлт хийх ёстой.
+  if (!user.verified || !user.passwordHash) {
+    return jsonError(
+      403,
+      "Энэ аккаунт идэвхжээгүй байна. Веб дээр анхны нэвтрэлт хийж нууц үгээ үүсгэнэ үү.",
+    );
+  }
+
   const ok = await verifyPassword(password, user.passwordHash);
   if (!ok) {
     const nextAttempts = user.failedLoginAttempts + 1;

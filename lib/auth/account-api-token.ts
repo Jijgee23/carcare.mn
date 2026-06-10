@@ -46,6 +46,7 @@ export async function verifyAccountApiToken(
 }
 
 /** Authorization: Bearer <token>-аас Account-ийг тогтооно. Хүчингүй бол null. */
+
 export async function getApiAccountFromRequest(req: Request) {
   const header = req.headers.get("authorization") ?? "";
   const match = header.match(/^Bearer\s+(.+)$/i);

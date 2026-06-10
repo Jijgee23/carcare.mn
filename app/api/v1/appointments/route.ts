@@ -101,6 +101,6 @@ export async function GET(req: Request) {
 
   return jsonOk({
     appointments: items,
-    pagination: buildMeta({ page, pageSize, total }),
+    pagination: buildMeta(total, page, pageSize),
   });
 }

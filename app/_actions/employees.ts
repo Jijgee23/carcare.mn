@@ -5,8 +5,8 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
-import { hashPassword } from "@/lib/auth/password";
 import { canCreate, canDelete, canEdit } from "@/lib/auth/roles";
+import { isValidPhone, normalizePhone } from "@/lib/phone";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { enforceCountLimit } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
@@ -57,7 +57,9 @@ function validateCommon(fd: FormData): {
 } {
   const firstName = s(fd, "firstName");
   const lastName = s(fd, "lastName");
-  const email = s(fd, "email");
+  // Нэвтрэх үед имэйлийг lowercase хийдэг тул хадгалахдаа ч мөн адил болгоно —
+  // эс бол том үсэгтэй хадгалсан ажилтан нэвтэрч чадахгүй / давхцал танигдахгүй.
+  const email = s(fd, "email").toLowerCase();
   const phone = s(fd, "phone");
   const roleId = s(fd, "roleId");
   const branchIdRaw = s(fd, "branchId");
@@ -69,6 +71,8 @@ function validateCommon(fd: FormData): {
   if (!firstName) errors.firstName = "Нэрээ оруулна уу.";
   if (!isEmail(email)) errors.email = "Имэйл хаяг буруу.";
   if (!phone) errors.phone = "Утасны дугаар оруулна уу.";
+  else if (!isValidPhone(phone))
+    errors.phone = "Утасны дугаар 8 оронтой тоо байх ёстой.";
   if (!roleId) errors.roleId = "Үүрэг сонгоно уу.";
 
   let activeUntil: Date | null = null;
@@ -86,7 +90,8 @@ function validateCommon(fd: FormData): {
       firstName,
       lastName,
       email,
-      phone,
+      // Канон 8 оронтой хэлбэрт хадгална (давхцал шалгахад тогтвортой байх).
+      phone: normalizePhone(phone) ?? phone,
       roleId: roleId || null,
       branchId: branchIdRaw || null,
       isActive,
@@ -94,6 +99,29 @@ function validateCommon(fd: FormData): {
     },
     errors,
   };
+}
+
+/**
+ * P2002 (давхцал) гарсан үед ЯГ аль unique талбар давхцсаныг тогтооно.
+ *
+ * `e.meta.target`-д найдаж болохгүй: pg драйвер адаптер нь PostgreSQL-ийн
+ * `error.detail` ("Key (phone)=(...) ...")-ыг англи хэлний regex-ээр задалдаг
+ * тул серверийн `lc_messages` англи биш бол талбарын нэр олдохгүй →
+ * `meta.target` undefined болж буруу талбарт (имэйл) алдаа заадаг байсан.
+ * Иймд утас/имэйл аль аль нь өөр хэрэглэгчид байгаа эсэхийг шууд лавлана.
+ * Утас, имэйл хоёул глобал unique тул tenant-аар шүүхгүй.
+ */
+async function duplicateUserFields(
+  email: string,
+  phone: string,
+  excludeUserId?: string,
+): Promise<{ phone: boolean; email: boolean }> {
+  const not = excludeUserId ? { id: { not: excludeUserId } } : {};
+  const [phoneTaken, emailTaken] = await Promise.all([
+    prisma.user.findFirst({ where: { phone, ...not }, select: { id: true } }),
+    prisma.user.findFirst({ where: { email, ...not }, select: { id: true } }),
+  ]);
+  return { phone: Boolean(phoneTaken), email: Boolean(emailTaken) };
 }
 
 async function ensureRoleBelongsToTenant(
@@ -122,10 +150,8 @@ export async function createEmployeeAction(
   }
 
   const { data, errors } = validateCommon(formData);
-  const password = s(formData, "password");
-  if (password.length < 8) {
-    errors.password = "Нууц үг хамгийн багадаа 8 тэмдэгт байх ёстой.";
-  }
+  // Нууц үгийг админ тавихгүй — ажилтан анх удаа нэвтрэхдээ OTP-ээр өөрөө
+  // үүсгэнэ (verified=false → идэвхжүүлэх урсгал).
   if (Object.keys(errors).length > 0) {
     return { ok: false, fieldErrors: errors };
   }
@@ -159,7 +185,6 @@ export async function createEmployeeAction(
 
   let created;
   try {
-    const passwordHash = await hashPassword(password);
     created = await prisma.user.create({
       data: {
         firstName: data.firstName,
@@ -167,7 +192,9 @@ export async function createEmployeeAction(
         email: data.email,
         phone: data.phone,
         roleId: data.roleId,
-        passwordHash,
+        // Нууц үггүй, баталгаажаагүй — ажилтан анхны нэвтрэлтэд өөрөө үүсгэнэ.
+        passwordHash: null,
+        verified: false,
         tenantId: user.tenantId,
         branchId: data.branchId,
         isActive: data.isActive,
@@ -177,12 +204,14 @@ export async function createEmployeeAction(
     });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      return {
-        ok: false,
-        fieldErrors: {
-          email: "Энэ имэйл хаяг аль хэдийн бүртгэгдсэн байна.",
-        },
-      };
+      const dup = await duplicateUserFields(data.email, data.phone);
+      const fe: Record<string, string> = {};
+      if (dup.phone) fe.phone = "Энэ утасны дугаар аль хэдийн бүртгэгдсэн байна.";
+      if (dup.email) fe.email = "Энэ имэйл хаяг аль хэдийн бүртгэгдсэн байна.";
+      if (!fe.phone && !fe.email) {
+        fe.phone = "Энэ утас эсвэл имэйл аль хэдийн бүртгэгдсэн байна.";
+      }
+      return { ok: false, fieldErrors: fe };
     }
     return {
       ok: false,
@@ -226,10 +255,7 @@ export async function updateEmployeeAction(
   }
 
   const { data, errors } = validateCommon(formData);
-  const newPassword = s(formData, "password");
-  if (newPassword && newPassword.length < 8) {
-    errors.password = "Нууц үг хамгийн багадаа 8 тэмдэгт байх ёстой.";
-  }
+  // Админ нууц үг өөрчлөхгүй — ажилтан өөрөө "Нууц үг сэргээх" урсгалаар солино.
   if (Object.keys(errors).length > 0) {
     return { ok: false, fieldErrors: errors };
   }
@@ -280,18 +306,19 @@ export async function updateEmployeeAction(
         branchId: data.branchId,
         isActive: data.isActive,
         activeUntil: data.activeUntil,
-        ...(newPassword
-          ? { passwordHash: await hashPassword(newPassword) }
-          : {}),
       },
       select: { id: true, role: { select: { name: true } } },
     });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      return {
-        ok: false,
-        fieldErrors: { email: "Энэ имэйл өөр хэрэглэгчид ашиглагдсан байна." },
-      };
+      const dup = await duplicateUserFields(data.email, data.phone, target.id);
+      const fe: Record<string, string> = {};
+      if (dup.phone) fe.phone = "Энэ утас өөр хэрэглэгчид ашиглагдсан байна.";
+      if (dup.email) fe.email = "Энэ имэйл өөр хэрэглэгчид ашиглагдсан байна.";
+      if (!fe.phone && !fe.email) {
+        fe.phone = "Энэ утас эсвэл имэйл өөр хэрэглэгчид ашиглагдсан байна.";
+      }
+      return { ok: false, fieldErrors: fe };
     }
     return {
       ok: false,
@@ -305,7 +332,7 @@ export async function updateEmployeeAction(
     entity: "User",
     entityId: id,
     action: "UPDATE",
-    summary: `${data.lastName} ${data.firstName} · ${updated.role?.name ?? "—"}${newPassword ? " · нууц үг" : ""}`,
+    summary: `${data.lastName} ${data.firstName} · ${updated.role?.name ?? "—"}`,
     before: {
       firstName: target.firstName,
       lastName: target.lastName,

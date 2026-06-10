@@ -10,7 +10,7 @@ export default function LoginPage() {
   return (
     <AuthShell
       title="Нэвтрэх"
-      subtitle="Бүртгэлтэй email, нууц үгээ ашиглана уу."
+      subtitle="Бүртгэлтэй имэйлээ оруулна уу."
       footer={
         <>
           Шинэ байгууллага уу?{" "}

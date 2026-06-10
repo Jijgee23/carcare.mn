@@ -16,6 +16,7 @@ export function jsonOk<T>(data: T, init?: ResponseInit) {
  * Эрх дутсан үед буцаах 403. `requirePermission` дотроос болон route-уудаас
  * шууд хэрэглэж болно.
  */
+
 export function jsonForbidden(
   message = "Танд энэ үйлдэл хийх эрх байхгүй.",
 ): NextResponse {
@@ -32,6 +33,7 @@ export function jsonForbidden(
  *   const denied = requirePermission(auth.user, "orders.create");
  *   if (denied) return denied;
  */
+
 export function requirePermission(
   user: ApiUser,
   code: PermissionCode,

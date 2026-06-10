@@ -225,6 +225,14 @@ export default async function EmployeesPage({
                                   (та)
                                 </span>
                               ) : null}
+                              {!u.verified ? (
+                                <span
+                                  className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 align-middle"
+                                  title="Ажилтан анхны нэвтрэлт хийж нууц үгээ үүсгээгүй байна."
+                                >
+                                  идэвхжээгүй
+                                </span>
+                              ) : null}
                             </div>
                           </div>
                         </div>

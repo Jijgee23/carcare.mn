@@ -13,6 +13,7 @@ import {
   isValidTime,
   isWeekday,
 } from "@/lib/branches";
+import { isValidPhone, normalizePhone } from "@/lib/phone";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { enforceCountLimit } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
@@ -81,6 +82,9 @@ function validate(fd: FormData): Parsed {
   const errors: Record<string, string> = {};
 
   if (!name) errors.name = "Салбарын нэрээ оруулна уу.";
+  // Утас заавал биш — оруулсан бол 8 оронтой зөв байх ёстой.
+  if (phone && !isValidPhone(phone))
+    errors.phone = "Утасны дугаар 8 оронтой тоо байх ёстой.";
 
   // Координат
   let latitude: number | null = null;
@@ -139,7 +143,7 @@ function validate(fd: FormData): Parsed {
 
   return {
     name,
-    phone: phone || null,
+    phone: phone ? (normalizePhone(phone) ?? phone) : null,
     city: city || null,
     district: district || null,
     khoroo: khoroo || null,

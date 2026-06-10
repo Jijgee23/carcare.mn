@@ -1,0 +1,6 @@
+-- AlterEnum
+ALTER TYPE "OtpType" ADD VALUE 'SET_PASSWORD';
+
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN     "verified" BOOLEAN NOT NULL DEFAULT false,
+ALTER COLUMN "passwordHash" DROP NOT NULL;

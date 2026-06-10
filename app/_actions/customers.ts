@@ -6,6 +6,7 @@ import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canEdit } from "@/lib/auth/roles";
+import { isValidPhone, normalizePhone } from "@/lib/phone";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { enforceCountLimit } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
@@ -48,12 +49,15 @@ function validate(fd: FormData) {
 
   // Зөвхөн утас заавал. Овог нэр заавал биш — хоосон бол "" хадгална.
   if (!phone) errors.phone = "Утасны дугаар оруулна уу.";
+  else if (!isValidPhone(phone))
+    errors.phone = "Утасны дугаар 8 оронтой тоо байх ёстой.";
   if (email && !isEmail(email)) errors.email = "Имэйл хаяг буруу.";
 
   return {
     data: {
       fullName,
-      phone,
+      // Канон 8 оронтой хэлбэрт хадгална (Account-той утсаар холбогддог).
+      phone: normalizePhone(phone) ?? phone,
       email: email || null,
       note: note || null,
     },

@@ -1,0 +1,72 @@
+CARCARE.MN — Хөгжүүлэлтийн түүх (Dev history)
+================================================
+
+Энэ файлд git commit-ийн хооронд хийгдсэн ажлуудыг он цагийн дарааллаар
+(шинэ нь дээрээ) тэмдэглэнэ. Бичлэг бүр: огноо, суурь commit, хийсэн ажлууд.
+
+
+------------------------------------------------------------------------
+2026-06-10  ·  суурь: 4497dec "mobile api" (2026-06-09)  ·  commit хийгдээгүй
+------------------------------------------------------------------------
+
+ГОЛ ФИЧЕР: Ажилтны анхны нэвтрэлт — OTP-ээр идэвхжүүлж нууц үг үүсгэх урсгал
+--------------------------------------------------------------------------
+Админ ажилтан үүсгэхдээ нууц үг тавихаа больсон. Ажилтан анх удаа өөрийн
+утсаар OTP авч, нууц үгээ өөрөө үүсгэж аккаунтаа идэвхжүүлдэг болсон.
+
+- prisma/schema.prisma:
+  · User.passwordHash → nullable (String?). Идэвхжих хүртэл null.
+  · User.verified (Boolean @default(false)) шинэ талбар нэмэв. false бол
+    паролиар нэвтэрч чадахгүй.
+  · User.phone → @unique (глобал давхцахгүй, канон 8 оронтой формат).
+  · Tenant.name → @unique.
+  · OtpType-д SET_PASSWORD утга нэмэв (анхны нэвтрэлтийн нууц үг үүсгэх).
+
+- Migrations (шинэ):
+  · 20260610043546_staff_verified_optional_password — verified багана,
+    passwordHash NOT NULL хасах, OtpType SET_PASSWORD.
+  · 20260610043629_backfill_existing_users_verified — өмнө нь нууц үгтэй
+    байсан бүх ажилтныг verified=true болгож backfill (түгжихээс сэргийлэв).
+  · 20260610050000_user_phone_unique — User.phone unique index.
+  · 20260610051000_tenant_name_unique — Tenant.name unique index.
+
+- app/_actions/auth.ts (+335 мөр):
+  · checkLoginEmailAction — имэйлээр төлөв шалгах (нууц үгтэй / идэвхжүүлэх /
+    бүртгэлгүй) → нэвтрэх UI салаалуулна.
+  · requestActivationAction — идэвхжүүлэх OTP илгээх.
+  · activateAccountAction — OTP шалгаж нууц үг үүсгэн аккаунт идэвхжүүлэх.
+
+- app/page/login/login-form.tsx (+250 мөр):
+  · Олон алхамт нэвтрэх UI: EmailStep → PasswordStep / ActivateStep /
+    NotRegistered. ActivateStep дээр маскласан утас, OTP, шинэ нууц үг.
+
+- app/page/activate/ (шинэ): page.tsx + activate-form.tsx — идэвхжүүлэх хуудас.
+
+- app/api/v1/auth/login/route.ts: !user.verified || !user.passwordHash үед
+  нэвтрэлт татгалзах (мобайл API).
+
+- app/dashboard/employees/page.tsx: verified=false ажилтанд "идэвхжээгүй"
+  төлөв/тэмдэглэгээ харуулах.
+
+- app/dashboard/employees/employee-form.tsx: нууц үгийн талбар хасч,
+  идэвхжүүлэлтийн урсгалд тохируулав.
+
+УТАСНЫ ДУГААРЫН КАНОН НОРМЧЛОЛ (бүх формд нэгтгэв)
+-------------------------------------------------
+lib/phone.ts-ийн normalizePhone/isValidPhone-г дараах action-уудад нэвтрүүлж,
+8 оронтой канон форматаар хадгалж, валидаци хийдэг болгов:
+  · app/_actions/profile.ts, tenant.ts, quick-create.ts, employees.ts,
+    branches.ts, customers.ts
+  · Форм талд (customer-form, vehicle-form, branch-form, signup-form,
+    inline-vehicle-form, inline-account-vehicle-form, tenant-form,
+    profile-form) оруулга дээр тоо бус тэмдэгт шүүх (replace(/\D+/g,"")).
+
+BUG FIX: Ажилтны утас засахад буруу талбарт алдаа заадаг байсан
+----------------------------------------------------------------
+- app/_actions/employees.ts (create + update):
+  Давхцсан утас оруулахад "имэйл" алдаа заадаг байсан. Шалтгаан:
+  @prisma/adapter-pg нь PostgreSQL error.detail-ыг англи regex-ээр задалдаг
+  тул lc_messages англи биш орчинд e.meta.target=undefined болж, утасны
+  салаа таарахгүй байв. Засвар: meta.target-д найдахаа болиод аль unique
+  талбар давхцсаныг DB-ээс шууд лавлах duplicateUserFields() нэмэв.
+  ЗАСААГҮЙ: profile.ts, auth.ts, tenant.ts-д ижил pattern үлдсэн.

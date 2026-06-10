@@ -5,6 +5,7 @@ import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import { isValidPhone, normalizePhone } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
 
 export type ProfileActionState = {
@@ -30,7 +31,8 @@ export async function updateProfileAction(
 
   const firstName = s(formData, "firstName");
   const lastName = s(formData, "lastName");
-  const email = s(formData, "email");
+  // Нэвтрэх үед имэйлийг lowercase хийдэгтэй нийцүүлнэ.
+  const email = s(formData, "email").toLowerCase();
   const phone = s(formData, "phone");
 
   const fieldErrors: Record<string, string> = {};
@@ -38,18 +40,29 @@ export async function updateProfileAction(
   if (!lastName) fieldErrors.lastName = "Овгоо оруулна уу.";
   if (!isEmail(email)) fieldErrors.email = "Имэйл хаяг буруу.";
   if (!phone) fieldErrors.phone = "Утасны дугаар оруулна уу.";
+  else if (!isValidPhone(phone))
+    fieldErrors.phone = "Утасны дугаар 8 оронтой тоо байх ёстой.";
 
   if (Object.keys(fieldErrors).length > 0) {
     return { ok: false, fieldErrors };
   }
 
+  const normalizedPhone = normalizePhone(phone) ?? phone;
+
   try {
     await prisma.user.update({
       where: { id: user.id },
-      data: { firstName, lastName, email, phone },
+      data: { firstName, lastName, email, phone: normalizedPhone },
     });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      const target = (e.meta?.target as string[] | undefined)?.join(",") ?? "";
+      if (target.includes("phone")) {
+        return {
+          ok: false,
+          fieldErrors: { phone: "Энэ утас өөр хэрэглэгчид бүртгэгдсэн байна." },
+        };
+      }
       return {
         ok: false,
         fieldErrors: { email: "Энэ имэйл өөр хэрэглэгчид бүртгэгдсэн байна." },
@@ -68,7 +81,7 @@ export async function updateProfileAction(
     entityId: user.id,
     action: "UPDATE",
     summary: "Профайл шинэчлэв",
-    after: { firstName, lastName, email, phone },
+    after: { firstName, lastName, email, phone: normalizedPhone },
   });
 
   revalidatePath("/dashboard/profile");
@@ -95,6 +108,14 @@ export async function changePasswordAction(
 
   if (Object.keys(fieldErrors).length > 0) {
     return { ok: false, fieldErrors };
+  }
+
+  // Идэвхжээгүй (нууц үггүй) ажилтан энд хүрэхгүй — гэхдээ типийн хувьд хамгаална.
+  if (!user.passwordHash) {
+    return {
+      ok: false,
+      message: "Аккаунт идэвхжээгүй байна. Эхлээд нууц үгээ үүсгэнэ үү.",
+    };
   }
 
   const ok = await verifyPassword(current, user.passwordHash);

@@ -45,15 +45,12 @@ export function EmployeeForm({
     FormData
   >(action, null);
 
-  const [showPassword, setShowPassword] = useState(false);
-
   const [firstName, setFirstName] = useState(initial?.firstName ?? "");
   const [lastName, setLastName] = useState(initial?.lastName ?? "");
   const [email, setEmail] = useState(initial?.email ?? "");
   const [phone, setPhone] = useState(initial?.phone ?? "");
   const [roleId, setRoleId] = useState(initial?.roleId ?? "");
   const [branchId, setBranchId] = useState(initial?.branchId ?? "");
-  const [password, setPassword] = useState("");
   const [isActive, setIsActive] = useState(initial?.isActive ?? true);
   const [activeUntil, setActiveUntil] = useState(
     initial?.activeUntil
@@ -112,9 +109,12 @@ export function EmployeeForm({
             id="phone"
             name="phone"
             type="tel"
+            inputMode="numeric"
+            maxLength={8}
+            pattern="[0-9]{8}"
             required
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={(e) => setPhone(e.target.value.replace(/\D+/g, ""))}
             className={`compact-input ${fe.phone ? "border-red-500/50" : ""}`}
             placeholder="99000000"
           />
@@ -167,36 +167,15 @@ export function EmployeeForm({
             error={Boolean(fe.activeUntil)}
           />
         </Field>
-        <Field
-          label={isEdit ? "Шинэ нууц үг" : "Нууц үг"}
-          htmlFor="password"
-          hint={isEdit ? "Хоосон үлдээвэл өөрчлөгдөхгүй." : "8+ тэмдэгт"}
-          error={fe.password}
-          className={fieldMaxWidth}
-        >
-          <div className="relative">
-            <input
-              id="password"
-              name="password"
-              type={showPassword ? "text" : "password"}
-              required={!isEdit}
-              minLength={isEdit ? undefined : 8}
-              autoComplete="new-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className={`compact-input pr-14 ${fe.password ? "border-red-500/50" : ""}`}
-              placeholder="••••••••"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors text-xs"
-            >
-              {showPassword ? "Нуух" : "Харах"}
-            </button>
-          </div>
-        </Field>
       </div>
+
+      {!isEdit ? (
+        <div className="max-w-md text-xs text-white/45 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 leading-relaxed">
+          Нууц үгийг та тавихгүй. Ажилтан анх удаа нэвтрэхдээ нэвтрэх хуудасны
+          «Анх удаа нэвтрэх» хэсгээр имэйлээ оруулж, утсандаа ирэх кодоор
+          баталгаажуулан өөрийн нууц үгээ үүсгэнэ.
+        </div>
+      ) : null}
 
       <label className="flex items-start gap-3 p-3 rounded-lg border border-white/[0.06] bg-white/[0.02] cursor-pointer hover:bg-white/[0.04] max-w-md">
         <input

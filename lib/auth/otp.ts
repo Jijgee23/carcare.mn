@@ -25,7 +25,8 @@ export type OtpType =
   | "SIGNUP"
   | "CHANGE_PASSWORD"
   | "RESET_PASSWORD"
-  | "CONSUMER_LOGIN";
+  | "CONSUMER_LOGIN"
+  | "SET_PASSWORD";
 
 export const OTP_CODE_LENGTH = 6;
 export const OTP_MAX_AGE_SECONDS = 60 * 10; // 10 минут

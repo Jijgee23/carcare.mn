@@ -6,6 +6,7 @@ import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
 import { canCreate } from "@/lib/auth/roles";
 import { normalizeWheelPosition } from "@/lib/hur_service";
+import { isValidPhone, normalizePhone } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
 
 // Захиалга үүсгэх явцад үйлчлүүлэгч / машин шинээр бүртгэх — хуудас сольж redirect
@@ -53,14 +54,24 @@ export async function quickCreateCustomerAction(input: {
   const errors: Record<string, string> = {};
   // Зөвхөн утас заавал. Овог нэр заавал биш.
   if (!phone) errors.phone = "Утасны дугаар оруулна уу.";
+  else if (!isValidPhone(phone))
+    errors.phone = "Утасны дугаар 8 оронтой тоо байх ёстой.";
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
     errors.email = "Имэйл хаяг буруу.";
   if (Object.keys(errors).length > 0) return { ok: false, fieldErrors: errors };
 
+  const normalizedPhone = normalizePhone(phone) ?? phone;
+
   let created;
   try {
     created = await prisma.customer.create({
-      data: { fullName, phone, email, note, tenantId: user.tenantId },
+      data: {
+        fullName,
+        phone: normalizedPhone,
+        email,
+        note,
+        tenantId: user.tenantId,
+      },
       select: { id: true, fullName: true, phone: true },
     });
   } catch (e) {
@@ -76,8 +87,8 @@ export async function quickCreateCustomerAction(input: {
     entity: "Customer",
     entityId: created.id,
     action: "CREATE",
-    summary: `${fullName || phone} (захиалгаас түргэн)`,
-    after: { fullName, phone, email, note },
+    summary: `${fullName || normalizedPhone} (захиалгаас түргэн)`,
+    after: { fullName, phone: normalizedPhone, email, note },
   });
 
   revalidatePath("/dashboard/customers");

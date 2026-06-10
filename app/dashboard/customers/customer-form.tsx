@@ -58,9 +58,12 @@ export function CustomerForm({ initial }: { initial?: Initial }) {
             id="phone"
             name="phone"
             type="tel"
+            inputMode="numeric"
+            maxLength={8}
+            pattern="[0-9]{8}"
             required
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={(e) => setPhone(e.target.value.replace(/\D+/g, ""))}
             className={`compact-input ${fe.phone ? "border-red-500/50" : ""}`}
             placeholder="99000000"
           />
