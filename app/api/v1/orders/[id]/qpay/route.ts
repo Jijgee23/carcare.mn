@@ -39,7 +39,7 @@ export async function GET(
         method: "QPAY",
       },
       orderBy: { createdAt: "desc" },
-      select: { id: true, qrImage: true, qrText: true, amount: true },
+      select: { id: true, qrImage: true, qrText: true, amount: true, qpayUrls: true },
     }),
   ]);
 

@@ -1,3 +1,4 @@
+import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
