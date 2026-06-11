@@ -38,7 +38,7 @@ export async function GET(req: Request) {
 
   return jsonOk({
     notifications,
-    pagination: buildMeta({ total, page, pageSize }),
+    pagination: buildMeta(total, page, pageSize),
     unreadCount,
   });
 }
