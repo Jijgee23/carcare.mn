@@ -51,6 +51,7 @@ export async function GET(
           qrImage: pending.qrImage,
           qrText: pending.qrText,
           amount: pending.amount.toString(),
+          urls: pending.qpayUrls ?? [],
         }
       : null,
   });
@@ -96,7 +97,7 @@ export async function POST(
       method: "QPAY",
     },
     orderBy: { createdAt: "desc" },
-    select: { id: true, qrImage: true, qrText: true, amount: true },
+    select: { id: true, qrImage: true, qrText: true, amount: true, qpayUrls: true },
   });
   if (existing) {
     return jsonOk({
@@ -105,6 +106,7 @@ export async function POST(
         qrImage: existing.qrImage,
         qrText: existing.qrText,
         amount: existing.amount.toString(),
+        urls: existing.qpayUrls ?? [],
       },
     });
   }
@@ -143,8 +145,9 @@ export async function POST(
       qpayInvoiceId: inv.invoice_id,
       qrText: inv.qr_text,
       qrImage: inv.qr_image,
+      qpayUrls: inv.urls ?? [],
     },
-    select: { id: true, qrImage: true, qrText: true, amount: true },
+    select: { id: true, qrImage: true, qrText: true, amount: true, qpayUrls: true },
   });
 
   await logAudit({
@@ -163,6 +166,7 @@ export async function POST(
       qrImage: updated.qrImage,
       qrText: updated.qrText,
       amount: updated.amount.toString(),
+      urls: updated.qpayUrls ?? [],
     },
   });
 }

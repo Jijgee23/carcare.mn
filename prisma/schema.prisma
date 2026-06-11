@@ -624,7 +624,8 @@ model OrderPayment {
   qpayInvoiceId String?
   qpayPaymentId String?
   qrImage       String? // base64
-  qrText        String? // deep link
+  qrText        String? // QPay deep link
+  qpayUrls      Json?   // bank app deep links array
   paidAt        DateTime?
 
   createdAt DateTime @default(now())

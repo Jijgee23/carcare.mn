@@ -1,4 +1,3 @@
-import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
@@ -41,13 +40,6 @@ export async function POST(
   if ("error" in check) return jsonError(502, check.error);
   if (!check.paid) {
     return jsonOk({ paid: false, message: "Төлбөр төлөгдөөгүй байна." });
-  }
-
-  if (new Prisma.Decimal(check.paidAmount).lt(payment.amount)) {
-    return jsonOk({
-      paid: false,
-      message: "Төлбөр бүрэн төлөгдөөгүй байна. Дахин шалгана уу.",
-    });
   }
 
   const paidAt = check.paidAt ?? new Date();

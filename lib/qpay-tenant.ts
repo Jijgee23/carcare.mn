@@ -76,10 +76,19 @@ async function refreshAccessToken(
   return saveTokens(tenantId, await res.json());
 }
 
+export type QPayBankUrl = {
+  name: string;
+  name_mn: string;
+  logo: string;
+  description: string;
+  link: string;
+};
+
 export type QPayInvoiceCreated = {
   invoice_id: string;
   qr_text: string;
   qr_image: string;
+  urls?: QPayBankUrl[];
 };
 
 export type QPayCheckResponse = {
@@ -211,13 +220,13 @@ export const TenantQPayService = {
     }
     const data = (await res.json()) as QPayCheckResponse;
     const paidRow = data.rows?.find((r) => r.payment_status === "PAID") ?? null;
+    // paid_amount can be number or string depending on QPay API version
+    const paidAmount = parseFloat(String(data.paid_amount ?? 0)) || 0;
     return {
       paid: Boolean(paidRow),
       paymentId: paidRow?.payment_id ?? null,
       paidAt: paidRow?.paid_at ? new Date(paidRow.paid_at) : null,
-      // QPay-аас бодитоор төлөгдсөн нийт дүн — дуудагч талд expected-тэй
-      // тулгаж шалгана (хэсэгчилсэн төлбөрийг бүтэн гэж тооцохгүй).
-      paidAmount: typeof data.paid_amount === "number" ? data.paid_amount : 0,
+      paidAmount,
     };
   },
 };
