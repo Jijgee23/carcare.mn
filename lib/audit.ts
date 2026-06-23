@@ -10,6 +10,7 @@ export type AuditAction =
   | "STOCK_CHANGE"
   | "ITEM_ADDED"
   | "ITEM_REMOVED"
+  | "ITEM_UPDATED"
   | "LOGIN"
   | "LOGOUT"
   | "OTHER";

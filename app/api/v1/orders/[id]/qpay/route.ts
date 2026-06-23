@@ -5,6 +5,34 @@ import { branchScopeId } from "@/lib/auth/roles";
 import { prisma } from "@/lib/prisma";
 import { TenantQPayService } from "@/lib/qpay-tenant";
 
+/**
+ * Төлбөрийн банкны deeplink `urls`-ийг буцаана. Хадгалагдсан байвал шууд,
+ * үгүй бол (хуучин pending, эсвэл create-ийн хариунд ирээгүй) QPay-аас дахин
+ * татаж DB-д нөхөж хадгална. Ингэснээр mobile үргэлж бүрэн urls хүлээж авна.
+ */
+async function resolvePaymentUrls(
+  tenantId: string,
+  payment: { id: string; qpayInvoiceId: string | null; qpayUrls: unknown },
+): Promise<unknown[]> {
+  if (Array.isArray(payment.qpayUrls) && payment.qpayUrls.length > 0) {
+    return payment.qpayUrls;
+  }
+  if (!payment.qpayInvoiceId) return [];
+
+  const urls = await TenantQPayService.getInvoiceUrls(
+    tenantId,
+    payment.qpayInvoiceId,
+  );
+  if (urls && urls.length > 0) {
+    await prisma.orderPayment.update({
+      where: { id: payment.id },
+      data: { qpayUrls: urls },
+    });
+    return urls;
+  }
+  return Array.isArray(payment.qpayUrls) ? payment.qpayUrls : [];
+}
+
 // GET — pending QPay payment info
 export async function GET(
   req: Request,
@@ -39,7 +67,14 @@ export async function GET(
         method: "QPAY",
       },
       orderBy: { createdAt: "desc" },
-      select: { id: true, qrImage: true, qrText: true, amount: true, qpayUrls: true },
+      select: {
+        id: true,
+        qrImage: true,
+        qrText: true,
+        amount: true,
+        qpayUrls: true,
+        qpayInvoiceId: true,
+      },
     }),
   ]);
 
@@ -51,7 +86,7 @@ export async function GET(
           qrImage: pending.qrImage,
           qrText: pending.qrText,
           amount: pending.amount.toString(),
-          urls: pending.qpayUrls ?? [],
+          urls: await resolvePaymentUrls(auth.user.tenantId, pending),
         }
       : null,
   });
@@ -97,7 +132,14 @@ export async function POST(
       method: "QPAY",
     },
     orderBy: { createdAt: "desc" },
-    select: { id: true, qrImage: true, qrText: true, amount: true, qpayUrls: true },
+    select: {
+      id: true,
+      qrImage: true,
+      qrText: true,
+      amount: true,
+      qpayUrls: true,
+      qpayInvoiceId: true,
+    },
   });
   if (existing) {
     return jsonOk({
@@ -106,7 +148,7 @@ export async function POST(
         qrImage: existing.qrImage,
         qrText: existing.qrText,
         amount: existing.amount.toString(),
-        urls: existing.qpayUrls ?? [],
+        urls: await resolvePaymentUrls(auth.user.tenantId, existing),
       },
     });
   }
@@ -147,7 +189,14 @@ export async function POST(
       qrImage: inv.qr_image,
       qpayUrls: inv.urls ?? [],
     },
-    select: { id: true, qrImage: true, qrText: true, amount: true, qpayUrls: true },
+    select: {
+      id: true,
+      qrImage: true,
+      qrText: true,
+      amount: true,
+      qpayUrls: true,
+      qpayInvoiceId: true,
+    },
   });
 
   await logAudit({
@@ -166,7 +215,7 @@ export async function POST(
       qrImage: updated.qrImage,
       qrText: updated.qrText,
       amount: updated.amount.toString(),
-      urls: updated.qpayUrls ?? [],
+      urls: await resolvePaymentUrls(auth.user.tenantId, updated),
     },
   });
 }

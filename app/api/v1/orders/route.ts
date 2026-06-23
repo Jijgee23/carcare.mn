@@ -57,7 +57,6 @@ export async function GET(req: Request) {
     }),
     prisma.serviceOrder.count({ where }),
   ]);
-
   return jsonOk({ orders, pagination: buildMeta(total, page, pageSize) });
 }
 

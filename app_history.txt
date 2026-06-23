@@ -6,8 +6,57 @@ CARCARE.MN — Хөгжүүлэлтийн түүх (Dev history)
 
 
 ------------------------------------------------------------------------
-2026-06-10  ·  суурь: 4497dec "mobile api" (2026-06-09)  ·  commit хийгдээгүй
+2026-06-23  ·  commit хийгдээгүй
 ------------------------------------------------------------------------
+
+BUG FIX: production build TypeScript алдаа — "ITEM_UPDATED" AuditAction
+----------------------------------------------------------------------
+Захиалгын мөр засах route (app/api/v1/orders/[id]/items/[itemId]/route.ts)
+audit бичихдээ "ITEM_UPDATED" action ашигладаг байсан ч энэ утга AuditAction
+enum/type-д тодорхойлогдоогүй тул `next build` type check дээр унаж байв.
+Засвар (3 газар нэг мөр синк байлгав):
+- prisma/schema.prisma — AuditAction enum-д ITEM_UPDATED нэмэв.
+- prisma/migrations/20260623000000_add_item_updated_audit_action/migration.sql —
+  ALTER TYPE "AuditAction" ADD VALUE 'ITEM_UPDATED' (DB-д applied).
+- lib/audit.ts — AuditAction TS union-д "ITEM_UPDATED" нэмэв.
+- app/dashboard/audit/page.tsx — ACTION_LABEL ("Мөр зассан") + ACTION_BADGE
+  загвар нэмж audit log UI-д зөв харагдана.
+Prisma client дахин generate хийж, `npm run build` амжилттай (type check OK).
+
+UI: /showcase bento dashboard демо хуудас нэмэв
+-----------------------------------------------
+- app/showcase/page.tsx — бие даасан (auth шаардахгүй) bento-grid дашборд.
+  Бараан горим, неон violet/blue/emerald/amber онцлол, өндөр контраст.
+- Төслийн design token дахин ашиглав: .glass / .gradient-text / .card-hover.
+- Гадны dependency байхгүй — бүх чарт (area, sparkline, radial) inline SVG.
+- Server component, JS bundle нэмэхгүй. Янз бүрийн хэмжээтэй нүд (2x2, 2x1,
+  1x1), өөрийн неон radial-gradient + торон backdrop.
+
+
+------------------------------------------------------------------------
+2026-06-11  ·  commit хийгдээгүй
+------------------------------------------------------------------------
+
+DB: QPay urls migration хэрэгжүүлэв
+-----------------------------------
+- prisma/migrations/20260611000000_add_qpay_urls_to_order_payment — DB-д
+  applied хийв (OrderPayment.qpayUrls JSONB null). Өмнө нь schema-д байсан ч
+  DB-д хэрэгжээгүй тул /orders/[id]/qpay GET P2022 ColumnNotFound өгч байсан.
+
+BUG FIX: QPay банкны deeplink urls mobile-д ирэхгүй байсан
+----------------------------------------------------------
+- Шалтгаан: qpayUrls фичерээс өмнө үүссэн pending OrderPayment-ууд qpayUrls=null.
+  POST /orders/[id]/qpay нь pending байвал түүнийг дахин ашигладаг тул хуучин
+  pending-ийн хувьд `urls: [] ` (хоосон) буцаж байв.
+- Засвар:
+  · lib/qpay-tenant.ts — getInvoiceUrls(tenantId, invoiceId) нэмэв (QPay
+    GET /v2/invoice/{id}-ээс urls дахин татна).
+  · app/api/v1/orders/[id]/qpay/route.ts — resolvePaymentUrls() helper:
+    хадгалагдсан urls байвал шууд, үгүй бол QPay-аас татаж DB-д нөхөж буцаана.
+    GET pending, POST reuse, POST шинэ create гурван замд хэрэглэв (select-д
+    qpayInvoiceId нэмэв).
+
+
 
 ГОЛ ФИЧЕР: Ажилтны анхны нэвтрэлт — МОБАЙЛ API (шинэ)
 -----------------------------------------------------

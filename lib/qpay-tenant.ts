@@ -187,6 +187,31 @@ export const TenantQPayService = {
     return (await res.json()) as QPayInvoiceCreated;
   },
 
+  /**
+   * Үүсгэсэн invoice-ийн дэлгэрэнгүйг (банкны deeplink `urls` зэрэг) QPay-аас
+   * дахин татна. invoice create-ийн хариунд urls ирээгүй, эсвэл хуучин код
+   * хадгалаагүй pending төлбөрийн urls-ийг нөхөхөд хэрэглэнэ.
+   */
+  async getInvoiceUrls(
+    tenantId: string,
+    invoiceId: string,
+  ): Promise<QPayBankUrl[] | null> {
+    if (!invoiceId) return null;
+    const tokenResult = await this.getAccessToken(tenantId);
+    if ("error" in tokenResult) return null;
+
+    const res = await fetch(`${QPAY_URL}invoice/${invoiceId}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${tokenResult.accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { urls?: QPayBankUrl[] };
+    return Array.isArray(data.urls) ? data.urls : null;
+  },
+
   async checkPayment(
     tenantId: string,
     invoiceId: string,
