@@ -6,6 +6,7 @@ import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canEdit } from "@/lib/auth/roles";
+import { assertActiveSubscription } from "@/lib/subscription-server";
 import {
   ALL_WEEKDAYS,
   DEFAULT_OPEN_DAYS,
@@ -40,6 +41,7 @@ async function authorize(action: "create" | "edit" | "delete") {
   if (!ok) {
     throw new Error("Танд салбарт энэ үйлдэл хийх эрх байхгүй.");
   }
+  await assertActiveSubscription(user.tenantId);
   return user;
 }
 

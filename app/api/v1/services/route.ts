@@ -1,5 +1,6 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser } from "@/lib/api";
+import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 
@@ -63,6 +64,8 @@ const KINDS = ["LABOR", "GOODS", "DIAGNOSTIC"] as const;
 export async function POST(req: Request) {
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
+  const locked = await requireActiveSubscriptionApi(auth.user);
+  if (locked) return locked;
 
   const body = await req.json().catch(() => null);
   if (!body) return jsonError(400, "Буруу өгөгдөл");

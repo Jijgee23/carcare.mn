@@ -31,6 +31,14 @@ export function periodEndDate(
 
 export const TRIAL_DAYS = 14;
 
+// Идэвхтэй subscription дуусахад ийм өдрөөс цөөн үлдвэл "удахгүй дуусна"
+// сэрэмжлүүлэг харуулна.
+export const SUBSCRIPTION_WARN_DAYS = 7;
+
+// Багц дууссан үед mutation (үүсгэх/засах/устгах) хийх гэж оролдвол буцаах мессеж.
+export const SUBSCRIPTION_LOCKED_MESSAGE =
+  "Таны багцын хугацаа дууссан байна. Үргэлжлүүлэхийн тулд багцаа сунгаж төлбөрөө төлнө үү.";
+
 export const SUBSCRIPTION_STATUS_LABEL: Record<SubscriptionStatus, string> = {
   TRIAL: "Туршилт",
   ACTIVE: "Идэвхтэй",

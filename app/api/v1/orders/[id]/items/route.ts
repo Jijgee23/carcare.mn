@@ -1,6 +1,7 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
 import { branchScopeId } from "@/lib/auth/roles";
+import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
 import { logAudit } from "@/lib/audit";
 import { ITEM_KINDS, isOrderLocked, type ItemKind, type OrderStatus } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
@@ -47,6 +48,8 @@ export async function POST(
   if (auth.response) return auth.response;
   const denied = requirePermission(auth.user, "orders.edit");
   if (denied) return denied;
+  const locked = await requireActiveSubscriptionApi(auth.user);
+  if (locked) return locked;
 
   const tenantId = auth.user.tenantId;
   const { id } = await ctx.params;

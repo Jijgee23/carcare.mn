@@ -6,6 +6,65 @@ CARCARE.MN — Хөгжүүлэлтийн түүх (Dev history)
 
 
 ------------------------------------------------------------------------
+2026-06-25  ·  commit хийгдээгүй
+------------------------------------------------------------------------
+
+SUBSCRIPTION-ыг бүрэн ажиллагаатай болгов (anhааруулга, гэйт, API, routing)
+--------------------------------------------------------------------------
+Бодлого: багц (trial/төлбөртэй) дуусахад → read-only + banner, owner-ийг
+subscription page руу авто чиглүүлнэ. Бүх багцад хамаарна (active subscription
+байхгүй / endsAt бодит цагт өнгөрсөн бол locked).
+
+- lib/subscription.ts: SUBSCRIPTION_WARN_DAYS (7), SUBSCRIPTION_LOCKED_MESSAGE
+  тогтмолууд нэмэв.
+- lib/subscription-server.ts (шинэ): getSubscriptionState (React cache, endsAt-
+  aware → cron-оос үл хамаарч бодит цагт locked тооцно), assertActiveSubscription
+  (action-д throw), requireActiveSubscriptionApi (API-д 403 + code
+  SUBSCRIPTION_EXPIRED), getAppBaseUrl.
+- lib/subscription-payments.ts (шинэ): confirmSubscriptionPayment(paymentId) —
+  төлбөр баталгаажуулах core (хуучин checkSubscriptionPaymentAction-аас гаргаж
+  авав). Web polling + QPay callback хоёул дуудна. QPay.checkPayment-ээр бие
+  даан баталгаажуулдаг тул callback-ийг хуурамчаар дуудаж болохгүй.
+
+Анхааруулга / routing:
+- app/_components/subscription-banner.tsx (шинэ): locked / trial / expiringSoon /
+  pending payment төлвүүдийг харуулна (хуучин trial-banner.tsx-ийг орлов, тэр
+  файлыг устгав).
+- app/_components/subscription-guard.tsx (шинэ, client): locked үед OWNER-ийг
+  /dashboard/settings/subscription руу router.replace хийнэ (ажилтныг үгүй).
+- app/dashboard/layout.tsx: getSubscriptionState ашиглаж banner + guard render.
+
+Action хязгаарлалт (read-only enforcement) — authorize()-д assertActiveSubscription
+нэмэв: orders, customers, vehicles, services, branches, employees,
+diagnostic-templates, quick-create, appointments(authorizeStaff). Owner-ийн
+тохиргооны action-ууд (tenant, units, labor-categories, roles, qpay,
+subscription-payments) гэйтгүй — owner төлбөр төлж чадахаар.
+
+API:
+- Mutation route-уудад requireActiveSubscriptionApi нэмэв: orders (POST/PATCH),
+  order items (POST + PATCH/DELETE), order payment (PATCH), customers/vehicles/
+  services (POST). QPay цуглуулалтын route-уудыг гэйтлээгүй.
+- app/api/v1/subscriptions/qpay/callback (шинэ): QPay callback → confirmSubscription
+  Payment. createSubscriptionPaymentAction-д callback_url (?payment_id=) нэмэв.
+- app/api/v1/subscription (шинэ, GET): нэвтэрсэн staff-ийн багцын төлөв (plan,
+  status, locked, daysLeft, expiringSoon, hasPendingPayment) — мобайл клиентэд.
+
+`npm run build` амжилттай (type check OK).
+
+SUBSCRIPTION дуусах сануулга cron нэмэв
+---------------------------------------
+- prisma: Subscription.reminderSentAt DateTime? нэмж migration
+  (20260625000000_add_subscription_reminder_sent_at) apply хийв.
+- lib/notifications.ts: "subscription_expiring" notification type (staff realm,
+  href → /dashboard/settings/subscription) нэмэв.
+- app/api/cron/subscription-reminders (шинэ): SUBSCRIPTION_WARN_DAYS (7) хоногийн
+  дотор дуусах TRIAL/ACTIVE багцуудыг олж, тенант бүрийн OWNER-уудад мэдэгдэл +
+  push илгээнэ. reminderSentAt-аар давхар илгээхээс сэргийлнэ. CRON_SECRET-ээр
+  хамгаалсан (Bearer / ?secret=), бусад cron-той ижил.
+- docs/deploy-ubuntu.md: crontab-д өдөр бүр 09:00-д дуудах мөр нэмэв.
+`npm run build` амжилттай.
+
+------------------------------------------------------------------------
 2026-06-23  ·  commit хийгдээгүй
 ------------------------------------------------------------------------
 
@@ -140,3 +199,49 @@ BUG FIX: Ажилтны утас засахад буруу талбарт алд
   салаа таарахгүй байв. Засвар: meta.target-д найдахаа болиод аль unique
   талбар давхцсаныг DB-ээс шууд лавлах duplicateUserFields() нэмэв.
   ЗАСААГҮЙ: profile.ts, auth.ts, tenant.ts-д ижил pattern үлдсэн.
+
+[2026-06-26] Оношилгооны тайланг PDF болгох (хэвлэх) боломж
+  Тайлангийн дэлгэрэнгүй хуудсанд (app/dashboard/diagnostics/reports/[id])
+  "PDF татах" товч нэмэв. window.print()-ээр browser-н хэвлэх цонх нээгдэж,
+  хэрэглэгч "Save as PDF"-ээр хадгална. Шинэ сан суулгаагүй.
+  - print-button.tsx (client) — window.print() дуудах товч.
+  - page.tsx — outer div-д id="print-root", header-т товч, footer-т no-print.
+  - globals.css — @media print: print-root-оос бусдыг нуух, хар glass
+    загварыг цагаан дэвсгэр/хар текст рүү албадах, зураг/гарын үсэг хэвлэх,
+    section-уудыг break-inside: avoid.
+
+[2026-06-26] @react-pdf тайланд хоосон гарын үсгийн мөр нэмэв
+  pdf-generator.tsx (AdvancedPDFButton) -ийн DiagnosticReportPDF-д
+  "Үйлчлүүлэгчийн гарын үсэг" хэсгийг үргэлж гаргадаг болгов: signatureUrl
+  байвал зургийг дээр нь, доор нь гараар зурах хоосон мөр (Гарын үсэг /
+  Овог нэр) нэмэв. signatureSection/signLine/signCaption styles нэмэв.
+  АНХААР: pdf-generator нь Helvetica фонт тул кирилл үсэг харагдахгүй
+  (Font.register-ээр Cyrillic TTF бүртгэх хэрэгтэй). AdvancedPDFButton-ийг
+  хуудсанд (page.tsx) хараахан холбоогүй — товч гараагүй.
+
+[2026-06-26] @react-pdf PDF: кирилл фонт + товч холболт
+  1) Кирилл фонт: public/fonts/-д DejaVuSans.ttf + DejaVuSans-Bold.ttf
+     (латин+кирилл, монгол Өө/Үү дэмждэг) нэмж, pdf-generator.tsx-д
+     Font.register(family:"DejaVuSans") хийж fontFamily-г Helvetica-аас
+     DejaVuSans болгов. Өмнө нь Helvetica кирилл агуулдаггүй тул монгол
+     текст хоосон гардаг байв.
+  2) AdvancedPDFButton-ийг page.tsx-ийн header-т холбож, report өгөгдлийг
+     DiagnosticReportData болгон дамжуулав. Одоо "PDF хүүдүүлэх" товчоор
+     жинхэнэ .pdf файл татна.
+  АНХААР: @react-pdf доküмент нь зөвхөн header/үйлчлүүлэгч/машин/гарын үсэг
+  агуулдаг — оношилгооны section/item-уудыг ОРУУЛААГҮЙ (print хувилбар нь
+  бүрэн). Шаардвал DiagnosticReportPDF-д section render нэмэх хэрэгтэй.
+
+[2026-06-26] @react-pdf доküментэд оношилгооны section/item-уудыг нэмэв
+  pdf-generator.tsx-ийн DiagnosticReportPDF одоо print хувилбартай ижил
+  бүрэн агуулгатай боллоо:
+  - DiagnosticReportData-д sections (TemplateSection[]) + data (ReportData)
+    нэмэв; page.tsx-аас schema.sections, data дамжуулна.
+  - section бүр → item бүр (label, утга, byrlal/positionSet, зураг, item
+    гарын үсэг, тэмдэглэл). renderValue + EntryPdf helper (page.tsx-тэй ижил).
+  - Үйлчлүүлэгч/машин блокт Бөглөсөн/Гүйлт/Тэмдэглэл мөр нэмэв.
+  - lib/diagnostics-аас itemPositions/positionedKey (runtime) + type-уудыг
+    импортлов (diagnostic-form.tsx client-д ижил хийдэг тул аюулгүй).
+  АНХААР: @react-pdf <Image> нь зураг/гарын үсгийг URL-аас client талд
+  татдаг тул Firebase storage CORS зөвшөөрөхгүй бол зураг гарахгүй байж
+  магадгүй (print хувилбарт энэ асуудал байхгүй). Дев дээр туршина уу.

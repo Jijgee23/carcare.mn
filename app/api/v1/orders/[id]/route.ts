@@ -1,6 +1,7 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
 import { branchScopeId } from "@/lib/auth/roles";
+import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
 import { prisma } from "@/lib/prisma";
 import {
   ORDER_STATUS_TRANSITIONS,
@@ -88,6 +89,8 @@ export async function PATCH(
   if (auth.response) return auth.response;
   const denied = requirePermission(auth.user, "orders.edit");
   if (denied) return denied;
+  const locked = await requireActiveSubscriptionApi(auth.user);
+  if (locked) return locked;
   const { id } = await ctx.params;
   const scope = branchScopeId(auth.user);
 

@@ -6,6 +6,7 @@ import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
 import { branchScopeId, canCreate, canDelete, canEdit } from "@/lib/auth/roles";
+import { assertActiveSubscription } from "@/lib/subscription-server";
 import {
   ITEM_KINDS,
   ORDER_STATUS_TRANSITIONS,
@@ -49,6 +50,7 @@ async function authorize(action: "create" | "edit" | "delete") {
   if (!ok) {
     throw new Error("Танд захиалгад энэ үйлдэл хийх эрх байхгүй.");
   }
+  await assertActiveSubscription(user.tenantId);
   return user;
 }
 

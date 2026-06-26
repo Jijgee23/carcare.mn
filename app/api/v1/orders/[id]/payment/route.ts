@@ -1,6 +1,7 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
 import { logAudit } from "@/lib/audit";
+import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
 import { branchScopeId } from "@/lib/auth/roles";
 import {
   PAYMENT_STATUSES,
@@ -66,6 +67,8 @@ export async function PATCH(
   if (auth.response) return auth.response;
   const denied = requirePermission(auth.user, "payments.edit");
   if (denied) return denied;
+  const locked = await requireActiveSubscriptionApi(auth.user);
+  if (locked) return locked;
 
   const { id } = await ctx.params;
   const scope = branchScopeId(auth.user);

@@ -163,7 +163,7 @@ export default async function DashboardPage({
         description={`${user.tenant.name} · ${userRoleLabel(user)}`}
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-6">
         <StatCard
           label="Идэвхтэй захиалга"
           value={openOrderCount}
@@ -203,7 +203,7 @@ export default async function DashboardPage({
         />
       </div>
 
-      <section className="mt-6 glass rounded-2xl p-6 sm:p-8">
+      <section className="mt-6 glass rounded-2xl p-4 sm:p-6 lg:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
           <div>
             <h2 className="font-semibold mb-1">Орлогын явц</h2>
@@ -249,17 +249,20 @@ export default async function DashboardPage({
             );
           })}
 
-          <form className="ml-auto flex items-center gap-2" action="/dashboard">
+          <form
+            className="flex flex-col sm:flex-row sm:ml-auto items-stretch sm:items-center gap-2 w-full sm:w-auto"
+            action="/dashboard"
+          >
             <DatePicker
               mode="range"
               fromName="from"
               toName="to"
               defaultValue={{ from: params.from ?? "", to: params.to ?? "" }}
-              className="w-[15rem]"
+              className="w-full sm:w-[15rem]"
             />
             <button
               type="submit"
-              className="text-xs bg-violet-600 hover:bg-violet-500 transition-colors px-3 py-1.5 rounded-lg font-medium shrink-0"
+              className="text-xs bg-violet-600 hover:bg-violet-500 transition-colors px-3 py-1.5 rounded-lg font-medium shrink-0 w-full sm:w-auto"
             >
               Шүүх
             </button>
@@ -270,7 +273,7 @@ export default async function DashboardPage({
       </section>
 
       <section className="mt-6 grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2 glass rounded-2xl p-6 sm:p-8">
+        <div className="lg:col-span-2 glass rounded-2xl p-5 sm:p-6 lg:p-8">
           <h2 className="font-semibold mb-1">Хурдан үйлдлүүд</h2>
           <p className="text-sm text-white/40 mb-6">
             Дарж шууд эхэлнэ.
@@ -303,7 +306,7 @@ export default async function DashboardPage({
           </div>
         </div>
 
-        <div className="glass rounded-2xl p-6 sm:p-8">
+        <div className="glass rounded-2xl p-5 sm:p-6 lg:p-8">
           <h2 className="font-semibold mb-4">Байгууллагын мэдээлэл</h2>
           <dl className="space-y-3 text-sm">
             <InfoRow label="Нэр" value={user.tenant.name} />
@@ -378,7 +381,7 @@ function StatCard({
   const up = trend?.changePct == null ? true : trend.changePct >= 0;
   const inner = (
     <div
-      className={`group glass card-hover rounded-2xl p-4 flex flex-col gap-3 h-full ${
+      className={`group glass card-hover rounded-2xl p-3 sm:p-4 flex flex-col gap-2.5 sm:gap-3 h-full ${
         accent ? "border border-violet-500/30" : ""
       }`}
     >
@@ -386,7 +389,7 @@ function StatCard({
         <div className="min-w-0">
           <div className="text-xs text-white/40 truncate">{label}</div>
           <div
-            className={`text-2xl font-bold mt-0.5 tabular-nums ${
+            className={`text-xl sm:text-2xl font-bold mt-0.5 tabular-nums ${
               accent ? "gradient-text" : "text-white"
             }`}
           >

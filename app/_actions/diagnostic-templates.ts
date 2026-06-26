@@ -6,6 +6,7 @@ import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canEdit } from "@/lib/auth/roles";
+import { assertActiveSubscription } from "@/lib/subscription-server";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { enforceCountLimit, isFeatureEnabled } from "@/lib/plan-limits-server";
 import {
@@ -47,6 +48,7 @@ async function authorize(action: "create" | "edit" | "delete") {
   if (!ok) {
     throw new Error("Танд оношилгооны загварт энэ үйлдэл хийх эрх байхгүй.");
   }
+  await assertActiveSubscription(user.tenantId);
   return user;
 }
 

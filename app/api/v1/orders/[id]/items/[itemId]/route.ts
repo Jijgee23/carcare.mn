@@ -7,6 +7,7 @@ import {
 } from "@/lib/api";
 import { logAudit } from "@/lib/audit";
 import { branchScopeId } from "@/lib/auth/roles";
+import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
 import {
   ITEM_KINDS,
   isOrderLocked,
@@ -44,6 +45,8 @@ export async function PATCH(
   if (auth.response) return auth.response;
   const denied = requirePermission(auth.user, "orders.edit");
   if (denied) return denied;
+  const locked = await requireActiveSubscriptionApi(auth.user);
+  if (locked) return locked;
 
   const tenantId = auth.user.tenantId;
   const { id, itemId } = await ctx.params;
@@ -217,6 +220,8 @@ export async function DELETE(
   if (auth.response) return auth.response;
   const denied = requirePermission(auth.user, "orders.edit");
   if (denied) return denied;
+  const locked = await requireActiveSubscriptionApi(auth.user);
+  if (locked) return locked;
 
   const tenantId = auth.user.tenantId;
   const { id, itemId } = await ctx.params;

@@ -13,38 +13,38 @@ datasource db {
 // --- Tenant ---------------------------------------------------------------
 
 model Tenant {
-  id             String   @id @default(cuid())
-  slug           String   @unique
-  name           String   @unique
-  registerNumber String   @unique // 7 оронтой улсын бүртгэлийн дугаар (string-р хадгална)
-  email          String   @unique
-  phone1         String
-  phone2         String?
-  logoUrl        String?
-  plan           Plan     @default(FREE)
-  suspended      Boolean  @default(false) // super admin-аар түр зогсоосон эсэх
-  acceptsOnlineBooking Boolean @default(false) // Онлайн цаг захиалгын каталогт харагдах эсэх
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                   String   @id @default(cuid())
+  slug                 String   @unique
+  name                 String   @unique
+  registerNumber       String   @unique // 7 оронтой улсын бүртгэлийн дугаар (string-р хадгална)
+  email                String   @unique
+  phone1               String
+  phone2               String?
+  logoUrl              String?
+  plan                 Plan     @default(FREE)
+  suspended            Boolean  @default(false) // super admin-аар түр зогсоосон эсэх
+  acceptsOnlineBooking Boolean  @default(false) // Онлайн цаг захиалгын каталогт харагдах эсэх
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
-  users               User[]
-  roles               Role[]
-  branches            Branch[]
-  customers           Customer[]
-  vehicles            Vehicle[]
-  services            Service[]
-  serviceOrders       ServiceOrder[]
-  diagnosticTemplates DiagnosticTemplate[]
-  diagnosticReports   DiagnosticReport[]
-  units               Unit[]
-  laborCategories     LaborCategory[]
-  subscriptions       Subscription[]
+  users                User[]
+  roles                Role[]
+  branches             Branch[]
+  customers            Customer[]
+  vehicles             Vehicle[]
+  services             Service[]
+  serviceOrders        ServiceOrder[]
+  diagnosticTemplates  DiagnosticTemplate[]
+  diagnosticReports    DiagnosticReport[]
+  units                Unit[]
+  laborCategories      LaborCategory[]
+  subscriptions        Subscription[]
   subscriptionPayments SubscriptionPayment[]
-  auditLogs           AuditLog[]
-  qpaySettings        TenantQPaySettings?
-  orderPayments       OrderPayment[]
-  appointments        Appointment[]
-  notifications       Notification[]
+  auditLogs            AuditLog[]
+  qpaySettings         TenantQPaySettings?
+  orderPayments        OrderPayment[]
+  appointments         Appointment[]
+  notifications        Notification[]
 }
 
 enum Plan {
@@ -67,7 +67,7 @@ model User {
   passwordHash String?
   // Ажилтан утсаараа OTP авч нууц үгээ үүсгэж аккаунтаа идэвхжүүлсэн эсэх.
   // false бол паролиар нэвтэрч чадахгүй — эхлээд идэвхжүүлэх ёстой.
-  verified Boolean @default(false)
+  verified     Boolean @default(false)
 
   // Тенант бүртгүүлсэн админ. Бүх эрхтэй, ямар ч role-той эсэхээс үл хамаарна.
   // Үүрэг сольж болохгүй, устгахгүй (сүүлийн админыг үлдээх ёстой).
@@ -138,7 +138,7 @@ model Role {
 
   @@unique([tenantId, name])
   @@index([tenantId, isActive])
-} 
+}
 
 // --- Branch ---------------------------------------------------------------
 
@@ -305,11 +305,11 @@ model ServiceOrder {
   assignedToId String?
   assignedTo   User?   @relation("AssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
 
-  items               ServiceItem[]
-  reports             DiagnosticReport[]
-  plannedDiagnostics  OrderDiagnostic[]
-  payments            OrderPayment[]
-  appointment         Appointment?
+  items              ServiceItem[]
+  reports            DiagnosticReport[]
+  plannedDiagnostics OrderDiagnostic[]
+  payments           OrderPayment[]
+  appointment        Appointment?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -368,7 +368,7 @@ model Service {
   id          String      @id @default(cuid())
   type        ServiceKind
   name        String
-  code        String?     // SKU/код — Бараанд хэрэглэх (заавал биш)
+  code        String? // SKU/код — Бараанд хэрэглэх (заавал биш)
   price       Decimal     @db.Decimal(12, 2) // зарах үнэ
   costPrice   Decimal?    @db.Decimal(12, 2) // өртөг (зөвхөн GOODS)
   stock       Decimal?    @db.Decimal(12, 3) // нөөц (зөвхөн GOODS)
@@ -417,11 +417,11 @@ model DiagnosticTemplate {
   name        String
   description String?
   type        DiagnosticType
-  schema      Json           // {sections:[{id,title,items:[{id,label,type,required,options?}]}]}
+  schema      Json // {sections:[{id,title,items:[{id,label,type,required,options?}]}]}
   version     Int            @default(1)
   isActive    Boolean        @default(true)
   price       Decimal?       @db.Decimal(12, 2) // үйлчилгээний үнэ — захиалгад нэмэх үед хэрэглэнэ
-  durationMin Int?           // дундаж хугацаа (минут)
+  durationMin Int? // дундаж хугацаа (минут)
 
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -450,7 +450,7 @@ enum DiagnosticType {
 model DiagnosticReport {
   id              String  @id @default(cuid())
   templateVersion Int
-  data            Json    // {[itemId]: {value?, photos?, note?}}
+  data            Json // {[itemId]: {value?, photos?, note?}}
   signatureUrl    String?
   mileageAtReport Int?
   notes           String?
@@ -510,7 +510,7 @@ model OrderDiagnostic {
 
 model LaborCategory {
   id          String  @id @default(cuid())
-  name        String  // "Хөдөлгүүр", "Тоормос", "Цахилгаан", "Биеийн засвар" г.м.
+  name        String // "Хөдөлгүүр", "Тоормос", "Цахилгаан", "Биеийн засвар" г.м.
   description String?
   isActive    Boolean @default(true)
 
@@ -530,7 +530,7 @@ model LaborCategory {
 
 model Unit {
   id       String  @id @default(cuid())
-  name     String  // "ширхэг", "цаг", "литр", "кг", г.м.
+  name     String // "ширхэг", "цаг", "литр", "кг", г.м.
   code     String? // богино тэмдэглэгээ — "ш", "ц", "л", "кг"
   isActive Boolean @default(true)
 
@@ -568,16 +568,16 @@ model QPaySettings {
 // `QPaySettings` нь зөвхөн subscription-д.
 
 model TenantQPaySettings {
-  id          String  @id @default(cuid())
-  tenantId    String  @unique
-  tenant      Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id       String @id @default(cuid())
+  tenantId String @unique
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   username    String
-  password    String  // TODO: production-д шифрлэх
+  password    String // TODO: production-д шифрлэх
   invoiceCode String
   callbackUrl String?
 
-  enabled     Boolean @default(true)
+  enabled Boolean @default(true)
 
   // Token кэш
   accessToken           String?
@@ -625,7 +625,7 @@ model OrderPayment {
   qpayPaymentId String?
   qrImage       String? // base64
   qrText        String? // QPay deep link
-  qpayUrls      Json?   // bank app deep links array
+  qpayUrls      Json? // bank app deep links array
   paidAt        DateTime?
 
   createdAt DateTime @default(now())
@@ -717,9 +717,9 @@ model PlanPrice {
 model PlanFeature {
   id          String   @id @default(cuid())
   plan        Plan
-  label       String   // "Хамгийн их хэрэглэгч"
-  value       String   // "20", "Хязгааргүй", "Тийм", "—"
-  description String?  // tooltip / урт тайлбар
+  label       String // "Хамгийн их хэрэглэгч"
+  value       String // "20", "Хязгааргүй", "Тийм", "—"
+  description String? // tooltip / урт тайлбар
   sortOrder   Int      @default(0)
   highlighted Boolean  @default(false) // pricing card-д тод харагдуулах
   createdAt   DateTime @default(now())
@@ -734,19 +734,19 @@ model PlanFeature {
 // `lib/plan-limits.ts` дотор төвлөрсөн.
 
 enum PlanLimitKind {
-  COUNT   // тоон quota — intValue null бол хязгааргүй
+  COUNT // тоон quota — intValue null бол хязгааргүй
   BOOLEAN // боломж нээх/хаах flag
 }
 
 model PlanLimit {
   id          String        @id @default(cuid())
   plan        Plan
-  code        String        // ж: "max_users", "daily_orders"
-  label       String        // дэлгэцэнд харуулах нэр
+  code        String // ж: "max_users", "daily_orders"
+  label       String // дэлгэцэнд харуулах нэр
   description String?
   kind        PlanLimitKind @default(COUNT)
-  intValue    Int?          // COUNT — null=хязгааргүй
-  boolValue   Boolean?      // BOOLEAN
+  intValue    Int? // COUNT — null=хязгааргүй
+  boolValue   Boolean? // BOOLEAN
   sortOrder   Int           @default(0)
   highlighted Boolean       @default(false)
 
@@ -774,9 +774,12 @@ model Subscription {
   startsAt DateTime
   endsAt   DateTime? // null бол байнгын/тогтоогдоогүй (paid no-expiry); TRIAL үед заавал
 
-  amount      Decimal? @db.Decimal(12, 2) // төлсөн дүн (заавал биш)
+  amount      Decimal?  @db.Decimal(12, 2) // төлсөн дүн (заавал биш)
   notes       String?
   cancelledAt DateTime?
+
+  // Хугацаа дуусах сануулга илгээсэн цаг — cron давхар илгээхээс сэргийлнэ.
+  reminderSentAt DateTime?
 
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -804,24 +807,24 @@ enum OtpType {
 }
 
 model Otp {
-  id         String   @id @default(cuid())
+  id       String  @id @default(cuid())
   // Хүлээн авагчийг email ЭСВЭЛ phone-оор холбоно. Ажилтан/тенантын урсгал
   // (SIGNUP/CHANGE/RESET) email-ээр, Account-ийн CONSUMER_LOGIN утсаар явна.
-  email      String?
-  phone      String?  // 8 оронтой канон формат (lib/phone.ts)
-  codeHash   String   // зургаан оронтой код-н sha256 hex (раw код DB-д хадгалахгүй)
-  type       OtpType
-  attempts   Int      @default(0) // буруу баталгаажуулсан удаа
+  email    String?
+  phone    String? // 8 оронтой канон формат (lib/phone.ts)
+  codeHash String // зургаан оронтой код-н sha256 hex (раw код DB-д хадгалахгүй)
+  type     OtpType
+  attempts Int     @default(0) // буруу баталгаажуулсан удаа
 
   consumedAt DateTime?
   expiresAt  DateTime
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
 
   // Тэмдэглэлүүд — аудит, "хэн илгээсэн" болон шинэ нууц үг боловсруулахдаа useful
-  userId     String?  // байгаа хэрэглэгчийн change/reset үед бичнэ (signup-д null)
-  accountId  String?  // CONSUMER_LOGIN — байгаа Account-д бичнэ (анхны нэвтрэлтэд null)
-  ip         String?
-  userAgent  String?
+  userId    String? // байгаа хэрэглэгчийн change/reset үед бичнэ (signup-д null)
+  accountId String? // CONSUMER_LOGIN — байгаа Account-д бичнэ (анхны нэвтрэлтэд null)
+  ip        String?
+  userAgent String?
 
   @@index([email, type])
   @@index([phone, type])
@@ -845,10 +848,10 @@ model Account {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  customers    Customer[]
-  appointments Appointment[]
-  vehicles     AccountVehicle[]
-  devices      Device[]
+  customers     Customer[]
+  appointments  Appointment[]
+  vehicles      AccountVehicle[]
+  devices       Device[]
   notifications Notification[]
 }
 
@@ -883,11 +886,11 @@ model AccountVehicle {
 // тенантын [[Customer]]-той утсаар нь холбогдож (Customer.accountId), дараа нь
 // одоо байгаа [[ServiceOrder]] урсгалаар бодит захиалга үүснэ.
 enum AppointmentStatus {
-  PENDING   // хэрэглэгч илгээсэн, ажилтан хариу өгөөгүй
+  PENDING // хэрэглэгч илгээсэн, ажилтан хариу өгөөгүй
   CONFIRMED // ажилтан баталгаажуулсан
-  REJECTED  // ажилтан татгалзсан
+  REJECTED // ажилтан татгалзсан
   CANCELLED // хэрэглэгч цуцалсан
-  NO_SHOW   // товлосон цагт ирээгүй
+  NO_SHOW // товлосон цагт ирээгүй
 }
 
 model Appointment {
@@ -942,10 +945,10 @@ model Appointment {
 // --- RefreshToken (мобайл клиентэд зориулсан, эргүүлдэг token) -----------
 
 model RefreshToken {
-  id         String  @id @default(cuid())
-  tokenHash  String  @unique // түүхий token-ы sha256 hex
-  userId     String
-  user       User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String @id @default(cuid())
+  tokenHash String @unique // түүхий token-ы sha256 hex
+  userId    String
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   expiresAt    DateTime
   revokedAt    DateTime?
@@ -1096,10 +1099,10 @@ enum AuditAction {
 
 model AuditLog {
   id       String      @id @default(cuid())
-  entity   String      // "ServiceOrder", "Service", "Customer", "Vehicle", "User", "Branch"
+  entity   String // "ServiceOrder", "Service", "Customer", "Vehicle", "User", "Branch"
   entityId String
   action   AuditAction
-  summary  String?     // "SCHEDULED → IN_PROGRESS", "Stock decremented by 5 ш"
+  summary  String? // "SCHEDULED → IN_PROGRESS", "Stock decremented by 5 ш"
   before   Json?
   after    Json?
 

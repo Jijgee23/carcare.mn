@@ -2,11 +2,12 @@ import {
   AdminSidebar,
   MobileTopbar,
 } from "@/app/_components/admin-sidebar";
+import { SubscriptionBanner } from "@/app/_components/subscription-banner";
+import { SubscriptionGuard } from "@/app/_components/subscription-guard";
 import { ToastProvider } from "@/app/_components/toast";
-import { TrialBanner } from "@/app/_components/trial-banner";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { resolveActiveSubscription } from "@/lib/subscription";
+import { getSubscriptionState } from "@/lib/subscription-server";
 
 export default async function DashboardLayout({
   children,
@@ -18,22 +19,12 @@ export default async function DashboardLayout({
     (user.firstName[0] ?? "") + (user.lastName[0] ?? "");
   const userName = `${user.firstName} ${user.lastName}`.trim();
 
-  const subscriptions = await prisma.subscription.findMany({
-    where: { tenantId: user.tenantId },
-    orderBy: { startsAt: "desc" },
-    select: {
-      id: true,
-      plan: true,
-      status: true,
-      startsAt: true,
-      endsAt: true,
-    },
-  });
-  const activeSub = resolveActiveSubscription(subscriptions);
-
-  const unreadNotifications = await prisma.notification.count({
-    where: { userId: user.id, readAt: null },
-  });
+  const [subState, unreadNotifications] = await Promise.all([
+    getSubscriptionState(user.tenantId),
+    prisma.notification.count({
+      where: { userId: user.id, readAt: null },
+    }),
+  ]);
 
   return (
     <ToastProvider>
@@ -48,9 +39,11 @@ export default async function DashboardLayout({
           permissions={user.role?.permissions ?? []}
           notificationUnread={unreadNotifications}
         />
-        <div className="flex-1 lg:ml-60 min-h-screen flex flex-col relative isolate">
+        <div className="flex-1 min-w-0 lg:ml-60 min-h-screen flex flex-col relative isolate">
           <div aria-hidden className="content-bg-layer" />
           <MobileTopbar
+            userName={userName}
+            userEmail={user.email}
             tenantName={user.tenant.name}
             tenantLogoUrl={user.tenant.logoUrl}
             initials={initials.toUpperCase()}
@@ -58,8 +51,17 @@ export default async function DashboardLayout({
             permissions={user.role?.permissions ?? []}
             notificationUnread={unreadNotifications}
           />
-          <TrialBanner active={activeSub} plan={user.tenant.plan} />
-          <main className="flex-1 flex flex-col">{children}</main>
+          <SubscriptionGuard locked={subState.locked} isOwner={user.isOwner} />
+          <SubscriptionBanner
+            locked={subState.locked}
+            isTrial={subState.active?.isTrial ?? false}
+            daysLeft={subState.active?.daysLeft ?? 0}
+            expiresAt={subState.active?.expiresAt ?? null}
+            expiringSoon={subState.expiringSoon}
+            hasPendingPayment={subState.hasPendingPayment}
+            isOwner={user.isOwner}
+          />
+          <main className="flex-1 flex flex-col min-w-0">{children}</main>
         </div>
       </div>
     </ToastProvider>

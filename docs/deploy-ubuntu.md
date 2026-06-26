@@ -161,6 +161,8 @@ sudo certbot --nginx -d carcare.mn -d www.carcare.mn
 0 * * * * curl -fsS -H "Authorization: Bearer ШИНИЙ_CRON_SECRET" https://carcare.mn/api/cron/appointment-reminders > /dev/null 2>&1
 # Subscription хугацаа дуусгах — өдөр бүр 00:05
 5 0 * * * curl -fsS -H "Authorization: Bearer ШИНИЙ_CRON_SECRET" https://carcare.mn/api/cron/expire-subscriptions > /dev/null 2>&1
+# Багц дуусах сануулга (эзэд рүү push/мэдэгдэл) — өдөр бүр 09:00
+0 9 * * * curl -fsS -H "Authorization: Bearer ШИНИЙ_CRON_SECRET" https://carcare.mn/api/cron/subscription-reminders > /dev/null 2>&1
 ```
 `CRON_SECRET`-ийг `.env`-ийнхтэй ижил болго.
 

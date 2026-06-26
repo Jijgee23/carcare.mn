@@ -13,6 +13,7 @@ export const NOTIFICATION_TYPES = [
   "appointment_reminder",
   "appointment_created",
   "appointment_cancelled",
+  "subscription_expiring",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -26,6 +27,7 @@ export const NOTIFICATION_TYPE_LABEL: Record<NotificationType, string> = {
   appointment_reminder: "Цаг сануулга",
   appointment_created: "Шинэ цаг захиалга",
   appointment_cancelled: "Цаг цуцлагдсан",
+  subscription_expiring: "Багц дуусах",
 };
 
 // Event тус бүрд дамжуулах түүхий утгууд (бүгд string — FCM data-д ч мөн).
@@ -96,6 +98,18 @@ export const NOTIFICATION_REGISTRY: Record<NotificationType, NotificationDef> = 
       data: { type: "appointment_cancelled", appointmentId: i.appointmentId ?? "" },
     }),
     href: () => "/dashboard/appointments",
+  },
+  subscription_expiring: {
+    realm: "staff",
+    build: (i) => ({
+      title: "Багцын хугацаа дуусаж байна",
+      body: i.body ?? "Таны багцын хугацаа удахгүй дуусна. Сунгана уу.",
+      data: {
+        type: "subscription_expiring",
+        subscriptionId: i.subscriptionId ?? "",
+      },
+    }),
+    href: () => "/dashboard/settings/subscription",
   },
 };
 

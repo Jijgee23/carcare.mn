@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAccount } from "@/lib/auth/account";
 import { requireUser } from "@/lib/auth";
+import { assertActiveSubscription } from "@/lib/subscription-server";
 import { branchScopeId, canCreate, canEdit } from "@/lib/auth/roles";
 import {
   resolveCustomerForAccount,
@@ -389,6 +390,7 @@ async function authorizeStaff(branchId?: string) {
   if (scope && branchId && branchId !== scope) {
     throw new Error("Зөвхөн өөрийн салбарын цаг захиалгыг удирдана.");
   }
+  await assertActiveSubscription(user.tenantId);
   return user;
 }
 

@@ -5,6 +5,7 @@ import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
 import { canCreate } from "@/lib/auth/roles";
+import { assertActiveSubscription } from "@/lib/subscription-server";
 import { normalizeWheelPosition } from "@/lib/hur_service";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
@@ -21,6 +22,7 @@ async function authorize(resource: "customers" | "vehicles") {
         : "Танд машин үүсгэх эрх байхгүй.",
     );
   }
+  await assertActiveSubscription(user.tenantId);
   return user;
 }
 

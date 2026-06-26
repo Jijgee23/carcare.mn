@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { deleteReportAction } from "@/app/_actions/diagnostic-reports";
 import { PageHeader } from "@/app/_components/page-header";
+import { PrintButton } from "./print-button";
+import { AdvancedPDFButton } from "./pdf-generator";
 import { requireUser } from "@/lib/auth";
 import { branchScopeId } from "@/lib/auth/roles";
 import { customerLabel } from "@/lib/customers";
@@ -60,16 +62,42 @@ export default async function ReportDetailPage({
   const tp = report.template.type as DiagnosticType;
 
   return (
-    <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
+    <div id="print-root" className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
       <PageHeader
         title={report.template.name}
         description={`v${report.templateVersion} · ${report.createdAt.toLocaleString("mn-MN")}`}
         actions={
-          <span
-            className={`text-xs px-2.5 py-1 rounded-full ${DIAGNOSTIC_TYPE_BADGE[tp]}`}
-          >
-            {DIAGNOSTIC_TYPE_LABEL[tp]}
-          </span>
+          <div className="flex items-center gap-2">
+            <span
+              className={`text-xs px-2.5 py-1 rounded-full ${DIAGNOSTIC_TYPE_BADGE[tp]}`}
+            >
+              {DIAGNOSTIC_TYPE_LABEL[tp]}
+            </span>
+            <PrintButton />
+            <AdvancedPDFButton
+              report={{
+                reportId: report.id,
+                templateName: report.template.name,
+                templateVersion: report.templateVersion,
+                createdAt: report.createdAt,
+                customerName: customerLabel(report.customer),
+                customerPhone: report.customer.phone,
+                vehicleMake: report.vehicle.make,
+                vehicleModel: report.vehicle.model,
+                vehiclePlate: report.vehicle.plate,
+                vehicleYear: report.vehicle.year ?? undefined,
+                branchName: report.branch.name,
+                filledByName: report.filledBy
+                  ? `${report.filledBy.lastName} ${report.filledBy.firstName}`
+                  : undefined,
+                mileageAtReport: report.mileageAtReport ?? undefined,
+                notes: report.notes ?? undefined,
+                signatureUrl: report.signatureUrl ?? undefined,
+                sections: schema.sections,
+                data,
+              }}
+            />
+          </div>
         }
       />
 
@@ -183,7 +211,7 @@ export default async function ReportDetailPage({
         ) : null}
       </div>
 
-      <div className="flex items-center justify-between mt-6">
+      <div className="no-print flex items-center justify-between mt-6">
         <Link
           href="/dashboard/diagnostics/reports"
           className="text-sm text-white/50 hover:text-white/80"

@@ -207,27 +207,6 @@ const secondaryItems: NavItem[] = [
   },
 ];
 
-// Mobile top bar дээр flat жагсаалтыг хэрэглэнэ (бүх leaf-ийг шингээнэ).
-// Хэрвээ group-ын ямар нэг child нь parent-той ижил href-тэй бол parent leaf-ийг
-// давтахгүй (mobile топбар дээр дубль key үүсэхээс сэргийлнэ).
-function flatten(items: NavItem[]): NavLeaf[] {
-  const out: NavLeaf[] = [];
-  for (const it of items) {
-    if (hasChildren(it)) {
-      const childMatchesParent = it.children.some((c) => c.href === it.href);
-      if (!childMatchesParent) {
-        out.push({ href: it.href, label: it.label, icon: it.icon, exact: it.exact, view: it.view });
-      }
-      for (const c of it.children) out.push({ ...c, view: c.view ?? it.view });
-    } else {
-      out.push({ href: it.href, label: it.label, icon: it.icon, exact: it.exact, view: it.view });
-    }
-  }
-  return out;
-}
-
-const allItems = flatten([...navItems, ...secondaryItems]);
-
 const STORAGE_KEY = "carcare:sidebar:open";
 
 function isLeafActive(pathname: string, item: NavLeaf): boolean {
@@ -239,24 +218,48 @@ function isGroupActive(pathname: string, group: NavGroup): boolean {
   return group.children.some((c) => isLeafActive(pathname, c));
 }
 
-export function AdminSidebar({
-  userName,
-  userEmail,
-  initials,
+// Тенант мөр — лого + нэр + (заавал биш) мэдэгдлийн хонх.
+function SidebarTenantRow({
   tenantName,
   tenantLogoUrl,
-  isOwner,
-  permissions,
   notificationUnread,
+  showBell = true,
 }: {
-  userName: string;
-  userEmail: string;
-  initials: string;
   tenantName: string;
   tenantLogoUrl?: string | null;
+  notificationUnread: number;
+  showBell?: boolean;
+}) {
+  return (
+    <div className="px-3 pt-3 pb-2 flex items-center gap-2 text-xs text-white/40 min-w-0">
+      {tenantLogoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={tenantLogoUrl}
+          alt=""
+          className="w-5 h-5 rounded object-contain bg-white/[0.04] border border-white/[0.06] shrink-0"
+        />
+      ) : null}
+      <span className="truncate flex-1 min-w-0">{tenantName}</span>
+      {showBell ? (
+        <StaffNotificationBell initialUnread={notificationUnread} align="left" />
+      ) : null}
+    </div>
+  );
+}
+
+// Навигацийн жагсаалт — desktop sidebar болон mobile drawer хоёулаа хуваалцана.
+// Бүлгийн нээлт/хаалтыг localStorage-д хадгална. Server-ийн анхны render-тэй
+// зөрөхгүйн тулд анхны утгыг {} болгож, хадгалсан сонголтыг mount-ийн дараа
+// useEffect дотор уншина — hydration mismatch гарахгүй.
+function SidebarNavList({
+  isOwner,
+  permissions,
+  onNavigate,
+}: {
   isOwner: boolean;
   permissions: string[];
-  notificationUnread: number;
+  onNavigate?: () => void;
 }) {
   const pathname = usePathname();
   const visibleNav = navItems.filter((it) =>
@@ -266,9 +269,6 @@ export function AdminSidebar({
     canSeeView(it.view, isOwner, permissions),
   );
 
-  // Group expansion төлөв. Server-ийн анхны render-тэй (бид localStorage-г уншихгүй)
-  // зөрөхгүйн тулд анхны утгыг үргэлж {} болгож, хэрэглэгчийн хадгалсан сонголтыг
-  // mount-ийн дараа useEffect дотор уншина — hydration mismatch гарахгүй.
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const hydratedRef = useRef(false);
 
@@ -294,12 +294,7 @@ export function AdminSidebar({
     }
   }, [openGroups]);
 
-  function toggleGroup(href: string) {
-    setOpenGroups((prev) => ({ ...prev, [href]: !isOpen(href) }));
-  }
-
   // Идэвхтэй group-ийг анхдагчаар нээлттэй харуулна (хэрэглэгч хаагаагүй үед).
-  // Гэхдээ хэрэглэгч хаасан тохиолдолд тэр сонголтыг хүндэтгэнэ —
   // openGroups[href] нь boolean бол түүнийг ашиглана, undefined бол active-аас хамаарна.
   function isOpen(href: string): boolean {
     const explicit = openGroups[href];
@@ -310,6 +305,115 @@ export function AdminSidebar({
     return group ? isGroupActive(pathname, group as NavGroup) : false;
   }
 
+  function toggleGroup(href: string) {
+    setOpenGroups((prev) => ({ ...prev, [href]: !isOpen(href) }));
+  }
+
+  return (
+    <nav className="flex-1 overflow-y-auto pb-4 px-3 space-y-0.5">
+      {visibleNav.map((item) =>
+        hasChildren(item) ? (
+          <NavGroupItem
+            key={item.href}
+            item={item}
+            pathname={pathname}
+            open={isOpen(item.href)}
+            onToggle={() => toggleGroup(item.href)}
+            onNavigate={onNavigate}
+          />
+        ) : (
+          <NavLeafLink
+            key={item.href}
+            item={item}
+            pathname={pathname}
+            onNavigate={onNavigate}
+          />
+        ),
+      )}
+
+      {visibleSecondary.length > 0 ? (
+        <div className="pt-4 pb-2 px-3 text-[10px] text-white/30 uppercase tracking-wider">
+          Бусад
+        </div>
+      ) : null}
+
+      {visibleSecondary.map((item) =>
+        hasChildren(item) ? (
+          <NavGroupItem
+            key={item.href}
+            item={item}
+            pathname={pathname}
+            open={isOpen(item.href)}
+            onToggle={() => toggleGroup(item.href)}
+            onNavigate={onNavigate}
+          />
+        ) : (
+          <NavLeafLink
+            key={item.href}
+            item={item}
+            pathname={pathname}
+            onNavigate={onNavigate}
+          />
+        ),
+      )}
+    </nav>
+  );
+}
+
+// Хэрэглэгчийн footer — нэр, и-мэйл, гарах товч.
+function SidebarUserFooter({
+  initials,
+  userName,
+  userEmail,
+}: {
+  initials: string;
+  userName: string;
+  userEmail: string;
+}) {
+  return (
+    <div className="p-3 border-t border-white/[0.06] space-y-2">
+      <div className="flex items-center gap-3 p-2.5 rounded-xl">
+        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-xs font-bold shrink-0">
+          {initials}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-white/80 truncate">
+            {userName}
+          </div>
+          <div className="text-xs text-white/30 truncate">{userEmail}</div>
+        </div>
+      </div>
+      <form action={signOutAction}>
+        <button
+          type="submit"
+          className="w-full text-sm text-white/50 hover:text-white transition-colors px-3 py-2 rounded-xl hover:bg-white/[0.04] text-left"
+        >
+          Гарах
+        </button>
+      </form>
+    </div>
+  );
+}
+
+export function AdminSidebar({
+  userName,
+  userEmail,
+  initials,
+  tenantName,
+  tenantLogoUrl,
+  isOwner,
+  permissions,
+  notificationUnread,
+}: {
+  userName: string;
+  userEmail: string;
+  initials: string;
+  tenantName: string;
+  tenantLogoUrl?: string | null;
+  isOwner: boolean;
+  permissions: string[];
+  notificationUnread: number;
+}) {
   return (
     <aside className="fixed top-0 left-0 h-screen w-60 bg-[#0d0d14] border-r border-white/[0.06] flex-col z-40 hidden lg:flex">
       <Link
@@ -320,76 +424,19 @@ export function AdminSidebar({
         <div className="text-[10px] text-white/30 leading-none">Админ</div>
       </Link>
 
-      <div className="px-3 pt-3 pb-2 flex items-center gap-2 text-xs text-white/40 min-w-0">
-        {tenantLogoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={tenantLogoUrl}
-            alt=""
-            className="w-5 h-5 rounded object-contain bg-white/[0.04] border border-white/[0.06] shrink-0"
-          />
-        ) : null}
-        <span className="truncate flex-1 min-w-0">{tenantName}</span>
-        <StaffNotificationBell initialUnread={notificationUnread} align="left" />
-      </div>
+      <SidebarTenantRow
+        tenantName={tenantName}
+        tenantLogoUrl={tenantLogoUrl}
+        notificationUnread={notificationUnread}
+      />
 
-      <nav className="flex-1 overflow-y-auto pb-4 px-3 space-y-0.5">
-        {visibleNav.map((item) =>
-          hasChildren(item) ? (
-            <NavGroupItem
-              key={item.href}
-              item={item}
-              pathname={pathname}
-              open={isOpen(item.href)}
-              onToggle={() => toggleGroup(item.href)}
-            />
-          ) : (
-            <NavLeafLink key={item.href} item={item} pathname={pathname} />
-          ),
-        )}
+      <SidebarNavList isOwner={isOwner} permissions={permissions} />
 
-        {visibleSecondary.length > 0 ? (
-          <div className="pt-4 pb-2 px-3 text-[10px] text-white/30 uppercase tracking-wider">
-            Бусад
-          </div>
-        ) : null}
-
-        {visibleSecondary.map((item) =>
-          hasChildren(item) ? (
-            <NavGroupItem
-              key={item.href}
-              item={item}
-              pathname={pathname}
-              open={isOpen(item.href)}
-              onToggle={() => toggleGroup(item.href)}
-            />
-          ) : (
-            <NavLeafLink key={item.href} item={item} pathname={pathname} />
-          ),
-        )}
-      </nav>
-
-      <div className="p-3 border-t border-white/[0.06] space-y-2">
-        <div className="flex items-center gap-3 p-2.5 rounded-xl">
-          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-xs font-bold shrink-0">
-            {initials}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-white/80 truncate">
-              {userName}
-            </div>
-            <div className="text-xs text-white/30 truncate">{userEmail}</div>
-          </div>
-        </div>
-        <form action={signOutAction}>
-          <button
-            type="submit"
-            className="w-full text-sm text-white/50 hover:text-white transition-colors px-3 py-2 rounded-xl hover:bg-white/[0.04] text-left"
-          >
-            Гарах
-          </button>
-        </form>
-      </div>
+      <SidebarUserFooter
+        initials={initials}
+        userName={userName}
+        userEmail={userEmail}
+      />
     </aside>
   );
 }
@@ -397,14 +444,17 @@ export function AdminSidebar({
 function NavLeafLink({
   item,
   pathname,
+  onNavigate,
 }: {
   item: NavLeaf;
   pathname: string;
+  onNavigate?: () => void;
 }) {
   const active = isLeafActive(pathname, item);
   return (
     <Link
       href={item.href}
+      onClick={onNavigate}
       className={`nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
         active
           ? "is-active bg-violet-600/20 text-violet-300 border border-violet-500/25"
@@ -426,11 +476,13 @@ function NavGroupItem({
   pathname,
   open,
   onToggle,
+  onNavigate,
 }: {
   item: NavGroup;
   pathname: string;
   open: boolean;
   onToggle: () => void;
+  onNavigate?: () => void;
 }) {
   const parentActive = isGroupActive(pathname, item);
 
@@ -477,6 +529,7 @@ function NavGroupItem({
               <Link
                 key={child.href}
                 href={child.href}
+                onClick={onNavigate}
                 className={`nav-item flex items-center px-3 py-1.5 rounded-lg text-sm ${
                   childActive
                     ? "is-active bg-violet-500/10 text-violet-200"
@@ -494,6 +547,8 @@ function NavGroupItem({
 }
 
 export function MobileTopbar({
+  userName,
+  userEmail,
   tenantName,
   tenantLogoUrl,
   initials,
@@ -501,6 +556,8 @@ export function MobileTopbar({
   permissions,
   notificationUnread,
 }: {
+  userName: string;
+  userEmail: string;
   tenantName: string;
   tenantLogoUrl?: string | null;
   initials: string;
@@ -509,59 +566,132 @@ export function MobileTopbar({
   notificationUnread: number;
 }) {
   const pathname = usePathname();
-  const items = allItems.filter((item) =>
-    canSeeView(item.view, isOwner, permissions),
-  );
+  const [open, setOpen] = useState(false);
+
+  // Маршрут солигдоход (нав дотор дарахад) drawer-ийг хаана.
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  // Drawer нээлттэй үед: Escape-ээр хаах + body scroll түгжих.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [open]);
 
   return (
-    <header className="lg:hidden sticky top-0 z-30 glass border-b border-white/[0.06]">
-      <div className="px-4 py-3 flex items-center justify-between">
-        <Link href="/dashboard" className="flex items-center gap-2.5">
-          <Brand size="sm" />
-        </Link>
+    <>
+      <header className="lg:hidden sticky top-0 z-30 glass border-b border-white/[0.06]">
+        <div className="px-4 py-3 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <button
+              type="button"
+              onClick={() => setOpen(true)}
+              aria-label="Цэс нээх"
+              aria-expanded={open}
+              className="p-1.5 -ml-1 rounded-lg text-white/70 hover:text-white hover:bg-white/[0.06] transition-colors shrink-0"
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
+            </button>
+            <Link href="/dashboard" className="flex items-center gap-2.5 min-w-0">
+              <Brand size="sm" />
+            </Link>
+          </div>
 
-        <div className="flex items-center gap-2 min-w-0">
-          {tenantLogoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={tenantLogoUrl}
-              alt=""
-              className="w-5 h-5 rounded object-contain bg-white/[0.04] border border-white/[0.06] shrink-0"
-            />
-          ) : null}
-          <div className="text-right min-w-0">
-            <div className="text-xs text-white/40 leading-tight truncate">
+          <div className="flex items-center gap-2 min-w-0">
+            {tenantLogoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={tenantLogoUrl}
+                alt=""
+                className="w-5 h-5 rounded object-contain bg-white/[0.04] border border-white/[0.06] shrink-0"
+              />
+            ) : null}
+            <div className="text-xs text-white/40 leading-tight truncate max-w-[35vw]">
               {tenantName}
             </div>
-          </div>
-          <StaffNotificationBell initialUnread={notificationUnread} />
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-xs font-bold shrink-0">
-            {initials}
+            <StaffNotificationBell initialUnread={notificationUnread} />
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-xs font-bold shrink-0">
+              {initials}
+            </div>
           </div>
         </div>
-      </div>
+      </header>
 
-      <nav className="px-2 pb-2 flex gap-1 overflow-x-auto">
-        {items.map((item) => {
-          const active = item.exact
-            ? pathname === item.href
-            : pathname.startsWith(item.href);
-          return (
+      {/* Mobile drawer — зүүн талаас гулсаж гарах бүрэн навигаци */}
+      <div
+        className={`lg:hidden fixed inset-0 z-50 ${open ? "" : "pointer-events-none"}`}
+        aria-hidden={!open}
+      >
+        <div
+          onClick={() => setOpen(false)}
+          className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${
+            open ? "opacity-100" : "opacity-0"
+          }`}
+        />
+        <aside
+          role="dialog"
+          aria-modal="true"
+          aria-label="Үндсэн цэс"
+          className={`absolute top-0 left-0 h-full w-72 max-w-[85vw] bg-[#0d0d14] border-r border-white/[0.06] flex flex-col shadow-2xl transition-transform duration-300 ease-out ${
+            open ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
+          <div className="flex items-center justify-between gap-2 px-5 h-16 border-b border-white/[0.06]">
             <Link
-              key={item.href}
-              href={item.href}
-              className={`shrink-0 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                active
-                  ? "bg-violet-600/20 text-violet-300 border border-violet-500/25"
-                  : "text-white/50 border border-white/[0.06]"
-              }`}
+              href="/dashboard"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2.5"
             >
-              {item.icon}
-              {item.label}
+              <Brand />
+              <div className="text-[10px] text-white/30 leading-none">Админ</div>
             </Link>
-          );
-        })}
-      </nav>
-    </header>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              aria-label="Цэс хаах"
+              className="p-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/[0.06] transition-colors"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+
+          <SidebarTenantRow
+            tenantName={tenantName}
+            tenantLogoUrl={tenantLogoUrl}
+            notificationUnread={notificationUnread}
+            showBell={false}
+          />
+
+          <SidebarNavList
+            isOwner={isOwner}
+            permissions={permissions}
+            onNavigate={() => setOpen(false)}
+          />
+
+          <SidebarUserFooter
+            initials={initials}
+            userName={userName}
+            userEmail={userEmail}
+          />
+        </aside>
+      </div>
+    </>
   );
 }

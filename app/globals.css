@@ -234,3 +234,62 @@ select.auth-input option {
 select.auth-input option:disabled {
   color: rgba(255, 255, 255, 0.4);
 }
+
+/* ── Хэвлэх / PDF ──────────────────────────────────────────────
+   #print-root доторх агуулгыг л хэвлэнэ. Хар "glass" загварыг цагаан
+   дэвсгэр + хар текст рүү хөрвүүлж, sidebar/banner/товчнуудыг нууна. */
+@media print {
+  @page {
+    margin: 14mm;
+  }
+  body {
+    background: #fff !important;
+  }
+  /* Бүх зүйлийг нууж, зөвхөн print-root-ийг харуулна */
+  body * {
+    visibility: hidden;
+  }
+  #print-root,
+  #print-root * {
+    visibility: visible;
+  }
+  #print-root {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    padding: 0 !important;
+  }
+  /* Бүх текст/дэвсгэр/сүүдрийг хэвлэхэд тохирох өнгөөр албадна */
+  #print-root,
+  #print-root * {
+    color: #111 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  #print-root .glass {
+    background: #fff !important;
+    border: 1px solid #ddd !important;
+    backdrop-filter: none !important;
+  }
+  #print-root a {
+    color: #111 !important;
+    text-decoration: none !important;
+  }
+  /* Гарын үсэг/зургийн хүрээ хэвлэхэд харагдана */
+  #print-root img {
+    border: 1px solid #ddd !important;
+    background: #fff !important;
+  }
+  /* Хэвлэх шаардлагагүй элементүүд (sidebar, banner, товч, footer) */
+  .no-print,
+  .no-print * {
+    display: none !important;
+  }
+  /* Хэсэг бүрийг хуудас дундуур таслахгүй байлгах */
+  #print-root section {
+    break-inside: avoid;
+  }
+}
