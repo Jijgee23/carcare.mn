@@ -3,10 +3,14 @@ import { checkUserActive } from "@/lib/auth/active";
 import { buildApiLoginResponse } from "@/lib/auth/api-login";
 import { verifyPassword } from "@/lib/auth/password";
 import { prisma } from "@/lib/prisma";
+import { setBypassContext } from "@/lib/tenant-context";
 
 const MAX_LOGIN_ATTEMPTS = 5;
 
 export async function POST(req: Request) {
+  // Нэвтрэхээс өмнө — session/tenant хараахан байхгүй.
+  setBypassContext();
+
   // IP-ийн түвшний throttle (brute-force-ийн нэмэлт давхарга).
   const limited = enforceRateLimit(req, "api-login", {
     limit: 10,

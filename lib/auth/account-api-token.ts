@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import { prisma } from "@/lib/prisma";
+import { setBypassContext } from "@/lib/tenant-context";
 
 // Эцсийн хэрэглэгчийн (Account) мобайл API token. User-ийн api-token-аас tag-аар
 // тусгаарлагдсан. Refresh-гүй — урт настай (30 хоног) access token.
@@ -48,6 +49,9 @@ export async function verifyAccountApiToken(
 /** Authorization: Bearer <token>-аас Account-ийг тогтооно. Хүчингүй бол null. */
 
 export async function getApiAccountFromRequest(req: Request) {
+  // JWT verify (jose/WebCrypto)-ээс өмнө context тавина — Account глобал
+  // (tenant-гүй) объект тул bypass (lib/auth/account.ts-ийн getAccount-той адил).
+  setBypassContext();
   const header = req.headers.get("authorization") ?? "";
   const match = header.match(/^Bearer\s+(.+)$/i);
   if (!match) return null;

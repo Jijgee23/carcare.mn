@@ -11,6 +11,7 @@ import { issuePhoneOtp, verifyPhoneOtp } from "@/lib/auth/otp";
 import { formatPhone, normalizePhone } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
 import { sendOtpSms } from "@/lib/sms";
+import { setBypassContext } from "@/lib/tenant-context";
 
 export type AccountAuthState = {
   ok: boolean;
@@ -37,6 +38,9 @@ export async function accountLoginAction(
   _prevState: AccountAuthState,
   formData: FormData,
 ): Promise<AccountAuthState> {
+  // Нэвтрэхээс өмнө — session/tenant хараахан байхгүй, Account глобал объект.
+  setBypassContext();
+
   const phone = normalizePhone(s(formData, "phone"));
   const otpCode = s(formData, "otpCode");
   const name = s(formData, "name");

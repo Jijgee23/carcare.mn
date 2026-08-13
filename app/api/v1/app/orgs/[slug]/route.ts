@@ -2,12 +2,15 @@ import { jsonError, jsonOk } from "@/lib/api";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { plansWithFeature } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
+import { setBypassContext } from "@/lib/tenant-context";
 
 // GET /api/v1/app/orgs/[slug] — байгууллагын дэлгэрэнгүй + салбарууд (нийтэд).
 export async function GET(
   _req: Request,
   ctx: { params: Promise<{ slug: string }> },
 ) {
+  // Нийтэд нээлттэй, slug-аар Tenant олохоос өмнө tenant тодорхойгүй тул bypass.
+  setBypassContext();
   const { slug } = await ctx.params;
   const allowedPlans = await plansWithFeature(PLAN_LIMIT_CODES.ONLINE_BOOKING);
   const org = await prisma.tenant.findFirst({

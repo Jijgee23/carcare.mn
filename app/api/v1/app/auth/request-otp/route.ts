@@ -2,10 +2,14 @@ import { enforceRateLimit, jsonError, jsonOk } from "@/lib/api";
 import { issuePhoneOtp } from "@/lib/auth/otp";
 import { normalizePhone } from "@/lib/phone";
 import { sendOtpSms } from "@/lib/sms";
+import { setBypassContext } from "@/lib/tenant-context";
 
 // POST /api/v1/app/auth/request-otp  { phone }
 // Эцсийн хэрэглэгчийн утсанд нэвтрэх OTP илгээнэ.
 export async function POST(req: Request) {
+  // Нэвтрэхээс өмнө — session/tenant хараахан байхгүй.
+  setBypassContext();
+
   const limited = enforceRateLimit(req, "app-otp", {
     limit: 5,
     windowMs: 10 * 60_000,

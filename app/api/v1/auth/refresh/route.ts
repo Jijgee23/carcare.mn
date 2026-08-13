@@ -8,6 +8,7 @@ import {
   rotateRefreshToken,
 } from "@/lib/auth/refresh-token";
 import { prisma } from "@/lib/prisma";
+import { setBypassContext } from "@/lib/tenant-context";
 
 /**
  * POST /api/v1/auth/refresh
@@ -17,6 +18,9 @@ import { prisma } from "@/lib/prisma";
  * (rotation). Хуучин token revoke болсон бол бүх token-ыг revoke хийж 401 буцаана.
  */
 export async function POST(req: Request) {
+  // Token rotate/lookup хараахан хэрэглэгч тодорхойгүй үед хийгддэг.
+  setBypassContext();
+
   const limited = enforceRateLimit(req, "api-refresh", {
     limit: 30,
     windowMs: 60_000,

@@ -5,6 +5,7 @@ import { revokeAllOtps, verifyOtp } from "@/lib/auth/otp";
 import { hashPassword } from "@/lib/auth/password";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
+import { setBypassContext } from "@/lib/tenant-context";
 
 /**
  * POST /api/v1/auth/activate  { email, code, password } → access/refresh token
@@ -15,6 +16,9 @@ import { prisma } from "@/lib/prisma";
  * хариу нь /auth/login-тэй ижил (access + refresh token + user).
  */
 export async function POST(req: Request) {
+  // Идэвхжүүлэхээс өмнө — session/tenant хараахан байхгүй.
+  setBypassContext();
+
   const limited = enforceRateLimit(req, "api-activate", {
     limit: 10,
     windowMs: 60_000,

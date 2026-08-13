@@ -3,6 +3,7 @@ import { issueOtp } from "@/lib/auth/otp";
 import { maskPhone } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
 import { sendOtpSms } from "@/lib/sms";
+import { setBypassContext } from "@/lib/tenant-context";
 
 /**
  * POST /api/v1/auth/activate/request-otp  { email } → идэвхжүүлэх OTP дахин илгээх
@@ -15,6 +16,9 @@ import { sendOtpSms } from "@/lib/sms";
  * илгээгдэнэ. Хэт олон хүсэлтэд issueOtp throttle 429 буцаана.
  */
 export async function POST(req: Request) {
+  // Нэвтрэхээс өмнө — session/tenant хараахан байхгүй.
+  setBypassContext();
+
   const limited = enforceRateLimit(req, "api-activate-otp", {
     limit: 5,
     windowMs: 60_000,

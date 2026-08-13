@@ -3,6 +3,7 @@ import { issueOtp } from "@/lib/auth/otp";
 import { maskPhone } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
 import { sendOtpSms } from "@/lib/sms";
+import { setBypassContext } from "@/lib/tenant-context";
 
 /**
  * POST /api/v1/auth/check-email  { email } → нэвтрэлтийн дараагийн алхам
@@ -19,6 +20,9 @@ import { sendOtpSms } from "@/lib/sms";
  * жинхэнэ ажилтанд л ажиллана.
  */
 export async function POST(req: Request) {
+  // Нэвтрэхээс өмнө — session/tenant хараахан байхгүй.
+  setBypassContext();
+
   const limited = enforceRateLimit(req, "api-check-email", {
     limit: 15,
     windowMs: 60_000,

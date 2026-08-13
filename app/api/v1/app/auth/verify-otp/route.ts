@@ -6,9 +6,13 @@ import {
 import { verifyPhoneOtp } from "@/lib/auth/otp";
 import { normalizePhone } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
+import { setBypassContext } from "@/lib/tenant-context";
 
 // POST /api/v1/app/auth/verify-otp  { phone, code, name? } → accessToken
 export async function POST(req: Request) {
+  // Нэвтрэхээс өмнө — session/tenant хараахан байхгүй, Account глобал объект.
+  setBypassContext();
+
   let body: unknown;
   try {
     body = await req.json();
