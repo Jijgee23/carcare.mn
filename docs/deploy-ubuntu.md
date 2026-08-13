@@ -80,14 +80,22 @@ npx prisma migrate deploy      # бүх migration-ийг прод DB-д хэрэ
 npm run build                  # next build (NEXT_PUBLIC_* шигтгэгдэнэ)
 ```
 
-Upload (лого) хадгалах хавтас — **persistent байлгана**:
+Upload (лого, diagnostics зураг) хадгалах хавтас — **persistent, project-ийн гадна**:
 ```bash
-mkdir -p /var/www/carcare/public/uploads
+mkdir -p /var/lib/carcare-uploads
+chown ubuntu:ubuntu /var/lib/carcare-uploads
 ```
-> Лого `public/uploads`-д хадгалагдана. Энэ нь persistent диск дээр ажиллана.
-> Гэхдээ дахин deploy хийхдээ **fresh clone хийвэл устана** — `git pull`-аар
-> байршил дээр шинэчлэх, эсвэл uploads-г салангид замд хадгалаад symlink хийнэ:
-> `ln -s /var/lib/carcare-uploads /var/www/carcare/public/uploads`.
+`.env`-д зааж өг:
+```
+UPLOAD_DIR=/var/lib/carcare-uploads
+```
+> `lib/storage.ts` бичих үедээ `UPLOAD_DIR`-г хэрэглэнэ (тохируулаагүй бол dev-ийн
+> адил `public/uploads`). **`public/uploads`-г `/var/lib/carcare-uploads`-руу
+> symlink хийж болохгүй** — Turbopack build нь project root-оос гадагш чиглэсэн
+> symlink-г зөвшөөрдөггүй бөгөөд `next build` panic-аар унана
+> (`Symlink ... is invalid, it points out of the filesystem root`).
+> Nginx `location /uploads/`-аар статик файлуудыг шууд `alias /var/lib/carcare-uploads/`-аас
+> түгээнэ (доор харна уу).
 
 ---
 
@@ -128,6 +136,10 @@ sudo systemctl status carcare      # ажиллаж буйг шалга
 server {
     server_name carcare.mn www.carcare.mn;
     client_max_body_size 5m;             # 4mb upload-д зориулж
+
+    location /uploads/ {
+        alias /var/lib/carcare-uploads/;   # UPLOAD_DIR-тэй адил зам
+    }
 
     location / {
         proxy_pass http://127.0.0.1:3000;
@@ -189,7 +201,7 @@ sudo systemctl restart carcare
 - [ ] `systemctl status carcare` → active (running)
 - [ ] HTTPS (certbot) тохирсон — web push, secure cookie ажиллана
 - [ ] crontab 4 мөр нэмсэн, CRON_SECRET таарсан
-- [ ] `public/uploads` бичигдэх эрхтэй + persistent
+- [ ] `UPLOAD_DIR` зам үүсгэгдсэн, бичигдэх эрхтэй + persistent (`public/uploads`-руу symlink БИШ)
 - [ ] Firebase JSON серверт (git-д биш), `FIREBASE_SERVICE_ACCOUNT_FILE` зөв зам
 - [ ] PostgreSQL backup (pg_dump cron) тохируулсан
 

@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { unlink } from "node:fs/promises";
-import path from "node:path";
 import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
@@ -10,7 +9,7 @@ import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
 import { isFeatureEnabled } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
-import { saveUpload } from "@/lib/storage";
+import { resolveUploadPath, saveUpload } from "@/lib/storage";
 
 export type TenantActionState = {
   ok: boolean;
@@ -189,7 +188,7 @@ export async function uploadTenantLogoAction(
   });
   if (old?.logoUrl && old.logoUrl.startsWith("/uploads/")) {
     try {
-      await unlink(path.join(process.cwd(), "public", old.logoUrl));
+      await unlink(resolveUploadPath(old.logoUrl));
     } catch {
       // файл байхгүй ч асуудалгүй
     }
@@ -222,7 +221,7 @@ export async function removeTenantLogoAction(): Promise<void> {
   });
   if (t?.logoUrl && t.logoUrl.startsWith("/uploads/")) {
     try {
-      await unlink(path.join(process.cwd(), "public", t.logoUrl));
+      await unlink(resolveUploadPath(t.logoUrl));
     } catch {
       // ignore
     }

@@ -22,6 +22,23 @@ const MAX_BYTES = 2 * 1024 * 1024; // 2 MB
 
 const PUBLIC_DIR = path.join(process.cwd(), "public");
 
+// Прод дээр persistent диск дээрх тусдаа замд (жнь: /var/www/carcare-uploads)
+// бичихийн тулд UPLOAD_DIR-г тохируулна. Тохируулаагүй бол dev-ийн адил
+// public/uploads-д бичнэ. Symlink-аар public/uploads-г project root-оос
+// гадагш чиглүүлэх шаардлагагүй болгоно (Turbopack ийм symlink-г зөвшөөрдөггүй).
+const UPLOAD_ROOT = process.env.UPLOAD_DIR
+  ? path.resolve(process.env.UPLOAD_DIR)
+  : path.join(PUBLIC_DIR, "uploads");
+
+/**
+ * `saveUpload`-аас буцсан "/uploads/..." URL замыг диск дээрх бодит
+ * файлын замд хөрвүүлнэ (устгах зэрэгт хэрэглэнэ).
+ */
+export function resolveUploadPath(urlPath: string): string {
+  const rel = urlPath.replace(/^\/uploads\//, "");
+  return path.join(UPLOAD_ROOT, rel);
+}
+
 export type SavedFile = {
   path: string; // /uploads/.../filename.png — энэ нь browser-аас хандах URL
   size: number;
@@ -49,7 +66,7 @@ export async function saveUpload(
   const ext = EXT_BY_MIME[file.type] ?? "bin";
   const name = `${randomBytes(12).toString("hex")}.${ext}`;
 
-  const targetDir = path.join(PUBLIC_DIR, "uploads", subdir);
+  const targetDir = path.join(UPLOAD_ROOT, subdir);
   await mkdir(targetDir, { recursive: true });
 
   const buf = Buffer.from(await file.arrayBuffer());

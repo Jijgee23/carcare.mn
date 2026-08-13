@@ -8,6 +8,7 @@ import {
 } from "@/lib/auth/system-cookies";
 import { signSystemSession } from "@/lib/auth/system-session";
 import { prisma } from "@/lib/prisma";
+import { setBypassContext } from "@/lib/tenant-context";
 
 export type SystemActionState = {
   ok: boolean;
@@ -42,6 +43,8 @@ export async function signInSystemAction(
     return { ok: false, fieldErrors, values: { email } };
   }
 
+  // SuperAdmin login нь pre-auth, cross-tenant тул RLS-г тойрч гарна.
+  setBypassContext();
   const admin = await prisma.superAdmin.findUnique({ where: { email } });
   if (!admin || !(await verifyPassword(password, admin.passwordHash))) {
     return {
