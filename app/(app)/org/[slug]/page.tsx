@@ -70,6 +70,9 @@ export async function generateMetadata({
 }: {
   params: Promise<{ slug: string }>;
 }) {
+  // Next.js `generateMetadata`-г Page component-оос тусад нь (өөр async
+  // context-д) дуудна тул тэндэх setBypassContext() энд үзэгдэхгүй.
+  setBypassContext();
   const { slug } = await params;
   const org = await loadOrg(slug);
   return { title: org ? `${org.name} — Цаг захиалах` : "Олдсонгүй" };
