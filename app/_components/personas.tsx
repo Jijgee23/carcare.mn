@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { CarIcon, TrendingUpIcon, WrenchIcon } from "./landing-icons";
 import { SectionHeading } from "./section-heading";
 
@@ -19,6 +20,8 @@ const PERSONAS = [
     role: "Үйлчлүүлэгч",
     title: "Машиныхаа эрүүл мэндийг мэдэх",
     desc: "Өмнөх засваруудын түүх, дараагийн ТО-ны хугацаа, үнийн саналыг утсан дээрээ.",
+    href: "/login",
+    ctaLabel: "Утасны дугаараа оруулж нэвтрэх",
   },
 ];
 
@@ -44,6 +47,14 @@ export function Personas() {
               <p className="mt-2 text-sm text-white/50 leading-relaxed">
                 {p.desc}
               </p>
+              {p.href ? (
+                <Link
+                  href={p.href}
+                  className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-violet-400 hover:text-violet-300 transition-colors"
+                >
+                  {p.ctaLabel} →
+                </Link>
+              ) : null}
             </div>
           ))}
         </div>
