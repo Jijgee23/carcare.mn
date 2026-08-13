@@ -58,7 +58,7 @@ type Parsed = {
   durationUnitId: string | null;
   description: string | null;
   isActive: boolean;
-  laborCategoryId: string | null;
+  categoryId: string | null;
 };
 
 async function validate(
@@ -78,7 +78,7 @@ async function validate(
   const durationValueRaw = s(fd, "durationValue");
   const durationUnitIdRaw = s(fd, "durationUnitId");
   const description = s(fd, "description");
-  const laborCategoryIdRaw = s(fd, "laborCategoryId");
+  const categoryIdRaw = s(fd, "categoryId");
   const isActive = fd.get("isActive") === "on";
 
   const errors: Record<string, string> = {};
@@ -96,7 +96,7 @@ async function validate(
   let stock: Prisma.Decimal | null = null;
   let durationValue: Prisma.Decimal | null = null;
   let durationUnitId: string | null = null;
-  let laborCategoryId: string | null = null;
+  let categoryId: string | null = null;
   let unitId: string | null = null;
 
   // Хэмжих нэгж: LABOR / GOODS-д заавал
@@ -148,20 +148,18 @@ async function validate(
     }
   }
 
-  // Ажил төрөлд ажлын ангилал заавал
-  if (type === "LABOR") {
-    if (!laborCategoryIdRaw) {
-      errors.laborCategoryId = "Ажлын ангилал сонгоно уу.";
+  // Бүх төрөлд ангилал заавал
+  if (!categoryIdRaw) {
+    errors.categoryId = "Ангилал сонгоно уу.";
+  } else {
+    const exists = await prisma.category.findFirst({
+      where: { id: categoryIdRaw, tenantId },
+      select: { id: true },
+    });
+    if (!exists) {
+      errors.categoryId = "Сонгосон ангилал олдсонгүй.";
     } else {
-      const exists = await prisma.laborCategory.findFirst({
-        where: { id: laborCategoryIdRaw, tenantId },
-        select: { id: true },
-      });
-      if (!exists) {
-        errors.laborCategoryId = "Сонгосон ангилал олдсонгүй.";
-      } else {
-        laborCategoryId = laborCategoryIdRaw;
-      }
+      categoryId = categoryIdRaw;
     }
   }
 
@@ -180,7 +178,7 @@ async function validate(
       durationUnitId,
       description: description || null,
       isActive,
-      laborCategoryId,
+      categoryId,
     },
     errors,
   };
@@ -230,7 +228,7 @@ export async function createServiceAction(
         durationUnitId: data.durationUnitId,
         description: data.description,
         isActive: data.isActive,
-        laborCategoryId: data.laborCategoryId,
+        categoryId: data.categoryId,
       },
       select: { id: true },
     });
@@ -295,7 +293,7 @@ export async function updateServiceAction(
     isActive: data.isActive,
     unitId: data.unitId,
     durationUnitId: data.durationUnitId,
-    laborCategoryId: data.laborCategoryId,
+    categoryId: data.categoryId,
   };
 
   try {

@@ -5,18 +5,24 @@ export function PageHeader({
   title,
   description,
   actions,
+  leading,
 }: {
   title: string;
   description?: string;
   actions?: ReactNode;
+  /** Гарчгийн зүүн талд гарах элемент (жишээ нь avatar). */
+  leading?: ReactNode;
 }) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-      <div>
-        <h1 className="text-2xl font-bold text-white">{title}</h1>
-        {description ? (
-          <p className="text-white/40 text-sm mt-1">{description}</p>
-        ) : null}
+      <div className="flex items-center gap-3">
+        {leading}
+        <div>
+          <h1 className="text-2xl font-bold text-white">{title}</h1>
+          {description ? (
+            <p className="text-white/40 text-sm mt-1">{description}</p>
+          ) : null}
+        </div>
       </div>
       {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
     </div>

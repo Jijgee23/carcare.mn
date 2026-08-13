@@ -11,7 +11,7 @@ export const revalidate = 3600;
 
 export default function ContactPage() {
   return (
-    <div className="min-h-screen flex flex-col bg-[#0a0a0f]">
+    <div className="min-h-screen flex flex-col bg-[var(--bg-primary)]">
       <header className="border-b border-white/[0.06]">
         <div className="mx-auto max-w-5xl px-4 h-16 flex items-center justify-between">
           <Link href="/">
@@ -39,7 +39,7 @@ export default function ContactPage() {
               href={`https://${CONTACT.website}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-violet-300 hover:text-violet-200 text-sm"
+              className="text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800 text-sm"
             >
               {CONTACT.website}
             </a>

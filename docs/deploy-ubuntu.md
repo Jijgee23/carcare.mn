@@ -159,6 +159,8 @@ sudo certbot --nginx -d carcare.mn -d www.carcare.mn
 ```cron
 # Захиалгын сануулга — цаг тутам
 0 * * * * curl -fsS -H "Authorization: Bearer ШИНИЙ_CRON_SECRET" https://carcare.mn/api/cron/appointment-reminders > /dev/null 2>&1
+# Хугацаа хэтэрсэн (хариу өгөөгүй) цаг захиалгыг цуцлах — цаг тутам
+15 * * * * curl -fsS -H "Authorization: Bearer ШИНИЙ_CRON_SECRET" https://carcare.mn/api/cron/expire-appointments > /dev/null 2>&1
 # Subscription хугацаа дуусгах — өдөр бүр 00:05
 5 0 * * * curl -fsS -H "Authorization: Bearer ШИНИЙ_CRON_SECRET" https://carcare.mn/api/cron/expire-subscriptions > /dev/null 2>&1
 # Багц дуусах сануулга (эзэд рүү push/мэдэгдэл) — өдөр бүр 09:00
@@ -186,7 +188,7 @@ sudo systemctl restart carcare
 - [ ] `prisma migrate deploy` амжилттай
 - [ ] `systemctl status carcare` → active (running)
 - [ ] HTTPS (certbot) тохирсон — web push, secure cookie ажиллана
-- [ ] crontab 2 мөр нэмсэн, CRON_SECRET таарсан
+- [ ] crontab 4 мөр нэмсэн, CRON_SECRET таарсан
 - [ ] `public/uploads` бичигдэх эрхтэй + persistent
 - [ ] Firebase JSON серверт (git-д биш), `FIREBASE_SERVICE_ACCOUNT_FILE` зөв зам
 - [ ] PostgreSQL backup (pg_dump cron) тохируулсан

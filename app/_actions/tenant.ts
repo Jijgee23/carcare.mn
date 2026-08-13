@@ -71,6 +71,22 @@ export async function updateTenantAction(
   const normPhone1 = normalizePhone(phone1) ?? phone1;
   const normPhone2 = phone2 ? normalizePhone(phone2) : null;
 
+  // Tenant.name DB түвшинд unique биш (2 өөр компани адилхан нэртэй байх нь
+  // бодит боломжтой) — гэхдээ анзаарахгүй бол давхцах эрсдэлтэй тул
+  // сануулга мессеж өгнө (signUpAction-той ижил UX).
+  const nameConflict = await prisma.tenant.findFirst({
+    where: { name, id: { not: user.tenantId } },
+    select: { id: true },
+  });
+  if (nameConflict) {
+    return {
+      ok: false,
+      fieldErrors: {
+        name: "Энэ нэртэй байгууллага аль хэдийн бүртгэлтэй байна. Өөр нэр сонгоно уу.",
+      },
+    };
+  }
+
   // Онлайн цаг захиалга нь багцаас хамаарна — багц дэмжихгүй бол идэвхжүүлэхгүй.
   if (acceptsOnlineBooking) {
     const allowed = await isFeatureEnabled(
@@ -102,9 +118,7 @@ export async function updateTenantAction(
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
       const target = (e.meta?.target as string[] | undefined)?.join(",") ?? "";
       const fe: Record<string, string> = {};
-      if (target.includes("name"))
-        fe.name = "Энэ нэртэй байгууллага аль хэдийн бүртгэгдсэн байна.";
-      else if (target.includes("registerNumber"))
+      if (target.includes("registerNumber"))
         fe.registerNumber = "Энэ регистр өөр байгууллагад ашиглагдсан байна.";
       else if (target.includes("email"))
         fe.email = "Энэ Gmail өөр байгууллагад ашиглагдсан байна.";

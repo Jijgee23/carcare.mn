@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Prisma } from "@/app/generated/prisma/client";
 import { requireAccount } from "@/lib/auth/account";
+import { normalizePlate } from "@/lib/vehicles";
 import {
   ORDER_STATUS_BADGE,
   ORDER_STATUS_LABEL,
@@ -33,12 +34,35 @@ export default async function AccountHistoryPage({
   const account = await requireAccount();
   const { plate } = await searchParams;
 
-  // Тус хэрэглэгчийн бүх захиалга — холбогдсон Customer-ээр (олон байгууллага
-  // дамжсан). Сонголтоор тухайн машины (plate) түүхээр шүүнэ.
+  // Энэ account-ийн БАТАЛГААЖСАН эзэмшлийн машинууд: аль нэг байгууллагад
+  // account-той холбоотой Customer-т бүртгэлтэй TenantVehicle (утсаар
+  // баталгаажсан холбоос). AccountVehicle нь өөрөө claim хийдэг тул эзэмшлийн
+  // нотолгоо БОЛОХГҮЙ — зөвхөн энэ баталгаатай холбоосыг ашиглана.
+  const ownedLinks = await prisma.tenantVehicle.findMany({
+    where: {
+      OR: [
+        { customer: { accountId: account.id } },
+        { customer: { phone: { endsWith: account.phone } } },
+      ],
+    },
+    select: { vehicleId: true },
+    distinct: ["vehicleId"],
+  });
+  const ownedVehicleIds = ownedLinks.map((l) => l.vehicleId);
+
+  // Cross-tenant түүх: эзэмшлийн машины БҮХ байгууллага дахь захиалга, мөн
+  // account-той холбоотой Customer-ийн захиалга (хуучин зан төлөвтэй нийцүүлэв).
+  // Машин нэг байгууллагад өөр (холбогдоогүй) Customer дээр бүртгэгдсэн ч,
+  // эзэмшил нь өөр газар баталгаажсан бол түүх энд нэгдэж харагдана.
   const where: Prisma.ServiceOrderWhereInput = {
-    customer: { accountId: account.id },
+    OR: [
+      { customer: { accountId: account.id } },
+      ...(ownedVehicleIds.length
+        ? [{ vehicleId: { in: ownedVehicleIds } }]
+        : []),
+    ],
   };
-  if (plate) where.vehicle = { plate };
+  if (plate) where.vehicle = { plate: normalizePlate(plate) };
 
   const orders = await prisma.serviceOrder.findMany({
     where,
@@ -61,7 +85,7 @@ export default async function AccountHistoryPage({
   });
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="w-full flex flex-col gap-6">
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Үйлчилгээний түүх</h1>
@@ -82,7 +106,7 @@ export default async function AccountHistoryPage({
       {plate ? (
         <Link
           href="/account/history"
-          className="self-start text-xs text-violet-300 hover:text-violet-200"
+          className="self-start text-xs text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
         >
           Бүх машины түүхийг харах →
         </Link>
@@ -98,9 +122,10 @@ export default async function AccountHistoryPage({
           {orders.map((o) => {
             const when = o.completedAt ?? o.scheduledAt ?? o.createdAt;
             return (
-              <div
+              <Link
                 key={o.id}
-                className="glass rounded-2xl p-4 border border-white/[0.08]"
+                href={`/account/history/${o.id}`}
+                className="glass rounded-2xl p-4 border border-white/[0.08] block hover:bg-white/[0.03] transition-colors"
               >
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div className="min-w-0">
@@ -133,7 +158,7 @@ export default async function AccountHistoryPage({
                     </div>
                   </div>
                 </div>
-              </div>
+              </Link>
             );
           })}
         </div>

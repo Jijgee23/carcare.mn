@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { setBypassContext } from "@/lib/tenant-context";
 
 /**
  * Хугацаа дууссан subscription-уудыг автоматаар EXPIRED болгоно.
@@ -45,6 +46,8 @@ async function run(req: Request) {
   if (supplied !== secret) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  // Бүх tenant дундуур bulk update хийдэг cron тул RLS-г тойрч гарна.
+  setBypassContext();
 
   const now = new Date();
 

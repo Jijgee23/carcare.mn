@@ -1,11 +1,86 @@
 @import "tailwindcss";
 
+/* Хөгжүүлэлтийн түүхийн файлд class-маягийн тэмдэглэгээ (ж: bg-[...]) бичигддэг
+   тул Tailwind-ийн content scan-аас хасна — буруу CSS үүсэх, бохирдохоос сэргийлнэ. */
+@source not "../app_history.txt";
+
+/* `light:` variant — зөвхөн гэрэлт горимд (html.light) хэрэглэх override-д.
+   Жишээ: `text-red-200 light:text-red-700`. */
+@custom-variant light (&:where(.light, .light *));
+
+/* ── Theme token-ууд ──────────────────────────────────────────────
+   :root = dark (default). html.light = light. Бараг бүх UI нь Tailwind-н
+   `*-white/x` utility ашигладаг тул light үед `--color-white`-г бараан болгож
+   массаар эргүүлнэ; өнгөт (accent) товчны цагаан текстийг safeguard-аар хадгална. */
 :root {
   --bg-primary: #0a0a0f;
   --bg-secondary: #0d0d14;
+  --surface: #0d0d14; /* sidebar, dropdown, цул гадаргуу */
+  --glass-bg: rgba(255, 255, 255, 0.04);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --input-bg: rgba(255, 255, 255, 0.04);
+  --input-border: rgba(255, 255, 255, 0.1);
+  --input-fg: #ffffff;
+  --placeholder: rgba(255, 255, 255, 0.25);
+  --option-bg: #0d0d14;
+  --popover: #15151f; /* custom dropdown цэс */
+  --hover-bg: rgba(255, 255, 255, 0.06);
   --accent: #6c47ff;
   --accent-light: #8b6bff;
   --accent-glow: rgba(108, 71, 255, 0.25);
+  /* Сонгогдсон (идэвхтэй) шүүлтүүр/dropdown-ы текстийн өнгө.
+     Dark-д цайвар ягаан; light-д тод ягаан (доор override). */
+  --accent-strong: #8b6bff;
+  /* График (SVG) — тэнхлэгийн шошго, grid, hover. Inline SVG-д Tailwind
+     хэрэглэх боломжгүй тул theme-aware var-аар. */
+  --chart-grid: rgba(255, 255, 255, 0.06);
+  --chart-label: rgba(255, 255, 255, 0.35);
+  --chart-crosshair: rgba(255, 255, 255, 0.18);
+  --chart-marker-ring: #14141f;
+  /* Нимгэн, цэвэрхэн scrollbar-ын thumb өнгө. */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.12);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.22);
+  /* Sidebar-ийн идэвхтэй өргөн (admin/consumer/system бүгд хуваалцана) —
+     collapse/expand JS-ээс шинэчлэгдэнэ (харах: use-sidebar-collapse.ts).
+     designs/design_example.html-ийн rail(4.5rem)/sidebar(16rem) хэмжээтэй. */
+  --sidebar-w: 16rem;
+  /* App shell (dashboard/discover/system) — дэвсгэр (dark) —
+     designs/design_example.html-ийн ink scale: bg=ink-900, sidebar/surface=
+     ink-950. Landing/auth зэрэг sidebar-гүй хуудсууд --bg-primary/--surface-
+     ээ хэвээр ашиглана. Light mode-д доор ердийнхтэй адилхан болгоно. */
+  --shell-bg-primary: #12142b; /* ink-900 */
+  --shell-surface: #0e1024; /* ink-950 */
+}
+
+html.light {
+  --bg-primary: #f4f5fa;
+  --bg-secondary: #ffffff;
+  --surface: #ffffff;
+  --glass-bg: rgba(255, 255, 255, 0.75);
+  --glass-border: rgba(17, 20, 45, 0.1);
+  --input-bg: #ffffff;
+  --input-border: rgba(17, 20, 45, 0.16);
+  --input-fg: #14151c;
+  --placeholder: rgba(17, 20, 45, 0.4);
+  --option-bg: #ffffff;
+  --popover: #ffffff;
+  --hover-bg: rgba(17, 20, 45, 0.05);
+  /* Бүх `text/bg/border-white/x` utility-г бараан болгож эргүүлнэ. */
+  --color-white: #14151c;
+  /* Гэрэлт горимд сонгогдсон шүүлтүүрийн цайвар ягаан текст цайвар дэвсгэр
+     дээр бүдгэрдэг тул тод ягаан (violet-700) болгоно. */
+  --accent-strong: #6d28d9;
+  /* Графикийн цагаан шошго/grid гэрэлт дэвсгэр дээр алга болдог тул бараан. */
+  --chart-grid: rgba(17, 20, 45, 0.09);
+  --chart-label: rgba(17, 20, 45, 0.5);
+  --chart-crosshair: rgba(17, 20, 45, 0.25);
+  --chart-marker-ring: #ffffff;
+  --scrollbar-thumb: rgba(17, 20, 45, 0.18);
+  --scrollbar-thumb-hover: rgba(17, 20, 45, 0.32);
+  /* Light mode-д app shell ердийн --bg-primary/--surface-тэй адил харагдана
+     (ink scale нь зөвхөн dark mode-д хэрэглэгдэнэ). */
+  --shell-bg-primary: var(--bg-primary);
+  --shell-surface: var(--surface);
 }
 
 @theme inline {
@@ -13,9 +88,44 @@
   --color-accent: var(--accent);
 }
 
+/* ₮ (U+20AE) глиф Geist-д байхгүй тул fallback фонтоос өөр baseline/хэмжээтэй
+   ирж тооноос "унасан" мэт харагддаг. Зөвхөн ₮-д зориулсан face — Arial-аас
+   авч хэмжээг тоонуудтай тааруулна. */
+@font-face {
+  font-family: "TugrikGlyph";
+  src: local("Arial");
+  unicode-range: U+20AE;
+  size-adjust: 94%;
+}
+
 body {
-  font-family: var(--font-geist), Arial, sans-serif;
+  font-family: var(--font-geist), "TugrikGlyph", Arial, sans-serif;
   background: var(--bg-primary);
+  color-scheme: dark;
+}
+html.light body {
+  color-scheme: light;
+}
+
+/* Light theme-д өнгөт (accent) товч/badge/gradient-avatar дээрх текст/икон
+   цагаан хэвээр үлдэнэ (--color-white бараан болсон ч). `[class~="..."]` нь
+   яг тухайн class TOKEN-ыг таарна (ж: "from-violet-500" нь "from-violet-500/40"
+   зэрэг opacity хувилбартай төөрөгдөхгүй — эдгээр нь өөр, зориудаар бараан
+   текст авдаг зөөлөн tint badge-үүд тул хөндөхгүй). */
+html.light
+  :is(
+    .bg-violet-700, .bg-violet-600, .bg-violet-500,
+    .bg-blue-700, .bg-blue-600, .bg-blue-500,
+    .bg-indigo-700, .bg-indigo-600, .bg-indigo-500,
+    .bg-emerald-700, .bg-emerald-600, .bg-emerald-500,
+    .bg-red-700, .bg-red-600, .bg-red-500,
+    .bg-amber-600, .bg-amber-500,
+    .bg-purple-600, .bg-purple-500,
+    .glow-btn,
+    [class~="from-violet-500"],
+    [class~="from-red-500"]
+  ) {
+  color: #fff;
 }
 
 /* Main-content gradient backdrop.
@@ -45,10 +155,113 @@ body {
     );
 }
 @media (min-width: 1024px) {
-  /* Clear the 15rem sidebar so the backdrop only covers the content column. */
+  /* Clear the sidebar so the backdrop only covers the content column. */
   .content-bg-layer {
-    left: 15rem;
+    left: var(--sidebar-w);
+    transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
+}
+
+/* App sidebar (admin/consumer/system) — өргөн нь `--sidebar-w`-ээр удирдагдана,
+   collapse/expand хийхэд гөлгөр анимэйшнтэй. Дагаад контентийн offset. */
+.app-sidebar {
+  width: var(--sidebar-w);
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+@media (min-width: 1024px) {
+  .app-content-offset {
+    margin-left: var(--sidebar-w);
+    transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+/* App shell (dashboard/discover/system) gradient backdrop — .content-bg-layer-
+   тэй ижил зарчим, гэхдээ `--shell-bg-primary` (ink) ашигладаг. Sidebar-гүй
+   хуудсууд (landing, auth) хэвээрээ .content-bg-layer/--bg-primary ашиглана. */
+.shell-content-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -10;
+  pointer-events: none;
+  background-color: var(--shell-bg-primary);
+  background-image:
+    radial-gradient(
+      60rem 48rem at 18% 0%,
+      rgba(108, 71, 255, 0.13),
+      transparent 60%
+    ),
+    radial-gradient(
+      52rem 44rem at 100% 8%,
+      rgba(59, 130, 246, 0.09),
+      transparent 55%
+    ),
+    radial-gradient(
+      48rem 48rem at 90% 100%,
+      rgba(139, 107, 255, 0.06),
+      transparent 60%
+    );
+}
+@media (min-width: 1024px) {
+  .shell-content-bg {
+    left: var(--sidebar-w);
+    transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+/* Sidebar-ийг нээх/хаах товч — ирмэг дээр хөвөгч тойрог. Tailwind-ийн
+   `-translate-y-1/2` нь native `translate` property ашигладаг тул энд
+   `rotate` property-г тусад нь хэрэглэвэл хоорондоо мөргөлдөхгүй. */
+.sidebar-collapse-btn {
+  transition:
+    rotate 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.sidebar-collapse-btn:hover {
+  box-shadow: 0 4px 16px -4px rgba(108, 71, 255, 0.5);
+}
+.sidebar-collapse-btn[data-collapsed="true"] {
+  rotate: 180deg;
+}
+/* Collapsed үед nav label-уудыг нуух — hover tooltip-оор орлуулна. */
+.sidebar-tooltip {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-sidebar,
+  .app-content-offset,
+  .shell-content-bg,
+  .content-bg-layer,
+  .sidebar-collapse-btn,
+  .sidebar-tooltip {
+    transition: none !important;
+  }
+}
+
+/* Landing-ийн gradient дэвсгэр — wallpaper зургийн оронд. content-bg-layer-тэй
+   ижил зарчим (fixed + static = нэг удаа зурагдана) боловч sidebar clear хийхгүй,
+   өнгө нь арай баялаг: дээд хэсэгт violet/цэнхэр туяа, доор зөөлөн violet. */
+.landing-bg-layer {
+  position: fixed;
+  inset: 0;
+  z-index: -10;
+  pointer-events: none;
+  background-color: var(--bg-primary);
+  background-image:
+    radial-gradient(
+      70rem 50rem at 15% -5%,
+      rgba(108, 71, 255, 0.22),
+      transparent 60%
+    ),
+    radial-gradient(
+      60rem 46rem at 100% 0%,
+      rgba(59, 130, 246, 0.16),
+      transparent 55%
+    ),
+    radial-gradient(
+      56rem 56rem at 50% 110%,
+      rgba(139, 107, 255, 0.12),
+      transparent 60%
+    );
 }
 
 @keyframes float {
@@ -64,10 +277,38 @@ body {
 .float-anim { animation: float 4s ease-in-out infinite; }
 .glow-btn { animation: glow-pulse 2.5s ease-in-out infinite; }
 
+/* Theme-ээс хамаарч аль нэг нь харагддаг хос элемент (жишээ нь брэнд лого):
+   dark (default) үед .dark-only, light үед .light-only харагдана. */
+.light-only { display: none; }
+html.light .dark-only { display: none; }
+html.light .light-only { display: block; }
+
 .glass {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--glass-bg);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--glass-border);
+}
+
+/* Footer-ийн бүртгэлтэй байгууллагуудын лого урсдаг тууз (marquee).
+   Track нь ижил 2 хагасаас бүрддэг тул -50% хүрэхэд саадгүй эхнээсээ давтагдана. */
+@keyframes logo-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.logo-marquee {
+  overflow: hidden;
+  mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+}
+.logo-marquee-track {
+  width: max-content;
+  animation: logo-marquee var(--marquee-duration, 40s) linear infinite;
+}
+.logo-marquee:hover .logo-marquee-track {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .logo-marquee-track { animation: none; }
 }
 
 .gradient-text {
@@ -79,6 +320,31 @@ body {
 
 .hero-glow {
   background: radial-gradient(ellipse 60% 40% at 50% 0%, rgba(108,71,255,0.18) 0%, transparent 70%);
+}
+
+/* Нимгэн, орчин үеийн scrollbar — sidebar нав гэх мэт. Firefox + WebKit.
+   Thumb нь дугуй ирмэгтэй, зөвхөн hover дээр бага зэрэг тодорно. */
+.sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+.sidebar-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 9999px;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+/* Дээд/доод булангийн товчлуурыг нууна. */
+.sidebar-scroll::-webkit-scrollbar-button {
+  display: none;
 }
 
 /* Sidebar nav item — гэрэлт (light/shine) hover эффект. */
@@ -159,6 +425,12 @@ body {
     inset 2px 0 10px -4px rgba(167, 139, 255, 0.6),
     0 8px 26px -10px rgba(108, 71, 255, 0.7);
 }
+/* Гэрэлт горимд hover дээр текст цагаан болвол (color:#fff) цагаан гадаргуу
+   дээр алга болно — бараан болгож, гэрэлтэлтийг зөөлрүүлнэ. */
+html.light .nav-item:hover {
+  color: #14151c;
+  text-shadow: 0 0 12px rgba(108, 71, 255, 0.22);
+}
 .nav-item .nav-icon {
   display: inline-flex;
   transition:
@@ -193,16 +465,16 @@ body {
 
 .auth-input {
   width: 100%;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
   border-radius: 0.75rem;
   padding: 0.75rem 1rem;
   font-size: 0.875rem;
-  color: white;
+  color: var(--input-fg);
   outline: none;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
-.auth-input::placeholder { color: rgba(255,255,255,0.2); }
+.auth-input::placeholder { color: var(--placeholder); }
 .auth-input:focus {
   border-color: rgba(139, 107, 255, 0.6);
   box-shadow: 0 0 0 3px rgba(108, 71, 255, 0.15);
@@ -211,28 +483,30 @@ body {
 /* Compact input — dashboard form-уудад: padding/радиус багатай */
 .compact-input {
   width: 100%;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
   border-radius: 0.5rem;
   padding: 0.5rem 0.75rem;
   font-size: 0.875rem;
-  color: white;
+  color: var(--input-fg);
   outline: none;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
-.compact-input::placeholder { color: rgba(255,255,255,0.25); }
+.compact-input::placeholder { color: var(--placeholder); }
 .compact-input:focus {
   border-color: rgba(139, 107, 255, 0.5);
   box-shadow: 0 0 0 2px rgba(108, 71, 255, 0.15);
 }
 /* Browser-н native dropdown-д option-ууд цайвар background дээр цагаан текстээр
    хүндэгдэхээс сэргийлж — select бол dark background + readable text аар бичүүлнэ */
-select.auth-input option {
-  background-color: #0d0d14;
-  color: rgba(255, 255, 255, 0.92);
+select.auth-input option,
+select.compact-input option {
+  background-color: var(--option-bg);
+  color: var(--input-fg);
 }
-select.auth-input option:disabled {
-  color: rgba(255, 255, 255, 0.4);
+select.auth-input option:disabled,
+select.compact-input option:disabled {
+  color: var(--placeholder);
 }
 
 /* ── Хэвлэх / PDF ──────────────────────────────────────────────

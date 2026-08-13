@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createNotification } from "@/lib/notifications";
 import { prisma } from "@/lib/prisma";
 import { sendSms } from "@/lib/sms";
+import { setBypassContext } from "@/lib/tenant-context";
 
 /**
  * Удахгүй болох (24 цагийн дотор) баталгаажсан цаг захиалгуудад сануулга SMS
@@ -27,6 +28,7 @@ function formatWhen(d: Date): string {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
   });
 }
 
@@ -41,6 +43,8 @@ async function run(req: Request) {
   if (supplied !== secret) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  // Бүх tenant дундуур scan хийдэг cron тул RLS-г тойрч гарна.
+  setBypassContext();
 
   const now = new Date();
   const until = new Date(now.getTime() + WINDOW_MS);

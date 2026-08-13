@@ -2,7 +2,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { deleteReportAction } from "@/app/_actions/diagnostic-reports";
 import { PageHeader } from "@/app/_components/page-header";
-import { PrintButton } from "./print-button";
 import { AdvancedPDFButton } from "./pdf-generator";
 import { requireUser } from "@/lib/auth";
 import { branchScopeId } from "@/lib/auth/roles";
@@ -10,16 +9,13 @@ import { customerLabel } from "@/lib/customers";
 import {
   DIAGNOSTIC_TYPE_BADGE,
   DIAGNOSTIC_TYPE_LABEL,
-  itemPositions,
-  positionedKey,
   type DiagnosticType,
   type ReportData,
-  type ReportEntry,
-  type TemplateItem,
   type TemplateSchema,
   emptySchema,
 } from "@/lib/diagnostics";
 import { prisma } from "@/lib/prisma";
+import { ReportAnswers } from "./report-answers";
 
 export const metadata = {
   title: "Оношилгооны тайлан",
@@ -65,7 +61,7 @@ export default async function ReportDetailPage({
     <div id="print-root" className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
       <PageHeader
         title={report.template.name}
-        description={`v${report.templateVersion} · ${report.createdAt.toLocaleString("mn-MN")}`}
+        description={`v${report.templateVersion} · ${report.createdAt.toLocaleString("mn-MN", { hour12: false })}`}
         actions={
           <div className="flex items-center gap-2">
             <span
@@ -73,7 +69,6 @@ export default async function ReportDetailPage({
             >
               {DIAGNOSTIC_TYPE_LABEL[tp]}
             </span>
-            <PrintButton />
             <AdvancedPDFButton
               report={{
                 reportId: report.id,
@@ -105,7 +100,7 @@ export default async function ReportDetailPage({
         <Row label="Үйлчлүүлэгч">
           <Link
             href={`/dashboard/customers/${report.customer.id}`}
-            className="text-violet-300 hover:text-violet-200"
+            className="text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
           >
             {customerLabel(report.customer)}
           </Link>
@@ -114,7 +109,7 @@ export default async function ReportDetailPage({
         <Row label="Машин">
           <Link
             href={`/dashboard/vehicles/${report.vehicle.id}`}
-            className="text-violet-300 hover:text-violet-200"
+            className="text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
           >
             {report.vehicle.make} {report.vehicle.model}
           </Link>
@@ -133,7 +128,7 @@ export default async function ReportDetailPage({
           <Row label="Захиалга">
             <Link
               href={`/dashboard/orders/${report.order.id}`}
-              className="text-violet-300 hover:text-violet-200"
+              className="text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
             >
               #{report.order.number}
             </Link>
@@ -155,46 +150,7 @@ export default async function ReportDetailPage({
       </div>
 
       <div className="flex flex-col gap-5">
-        {schema.sections.map((section) => (
-          <section
-            key={section.id}
-            className="glass rounded-2xl border border-white/[0.08] overflow-hidden"
-          >
-            <div className="px-5 py-3 border-b border-white/[0.06]">
-              <h2 className="font-semibold text-sm">{section.title}</h2>
-            </div>
-            <div className="divide-y divide-white/[0.04]">
-              {section.items.map((item) => {
-                const positions = itemPositions(item);
-                return (
-                  <div
-                    key={item.id}
-                    className="px-5 py-3 flex flex-col gap-2"
-                  >
-                    <div className="text-xs text-white/40">{item.label}</div>
-                    {positions ? (
-                      <div className="flex flex-col gap-3 pl-3 border-l border-white/[0.06]">
-                        {positions.map((pos) => (
-                          <div key={pos.code} className="flex flex-col gap-1">
-                            <div className="text-[11px] text-white/50">
-                              {pos.label}
-                            </div>
-                            <EntryView
-                              item={item}
-                              entry={data[positionedKey(item.id, pos.code)] ?? {}}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <EntryView item={item} entry={data[item.id] ?? {}} />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        ))}
+        <ReportAnswers schema={schema} data={data} />
 
         {report.signatureUrl ? (
           <section className="glass rounded-2xl p-5 border border-white/[0.08]">
@@ -222,56 +178,13 @@ export default async function ReportDetailPage({
           <input type="hidden" name="id" value={report.id} />
           <button
             type="submit"
-            className="text-xs text-red-400 hover:text-red-300 px-3 py-1.5 rounded-lg hover:bg-red-500/10"
+            className="text-xs text-red-400 hover:text-red-300 light:text-red-600 light:hover:text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-500/10"
           >
             Тайланг устгах
           </button>
         </form>
       </div>
     </div>
-  );
-}
-
-// Нэг талбарын (item эсвэл байрлалын) утга/зураг/гарын үсэг/тэмдэглэлийг харуулна.
-function EntryView({
-  item,
-  entry,
-}: {
-  item: TemplateItem;
-  entry: ReportEntry;
-}) {
-  return (
-    <>
-      <div className="text-sm text-white/90">
-        {renderValue(item.type, entry.value)}
-      </div>
-      {entry.photos && entry.photos.length > 0 ? (
-        <div className="flex flex-wrap gap-2 mt-1">
-          {entry.photos.map((p, idx) => (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              key={idx}
-              src={p}
-              alt=""
-              className="w-24 h-24 object-cover rounded-lg border border-white/[0.06]"
-            />
-          ))}
-        </div>
-      ) : null}
-      {item.type === "signature" && typeof entry.value === "string" ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={entry.value}
-          alt="Гарын үсэг"
-          className="w-48 h-24 object-contain rounded-lg border border-white/[0.06] bg-white/[0.04]"
-        />
-      ) : null}
-      {entry.note ? (
-        <div className="text-xs text-white/50 italic">
-          Тэмдэглэл: {entry.note}
-        </div>
-      ) : null}
-    </>
   );
 }
 
@@ -282,15 +195,4 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
       <dd className="text-white/80">{children}</dd>
     </div>
   );
-}
-
-function renderValue(
-  type: string,
-  value: string | number | boolean | undefined,
-): React.ReactNode {
-  if (value === undefined || value === "" || value === null)
-    return <span className="text-white/30">—</span>;
-  if (type === "signature") return null;
-  if (typeof value === "boolean") return value ? "Тийм" : "Үгүй";
-  return String(value);
 }

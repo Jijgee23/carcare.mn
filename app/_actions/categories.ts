@@ -6,7 +6,7 @@ import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-export type LaborCategoryActionState = {
+export type CategoryActionState = {
   ok: boolean;
   message?: string;
   fieldErrors?: Record<string, string>;
@@ -20,18 +20,26 @@ function s(fd: FormData, key: string): string {
 async function authorizeOwner() {
   const user = await requireUser();
   if (!user.isOwner) {
-    throw new Error("Зөвхөн админ ажлын ангилал удирдана.");
+    throw new Error("Зөвхөн админ ангилал удирдана.");
   }
   return user;
 }
 
 function validate(fd: FormData): {
-  data: { name: string; description: string | null; isActive: boolean } | null;
+  data: {
+    name: string;
+    description: string | null;
+    isActive: boolean;
+    branchIds: string[];
+  } | null;
   errors: Record<string, string>;
 } {
   const name = s(fd, "name");
   const description = s(fd, "description");
   const isActive = fd.get("isActive") === "on";
+  const branchIds = fd
+    .getAll("branchIds")
+    .filter((v): v is string => typeof v === "string" && v.length > 0);
   const errors: Record<string, string> = {};
 
   if (!name) errors.name = "Ангилалын нэрээ оруулна уу.";
@@ -43,15 +51,29 @@ function validate(fd: FormData): {
   if (Object.keys(errors).length > 0) return { data: null, errors };
 
   return {
-    data: { name, description: description || null, isActive },
+    data: { name, description: description || null, isActive, branchIds },
     errors,
   };
 }
 
-export async function createLaborCategoryAction(
-  _prev: LaborCategoryActionState,
+// Өгөгдсөн branchId-ууд дотроос ЭНЭ тенантынхыг л шүүж буцаана (хууль бус
+// branch холбохоос сэргийлнэ).
+async function validBranchIds(
+  tenantId: string,
+  branchIds: string[],
+): Promise<string[]> {
+  if (branchIds.length === 0) return [];
+  const rows = await prisma.branch.findMany({
+    where: { tenantId, id: { in: branchIds } },
+    select: { id: true },
+  });
+  return rows.map((b) => b.id);
+}
+
+export async function createCategoryAction(
+  _prev: CategoryActionState,
   formData: FormData,
-): Promise<LaborCategoryActionState> {
+): Promise<CategoryActionState> {
   let user;
   try {
     user = await authorizeOwner();
@@ -62,14 +84,17 @@ export async function createLaborCategoryAction(
   const { data, errors } = validate(formData);
   if (!data) return { ok: false, fieldErrors: errors };
 
+  const branchIds = await validBranchIds(user.tenantId, data.branchIds);
+
   let created;
   try {
-    created = await prisma.laborCategory.create({
+    created = await prisma.category.create({
       data: {
         tenantId: user.tenantId,
         name: data.name,
         description: data.description,
         isActive: data.isActive,
+        branches: { connect: branchIds.map((id) => ({ id })) },
       },
       select: { id: true },
     });
@@ -89,23 +114,23 @@ export async function createLaborCategoryAction(
   await logAudit({
     tenantId: user.tenantId,
     userId: user.id,
-    entity: "LaborCategory",
+    entity: "Category",
     entityId: created.id,
     action: "CREATE",
     summary: data.name,
-    after: data,
+    after: { ...data, branchIds },
   });
 
-  revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard/services/categories");
   revalidatePath("/dashboard/services", "layout");
   return { ok: true, message: "Ангилал нэмэгдлээ." };
 }
 
-export async function updateLaborCategoryAction(
+export async function updateCategoryAction(
   id: string,
-  _prev: LaborCategoryActionState,
+  _prev: CategoryActionState,
   formData: FormData,
-): Promise<LaborCategoryActionState> {
+): Promise<CategoryActionState> {
   let user;
   try {
     user = await authorizeOwner();
@@ -116,16 +141,25 @@ export async function updateLaborCategoryAction(
   const { data, errors } = validate(formData);
   if (!data) return { ok: false, fieldErrors: errors };
 
+  const branchIds = await validBranchIds(user.tenantId, data.branchIds);
+
+  // Тенантынх мөн эсэхийг шалгана (set-д хэрэгтэй).
+  const existing = await prisma.category.findFirst({
+    where: { id, tenantId: user.tenantId },
+    select: { id: true },
+  });
+  if (!existing) return { ok: false, message: "Ангилал олдсонгүй." };
+
   try {
-    const updated = await prisma.laborCategory.updateMany({
-      where: { id, tenantId: user.tenantId },
+    await prisma.category.update({
+      where: { id },
       data: {
         name: data.name,
         description: data.description,
         isActive: data.isActive,
+        branches: { set: branchIds.map((bid) => ({ id: bid })) },
       },
     });
-    if (updated.count === 0) return { ok: false, message: "Ангилал олдсонгүй." };
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
       return {
@@ -142,39 +176,40 @@ export async function updateLaborCategoryAction(
   await logAudit({
     tenantId: user.tenantId,
     userId: user.id,
-    entity: "LaborCategory",
+    entity: "Category",
     entityId: id,
     action: "UPDATE",
     summary: data.name,
-    after: data,
+    after: { ...data, branchIds },
   });
 
-  revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard/services/categories");
   revalidatePath("/dashboard/services", "layout");
   return { ok: true, message: "Хадгалагдлаа." };
 }
 
-export async function deleteLaborCategoryAction(formData: FormData): Promise<void> {
+export async function deleteCategoryAction(formData: FormData): Promise<void> {
   const user = await authorizeOwner();
   const id = s(formData, "id");
   if (!id) return;
 
-  const target = await prisma.laborCategory.findFirst({
+  const target = await prisma.category.findFirst({
     where: { id, tenantId: user.tenantId },
     select: { name: true },
   });
 
   const usedCount = await prisma.service.count({
-    where: { tenantId: user.tenantId, laborCategoryId: id },
+    where: { tenantId: user.tenantId, categoryId: id },
   });
 
   if (usedCount > 0) {
-    await prisma.laborCategory.updateMany({
+    // Үйлчилгээнд ашиглагдсан бол устгахгүй — архивлана.
+    await prisma.category.updateMany({
       where: { id, tenantId: user.tenantId },
       data: { isActive: false },
     });
   } else {
-    await prisma.laborCategory.deleteMany({
+    await prisma.category.deleteMany({
       where: { id, tenantId: user.tenantId },
     });
   }
@@ -182,12 +217,12 @@ export async function deleteLaborCategoryAction(formData: FormData): Promise<voi
   await logAudit({
     tenantId: user.tenantId,
     userId: user.id,
-    entity: "LaborCategory",
+    entity: "Category",
     entityId: id,
     action: usedCount > 0 ? "UPDATE" : "DELETE",
     summary: target ? `${target.name}${usedCount > 0 ? " (архивлав)" : ""}` : null,
   });
 
-  revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard/services/categories");
   revalidatePath("/dashboard/services", "layout");
 }

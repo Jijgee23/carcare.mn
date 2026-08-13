@@ -12,7 +12,7 @@ export async function PATCH(
   if (auth.response) return auth.response;
   const { id } = await ctx.params;
 
-  const existing = await prisma.laborCategory.findFirst({
+  const existing = await prisma.category.findFirst({
     where: { id, tenantId: auth.user.tenantId },
   });
   if (!existing) return jsonError(404, "Ангилал олдсонгүй");
@@ -25,13 +25,13 @@ export async function PATCH(
   if (name !== undefined) {
     if (typeof name !== "string" || !name.trim())
       return jsonError(400, "Нэр хоосон байж болохгүй");
-    const dup = await prisma.laborCategory.findFirst({
+    const dup = await prisma.category.findFirst({
       where: { tenantId: auth.user.tenantId, name: (name as string).trim(), NOT: { id } },
     });
     if (dup) return jsonError(400, "Тийм нэртэй ангилал аль хэдийн байна");
   }
 
-  const category = await prisma.laborCategory.update({
+  const category = await prisma.category.update({
     where: { id },
     data: {
       ...(name !== undefined && { name: (name as string).trim() }),
@@ -55,17 +55,17 @@ export async function DELETE(
   if (auth.response) return auth.response;
   const { id } = await ctx.params;
 
-  const existing = await prisma.laborCategory.findFirst({
+  const existing = await prisma.category.findFirst({
     where: { id, tenantId: auth.user.tenantId },
   });
   if (!existing) return jsonError(404, "Ангилал олдсонгүй");
 
   const usageCount = await prisma.service.count({
-    where: { tenantId: auth.user.tenantId, laborCategoryId: id },
+    where: { tenantId: auth.user.tenantId, categoryId: id },
   });
   if (usageCount > 0)
     return jsonError(400, `${usageCount} үйлчилгээнд ашиглагдаж байгаа тул устгах боломжгүй`);
 
-  await prisma.laborCategory.delete({ where: { id } });
+  await prisma.category.delete({ where: { id } });
   return jsonOk({ ok: true });
 }

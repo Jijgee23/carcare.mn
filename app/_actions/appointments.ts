@@ -6,10 +6,8 @@ import { requireAccount } from "@/lib/auth/account";
 import { requireUser } from "@/lib/auth";
 import { assertActiveSubscription } from "@/lib/subscription-server";
 import { branchScopeId, canCreate, canEdit } from "@/lib/auth/roles";
-import {
-  resolveCustomerForAccount,
-  snapshotVehicleForAccount,
-} from "@/lib/appointments";
+import { resolveCustomerForAccount } from "@/lib/appointments";
+import { ensureTenantVehicle } from "@/lib/vehicles";
 import {
   DEFAULT_SLOT_CAPACITY,
   DEFAULT_SLOT_MINUTES,
@@ -31,6 +29,7 @@ function formatWhen(d: Date): string {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
   });
 }
 
@@ -127,7 +126,7 @@ export async function createAppointment(
   const branchId = s(formData, "branchId");
   const requestedRaw = s(formData, "requestedAt");
   const note = s(formData, "note");
-  const accountVehicleId = s(formData, "accountVehicleId") || null;
+  const vehicleId = s(formData, "vehicleId") || null;
 
   const fieldErrors: Record<string, string> = {};
   if (!branchId) fieldErrors.branchId = "Салбараа сонгоно уу.";
@@ -189,15 +188,56 @@ export async function createAppointment(
     };
   }
 
-  // Машин сонгосон бол тухайн Account-ийнх мөн эсэхийг шалгана.
-  if (accountVehicleId) {
-    const owned = await prisma.accountVehicle.findFirst({
-      where: { id: accountVehicleId, accountId: account.id },
+  // Машин сонгосон бол (global Vehicle id) энэ хэрэглэгчийнх мөн эсэхийг
+  // шалгана: өөрөө нэмсэн (AccountVehicle) ЭСВЭЛ сервисээс бүртгэгдэж
+  // холбогдсон (TenantVehicle → Customer, account/утсаар). Хоёр дахь
+  // тохиолдолд AccountVehicle холбоос үүсгэж appointment-д ашиглана.
+  let accountVehicleId: string | null = null;
+  if (vehicleId) {
+    const link = await prisma.accountVehicle.findUnique({
+      where: { accountId_vehicleId: { accountId: account.id, vehicleId } },
       select: { id: true },
     });
-    if (!owned) {
-      return { ok: false, fieldErrors: { accountVehicleId: "Машин олдсонгүй." } };
+    if (link) {
+      accountVehicleId = link.id;
+    } else {
+      const owned = await prisma.tenantVehicle.findFirst({
+        where: {
+          vehicleId,
+          OR: [
+            { customer: { accountId: account.id } },
+            { customer: { phone: { endsWith: account.phone } } },
+          ],
+        },
+        select: { id: true },
+      });
+      if (!owned) {
+        return { ok: false, fieldErrors: { vehicleId: "Машин олдсонгүй." } };
+      }
+      const created = await prisma.accountVehicle.upsert({
+        where: { accountId_vehicleId: { accountId: account.id, vehicleId } },
+        create: { accountId: account.id, vehicleId },
+        update: {},
+        select: { id: true },
+      });
+      accountVehicleId = created.id;
     }
+  }
+
+  // Ангилал сонгосон бол тухайн салбарт хамаарах (эсвэл салбаргүй=бүгдэд)
+  // идэвхтэй ангилал мөн эсэхийг шалгана. Заавал биш тул тохирохгүй бол үл хэрэгснэ.
+  let categoryId: string | null = s(formData, "categoryId") || null;
+  if (categoryId) {
+    const cat = await prisma.category.findFirst({
+      where: {
+        id: categoryId,
+        tenantId: branch.tenantId,
+        isActive: true,
+        OR: [{ branches: { some: { id: branch.id } } }, { branches: { none: {} } }],
+      },
+      select: { id: true },
+    });
+    if (!cat) categoryId = null;
   }
 
   const created = await prisma.appointment.create({
@@ -206,6 +246,7 @@ export async function createAppointment(
       branchId: branch.id,
       accountId: account.id,
       accountVehicleId,
+      categoryId,
       requestedAt: requestedAt!,
       note: note || null,
       status: "PENDING",
@@ -347,12 +388,28 @@ export async function registerAppointmentByStaff(
     };
   }
 
+  // Ангилал — заавал биш; салбарт хамаарах (эсвэл салбаргүй) идэвхтэйг л авна.
+  let categoryId: string | null = s(formData, "categoryId") || null;
+  if (categoryId) {
+    const cat = await prisma.category.findFirst({
+      where: {
+        id: categoryId,
+        tenantId: user.tenantId,
+        isActive: true,
+        OR: [{ branches: { some: { id: branchId } } }, { branches: { none: {} } }],
+      },
+      select: { id: true },
+    });
+    if (!cat) categoryId = null;
+  }
+
   const created = await prisma.appointment.create({
     data: {
       tenantId: user.tenantId,
       branchId,
       customerId,
       accountId: null,
+      categoryId,
       requestedAt: requestedAt!,
       note: note || null,
       status: "CONFIRMED",
@@ -408,18 +465,7 @@ export async function confirmAppointment(formData: FormData): Promise<void> {
     where: { id },
     include: {
       account: { select: { id: true, phone: true, name: true, email: true } },
-      accountVehicle: {
-        select: {
-          plate: true,
-          make: true,
-          model: true,
-          year: true,
-          vin: true,
-          fuelType: true,
-          wheelPosition: true,
-          mileage: true,
-        },
-      },
+      accountVehicle: { select: { vehicleId: true } },
     },
   });
   if (!appt) return;
@@ -439,15 +485,15 @@ export async function confirmAppointment(formData: FormData): Promise<void> {
       appt.tenantId,
       account,
     );
-    // Хэрэглэгч машинаа сонгосон бол тенантын Vehicle руу snapshot хийнэ.
+    // Хэрэглэгч машинаа сонгосон бол тенантад TenantVehicle link үүсгэнэ.
     let vehicleId: string | null = null;
     if (accountVehicle) {
-      vehicleId = await snapshotVehicleForAccount(
-        tx,
-        appt.tenantId,
+      vehicleId = accountVehicle.vehicleId;
+      await ensureTenantVehicle(tx, {
+        tenantId: appt.tenantId,
+        vehicleId,
         customerId,
-        accountVehicle,
-      );
+      });
     }
     await tx.appointment.update({
       where: { id: appt.id },

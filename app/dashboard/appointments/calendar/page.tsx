@@ -14,6 +14,7 @@ import {
 } from "@/lib/appointments-calendar";
 import { requireUser } from "@/lib/auth";
 import { branchScopeId, canView } from "@/lib/auth/roles";
+import { customerLabel } from "@/lib/customers";
 import { prisma } from "@/lib/prisma";
 
 export const metadata = {
@@ -21,7 +22,11 @@ export const metadata = {
 };
 
 function fmtTime(d: Date): string {
-  return d.toLocaleTimeString("mn-MN", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString("mn-MN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 }
 
 export default async function AppointmentsCalendarPage({
@@ -53,14 +58,15 @@ export default async function AppointmentsCalendarPage({
       where,
       orderBy: { requestedAt: "asc" },
       include: {
-        account: { select: { name: true } },
-        customer: { select: { fullName: true } },
+        account: { select: { name: true, phone: true } },
+        customer: { select: { fullName: true, phone: true } },
         branch: { select: { name: true } },
       },
     }),
     prisma.branch.findMany({
       where: {
         tenantId: user.tenantId,
+        isActive: true,
         ...(scopeBranchId ? { id: scopeBranchId } : {}),
       },
       orderBy: { name: "asc" },
@@ -77,8 +83,12 @@ export default async function AppointmentsCalendarPage({
     else byDay.set(k, [a]);
   }
 
+  // Нэргүй бол placeholder биш — утсаар нь харуулна (customerLabel).
   const apptName = (a: Appt) =>
-    a.account?.name || a.customer?.fullName || "Зочин";
+    customerLabel({
+      fullName: a.account?.name ?? a.customer?.fullName,
+      phone: a.account?.phone ?? a.customer?.phone,
+    });
 
   // Навигаци / toggle линкийн query-г бүрдүүлэгч.
   const hrefWith = (over: { interval?: string; anchor?: string }) => {
@@ -115,7 +125,7 @@ export default async function AppointmentsCalendarPage({
             href={hrefWith({ interval: "week" })}
             className={`px-3 py-1.5 text-sm transition-colors ${
               cal.interval === "week"
-                ? "bg-violet-600/30 text-violet-200"
+                ? "bg-violet-600/30 text-violet-200 light:bg-violet-100 light:text-violet-700"
                 : "text-white/60 hover:bg-white/[0.06]"
             }`}
           >
@@ -125,7 +135,7 @@ export default async function AppointmentsCalendarPage({
             href={hrefWith({ interval: "month" })}
             className={`px-3 py-1.5 text-sm transition-colors border-l border-white/[0.1] ${
               cal.interval === "month"
-                ? "bg-violet-600/30 text-violet-200"
+                ? "bg-violet-600/30 text-violet-200 light:bg-violet-100 light:text-violet-700"
                 : "text-white/60 hover:bg-white/[0.06]"
             }`}
           >
@@ -183,7 +193,7 @@ export default async function AppointmentsCalendarPage({
                   </span>
                   <span
                     className={`text-sm font-semibold tabular-nums ${
-                      d.isToday ? "text-violet-300" : "text-white/70"
+                      d.isToday ? "text-violet-300 light:text-violet-700" : "text-white/70"
                     }`}
                   >
                     {d.date.getDate()}
@@ -252,7 +262,7 @@ export default async function AppointmentsCalendarPage({
                   <span
                     className={`text-sm tabular-nums ${
                       d.isToday
-                        ? "text-violet-300 font-bold"
+                        ? "text-violet-300 light:text-violet-700 font-bold"
                         : "text-white/60"
                     }`}
                   >

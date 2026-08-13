@@ -71,7 +71,7 @@ export function BranchTimePicker({
         ) : (
           <p className="text-xs text-white/40">Эхлээд салбараа сонгоно уу.</p>
         )}
-        {error ? <p className="text-red-400 text-xs">{error}</p> : null}
+        {error ? <p className="text-red-400 light:text-red-600 text-xs">{error}</p> : null}
       </div>
 
       {/* Боломжит цаг */}

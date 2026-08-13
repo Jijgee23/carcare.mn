@@ -15,14 +15,14 @@ export default async function SystemAdminLayout({
   const adminName = `${admin.lastName} ${admin.firstName}`.trim();
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] flex">
+    <div className="min-h-screen bg-[var(--shell-bg-primary)] flex">
       <SystemSidebar
         adminName={adminName}
         adminEmail={admin.email}
         initials={initials}
       />
-      <div className="flex-1 min-w-0 lg:ml-60 min-h-screen flex flex-col relative isolate">
-        <div aria-hidden className="content-bg-layer" />
+      <div className="app-content-offset flex-1 min-w-0 min-h-screen flex flex-col relative isolate">
+        <div aria-hidden className="shell-content-bg" />
         <SystemMobileTopbar adminName={adminName} initials={initials} />
         <main className="flex-1 min-w-0">{children}</main>
       </div>

@@ -16,9 +16,12 @@ export const SERVICE_KIND_DESCRIPTION: Record<ServiceKind, string> = {
 };
 
 export const SERVICE_KIND_BADGE: Record<ServiceKind, string> = {
-  LABOR: "bg-blue-500/15 text-blue-300 border border-blue-500/30",
-  DIAGNOSTIC: "bg-violet-500/15 text-violet-300 border border-violet-500/30",
-  GOODS: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30",
+  LABOR:
+    "bg-blue-500/15 text-blue-300 border border-blue-500/30 light:bg-blue-100 light:border-blue-300 light:text-blue-700",
+  DIAGNOSTIC:
+    "bg-violet-500/15 text-violet-300 border border-violet-500/30 light:bg-violet-100 light:border-violet-300 light:text-violet-700",
+  GOODS:
+    "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700",
 };
 
 export const SERVICE_KIND_SLUG: Record<ServiceKind, string> = {
@@ -43,9 +46,9 @@ export function stockLevel(stock: number): StockLevel {
 }
 
 export const STOCK_BADGE: Record<StockLevel, string> = {
-  out: "bg-red-500/15 text-red-400 border border-red-500/25",
-  low: "bg-amber-500/15 text-amber-400 border border-amber-500/25",
-  ok: "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25",
+  out: "bg-red-500/15 text-red-400 border border-red-500/25 light:bg-red-100 light:border-red-300 light:text-red-700",
+  low: "bg-amber-500/15 text-amber-400 border border-amber-500/25 light:bg-amber-100 light:border-amber-300 light:text-amber-700",
+  ok: "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700",
 };
 
 export const STOCK_LABEL: Record<StockLevel, string> = {

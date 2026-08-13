@@ -283,7 +283,7 @@ export function DatePicker(props: DatePickerProps) {
               <div
                 role="dialog"
                 style={!isMobile && pos ? { top: pos.top, left: pos.left } : undefined}
-                className={`fixed z-[110] border border-white/10 bg-[#14141f]/95 p-4 shadow-2xl backdrop-blur-xl ${
+                className={`fixed z-[110] border border-white/10 bg-[var(--surface)] p-4 shadow-2xl backdrop-blur-xl ${
                   isMobile || !pos
                     ? "inset-x-0 bottom-0 mx-auto w-full max-w-md rounded-t-2xl"
                     : "w-[19.5rem] rounded-2xl"
@@ -394,17 +394,19 @@ export function DatePicker(props: DatePickerProps) {
               })}
             </div>
 
-            {/* time field (single + withTime) */}
+            {/* time field (single + withTime) — modern 24-цагийн сонгогч */}
             {withTime ? (
-              <div className="mt-3 flex items-center gap-2 border-t border-white/[0.06] pt-3">
-                <span className="text-xs text-white/40">Цаг</span>
-                <input
-                  type="time"
+              <div className="mt-3 border-t border-white/[0.06] pt-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-xs text-white/40">Цаг</span>
+                  <span className="font-mono text-sm tabular-nums text-violet-300 light:text-violet-700">
+                    {datePart ? timePart || "09:00" : "--:--"}
+                  </span>
+                </div>
+                <TimePicker24
                   value={timePart || "09:00"}
                   disabled={!datePart}
-                  onChange={(e) => setTime(e.target.value)}
-                  style={{ colorScheme: "dark" }}
-                  className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-sm text-white outline-none focus:border-violet-500/60 disabled:opacity-40"
+                  onChange={setTime}
                 />
               </div>
             ) : null}
@@ -422,7 +424,7 @@ export function DatePicker(props: DatePickerProps) {
                 <button
                   type="button"
                   onClick={() => pickDay(today)}
-                  className="rounded-lg px-2.5 py-1 text-xs text-violet-300 transition-colors hover:bg-violet-500/10"
+                  className="rounded-lg px-2.5 py-1 text-xs text-violet-300 light:text-violet-700 transition-colors hover:bg-violet-500/10"
                 >
                   Өнөөдөр
                 </button>
@@ -440,6 +442,104 @@ export function DatePicker(props: DatePickerProps) {
             document.body,
           )
         : null}
+    </div>
+  );
+}
+
+/**
+ * 24-цагийн modern цаг сонгогч — HH | MM хоёр босоо гүйдэг багана.
+ * Сонгосон утга нь "HH:mm" хэлбэрээр onChange-д дамжина. OS/браузерын
+ * локалаас үл хамаарч үргэлж 24 цаг (`<input type="time">`-ийн орлуулагч).
+ */
+function TimePicker24({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: string;
+  disabled: boolean;
+  onChange: (time: string) => void;
+}) {
+  const [hh, mm] = (value || "09:00").split(":");
+  const hours = Array.from({ length: 24 }, (_, i) => pad2(i));
+  const minutes = Array.from({ length: 60 }, (_, i) => pad2(i));
+  return (
+    <div className="flex gap-2">
+      <TimeColumn
+        label="Цаг"
+        items={hours}
+        selected={hh || "09"}
+        disabled={disabled}
+        onPick={(v) => onChange(`${v}:${mm || "00"}`)}
+      />
+      <div className="self-center pt-4 text-sm font-semibold text-white/30">:</div>
+      <TimeColumn
+        label="Мин"
+        items={minutes}
+        selected={mm || "00"}
+        disabled={disabled}
+        onPick={(v) => onChange(`${hh || "09"}:${v}`)}
+      />
+    </div>
+  );
+}
+
+function TimeColumn({
+  label,
+  items,
+  selected,
+  disabled,
+  onPick,
+}: {
+  label: string;
+  items: string[];
+  selected: string;
+  disabled: boolean;
+  onPick: (value: string) => void;
+}) {
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Нээгдэх үед сонгосон мөрийг баганын төвд гүйлгэж байрлуулна (зөвхөн
+  // тухайн баганыг гүйлгэнэ — хуудсыг үсрүүлэхгүй).
+  useEffect(() => {
+    const container = listRef.current;
+    const el = container?.querySelector<HTMLElement>('[data-selected="true"]');
+    if (container && el) {
+      container.scrollTop =
+        el.offsetTop - container.clientHeight / 2 + el.clientHeight / 2;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div className="flex-1">
+      <div className="mb-1 text-center text-[10px] font-medium uppercase tracking-wide text-white/30">
+        {label}
+      </div>
+      <div
+        ref={listRef}
+        className="h-32 overflow-y-auto rounded-lg border border-white/[0.06] bg-white/[0.02] p-1 [scrollbar-width:thin]"
+      >
+        {items.map((it) => {
+          const active = it === selected;
+          return (
+            <button
+              key={it}
+              type="button"
+              disabled={disabled}
+              data-selected={active}
+              onClick={() => onPick(it)}
+              className={`block w-full rounded-md py-1.5 text-center text-sm tabular-nums transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                active
+                  ? "bg-violet-600 font-semibold text-white"
+                  : "text-white/70 hover:bg-white/10"
+              }`}
+            >
+              {it}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

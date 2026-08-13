@@ -11,7 +11,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const all = url.searchParams.get("all") === "true";
 
-  const categories = await prisma.laborCategory.findMany({
+  const categories = await prisma.category.findMany({
     where: { tenantId: auth.user.tenantId, ...(!all && { isActive: true }) },
     orderBy: { name: "asc" },
     select: SELECT,
@@ -32,12 +32,12 @@ export async function POST(req: Request) {
   if (!name || typeof name !== "string" || !name.trim())
     return jsonError(400, "Нэр заавал шаардлагатай");
 
-  const existing = await prisma.laborCategory.findFirst({
+  const existing = await prisma.category.findFirst({
     where: { tenantId: auth.user.tenantId, name: (name as string).trim() },
   });
   if (existing) return jsonError(400, "Тийм нэртэй ангилал аль хэдийн байна");
 
-  const category = await prisma.laborCategory.create({
+  const category = await prisma.category.create({
     data: {
       name: (name as string).trim(),
       description: typeof description === "string" && description.trim() ? description.trim() : null,

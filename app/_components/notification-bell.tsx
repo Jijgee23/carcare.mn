@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { NotificationItem } from "@/lib/notifications";
 
 // Realm-agnostic мэдэгдэлийн хонх — server action-уудыг prop-оор авна (ажилтан ба
@@ -49,7 +50,30 @@ export function NotificationBell({
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationItem[] | null>(null);
   const [loading, setLoading] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  // Overlay-г <body> руу portal хийнэ — topbar-ийн glass (backdrop-filter)
+  // stacking/containing context-оос мултлахын тулд. Desktop: bell-д тулгасан
+  // dropdown (координат хэмжинэ). Mobile: доод sheet.
+  const [isMobile, setIsMobile] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  function updatePosition() {
+    const el = triggerRef.current;
+    if (!el || typeof window === "undefined") return;
+    const r = el.getBoundingClientRect();
+    const mobile = window.innerWidth < 640;
+    setIsMobile(mobile);
+    if (mobile) {
+      setPos(null);
+      return;
+    }
+    const PANEL_W = 320; // w-80
+    let left = align === "left" ? r.left : r.right - PANEL_W;
+    left = Math.min(left, window.innerWidth - PANEL_W - 8);
+    left = Math.max(8, left);
+    setPos({ top: r.bottom + 8, left });
+  }
 
   // Уншаагүй тоог тогтмол шинэчлэх — таб идэвхтэй үед л.
   const refreshCount = useCallback(() => {
@@ -70,20 +94,26 @@ export function NotificationBell({
     };
   }, [refreshCount]);
 
-  // Гадна дарахад хаах.
+  // Нээлттэй үед: Escape-д хаах, scroll/resize-д дахин байрлуулах.
   useEffect(() => {
     if (!open) return;
-    function onDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    const onReflow = () => updatePosition();
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("resize", onReflow);
+    window.addEventListener("scroll", onReflow, true);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", onReflow);
+      window.removeEventListener("scroll", onReflow, true);
+    };
   }, [open]);
 
   async function toggle() {
     const next = !open;
+    if (next) updatePosition();
     setOpen(next);
     if (next) {
       setLoading(true);
@@ -122,11 +152,14 @@ export function NotificationBell({
   }
 
   return (
-    <div ref={ref} className="relative">
+    <div className="relative">
       <button
+        ref={triggerRef}
         type="button"
         onClick={toggle}
         aria-label="Мэдэгдэл"
+        aria-haspopup="dialog"
+        aria-expanded={open}
         className="relative w-9 h-9 flex items-center justify-center rounded-lg text-white/60 hover:text-white hover:bg-white/[0.06] transition-colors"
       >
         <svg
@@ -149,27 +182,43 @@ export function NotificationBell({
         ) : null}
       </button>
 
-      {open ? (
-        <div
-          className={`absolute mt-2 w-80 max-w-[calc(100vw-2rem)] glass rounded-xl border border-white/[0.08] shadow-2xl z-50 overflow-hidden ${
-            align === "left" ? "left-0" : "right-0"
-          }`}
-        >
-          <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/[0.06]">
-            <span className="text-sm font-medium text-white/80">Мэдэгдэл</span>
-            {unread > 0 ? (
+      {open && typeof document !== "undefined"
+        ? createPortal(
+            <>
               <button
                 type="button"
-                onClick={onMarkAll}
-                className="text-xs text-violet-300 hover:text-violet-200 transition-colors"
+                tabIndex={-1}
+                aria-label="Хаах"
+                onClick={() => setOpen(false)}
+                className="fixed inset-0 z-[60] cursor-default bg-black/50 sm:bg-transparent"
+              />
+              <div
+                role="dialog"
+                style={!isMobile && pos ? { top: pos.top, left: pos.left } : undefined}
+                className={`fixed z-[70] border border-white/10 bg-[var(--surface)] shadow-2xl backdrop-blur-xl overflow-hidden ${
+                  isMobile || !pos
+                    ? "inset-x-0 bottom-0 w-full rounded-t-2xl pb-[env(safe-area-inset-bottom)]"
+                    : "w-80 max-w-[calc(100vw-1rem)] rounded-xl"
+                }`}
               >
-                Бүгдийг уншсан
-              </button>
-            ) : null}
-          </div>
+                {/* mobile grabber */}
+                <div className="mx-auto mt-2 mb-1 h-1 w-10 rounded-full bg-white/15 sm:hidden" />
 
-          <div className="max-h-96 overflow-y-auto">
-            {loading && !items ? (
+                <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/[0.06]">
+                  <span className="text-sm font-medium text-white/80">Мэдэгдэл</span>
+                  {unread > 0 ? (
+                    <button
+                      type="button"
+                      onClick={onMarkAll}
+                      className="text-xs text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800 transition-colors"
+                    >
+                      Бүгдийг уншсан
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="max-h-[60vh] overflow-y-auto sm:max-h-96">
+                  {loading && !items ? (
               <div className="px-4 py-6 text-center text-sm text-white/40">
                 Уншиж байна...
               </div>
@@ -210,15 +259,18 @@ export function NotificationBell({
             )}
           </div>
 
-          <Link
-            href={historyHref}
-            onClick={() => setOpen(false)}
-            className="block px-4 py-2.5 text-center text-xs text-white/50 hover:text-white hover:bg-white/[0.03] transition-colors border-t border-white/[0.06]"
-          >
-            Бүх мэдэгдэл
-          </Link>
-        </div>
-      ) : null}
+                <Link
+                  href={historyHref}
+                  onClick={() => setOpen(false)}
+                  className="block px-4 py-2.5 text-center text-xs text-white/50 hover:text-white hover:bg-white/[0.03] transition-colors border-t border-white/[0.06]"
+                >
+                  Бүх мэдэгдэл
+                </Link>
+              </div>
+            </>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

@@ -3,9 +3,44 @@ import { notFound } from "next/navigation";
 import { getAccount } from "@/lib/auth/account";
 import { openWeekdaysOf } from "@/lib/branches";
 import { prisma } from "@/lib/prisma";
+import { setBypassContext } from "@/lib/tenant-context";
 import { BookingForm } from "./booking-form";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Хэрэглэгчийн машины нэгдсэн жагсаалт: өөрийн нэмсэн (AccountVehicle) +
+ * сервисээс бүртгэгдэж холбогдсон (TenantVehicle, account эсвэл утсаар).
+ * Global vehicleId-аар давхардлыг арилгана.
+ */
+async function loadAccountVehicles(accountId: string, phone: string) {
+  const VEH_SELECT = { plate: true, make: true, model: true } as const;
+  const [avLinks, ownedTV] = await Promise.all([
+    prisma.accountVehicle.findMany({
+      where: { accountId },
+      orderBy: { createdAt: "desc" },
+      select: { vehicleId: true, vehicle: { select: VEH_SELECT } },
+    }),
+    prisma.tenantVehicle.findMany({
+      where: {
+        OR: [
+          { customer: { accountId } },
+          { customer: { phone: { endsWith: phone } } },
+        ],
+      },
+      select: { vehicleId: true, vehicle: { select: VEH_SELECT } },
+      distinct: ["vehicleId"],
+    }),
+  ]);
+  const map = new Map<
+    string,
+    { id: string; plate: string; make: string; model: string }
+  >();
+  for (const r of [...avLinks, ...ownedTV]) {
+    if (!map.has(r.vehicleId)) map.set(r.vehicleId, { id: r.vehicleId, ...r.vehicle });
+  }
+  return [...map.values()];
+}
 
 async function loadOrg(slug: string) {
   return prisma.tenant.findFirst({
@@ -16,6 +51,7 @@ async function loadOrg(slug: string) {
       logoUrl: true,
       phone1: true,
       branches: {
+        where: { isActive: true },
         orderBy: { isPrimary: "desc" },
         select: {
           id: true,
@@ -41,21 +77,47 @@ export async function generateMetadata({
 
 export default async function OrgPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ branch?: string }>;
 }) {
   const { slug } = await params;
+  const { branch: branchParam } = await searchParams;
+  // Нэвтрээгүй зочид ч үзэх нийтэд нээлттэй хуудас — slug-аар олох Tenant
+  // хараахан тодорхойгүй, доор Account-ийн машины жагсаалт бас cross-tenant
+  // (өөр tenant-д бүртгэгдсэн машиныг ч харуулна) тул bypass ашиглана.
+  setBypassContext();
   const org = await loadOrg(slug);
   if (!org) notFound();
 
+  // Discover картаас ирсэн салбарыг урьдчилан сонгоно (org-д хамаарвал).
+  const initialBranchId =
+    branchParam && org.branches.some((b) => b.id === branchParam)
+      ? branchParam
+      : "";
+
   const account = await getAccount();
-  const vehicles = account
-    ? await prisma.accountVehicle.findMany({
-        where: { accountId: account.id },
-        orderBy: { createdAt: "desc" },
-        select: { id: true, plate: true, make: true, model: true },
+  const [vehicles, categories] = await Promise.all([
+    // Хэрэглэгчийн бүх машин — өөрөө нэмсэн (AccountVehicle) дээр нэмээд
+    // сервисүүдэд бүртгэлтэй, энэ хэрэглэгчид холбогдсон машинууд
+    // (/account/vehicles хуудастай ижил логик). Утга нь global Vehicle id.
+    account ? loadAccountVehicles(account.id, account.phone) : Promise.resolve([]),
+    // Идэвхтэй ангилал + аль салбарт хамаарах (хоосон бол бүх салбарт).
+    prisma.category
+      .findMany({
+        where: { tenantId: org.id, isActive: true },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, branches: { select: { id: true } } },
       })
-    : [];
+      .then((rows) =>
+        rows.map((c) => ({
+          id: c.id,
+          name: c.name,
+          branchIds: c.branches.map((b) => b.id),
+        })),
+      ),
+  ]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -101,6 +163,8 @@ export default async function OrgPage({
                 openWeekdays: openWeekdaysOf(b),
               }))}
               vehicles={vehicles}
+              categories={categories}
+              initialBranchId={initialBranchId}
             />
           ) : (
             <div className="flex flex-col gap-3">

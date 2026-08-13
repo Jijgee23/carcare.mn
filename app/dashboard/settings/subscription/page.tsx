@@ -16,7 +16,7 @@ export const metadata = {
 
 function fmtDate(d: Date | null | undefined): string {
   if (!d) return "—";
-  return d.toLocaleString("mn-MN");
+  return d.toLocaleString("mn-MN", { hour12: false });
 }
 
 function fmtAmount(v: { toString: () => string } | null | undefined): string {
@@ -192,7 +192,7 @@ export default async function SubscriptionPage() {
                     ].map((h) => (
                       <th
                         key={h}
-                        className="text-left text-xs text-white/30 font-medium px-5 py-3"
+                        className="text-left text-xs text-white/30 light:text-slate-500 font-medium px-5 py-3"
                       >
                         {h}
                       </th>

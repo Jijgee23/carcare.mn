@@ -28,10 +28,14 @@ export const DIAGNOSTIC_TYPE_DESCRIPTION: Record<DiagnosticType, string> = {
 };
 
 export const DIAGNOSTIC_TYPE_BADGE: Record<DiagnosticType, string> = {
-  INTAKE: "bg-violet-500/15 text-violet-300 border border-violet-500/30",
-  POST_SERVICE: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30",
-  ROUTINE: "bg-blue-500/15 text-blue-300 border border-blue-500/30",
-  DAMAGE_REPORT: "bg-amber-500/15 text-amber-300 border border-amber-500/30",
+  INTAKE:
+    "bg-violet-500/15 text-violet-300 border border-violet-500/30 light:bg-violet-100 light:border-violet-300 light:text-violet-700",
+  POST_SERVICE:
+    "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700",
+  ROUTINE:
+    "bg-blue-500/15 text-blue-300 border border-blue-500/30 light:bg-blue-100 light:border-blue-300 light:text-blue-700",
+  DAMAGE_REPORT:
+    "bg-amber-500/15 text-amber-300 border border-amber-500/30 light:bg-amber-100 light:border-amber-300 light:text-amber-700",
 };
 
 export type ItemType =
@@ -142,7 +146,41 @@ export type ReportEntry = {
 
 export type ReportData = Record<string, ReportEntry>;
 
-export const DEFAULT_CHECK_OPTIONS = ["OK", "Анхаарах", "Засах"];
+export const DEFAULT_CHECK_OPTIONS = ["Хэвийн", "Анхаарах", "Солих"];
+
+// --- Check хариултын өнгө --------------------------------------------------
+// Сонгосон чипийг хариултын утгаар нь өнгөжүүлнэ: эерэг → ногоон,
+// анхааруулга → шар, засвар шаардсан → улаан. Танигдахгүй үг ногоон.
+
+export type CheckTone = "good" | "warn" | "bad";
+
+export function checkOptionTone(option: string): CheckTone {
+  const v = option.toLowerCase();
+  if (/анхаар|дунд|элэгд|сэжиг|шалгуулах|бага/.test(v)) return "warn";
+  if (/зас|соли|муу|гэмт|яаралт|аюул|болохгүй|доголд|дутуу/.test(v))
+    return "bad";
+  return "good";
+}
+
+/** Radio агуулсан чип — сонгогдоход (`:has(:checked)`) өнгө авна. */
+export const CHECK_TONE_CHIP: Record<CheckTone, string> = {
+  good: "has-checked:bg-emerald-500/15 has-checked:border-emerald-500/40 has-checked:text-emerald-300 light:has-checked:bg-emerald-100 light:has-checked:border-emerald-300 light:has-checked:text-emerald-700",
+  warn: "has-checked:bg-amber-500/15 has-checked:border-amber-500/40 has-checked:text-amber-300 light:has-checked:bg-amber-100 light:has-checked:border-amber-300 light:has-checked:text-amber-700",
+  bad: "has-checked:bg-red-500/15 has-checked:border-red-500/40 has-checked:text-red-300 light:has-checked:bg-red-100 light:has-checked:border-red-300 light:has-checked:text-red-600",
+};
+
+export const CHECK_TONE_ACCENT: Record<CheckTone, string> = {
+  good: "accent-emerald-500",
+  warn: "accent-amber-500",
+  bad: "accent-red-500",
+};
+
+/** State-ээр удирддаг чипийн идэвхтэй үеийн өнгө (preview г.м.). */
+export const CHECK_TONE_ACTIVE: Record<CheckTone, string> = {
+  good: "bg-emerald-500/15 border-emerald-500/40 text-emerald-300 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700",
+  warn: "bg-amber-500/15 border-amber-500/40 text-amber-300 light:bg-amber-100 light:border-amber-300 light:text-amber-700",
+  bad: "bg-red-500/15 border-red-500/40 text-red-300 light:bg-red-100 light:border-red-300 light:text-red-600",
+};
 
 export function newId(prefix: string): string {
   return `${prefix}_${randomBytes(6).toString("hex")}`;

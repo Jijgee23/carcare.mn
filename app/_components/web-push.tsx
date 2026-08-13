@@ -152,7 +152,7 @@ export function WebPushToggle({ target }: { target: "account" | "user" }) {
 
   if (status === "granted") {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs text-emerald-300">
+      <span className="inline-flex items-center gap-1.5 text-xs text-emerald-300 light:text-emerald-700">
         <span className="w-2 h-2 rounded-full bg-emerald-400" />
         Мэдэгдэл идэвхтэй
       </span>

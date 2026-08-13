@@ -3,6 +3,7 @@ import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api"
 import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
+import { resolveVehicle } from "@/lib/vehicles";
 
 export async function GET(req: Request) {
   const auth = await requireApiUser(req);
@@ -13,37 +14,49 @@ export async function GET(req: Request) {
   const customerId = url.searchParams.get("customerId")?.trim() ?? "";
   const { page, pageSize, skip, take } = getApiPageInfo(url.searchParams);
 
-  const where: Prisma.VehicleWhereInput = { tenantId: auth.user.tenantId };
+  const where: Prisma.TenantVehicleWhereInput = { tenantId: auth.user.tenantId };
   if (customerId) where.customerId = customerId;
   if (q) {
-    where.OR = [
-      { plate: { contains: q, mode: "insensitive" } },
-      { make: { contains: q, mode: "insensitive" } },
-      { model: { contains: q, mode: "insensitive" } },
-      { vin: { contains: q, mode: "insensitive" } },
-    ];
+    where.vehicle = {
+      OR: [
+        { plate: { contains: q, mode: "insensitive" } },
+        { make: { contains: q, mode: "insensitive" } },
+        { model: { contains: q, mode: "insensitive" } },
+        { vin: { contains: q, mode: "insensitive" } },
+      ],
+    };
   }
 
-  const [vehicles, total] = await Promise.all([
-    prisma.vehicle.findMany({
+  const [links, total] = await Promise.all([
+    prisma.tenantVehicle.findMany({
       where,
       orderBy: { createdAt: "desc" },
       skip,
       take,
       select: {
-        id: true,
-        plate: true,
-        vin: true,
-        make: true,
-        model: true,
-        year: true,
-        mileage: true,
         customerId: true,
         customer: { select: { id: true, fullName: true, phone: true } },
+        vehicle: {
+          select: {
+            id: true,
+            plate: true,
+            vin: true,
+            make: true,
+            model: true,
+            year: true,
+            mileage: true,
+          },
+        },
       },
     }),
-    prisma.vehicle.count({ where }),
+    prisma.tenantVehicle.count({ where }),
   ]);
+
+  const vehicles = links.map((l) => ({
+    ...l.vehicle,
+    customerId: l.customerId,
+    customer: l.customer,
+  }));
 
   return jsonOk({ vehicles, pagination: buildMeta(total, page, pageSize) });
 }
@@ -111,18 +124,31 @@ export async function POST(req: Request) {
       });
   }
 
-  try {
-    const vehicle = await prisma.vehicle.create({
-      data: {
+  const vehicle = await prisma.$transaction(async (tx) => {
+    const v = await resolveVehicle(tx, {
+      plate: plateStr,
+      vin: vinStr || null,
+      make: makeStr,
+      model: modelStr,
+      year: yearNum,
+      mileage: mileageNum,
+    });
+    await tx.tenantVehicle.upsert({
+      where: {
+        tenantId_vehicleId: {
+          tenantId: auth.user.tenantId,
+          vehicleId: v.id,
+        },
+      },
+      create: {
         tenantId: auth.user.tenantId,
-        plate: plateStr,
-        vin: vinStr || null,
-        make: makeStr,
-        model: modelStr,
-        year: yearNum,
-        mileage: mileageNum,
+        vehicleId: v.id,
         customerId: customerIdStr,
       },
+      update: customerIdStr ? { customerId: customerIdStr } : {},
+    });
+    return tx.vehicle.findUniqueOrThrow({
+      where: { id: v.id },
       select: {
         id: true,
         plate: true,
@@ -131,16 +157,11 @@ export async function POST(req: Request) {
         model: true,
         year: true,
         mileage: true,
-        customerId: true,
       },
     });
-    return jsonOk({ vehicle }, { status: 201 });
-  } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      return jsonError(422, "Хүсэлт буруу.", {
-        fieldErrors: { plate: "Энэ улсын дугаар бүртгэлтэй байна." },
-      });
-    }
-    throw e;
-  }
+  });
+  return jsonOk(
+    { vehicle: { ...vehicle, customerId: customerIdStr } },
+    { status: 201 },
+  );
 }

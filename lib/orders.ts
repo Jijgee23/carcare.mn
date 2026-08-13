@@ -17,11 +17,16 @@ export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
 };
 
 export const ORDER_STATUS_BADGE: Record<OrderStatus, string> = {
-  SCHEDULED: "bg-amber-500/15 text-amber-400 border border-amber-500/25",
-  IN_PROGRESS: "bg-blue-500/15 text-blue-400 border border-blue-500/25",
-  WAITING_PARTS: "bg-purple-500/15 text-purple-300 border border-purple-500/25",
-  COMPLETED: "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25",
-  CANCELLED: "bg-red-500/10 text-red-400 border border-red-500/20",
+  SCHEDULED:
+    "bg-amber-500/15 text-amber-400 border border-amber-500/25 light:bg-amber-100 light:border-amber-300 light:text-amber-700",
+  IN_PROGRESS:
+    "bg-blue-500/15 text-blue-400 border border-blue-500/25 light:bg-blue-100 light:border-blue-300 light:text-blue-700",
+  WAITING_PARTS:
+    "bg-purple-500/15 text-purple-300 border border-purple-500/25 light:bg-purple-100 light:border-purple-300 light:text-purple-700",
+  COMPLETED:
+    "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700",
+  CANCELLED:
+    "bg-red-500/10 text-red-400 border border-red-500/20 light:bg-red-100 light:border-red-300 light:text-red-700",
 };
 
 // Аль статус руу шилжих боломжтой вэ?
@@ -54,10 +59,18 @@ export const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
 };
 
 export const PAYMENT_STATUS_BADGE: Record<PaymentStatus, string> = {
-  UNPAID: "bg-red-500/15 text-red-300 border border-red-500/25",
-  PARTIAL: "bg-amber-500/15 text-amber-300 border border-amber-500/25",
-  PAID: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/25",
+  UNPAID:
+    "bg-red-500/15 text-red-300 border border-red-500/25 light:bg-red-100 light:border-red-300 light:text-red-700",
+  PARTIAL:
+    "bg-amber-500/15 text-amber-300 border border-amber-500/25 light:bg-amber-100 light:border-amber-300 light:text-amber-700",
+  PAID:
+    "bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700",
 };
+
+// Дараа төлбөрт (гэрээт) машин/захиалгын тэмдэг — олон хуудсанд нийтлэг.
+export const POSTPAID_LABEL = "Дараа төлбөрт";
+export const POSTPAID_BADGE =
+  "bg-sky-500/15 text-sky-300 border border-sky-500/25 light:bg-sky-100 light:border-sky-300 light:text-sky-700";
 
 export const ITEM_KINDS = ["LABOR", "DIAGNOSTIC", "PART", "FEE"] as const;
 export type ItemKind = (typeof ITEM_KINDS)[number];
@@ -70,10 +83,12 @@ export const ITEM_KIND_LABEL: Record<ItemKind, string> = {
 };
 
 export const ITEM_KIND_BADGE: Record<ItemKind, string> = {
-  LABOR: "bg-blue-500/15 text-blue-300 border border-blue-500/25",
-  DIAGNOSTIC: "bg-violet-500/15 text-violet-300 border border-violet-500/25",
-  PART: "bg-amber-500/15 text-amber-300 border border-amber-500/25",
-  FEE: "bg-zinc-500/15 text-zinc-300 border border-zinc-500/25",
+  LABOR:
+    "bg-blue-500/15 text-blue-300 border border-blue-500/25 light:bg-blue-100 light:border-blue-300 light:text-blue-700",
+  DIAGNOSTIC:
+    "bg-violet-500/15 text-violet-300 border border-violet-500/25 light:bg-violet-100 light:border-violet-300 light:text-violet-700",
+  PART: "bg-amber-500/15 text-amber-300 border border-amber-500/25 light:bg-amber-100 light:border-amber-300 light:text-amber-700",
+  FEE: "bg-zinc-500/15 text-zinc-300 border border-zinc-500/25 light:bg-zinc-100 light:border-zinc-300 light:text-zinc-600",
 };
 
 export function formatTugrik(amount: number | string | null | undefined): string {

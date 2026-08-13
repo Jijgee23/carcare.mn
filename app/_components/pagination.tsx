@@ -87,7 +87,7 @@ export function Pagination({
             ) : p === page ? (
               <span
                 key={p}
-                className="min-w-[1.75rem] text-center px-2 py-1 rounded-md bg-violet-600/30 text-violet-200 border border-violet-500/30"
+                className="min-w-[1.75rem] text-center px-2 py-1 rounded-md bg-violet-600/30 text-violet-200 border border-violet-500/30 light:bg-violet-100 light:text-violet-700 light:border-violet-300"
               >
                 {p}
               </span>

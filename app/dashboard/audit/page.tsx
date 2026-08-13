@@ -12,6 +12,7 @@ import {
 import { Pagination } from "@/app/_components/pagination";
 import { requireUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/auth/roles";
+import { type EntityType } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 
 export const metadata = {
@@ -34,27 +35,42 @@ const ACTION_LABEL: Record<string, string> = {
 };
 
 const ACTION_BADGE: Record<string, string> = {
-  CREATE: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30",
-  UPDATE: "bg-blue-500/15 text-blue-300 border border-blue-500/30",
-  DELETE: "bg-red-500/15 text-red-300 border border-red-500/30",
-  STATUS_CHANGE: "bg-violet-500/15 text-violet-300 border border-violet-500/30",
-  PAYMENT_CHANGE: "bg-amber-500/15 text-amber-300 border border-amber-500/30",
-  STOCK_CHANGE: "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30",
-  ITEM_ADDED: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30",
-  ITEM_REMOVED: "bg-rose-500/15 text-rose-300 border border-rose-500/30",
-  ITEM_UPDATED: "bg-blue-500/15 text-blue-300 border border-blue-500/30",
+  CREATE:
+    "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 light:text-emerald-700",
+  UPDATE:
+    "bg-blue-500/15 text-blue-300 border border-blue-500/30 light:text-blue-700",
+  DELETE: "bg-red-500/15 text-red-300 border border-red-500/30 light:text-red-700",
+  STATUS_CHANGE:
+    "bg-violet-500/15 text-violet-300 border border-violet-500/30 light:text-violet-700",
+  PAYMENT_CHANGE:
+    "bg-amber-500/15 text-amber-300 border border-amber-500/30 light:text-amber-700",
+  STOCK_CHANGE:
+    "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 light:text-cyan-700",
+  ITEM_ADDED:
+    "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 light:text-emerald-700",
+  ITEM_REMOVED:
+    "bg-rose-500/15 text-rose-300 border border-rose-500/30 light:text-rose-700",
+  ITEM_UPDATED:
+    "bg-blue-500/15 text-blue-300 border border-blue-500/30 light:text-blue-700",
   LOGIN: "bg-white/10 text-white/60 border border-white/15",
   LOGOUT: "bg-white/10 text-white/60 border border-white/15",
   OTHER: "bg-white/10 text-white/60 border border-white/15",
 };
 
-const ENTITY_LABEL: Record<string, string> = {
+const ENTITY_LABEL: Record<EntityType, string> = {
   ServiceOrder: "Захиалга",
   Service: "Үйлчилгээ",
   Customer: "Үйлчлүүлэгч",
   Vehicle: "Машин",
   User: "Ажилтан",
   Branch: "Салбар",
+  Category: "Ангилал",
+  Unit: "Нэгж",
+  Tenant: "Байгууллага",
+  Role: "Үүрэг",
+  DiagnosticTemplate: "Оношилгооны загвар",
+  DiagnosticReport: "Оношилгооны тайлан",
+  Appointment: "Цаг захиалга",
 };
 
 const ACTION_OPTIONS = Object.entries(ACTION_LABEL).map(([value, label]) => ({
@@ -95,6 +111,7 @@ function fmtDate(d: Date): string {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
   });
 }
 
@@ -159,14 +176,7 @@ export default async function AuditLogPage({
         description="Тенант доторх чухал үйлдлийн түүх — захиалгын статус, төлбөр, нөөц, мөр нэмэх/устгах."
       />
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "0.5rem",
-          marginBottom: "1rem",
-        }}
-      >
+      <div className="flex flex-wrap items-center gap-2 mb-4">
         <SearchBox placeholder="Тайлбар, entity ID-аар хайх" />
         <FilterSelect
           paramName="action"
@@ -216,7 +226,7 @@ export default async function AuditLogPage({
                   ].map((h) => (
                     <th
                       key={h}
-                      className="text-left text-xs text-white/30 font-medium px-5 py-3"
+                      className="text-left text-xs text-white/30 light:text-slate-500 font-medium px-5 py-3"
                     >
                       {h}
                     </th>
@@ -226,7 +236,8 @@ export default async function AuditLogPage({
               <tbody>
                 {logs.map((l) => {
                   const href = entityHref(l.entity, l.entityId);
-                  const entityLabel = ENTITY_LABEL[l.entity] ?? l.entity;
+                  const entityLabel =
+                    ENTITY_LABEL[l.entity as EntityType] ?? l.entity;
                   return (
                     <tr
                       key={l.id}
@@ -251,7 +262,7 @@ export default async function AuditLogPage({
                         {href ? (
                           <a
                             href={href}
-                            className="text-violet-300 hover:text-violet-200 transition-colors"
+                            className="text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800 transition-colors"
                           >
                             {entityLabel}
                           </a>

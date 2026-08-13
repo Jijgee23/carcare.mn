@@ -1,12 +1,18 @@
 import Link from "next/link";
 import { AuthShell } from "@/app/_components/auth-shell";
+import { getAddressData } from "@/lib/address";
+import { setBypassContext } from "@/lib/tenant-context";
 import { SignUpForm } from "./signup-form";
 
 export const metadata = {
   title: "Бүртгүүлэх",
 };
 
-export default function SignUpPage() {
+export default async function SignUpPage() {
+  // Нэвтрээгүй, public хуудас — session/tenant байхгүй.
+  setBypassContext();
+  const addressData = await getAddressData();
+
   return (
     <AuthShell
       title="Байгууллагаа бүртгүүлэх"
@@ -24,7 +30,11 @@ export default function SignUpPage() {
         </>
       }
     >
-      <SignUpForm />
+      <SignUpForm
+        addressData={addressData}
+        mapApiKey={process.env.GOOGLE_MAP_API_KEY ?? ""}
+        mapId={process.env.GOOGLE_MAP_ID ?? ""}
+      />
     </AuthShell>
   );
 }

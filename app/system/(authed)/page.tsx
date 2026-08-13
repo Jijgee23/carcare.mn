@@ -73,7 +73,7 @@ export default async function SystemOverviewPage() {
         <BigStat
           label="Түр зогссон"
           value={suspendedTenants.toLocaleString("mn-MN")}
-          color="text-amber-400"
+          color="text-amber-400 light:text-amber-700"
         />
         <BigStat
           label="Нийт хэрэглэгч"
@@ -96,7 +96,7 @@ export default async function SystemOverviewPage() {
             </div>
             <Link
               href="/system/tenants"
-              className="text-xs text-red-300 hover:text-red-200"
+              className="text-xs text-red-300 hover:text-red-200 light:text-red-600 light:hover:text-red-700"
             >
               Бүгдийг харах →
             </Link>
@@ -114,14 +114,14 @@ export default async function SystemOverviewPage() {
                     href={`/system/tenants/${t.id}`}
                     className="flex items-center gap-3 py-3 hover:bg-white/[0.02] -mx-2 px-2 rounded-lg transition-colors"
                   >
-                    <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-red-500/30 to-violet-500/30 flex items-center justify-center text-sm font-bold text-red-300 shrink-0">
+                    <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-red-500/30 to-violet-500/30 flex items-center justify-center text-sm font-bold text-red-300 light:text-red-700 shrink-0">
                       {t.name[0]?.toUpperCase() ?? "?"}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium text-white/90 truncate">
                         {t.name}
                         {t.suspended ? (
-                          <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">
+                          <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 light:bg-amber-100 light:text-amber-700">
                             ЗОГССОН
                           </span>
                         ) : null}

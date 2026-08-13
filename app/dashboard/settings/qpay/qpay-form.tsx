@@ -38,7 +38,7 @@ export function TenantQPayForm({ initial }: { initial: Initial | null }) {
     <>
     <form action={formAction} className="flex flex-col gap-4" noValidate>
       {state?.ok && state.message ? (
-        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 text-sm text-emerald-300">
+        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 text-sm text-emerald-300 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700">
           {state.message}
         </div>
       ) : null}
@@ -168,7 +168,7 @@ export function TenantQPayForm({ initial }: { initial: Initial | null }) {
       <form action={deleteTenantQPayAction} className="pt-2">
         <button
           type="submit"
-          className="bg-white/[0.04] hover:bg-red-500/20 border border-white/[0.08] hover:border-red-500/30 text-white/60 hover:text-red-300 transition-all px-5 py-2 rounded-lg font-medium text-sm"
+          className="bg-white/[0.04] hover:bg-red-500/20 border border-white/[0.08] hover:border-red-500/30 text-white/60 hover:text-red-300 light:hover:text-red-600 transition-all px-5 py-2 rounded-lg font-medium text-sm"
         >
           Тохиргоог устгах
         </button>

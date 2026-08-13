@@ -22,6 +22,7 @@ export type HurVehicle = {
   className: string | null;
   importDate: string | null;
   wheelPosition: string | null;
+  purpose: string | null; // зориулалт — ж: "Суудал"
   owner: {
     firstName: string | null;
     lastName: string | null;
@@ -130,6 +131,19 @@ export function normalizeWheelPosition(raw: string | null): string | null {
   return raw.trim();
 }
 
+// Эзэмшигчийн регистрээс харьяаллыг тодорхойлно: 7 оронтой цэвэр тоо бол
+// байгууллага, үсэг агуулсан бол хувь хүн. Танигдаагүй бол null.
+export function ownerKindFromRegnum(
+  regnum: string | null | undefined,
+): "Байгууллага" | "Хувь хүн" | null {
+  if (!regnum) return null;
+  const v = regnum.trim();
+  if (!v) return null;
+  if (/^\d{7}$/.test(v)) return "Байгууллага";
+  if (/[A-Za-zА-ЯЁӨҮа-яёөү]/.test(v)) return "Хувь хүн";
+  return null;
+}
+
 function parseVehicleResponse(raw: unknown, fallbackPlate: string): HurVehicle {
   if (!raw || typeof raw !== "object") {
     throw new Error("HUR-аас буруу хариу ирлээ.");
@@ -195,6 +209,7 @@ function parseVehicleResponse(raw: unknown, fallbackPlate: string): HurVehicle {
     className: str(r.className),
     importDate: str(r.importDate),
     wheelPosition: str(r.wheelPosition),
+    purpose: str(r.purpose),
     owner: hasOwnerData
       ? {
           firstName: str(r.ownerFirstname),

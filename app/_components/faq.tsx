@@ -39,7 +39,7 @@ export function Faq() {
           Хариулт олдсонгүй юу?{" "}
           <a
             href="mailto:hi@carcare.mn"
-            className="text-violet-400 hover:text-violet-300"
+            className="text-violet-400 hover:text-violet-300 light:text-violet-700 light:hover:text-violet-800"
           >
             hi@carcare.mn
           </a>

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createNotification } from "@/lib/notifications";
 import { prisma } from "@/lib/prisma";
 import { SUBSCRIPTION_WARN_DAYS, formatDaysLeft } from "@/lib/subscription";
+import { setBypassContext } from "@/lib/tenant-context";
 
 /**
  * Удахгүй (SUBSCRIPTION_WARN_DAYS хоногийн дотор) дуусах TRIAL/ACTIVE багцуудад
@@ -41,6 +42,8 @@ async function run(req: Request) {
   if (supplied !== secret) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  // Бүх tenant дундуур scan хийдэг cron тул RLS-г тойрч гарна.
+  setBypassContext();
 
   const now = new Date();
   const until = new Date(now.getTime() + SUBSCRIPTION_WARN_DAYS * DAY_MS);

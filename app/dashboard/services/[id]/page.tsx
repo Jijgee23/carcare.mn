@@ -37,8 +37,8 @@ export default async function EditServicePage({
   });
   if (!svc) notFound();
 
-  const [laborCategories, units] = await Promise.all([
-    prisma.laborCategory.findMany({
+  const [categories, units] = await Promise.all([
+    prisma.category.findMany({
       where: { tenantId: user.tenantId },
       orderBy: [{ isActive: "desc" }, { name: "asc" }],
       select: { id: true, name: true, isActive: true },
@@ -72,7 +72,7 @@ export default async function EditServicePage({
         <div className="lg:col-span-3 glass rounded-xl p-4 sm:p-5 border border-white/[0.08]">
           <h2 className="font-semibold mb-4">Мэдээлэл</h2>
           <ServiceForm
-            laborCategories={laborCategories}
+            categories={categories}
             units={units}
             initial={{
               id: svc.id,
@@ -87,7 +87,7 @@ export default async function EditServicePage({
               durationUnitId: svc.durationUnitId,
               description: svc.description,
               isActive: svc.isActive,
-              laborCategoryId: svc.laborCategoryId,
+              categoryId: svc.categoryId,
             }}
           />
         </div>

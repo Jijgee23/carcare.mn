@@ -13,7 +13,7 @@ export function AddAccountVehicle() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="self-start text-sm px-4 py-2 rounded-lg border border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-violet-200 font-medium transition-colors"
+        className="self-start text-sm px-4 py-2 rounded-lg border border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-violet-200 light:bg-violet-100 light:hover:bg-violet-200 light:border-violet-300 light:text-violet-700 font-medium transition-colors"
       >
         + Машин нэмэх
       </button>

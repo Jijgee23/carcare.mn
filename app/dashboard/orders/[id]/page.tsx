@@ -1,9 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import {
-  deleteOrderAction,
-  removeOrderItemAction,
-} from "@/app/_actions/orders";
+import { deleteOrderAction } from "@/app/_actions/orders";
 import { PageHeader } from "@/app/_components/page-header";
 import { requireUser } from "@/lib/auth";
 import {
@@ -22,14 +19,13 @@ import {
 import { customerLabel } from "@/lib/customers";
 import type { ServiceKind } from "@/lib/services";
 import {
-  ITEM_KIND_BADGE,
-  ITEM_KIND_LABEL,
   ORDER_STATUS_BADGE,
   ORDER_STATUS_LABEL,
   ORDER_STATUS_TRANSITIONS,
   PAYMENT_STATUS_BADGE,
   PAYMENT_STATUS_LABEL,
-  type ItemKind,
+  POSTPAID_BADGE,
+  POSTPAID_LABEL,
   type OrderStatus,
   type PaymentStatus,
   canFillDiagnostics,
@@ -37,6 +33,7 @@ import {
 } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
 import { AddItemForm } from "./add-item-form";
+import { OrderItems } from "./order-items";
 import { PaymentControls } from "./payment-controls";
 import { QPayWidget } from "./qpay-widget";
 import { StatusControls } from "./status-controls";
@@ -99,17 +96,25 @@ export default async function OrderDetailPage({
       orderBy: { fullName: "asc" },
       select: { id: true, fullName: true, phone: true },
     }),
-    prisma.vehicle.findMany({
-      where: { tenantId: user.tenantId },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        plate: true,
-        make: true,
-        model: true,
-        customerId: true,
-      },
-    }),
+    prisma.tenantVehicle
+      .findMany({
+        where: { tenantId: user.tenantId, isActive: true },
+        orderBy: { createdAt: "desc" },
+        select: {
+          customerId: true,
+          isPostpaid: true,
+          vehicle: {
+            select: { id: true, plate: true, make: true, model: true },
+          },
+        },
+      })
+      .then((rows) =>
+        rows.map((r) => ({
+          ...r.vehicle,
+          customerId: r.customerId,
+          isPostpaid: r.isPostpaid,
+        })),
+      ),
     prisma.user.findMany({
       where: {
         tenantId: user.tenantId,
@@ -121,6 +126,8 @@ export default async function OrderDetailPage({
         id: true,
         firstName: true,
         lastName: true,
+        branchId: true,
+        assignableBranchIds: true,
         isOwner: true,
         role: { select: { name: true } },
       },
@@ -140,8 +147,8 @@ export default async function OrderDetailPage({
         price: true,
         stock: true,
         unit: { select: { name: true } },
-        laborCategoryId: true,
-        laborCategory: { select: { name: true } },
+        categoryId: true,
+        category: { select: { name: true } },
       },
     }),
     prisma.diagnosticReport.findMany({
@@ -197,6 +204,13 @@ export default async function OrderDetailPage({
         description={`${customerLabel(order.customer)} · ${order.vehicle.plate}`}
         actions={
           <div className="flex items-center gap-2">
+            {order.isPostpaid ? (
+              <span
+                className={`text-xs px-3 py-1.5 rounded-full ${POSTPAID_BADGE}`}
+              >
+                {POSTPAID_LABEL}
+              </span>
+            ) : null}
             <span
               className={`text-xs px-3 py-1.5 rounded-full ${PAYMENT_STATUS_BADGE[paymentStatus]}`}
             >
@@ -235,7 +249,7 @@ export default async function OrderDetailPage({
               ) : activeTemplateCount === 0 && canEditOrder ? (
                 <Link
                   href="/dashboard/services/diagnostics/new"
-                  className="shrink-0 text-xs text-violet-300 hover:text-violet-200"
+                  className="shrink-0 text-xs text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
                 >
                   Загвар үүсгэх →
                 </Link>
@@ -247,8 +261,15 @@ export default async function OrderDetailPage({
                 Үйлчилгээ нэмэгдээгүй байна. Доороос нэмнэ үү.
               </div>
             ) : (
-              <ItemsGroupedByKind
-                items={order.items}
+              <OrderItems
+                items={order.items.map((it) => ({
+                  id: it.id,
+                  kind: it.kind,
+                  description: it.description,
+                  quantity: it.quantity.toString(),
+                  unitPrice: it.unitPrice.toString(),
+                  total: it.total.toString(),
+                }))}
                 canEdit={isEditable && canEditOrder}
               />
             )}
@@ -277,7 +298,7 @@ export default async function OrderDetailPage({
                             <div className="text-sm text-white/90">
                               {p.template.name}
                             </div>
-                            <div className="text-xs text-amber-300/70">
+                            <div className="text-xs text-amber-300/70 light:text-amber-700">
                               Бөглөгдөөгүй
                             </div>
                           </div>
@@ -321,11 +342,11 @@ export default async function OrderDetailPage({
                               {r.filledBy
                                 ? `${r.filledBy.lastName} ${r.filledBy.firstName}`
                                 : "—"}{" "}
-                              · {r.createdAt.toLocaleString("mn-MN")}
+                              · {r.createdAt.toLocaleString("mn-MN", { hour12: false })}
                             </div>
                           </div>
                         </div>
-                        <span className="shrink-0 text-xs text-violet-300">
+                        <span className="shrink-0 text-xs text-violet-300 light:text-violet-700">
                           Үзэх →
                         </span>
                       </Link>
@@ -347,8 +368,8 @@ export default async function OrderDetailPage({
                     unit: s.unit?.name ?? "",
                     price: s.price.toString(),
                     stock: s.stock != null ? s.stock.toString() : null,
-                    laborCategoryId: s.laborCategoryId,
-                    laborCategoryName: s.laborCategory?.name ?? null,
+                    laborCategoryId: s.categoryId,
+                    laborCategoryName: s.category?.name ?? null,
                   }))}
                   diagnosticTemplates={diagnosticTemplates.map((t) => ({
                     id: t.id,
@@ -394,20 +415,18 @@ export default async function OrderDetailPage({
         </div>
 
         <aside className="flex flex-col gap-6">
-          <div className="glass rounded-xl p-5">
-            <h2 className="font-semibold mb-4 text-sm">Статус</h2>
-            {allowedTransitions.length === 0 ? (
-              <p className="text-xs text-white/40">
-                Энэ статус эцсийн төлөв.
-              </p>
-            ) : (
+          {/* Эцсийн төлөвт карт харуулахгүй — статус нь дээд badge-д аль
+              хэдийн байгаа тул давхардана */}
+          {allowedTransitions.length > 0 ? (
+            <div className="glass rounded-xl p-5">
+              <h2 className="font-semibold mb-4 text-sm">Статус</h2>
               <StatusControls
                 orderId={order.id}
                 transitions={allowedTransitions}
                 disabled={!canEditOrder}
               />
-            )}
-          </div>
+            </div>
+          ) : null}
 
           <div className="glass rounded-xl p-5">
             <div className="flex items-center justify-between mb-3">
@@ -437,11 +456,16 @@ export default async function OrderDetailPage({
                 <div className="flex items-center justify-between">
                   <dt className="text-white/40 text-xs">Төлсөн огноо</dt>
                   <dd className="text-white/80 text-xs">
-                    {order.paidAt.toLocaleString("mn-MN")}
+                    {order.paidAt.toLocaleString("mn-MN", { hour12: false })}
                   </dd>
                 </div>
               ) : null}
             </dl>
+            {order.isPostpaid ? (
+              <p className="text-xs text-sky-300/80 light:text-sky-700 mb-4 -mt-1">
+                Дараа төлбөрт захиалга — төлбөрийг гэрээгээр нэгтгэн төлнө.
+              </p>
+            ) : null}
             {canEditPayments ? (
               <PaymentControls
                 orderId={order.id}
@@ -480,7 +504,7 @@ export default async function OrderDetailPage({
               <Row label="Үйлчлүүлэгч">
                 <Link
                   href={`/dashboard/customers/${order.customer.id}`}
-                  className="text-violet-300 hover:text-violet-200"
+                  className="text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
                 >
                   {customerLabel(order.customer)}
                 </Link>
@@ -491,7 +515,7 @@ export default async function OrderDetailPage({
               <Row label="Машин">
                 <Link
                   href={`/dashboard/vehicles/${order.vehicle.id}`}
-                  className="text-violet-300 hover:text-violet-200"
+                  className="text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
                 >
                   {order.vehicle.make} {order.vehicle.model}
                 </Link>
@@ -514,17 +538,18 @@ export default async function OrderDetailPage({
                       day: "2-digit",
                       hour: "2-digit",
                       minute: "2-digit",
+                      hour12: false,
                     })
                   : "—"}
               </Row>
               {order.startedAt ? (
                 <Row label="Эхэлсэн">
-                  {order.startedAt.toLocaleString("mn-MN")}
+                  {order.startedAt.toLocaleString("mn-MN", { hour12: false })}
                 </Row>
               ) : null}
               {order.completedAt ? (
                 <Row label="Дууссан">
-                  {order.completedAt.toLocaleString("mn-MN")}
+                  {order.completedAt.toLocaleString("mn-MN", { hour12: false })}
                 </Row>
               ) : null}
               {order.notes ? (
@@ -543,7 +568,7 @@ export default async function OrderDetailPage({
               action={deleteOrderAction}
               className="glass rounded-xl p-5 border border-red-500/20"
             >
-              <h2 className="font-semibold mb-2 text-sm text-red-300">
+              <h2 className="font-semibold mb-2 text-sm text-red-300 light:text-red-700">
                 Аюултай бүс
               </h2>
               <p className="text-xs text-white/40 mb-4">
@@ -552,7 +577,7 @@ export default async function OrderDetailPage({
               <input type="hidden" name="id" value={order.id} />
               <button
                 type="submit"
-                className="w-full text-sm font-medium bg-red-500/15 hover:bg-red-500/25 text-red-300 border border-red-500/30 px-4 py-2 rounded-xl transition-colors"
+                className="w-full text-sm font-medium bg-red-500/15 hover:bg-red-500/25 text-red-300 light:text-red-700 border border-red-500/30 px-4 py-2 rounded-xl transition-colors"
               >
                 Захиалгыг устгах
               </button>
@@ -579,152 +604,3 @@ function Row({
   );
 }
 
-type OrderItem = {
-  id: string;
-  kind: string;
-  description: string;
-  quantity: { toString(): string };
-  unitPrice: { toString(): string };
-  total: { toString(): string };
-};
-
-// Үйлчилгээний мөрүүдийг төрлөөр нь бүлэглэн харуулна
-const KIND_ORDER: ItemKind[] = ["LABOR", "DIAGNOSTIC", "PART", "FEE"];
-
-function ItemsGroupedByKind({
-  items,
-  canEdit,
-}: {
-  items: OrderItem[];
-  canEdit: boolean;
-}) {
-  const grouped = new Map<ItemKind, OrderItem[]>();
-  for (const it of items) {
-    const k = it.kind as ItemKind;
-    const arr = grouped.get(k) ?? [];
-    arr.push(it);
-    grouped.set(k, arr);
-  }
-
-  // Тогтсон дарааллаар жагсаана (Ажил → Оношилгоо → Сэлбэг → Хураамж)
-  const groups = KIND_ORDER.filter((k) => grouped.has(k)).map((k) => {
-    const groupItems = grouped.get(k)!;
-    const subtotal = groupItems.reduce(
-      (acc, it) => acc + Number.parseFloat(it.total.toString()),
-      0,
-    );
-    return { kind: k, items: groupItems, subtotal };
-  });
-
-  const grandTotal = groups.reduce((acc, g) => acc + g.subtotal, 0);
-
-  return (
-    <div className="divide-y divide-white/[0.04]">
-      {groups.map((g) => {
-        const subtotal = g.subtotal;
-        return (
-          <div key={g.kind}>
-            <div className="flex items-center justify-between px-5 py-2.5 bg-white/[0.02]">
-              <div className="flex items-center gap-2">
-                <span
-                  className={`text-xs px-2 py-0.5 rounded-full ${ITEM_KIND_BADGE[g.kind]}`}
-                >
-                  {ITEM_KIND_LABEL[g.kind]}
-                </span>
-                <span className="text-xs text-white/40">
-                  {g.items.length} мөр
-                </span>
-              </div>
-              <div className="text-sm font-medium text-white/80">
-                {formatTugrik(subtotal)}
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[560px]">
-                <thead>
-                  <tr className="border-b border-white/[0.04]">
-                    {["Нэр", "Тоо", "Нэгж үнэ", "Дүн", ""].map((h) => (
-                      <th
-                        key={h}
-                        className="text-left text-[11px] text-white/30 font-medium px-5 py-2"
-                      >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {g.items.map((it) => (
-                    <tr
-                      key={it.id}
-                      className="border-b border-white/[0.04] last:border-0"
-                    >
-                      <td className="px-5 py-3 text-sm text-white/80">
-                        {it.description}
-                      </td>
-                      <td className="px-5 py-3 text-sm text-white/60">
-                        {it.quantity.toString()}
-                      </td>
-                      <td className="px-5 py-3 text-sm text-white/60">
-                        {formatTugrik(it.unitPrice.toString())}
-                      </td>
-                      <td className="px-5 py-3 text-sm font-medium text-white/90">
-                        {formatTugrik(it.total.toString())}
-                      </td>
-                      <td className="px-5 py-3 text-right">
-                        {canEdit ? (
-                          <form action={removeOrderItemAction}>
-                            <input type="hidden" name="itemId" value={it.id} />
-                            <button
-                              type="submit"
-                              className="text-xs text-red-400 hover:text-red-300 transition-colors px-2.5 py-1 rounded-lg hover:bg-red-500/10"
-                            >
-                              Устгах
-                            </button>
-                          </form>
-                        ) : null}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        );
-      })}
-
-      <div className="px-5 py-4 bg-white/[0.03]">
-        <div className="flex flex-col gap-1.5">
-          {groups.map((g) => (
-            <div
-              key={g.kind}
-              className="flex items-center justify-between text-sm"
-            >
-              <div className="flex items-center gap-2">
-                <span
-                  className={`text-[10px] px-1.5 py-0.5 rounded-full ${ITEM_KIND_BADGE[g.kind]}`}
-                >
-                  {ITEM_KIND_LABEL[g.kind]}
-                </span>
-                <span className="text-white/40 text-xs">
-                  {g.items.length} мөр
-                </span>
-              </div>
-              <div className="text-white/70 tabular-nums">
-                {formatTugrik(g.subtotal)}
-              </div>
-            </div>
-          ))}
-          <div className="flex items-center justify-between pt-2 mt-1 border-t border-white/[0.06]">
-            <span className="text-sm font-semibold text-white/90">
-              Нийт дүн
-            </span>
-            <span className="text-lg font-bold gradient-text tabular-nums">
-              {formatTugrik(grandTotal)}
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}

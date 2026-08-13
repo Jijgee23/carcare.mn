@@ -19,6 +19,7 @@ type Initial = {
   phone: string;
   roleId: string | null;
   branchId: string | null;
+  assignableBranchIds?: string[];
   isActive: boolean;
   activeUntil: Date | null;
 };
@@ -51,6 +52,14 @@ export function EmployeeForm({
   const [phone, setPhone] = useState(initial?.phone ?? "");
   const [roleId, setRoleId] = useState(initial?.roleId ?? "");
   const [branchId, setBranchId] = useState(initial?.branchId ?? "");
+  const [assignableBranchIds, setAssignableBranchIds] = useState<string[]>(
+    initial?.assignableBranchIds ?? [],
+  );
+  function toggleAssignableBranch(id: string) {
+    setAssignableBranchIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  }
   const [isActive, setIsActive] = useState(initial?.isActive ?? true);
   const [activeUntil, setActiveUntil] = useState(
     initial?.activeUntil
@@ -61,6 +70,7 @@ export function EmployeeForm({
   );
 
   const fe = state?.fieldErrors ?? {};
+  // Full-width хуудсанд талбарууд хэт сунахгүйн тулд хязгаартай.
   const fieldMaxWidth = "max-w-xs";
 
   return (
@@ -169,8 +179,40 @@ export function EmployeeForm({
         </Field>
       </div>
 
+      {branches.length > 1 ? (
+        <div className="max-w-md rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
+          <div className="text-sm font-medium text-white/90">
+            Нэмэлт ажиллах салбарууд
+          </div>
+          <div className="mt-0.5 text-xs text-white/50">
+            Үндсэн салбараас гадна энэ ажилтныг захиалгад "Хариуцах мастер"-аар
+            сонгож болох бусад салбарууд (олон салбарт дамжиж ажилладаг бол).
+          </div>
+          <div className="mt-3 flex flex-col gap-2">
+            {branches
+              .filter((b) => b.id !== branchId)
+              .map((b) => (
+                <label
+                  key={b.id}
+                  className="flex items-center gap-2.5 cursor-pointer text-sm text-white/70 hover:text-white/90"
+                >
+                  <input
+                    type="checkbox"
+                    name="assignableBranchIds"
+                    value={b.id}
+                    checked={assignableBranchIds.includes(b.id)}
+                    onChange={() => toggleAssignableBranch(b.id)}
+                    className="accent-violet-500"
+                  />
+                  {b.name}
+                </label>
+              ))}
+          </div>
+        </div>
+      ) : null}
+
       {!isEdit ? (
-        <div className="max-w-md text-xs text-white/45 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 leading-relaxed">
+        <div className="max-w-md text-xs text-white/50 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 leading-relaxed">
           Нууц үгийг та тавихгүй. Ажилтан анх удаа нэвтрэхдээ нэвтрэх хуудасны
           «Анх удаа нэвтрэх» хэсгээр имэйлээ оруулж, утсандаа ирэх кодоор
           баталгаажуулан өөрийн нууц үгээ үүсгэнэ.
@@ -188,7 +230,7 @@ export function EmployeeForm({
         />
         <div className="flex-1">
           <div className="text-sm font-medium text-white/90">Идэвхтэй</div>
-          <div className="text-xs text-white/40 mt-0.5">
+          <div className="text-xs text-white/50 mt-0.5">
             Идэвхгүй ажилтан нэвтэрч чадахгүй. Бичлэг нь хадгалагдана.
           </div>
         </div>

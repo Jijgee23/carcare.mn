@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { setBypassContext } from "@/lib/tenant-context";
 import {
   clearAccountSessionCookie,
   getAccountSessionCookie,
@@ -21,6 +22,9 @@ const ACCOUNT_LOGIN_PATH = "/login";
  */
 export const getAccountSession = cache(
   async (): Promise<AccountSessionPayload | null> => {
+    // JWT verify (jose/WebCrypto)-ээс өмнө context тавина (lib/auth/index.ts
+    // дахь getSession-тэй адил шалтгаанаар).
+    setBypassContext();
     const token = await getAccountSessionCookie();
     if (!token) return null;
     return verifyAccountSession(token);
@@ -39,6 +43,11 @@ export async function requireAccountSession(): Promise<AccountSessionPayload> {
  */
 export const requireAccount = cache(async () => {
   const session = await requireAccountSession();
+  // Account глобал (tenant-гүй) объект — доорх урсгал ихэвчлэн cross-tenant
+  // (олон tenant-д Customer-тэй байж болно) эсвэл tenant-ийг өөр контекстоос
+  // (branchId, slug г.м.) тодорхойлдог тул энд bypass тавина. Бодит бичих
+  // үйлдлүүд өөрсдийн tenantId-г тухайн үедээ ил тод оноодог.
+  setBypassContext();
   const account = await prisma.account.findUnique({
     where: { id: session.accountId },
   });
@@ -56,6 +65,7 @@ export const requireAccount = cache(async () => {
 export const getAccount = cache(async () => {
   const session = await getAccountSession();
   if (!session) return null;
+  setBypassContext();
   const account = await prisma.account.findUnique({
     where: { id: session.accountId },
   });

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { RocketIcon } from "./landing-icons";
 
 export function CtaBanner() {
   return (
@@ -7,7 +8,9 @@ export function CtaBanner() {
         <div className="glass rounded-3xl p-10 sm:p-16 text-center border border-violet-500/20 relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-violet-600/10 to-blue-600/5 pointer-events-none" />
           <div className="relative">
-            <div className="text-5xl mb-6">🚀</div>
+            <div className="mx-auto w-14 h-14 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-violet-400 mb-6">
+              <RocketIcon />
+            </div>
             <h2 className="text-3xl sm:text-4xl font-bold mb-4">
               Сервисээ дараагийн түвшинд гарга
             </h2>

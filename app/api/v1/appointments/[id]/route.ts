@@ -5,11 +5,23 @@ import {
   APPOINTMENT_STATUS_TRANSITIONS,
   type AppointmentStatus,
   resolveCustomerForAccount,
-  snapshotVehicleForAccount,
 } from "@/lib/appointments";
 import { logAudit } from "@/lib/audit";
 import { createNotification } from "@/lib/notifications";
 import { prisma } from "@/lib/prisma";
+import { ensureTenantVehicle } from "@/lib/vehicles";
+
+// AccountVehicle нь global Vehicle руу заадаг болсон тул хариунд хуучин хэлбэрээр
+// (accountVehicle: { plate, make, model } | null) тэгшлэн буцаана.
+function shapeAppointment<
+  T extends {
+    accountVehicle: {
+      vehicle: { plate: string; make: string; model: string };
+    } | null;
+  },
+>(a: T) {
+  return { ...a, accountVehicle: a.accountVehicle?.vehicle ?? null };
+}
 
 const APPT_SELECT = {
   id: true,
@@ -18,9 +30,12 @@ const APPT_SELECT = {
   note: true,
   createdAt: true,
   branch: { select: { id: true, name: true } },
+  category: { select: { id: true, name: true } },
   account: { select: { name: true, phone: true } },
   customer: { select: { id: true, fullName: true, phone: true } },
-  accountVehicle: { select: { plate: true, make: true, model: true } },
+  accountVehicle: {
+    select: { vehicle: { select: { plate: true, make: true, model: true } } },
+  },
   vehicle: { select: { id: true, plate: true, make: true, model: true } },
   serviceOrder: { select: { id: true, number: true } },
 } satisfies Prisma.AppointmentSelect;
@@ -56,18 +71,7 @@ export async function PATCH(
     where: { id, tenantId: auth.user.tenantId },
     include: {
       account: { select: { id: true, phone: true, name: true, email: true } },
-      accountVehicle: {
-        select: {
-          plate: true,
-          make: true,
-          model: true,
-          year: true,
-          vin: true,
-          fuelType: true,
-          wheelPosition: true,
-          mileage: true,
-        },
-      },
+      accountVehicle: { select: { vehicleId: true } },
     },
   });
   if (!appt) return jsonError(404, "Цаг захиалга олдсонгүй.");
@@ -102,12 +106,12 @@ export async function PATCH(
       );
       let vehicleId: string | null = null;
       if (appt.accountVehicle) {
-        vehicleId = await snapshotVehicleForAccount(
-          tx,
-          appt.tenantId,
+        vehicleId = appt.accountVehicle.vehicleId;
+        await ensureTenantVehicle(tx, {
+          tenantId: appt.tenantId,
+          vehicleId,
           customerId,
-          appt.accountVehicle,
-        );
+        });
       }
       await tx.appointment.update({
         where: { id: appt.id },
@@ -179,5 +183,5 @@ export async function PATCH(
     where: { id },
     select: APPT_SELECT,
   });
-  return jsonOk({ appointment: updated });
+  return jsonOk({ appointment: updated ? shapeAppointment(updated) : null });
 }

@@ -60,6 +60,7 @@ type Parsed = {
   schema: TemplateSchema;
   price: Prisma.Decimal | null;
   durationMin: number | null;
+  categoryId: string | null;
   errors: Record<string, string>;
 };
 
@@ -71,11 +72,13 @@ function parse(fd: FormData): Parsed {
   const schemaRaw = s(fd, "schema");
   const priceRaw = s(fd, "price");
   const durationRaw = s(fd, "durationMin");
+  const categoryId = s(fd, "categoryId") || null;
 
   const errors: Record<string, string> = {};
   if (!name) errors.name = "Хуудасны нэрээ оруулна уу.";
   if (!DIAGNOSTIC_TYPES.includes(typeRaw as DiagnosticType))
     errors.type = "Төрлөө сонгоно уу.";
+  if (!categoryId) errors.categoryId = "Ангилал сонгоно уу.";
 
   let schema: TemplateSchema = emptySchema();
   if (!schemaRaw) {
@@ -113,8 +116,22 @@ function parse(fd: FormData): Parsed {
     schema,
     price,
     durationMin,
+    categoryId,
     errors,
   };
+}
+
+// Ангилал тенантынх мөн эсэхийг шалгана (parse нь sync тул тусад нь).
+async function assertCategory(
+  tenantId: string,
+  categoryId: string | null,
+): Promise<boolean> {
+  if (!categoryId) return false;
+  const cat = await prisma.category.findFirst({
+    where: { id: categoryId, tenantId },
+    select: { id: true },
+  });
+  return Boolean(cat);
 }
 
 export async function createTemplateAction(
@@ -128,10 +145,13 @@ export async function createTemplateAction(
     return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
   }
 
-  const { name, description, type, isActive, schema, price, durationMin, errors } =
+  const { name, description, type, isActive, schema, price, durationMin, categoryId, errors } =
     parse(formData);
   if (Object.keys(errors).length > 0) {
     return { ok: false, fieldErrors: errors };
+  }
+  if (!(await assertCategory(user.tenantId, categoryId))) {
+    return { ok: false, fieldErrors: { categoryId: "Сонгосон ангилал олдсонгүй." } };
   }
 
   // Багц boolean: оношилгооны модуль нээгдсэн эсэх
@@ -161,6 +181,7 @@ export async function createTemplateAction(
         schema,
         price,
         durationMin,
+        categoryId,
         version: 1,
         tenantId: user.tenantId,
         createdById: user.id,
@@ -200,10 +221,13 @@ export async function updateTemplateAction(
     return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
   }
 
-  const { name, description, type, isActive, schema, price, durationMin, errors } =
+  const { name, description, type, isActive, schema, price, durationMin, categoryId, errors } =
     parse(formData);
   if (Object.keys(errors).length > 0) {
     return { ok: false, fieldErrors: errors };
+  }
+  if (!(await assertCategory(user.tenantId, categoryId))) {
+    return { ok: false, fieldErrors: { categoryId: "Сонгосон ангилал олдсонгүй." } };
   }
 
   // Бөглөгдсөн тайлантай бол schema өөрчилбөл version-г өсгөнө
@@ -228,6 +252,7 @@ export async function updateTemplateAction(
         schema,
         price,
         durationMin,
+        categoryId,
         version: bump ? existing.version + 1 : existing.version,
       },
     });

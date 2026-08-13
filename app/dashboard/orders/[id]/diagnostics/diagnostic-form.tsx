@@ -1,13 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import {
+  startTransition,
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   createReportAction,
   type ReportActionState,
 } from "@/app/_actions/diagnostic-reports";
 import { Field, FormError, SubmitButton } from "@/app/_components/auth-shell";
 import {
+  CHECK_TONE_ACCENT,
+  CHECK_TONE_CHIP,
+  checkOptionTone,
   isItemVisible,
   itemPositions,
   positionedKey,
@@ -40,8 +49,31 @@ export function DiagnosticForm({
     setAnswers((prev) => ({ ...prev, [id]: value }));
   }
 
+  const formRef = useRef<HTMLFormElement>(null);
+
+  // Алдааны мессежийг харагдуулахын тулд form-ын эхэнд гүйлгэнэ.
+  useEffect(() => {
+    if (state && !state.ok && state.message) {
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [state]);
+
+  // action prop ашиглавал React 19 action дууссаны дараа form-ыг reset хийж
+  // бөглөсөн хариултууд арилдаг. onSubmit-ээр гардан дамжуулбал алдаа буцахад
+  // input-уудын утга хэвээр үлдэнэ.
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    startTransition(() => formAction(fd));
+  }
+
   return (
-    <form action={formAction} className="flex flex-col gap-6" noValidate>
+    <form
+      ref={formRef}
+      onSubmit={handleSubmit}
+      className="flex flex-col gap-6"
+      noValidate
+    >
       <input type="hidden" name="orderId" value={orderId} />
       <input type="hidden" name="templateId" value={templateId} />
 
@@ -63,14 +95,21 @@ export function DiagnosticForm({
             className="glass rounded-2xl p-5 sm:p-6 border border-white/[0.08] flex flex-col gap-4"
           >
             <h2 className="font-semibold">{section.title}</h2>
-            <div className="flex flex-col gap-4">
-              {visibleItems.map((item) => (
-                <ItemControl
-                  key={item.id}
-                  item={item}
-                  onCheckChange={(v) => setAnswer(item.id, v)}
-                />
-              ))}
+            <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4 items-start">
+              {visibleItems.map((item) => {
+                const positioned = Boolean(itemPositions(item));
+                return (
+                  <div
+                    key={item.id}
+                    className={positioned ? "md:col-span-2 2xl:col-span-3" : ""}
+                  >
+                    <ItemControl
+                      item={item}
+                      onCheckChange={(v) => setAnswer(item.id, v)}
+                    />
+                  </div>
+                );
+              })}
             </div>
           </section>
         );
@@ -117,7 +156,7 @@ function ItemControl({
       <div className="flex items-center gap-2 text-sm font-medium text-white/80">
         <span>{item.label}</span>
         {item.required ? (
-          <span className="text-red-400 text-xs">*</span>
+          <span className="text-red-400 text-xs light:text-red-600">*</span>
         ) : null}
       </div>
 
@@ -163,22 +202,25 @@ function FieldInputs({
     <>
       {item.type === "check" ? (
         <div className="flex flex-wrap gap-2">
-          {(item.options ?? []).map((opt) => (
-            <label
-              key={opt}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06] cursor-pointer hover:bg-white/[0.08] text-sm text-white/70"
-            >
-              <input
-                type="radio"
-                name={`${baseName}[value]`}
-                value={opt}
-                required={item.required}
-                onChange={(e) => onCheckChange?.(e.target.value)}
-                className="accent-violet-500"
-              />
-              {opt}
-            </label>
-          ))}
+          {(item.options ?? []).map((opt) => {
+            const tone = checkOptionTone(opt);
+            return (
+              <label
+                key={opt}
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06] cursor-pointer hover:bg-white/[0.08] text-sm text-white/70 transition-colors ${CHECK_TONE_CHIP[tone]}`}
+              >
+                <input
+                  type="radio"
+                  name={`${baseName}[value]`}
+                  value={opt}
+                  required={item.required}
+                  onChange={(e) => onCheckChange?.(e.target.value)}
+                  className={CHECK_TONE_ACCENT[tone]}
+                />
+                {opt}
+              </label>
+            );
+          })}
         </div>
       ) : null}
 

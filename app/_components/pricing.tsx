@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { formatTugrik } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
+import { setBypassContext } from "@/lib/tenant-context";
 import { SectionHeading } from "./section-heading";
 
 type PlanKey = "FREE" | "BUSINESS" | "ENTERPRISE";
@@ -82,6 +83,8 @@ function featureText(label: string, value: string): string | null {
 }
 
 export async function Pricing() {
+  // Нийтэд нээлттэй landing хуудасны бүрэлдэхүүн хэсэг — session/tenant байхгүй.
+  setBypassContext();
   const [prices, features] = await Promise.all([
     prisma.planPrice.findMany({
       where: { isActive: true, period: "MONTH" },
@@ -136,7 +139,7 @@ export async function Pricing() {
   return (
     <section
       id="pricing"
-      className="scroll-mt-24 py-24 px-4 sm:px-6 lg:px-8 bg-[#0d0d14]"
+      className="scroll-mt-24 py-24 px-4 sm:px-6 lg:px-8 bg-[var(--surface)]"
     >
       <div className="max-w-7xl mx-auto">
         <SectionHeading

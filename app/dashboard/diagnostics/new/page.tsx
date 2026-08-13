@@ -21,6 +21,7 @@ export default async function NewDiagnosticPage() {
     prisma.branch.findMany({
       where: {
         tenantId: user.tenantId,
+        isActive: true,
         ...(scopeBranchId ? { id: scopeBranchId } : {}),
       },
       orderBy: { name: "asc" },
@@ -31,17 +32,20 @@ export default async function NewDiagnosticPage() {
       orderBy: { fullName: "asc" },
       select: { id: true, fullName: true, phone: true },
     }),
-    prisma.vehicle.findMany({
-      where: { tenantId: user.tenantId },
-      orderBy: { plate: "asc" },
-      select: {
-        id: true,
-        plate: true,
-        make: true,
-        model: true,
-        customerId: true,
-      },
-    }),
+    prisma.tenantVehicle
+      .findMany({
+        where: { tenantId: user.tenantId, isActive: true },
+        orderBy: { vehicle: { plate: "asc" } },
+        select: {
+          customerId: true,
+          vehicle: {
+            select: { id: true, plate: true, make: true, model: true },
+          },
+        },
+      })
+      .then((rows) =>
+        rows.map((r) => ({ ...r.vehicle, customerId: r.customerId })),
+      ),
     prisma.diagnosticTemplate.findMany({
       where: { tenantId: user.tenantId, isActive: true },
       orderBy: [{ type: "asc" }, { name: "asc" }],

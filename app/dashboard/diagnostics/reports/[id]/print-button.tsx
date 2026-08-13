@@ -28,7 +28,7 @@ export function PrintButton() {
       type="button"
       onClick={handleDownloadPDF}
       disabled={isGenerating}
-      className="no-print text-xs px-3 py-1.5 rounded-lg bg-violet-500/15 text-violet-200 hover:bg-violet-500/25 border border-violet-400/20 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+      className="no-print text-xs px-3 py-1.5 rounded-lg bg-violet-500/15 text-violet-200 light:bg-violet-100 light:text-violet-700 hover:bg-violet-500/25 light:hover:bg-violet-200 border border-violet-400/20 light:border-violet-300 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
     >
       {isGenerating ? "Хүлээнэ үү..." : "PDF татах"}
     </button>

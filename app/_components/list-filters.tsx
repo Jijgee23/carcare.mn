@@ -204,11 +204,11 @@ export function FilterSelect({
           gap: "0.5rem",
           padding: "0.375rem 0.75rem",
           borderRadius: "0.5rem",
-          border: `1px solid ${hasValue ? "rgba(139, 107, 255, 0.45)" : "rgba(255, 255, 255, 0.12)"}`,
+          border: `1px solid ${hasValue ? "rgba(139, 107, 255, 0.45)" : "var(--input-border)"}`,
           background: hasValue
             ? "rgba(108, 71, 255, 0.18)"
-            : "rgba(255, 255, 255, 0.04)",
-          color: hasValue ? "#e2dafe" : "rgba(255, 255, 255, 0.9)",
+            : "var(--input-bg)",
+          color: hasValue ? "var(--accent-strong)" : "var(--input-fg)",
           fontSize: "0.875rem",
           cursor: "pointer",
           transition: "all 0.15s ease",
@@ -255,8 +255,8 @@ export function FilterSelect({
             width: "max-content",
             minWidth: "100%",
             maxWidth: "20rem",
-            background: "#15151f",
-            border: "1px solid rgba(255, 255, 255, 0.12)",
+            background: "var(--popover)",
+            border: "1px solid var(--input-border)",
             borderRadius: "0.75rem",
             boxShadow: "0 20px 50px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0,0,0,0.4)",
             overflow: "hidden",
@@ -275,9 +275,9 @@ export function FilterSelect({
                   width: "100%",
                   padding: "0.35rem 0.6rem",
                   borderRadius: "0.45rem",
-                  border: "1px solid rgba(255, 255, 255, 0.12)",
-                  background: "rgba(255, 255, 255, 0.04)",
-                  color: "rgba(255, 255, 255, 0.92)",
+                  border: "1px solid var(--input-border)",
+                  background: "var(--input-bg)",
+                  color: "var(--input-fg)",
                   fontSize: "0.8125rem",
                   outline: "none",
                 }}
@@ -294,7 +294,7 @@ export function FilterSelect({
             <div
               style={{
                 height: "1px",
-                background: "rgba(255, 255, 255, 0.06)",
+                background: "var(--hover-bg)",
                 margin: "0.125rem 0.5rem",
               }}
             />
@@ -305,7 +305,7 @@ export function FilterSelect({
                 style={{
                   padding: "0.5rem 0.75rem",
                   fontSize: "0.8125rem",
-                  color: "rgba(255, 255, 255, 0.4)",
+                  color: "var(--placeholder)",
                 }}
               >
                 Олдсонгүй
@@ -362,13 +362,13 @@ function DropdownOption({
         background: active
           ? "rgba(139, 107, 255, 0.18)"
           : hover
-            ? "rgba(255, 255, 255, 0.06)"
+            ? "var(--hover-bg)"
             : "transparent",
         color: active
-          ? "#e2dafe"
+          ? "var(--accent-strong)"
           : muted
-            ? "rgba(255, 255, 255, 0.7)"
-            : "rgba(255, 255, 255, 0.92)",
+            ? "var(--placeholder)"
+            : "var(--input-fg)",
         cursor: "pointer",
         border: "none",
         transition: "background 0.1s ease",
@@ -389,7 +389,7 @@ function DropdownOption({
             style={{
               marginLeft: "0.4rem",
               fontSize: "0.75rem",
-              color: "rgba(255, 255, 255, 0.4)",
+              color: "var(--placeholder)",
             }}
           >
             {hint}

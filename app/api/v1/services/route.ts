@@ -17,7 +17,7 @@ const SERVICE_SELECT = {
   durationValue: true,
   unit: { select: { id: true, name: true, code: true } },
   durationUnit: { select: { id: true, name: true, code: true } },
-  laborCategory: { select: { id: true, name: true } },
+  category: { select: { id: true, name: true } },
   createdAt: true,
 } satisfies Prisma.ServiceSelect;
 
@@ -72,7 +72,7 @@ export async function POST(req: Request) {
 
   const {
     type, name, code, price, costPrice, stock, description, isActive,
-    unitId, laborCategoryId, durationValue, durationUnitId,
+    unitId, categoryId, durationValue, durationUnitId,
   } = body as Record<string, unknown>;
 
   if (!type || !(KINDS as readonly string[]).includes(type as string))
@@ -95,7 +95,7 @@ export async function POST(req: Request) {
       description: typeof description === "string" && description.trim() ? description.trim() : null,
       isActive: isActive !== false,
       unitId: typeof unitId === "string" && unitId ? unitId : null,
-      laborCategoryId: typeof laborCategoryId === "string" && laborCategoryId ? laborCategoryId : null,
+      categoryId: typeof categoryId === "string" && categoryId ? categoryId : null,
       durationValue: durationValue !== undefined && durationValue !== "" ? Number(durationValue) || null : null,
       durationUnitId: typeof durationUnitId === "string" && durationUnitId ? durationUnitId : null,
       tenantId: auth.user.tenantId,

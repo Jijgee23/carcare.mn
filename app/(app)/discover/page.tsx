@@ -1,32 +1,21 @@
-import Link from "next/link";
+import { type Weekday, branchStatusNow, formatAddress } from "@/lib/branches";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { plansWithFeature } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
-import { DiscoverMap, type MapMarker } from "./discover-map";
+import { setBypassContext } from "@/lib/tenant-context";
+import { DiscoverClient, type DiscoverOrg } from "./discover-client";
 
 export const metadata = {
-  title: "Газрууд — Цаг захиалга",
+  title: "Автосервисүүд — Цаг захиалга",
 };
 
 // Каталог нь нийтэд нээлттэй (нэвтрэхгүйгээр үзнэ).
 export const dynamic = "force-dynamic";
 
-function branchAreas(
-  branches: { city: string | null; district: string | null }[],
-): string {
-  const areas = Array.from(
-    new Set(
-      branches
-        .map((b) => [b.city, b.district].filter(Boolean).join(", "))
-        .filter(Boolean),
-    ),
-  );
-  return areas.join(" · ");
-}
-
 export default async function DiscoverPage() {
-  // Багц нь онлайн захиалга дэмждэг tenant-уудыг л харуулна (toggle асаалттай ч
-  // багцаа downgrade хийсэн бол каталогт гарахгүй).
+  // Олон tenant-ийн нийтэд нээлттэй каталог — цор ганц tenant гэж байхгүй.
+  setBypassContext();
+  // Багц нь онлайн захиалга дэмждэг tenant-уудыг л харуулна.
   const allowedPlans = await plansWithFeature(PLAN_LIMIT_CODES.ONLINE_BOOKING);
   const tenants = await prisma.tenant.findMany({
     where: {
@@ -36,84 +25,88 @@ export default async function DiscoverPage() {
     },
     orderBy: { name: "asc" },
     select: {
-      id: true,
       slug: true,
       name: true,
       logoUrl: true,
+      phone1: true,
       branches: {
+        where: { isActive: true },
+        orderBy: { isPrimary: "desc" },
         select: {
           id: true,
           name: true,
+          phone: true,
           city: true,
           district: true,
+          khoroo: true,
+          address: true,
           latitude: true,
           longitude: true,
+          openTime: true,
+          closeTime: true,
+          schedules: {
+            select: {
+              weekday: true,
+              isOpen: true,
+              openTime: true,
+              closeTime: true,
+            },
+          },
         },
       },
     },
   });
 
-  const markers: MapMarker[] = tenants.flatMap((t) =>
-    t.branches
-      .filter((b) => b.latitude != null && b.longitude != null)
-      .map((b) => ({
-        lat: b.latitude as number,
-        lng: b.longitude as number,
-        orgName: t.name,
-        branchName: b.name,
-        slug: t.slug,
-      })),
-  );
+  const now = new Date();
+  const orgs: DiscoverOrg[] = tenants.map((t) => ({
+    slug: t.slug,
+    name: t.name,
+    logoUrl: t.logoUrl,
+    phone: t.phone1,
+    branches: t.branches.map((b) => {
+      const status = branchStatusNow(
+        {
+          openTime: b.openTime,
+          closeTime: b.closeTime,
+          schedules: b.schedules.map((s) => ({
+            weekday: s.weekday as Weekday,
+            isOpen: s.isOpen,
+            openTime: s.openTime,
+            closeTime: s.closeTime,
+          })),
+        },
+        now,
+      );
+      return {
+        id: b.id,
+        name: b.name,
+        phone: b.phone,
+        address: formatAddress(b),
+        city: b.city,
+        district: b.district,
+        lat: b.latitude,
+        lng: b.longitude,
+        open: status.open,
+        hours: status.hours,
+      };
+    }),
+  }));
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <div>
         <h1 className="text-2xl font-bold">Цаг захиалах</h1>
         <p className="text-white/40 text-sm mt-1">
-          Авто үйлчилгээний газраа сонгож, онлайнаар цаг захиална уу.
+          Авто үйлчилгээний газраа газрын зураг эсвэл жагсаалтаас сонгож,
+          онлайнаар цаг захиална уу.
         </p>
       </div>
 
-      {markers.length > 0 ? <DiscoverMap markers={markers} /> : null}
-
-      {tenants.length === 0 ? (
-        <div className="glass rounded-2xl p-10 border border-white/[0.08] text-center text-sm text-white/40">
-          Одоогоор онлайн цаг захиалга нээсэн газар алга.
-        </div>
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {tenants.map((t) => (
-            <Link
-              key={t.id}
-              href={`/org/${t.slug}`}
-              className="glass rounded-2xl p-4 border border-white/[0.08] hover:border-violet-500/30 hover:bg-white/[0.03] transition-all flex items-center gap-4"
-            >
-              {t.logoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={t.logoUrl}
-                  alt=""
-                  className="w-12 h-12 rounded-xl object-contain bg-white/[0.04] border border-white/[0.06] shrink-0"
-                />
-              ) : (
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500/30 to-blue-500/30 border border-white/[0.06] shrink-0 flex items-center justify-center font-bold text-white/70">
-                  {t.name.slice(0, 1)}
-                </div>
-              )}
-              <div className="min-w-0 flex-1">
-                <div className="font-semibold text-white/90 truncate">
-                  {t.name}
-                </div>
-                <div className="text-xs text-white/40 mt-0.5 truncate">
-                  {t.branches.length} салбар
-                  {branchAreas(t.branches) ? ` · ${branchAreas(t.branches)}` : ""}
-                </div>
-              </div>
-              <span className="text-violet-300 text-sm shrink-0">→</span>
-            </Link>
-          ))}
-        </div>
-      )}
+      <DiscoverClient
+        orgs={orgs}
+        apiKey={process.env.GOOGLE_MAP_API_KEY ?? ""}
+        mapId={process.env.GOOGLE_MAP_ID ?? ""}
+      />
     </div>
   );
 }

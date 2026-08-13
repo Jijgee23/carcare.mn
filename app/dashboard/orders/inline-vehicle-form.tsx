@@ -12,6 +12,7 @@ export type CreatedVehicle = {
   make: string;
   model: string;
   customerId: string | null;
+  isPostpaid: boolean;
 };
 
 // 4 цифр + 3 үсэг. Кирилл `А-Я` муж нь Монгол тусгай үсэг Ө/Ү/Ё-г агуулдаггүй
@@ -42,6 +43,9 @@ export function InlineVehicleForm({
   const [hurLoading, setHurLoading] = useState(false);
   const [hurError, setHurError] = useState<string | null>(null);
   const [hurInfo, setHurInfo] = useState<HurVehicle | null>(null);
+  const [hurSource, setHurSource] = useState<"global" | "hur">("hur");
+  // Энэ tenant-д аль хэдийн бүртгэлтэй — жагсаалтаас сонгохыг санал болгоно.
+  const [alreadyRegistered, setAlreadyRegistered] = useState(false);
   const lastFetchedRef = useRef<string | null>(null);
 
   const trimmedPlate = plate.trim().toUpperCase();
@@ -68,6 +72,8 @@ export function InlineVehicleForm({
         }
         const v = data.vehicle as HurVehicle;
         setHurInfo(v);
+        setHurSource(data.source === "global" ? "global" : "hur");
+        setAlreadyRegistered(Boolean(data.registered));
         if (v.plate) setPlate(v.plate);
         if (v.make) setMake(v.make);
         if (v.model) setModel(v.model);
@@ -133,7 +139,7 @@ export function InlineVehicleForm({
         </button>
       </div>
 
-      {message ? <p className="text-xs text-red-400">{message}</p> : null}
+      {message ? <p className="text-xs text-red-400 light:text-red-600">{message}</p> : null}
 
       <div className="grid gap-3 sm:grid-cols-2">
         <Field
@@ -174,9 +180,16 @@ export function InlineVehicleForm({
         </Field>
       </div>
 
+      {alreadyRegistered ? (
+        <div className="text-xs text-amber-300 light:text-amber-700">
+          Энэ дугаартай машин аль хэдийн бүртгэлтэй — машины жагсаалтаас
+          сонгоно уу.
+        </div>
+      ) : null}
+
       {hurInfo ? (
-        <div className="text-xs text-violet-300">
-          HUR-аас татав
+        <div className="text-xs text-violet-300 light:text-violet-700">
+          {hurSource === "global" ? "Системийн бүртгэлээс" : "HUR-аас татав"}
           {hurInfo.color ? ` · ${hurInfo.color}` : ""}
           {hurInfo.fuelType ? ` · ${hurInfo.fuelType}` : ""}
         </div>

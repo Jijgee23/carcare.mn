@@ -49,6 +49,9 @@ type Validated = {
   phone: string;
   roleId: string | null;
   branchId: string | null;
+  // Үндсэн салбараас гадна энэ ажилтныг захиалгад хариуцагчаар сонгож болох
+  // нэмэлт салбарууд (олон салбарт дамжиж ажилладаг мастер).
+  assignableBranchIds: string[];
   isActive: boolean;
   activeUntil: Date | null;
 };
@@ -65,6 +68,10 @@ function validateCommon(fd: FormData): {
   const phone = s(fd, "phone");
   const roleId = s(fd, "roleId");
   const branchIdRaw = s(fd, "branchId");
+  // Нэмэлт салбарууд — үндсэн салбараа давхардуулж сонгосон бол хасна.
+  const assignableBranchIds = [...new Set(fd.getAll("assignableBranchIds"))]
+    .filter((v): v is string => typeof v === "string" && v.length > 0)
+    .filter((v) => v !== branchIdRaw);
   const isActive = fd.get("isActive") !== "off"; // default true
   const activeUntilRaw = s(fd, "activeUntil");
 
@@ -96,6 +103,7 @@ function validateCommon(fd: FormData): {
       phone: normalizePhone(phone) ?? phone,
       roleId: roleId || null,
       branchId: branchIdRaw || null,
+      assignableBranchIds,
       isActive,
       activeUntil,
     },
@@ -124,6 +132,22 @@ async function duplicateUserFields(
     prisma.user.findFirst({ where: { email, ...not }, select: { id: true } }),
   ]);
   return { phone: Boolean(phoneTaken), email: Boolean(emailTaken) };
+}
+
+// Илгээсэн id-үүдээс зөвхөн тухайн tenant-д хамаарах салбаруудыг л үлдээнэ
+// (checkbox жагсаалт сервэрээс өөрөө tenant-ийн салбаруудаас бүрддэг тул энэ нь
+// зөвхөн хуучирсан/зохиомол хүсэлтээс хамгаалах defense-in-depth шүүлт).
+async function filterOwnBranchIds(
+  tenantId: string,
+  branchIds: string[],
+): Promise<string[]> {
+  if (branchIds.length === 0) return [];
+  const owned = await prisma.branch.findMany({
+    where: { tenantId, isActive: true, id: { in: branchIds } },
+    select: { id: true },
+  });
+  const ownedSet = new Set(owned.map((b) => b.id));
+  return branchIds.filter((id) => ownedSet.has(id));
 }
 
 async function ensureRoleBelongsToTenant(
@@ -174,6 +198,10 @@ export async function createEmployeeAction(
       return { ok: false, fieldErrors: { branchId: "Салбар олдсонгүй." } };
     }
   }
+  data.assignableBranchIds = await filterOwnBranchIds(
+    user.tenantId,
+    data.assignableBranchIds,
+  );
 
   // Багцын хязгаар: max_users
   const limit = await enforceCountLimit(
@@ -199,6 +227,7 @@ export async function createEmployeeAction(
         verified: false,
         tenantId: user.tenantId,
         branchId: data.branchId,
+        assignableBranchIds: data.assignableBranchIds,
         isActive: data.isActive,
         activeUntil: data.activeUntil,
       },
@@ -234,6 +263,7 @@ export async function createEmployeeAction(
       email: data.email,
       roleId: data.roleId,
       branchId: data.branchId,
+      assignableBranchIds: data.assignableBranchIds,
     },
   });
 
@@ -294,6 +324,10 @@ export async function updateEmployeeAction(
       return { ok: false, fieldErrors: { branchId: "Салбар олдсонгүй." } };
     }
   }
+  data.assignableBranchIds = await filterOwnBranchIds(
+    me.tenantId,
+    data.assignableBranchIds,
+  );
 
   let updated;
   try {
@@ -306,6 +340,7 @@ export async function updateEmployeeAction(
         phone: data.phone,
         roleId: data.roleId,
         branchId: data.branchId,
+        assignableBranchIds: data.assignableBranchIds,
         isActive: data.isActive,
         activeUntil: data.activeUntil,
       },
@@ -341,6 +376,7 @@ export async function updateEmployeeAction(
       email: target.email,
       roleId: target.roleId,
       branchId: target.branchId,
+      assignableBranchIds: target.assignableBranchIds,
     },
     after: {
       firstName: data.firstName,
@@ -348,6 +384,7 @@ export async function updateEmployeeAction(
       email: data.email,
       roleId: data.roleId,
       branchId: data.branchId,
+      assignableBranchIds: data.assignableBranchIds,
     },
   });
 

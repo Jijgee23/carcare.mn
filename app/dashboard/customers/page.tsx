@@ -47,7 +47,7 @@ export default async function CustomersPage({
       skip,
       take,
       include: {
-        _count: { select: { vehicles: true, serviceOrders: true } },
+        _count: { select: { tenantVehicles: true, serviceOrders: true } },
       },
     }),
     prisma.customer.count({ where }),
@@ -68,14 +68,7 @@ export default async function CustomersPage({
         }
       />
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "0.5rem",
-          marginBottom: "1rem",
-        }}
-      >
+      <div className="flex flex-wrap items-center gap-2 mb-4">
         <SearchBox placeholder="Нэр, утас, имэйлээр хайх" />
         <ResetFilters paramNames={["q"]} />
       </div>
@@ -113,7 +106,7 @@ export default async function CustomersPage({
                   ].map((h) => (
                     <th
                       key={h}
-                      className="text-left text-xs text-white/30 font-medium px-5 py-3"
+                      className="text-left text-xs text-white/30 light:text-slate-500 font-medium px-5 py-3"
                     >
                       {h}
                     </th>
@@ -128,7 +121,7 @@ export default async function CustomersPage({
                   >
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500/30 to-blue-500/30 flex items-center justify-center text-xs font-bold text-violet-300 shrink-0">
+                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500/30 to-blue-500/30 flex items-center justify-center text-xs font-bold text-violet-300 light:text-violet-700 shrink-0">
                           {customerLabel(c)[0]?.toUpperCase() ?? "?"}
                         </div>
                         <span className="text-sm font-medium text-white/90">
@@ -143,7 +136,7 @@ export default async function CustomersPage({
                       {c.email ?? "—"}
                     </td>
                     <td className="px-5 py-4 text-sm text-white/60">
-                      {c._count.vehicles}
+                      {c._count.tenantVehicles}
                     </td>
                     <td className="px-5 py-4 text-sm text-white/60">
                       {c._count.serviceOrders}
@@ -158,7 +151,7 @@ export default async function CustomersPage({
                             <input type="hidden" name="id" value={c.id} />
                             <button
                               type="submit"
-                              className="text-xs text-red-400 hover:text-red-300 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-red-500/10"
+                              className="text-xs text-red-400 hover:text-red-300 light:text-red-600 light:hover:text-red-700 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-red-500/10"
                             >
                               Устгах
                             </button>

@@ -33,12 +33,12 @@ export function ForgotPasswordForm() {
   if (finished) {
     return (
       <div className="flex flex-col gap-4 text-center">
-        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-3 text-sm text-emerald-300">
+        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-3 text-sm text-emerald-300 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700">
           {resetState?.message ?? "Нууц үг шинэчлэгдлээ."}
         </div>
         <Link
           href="/page/login"
-          className="text-sm font-medium text-violet-300 hover:text-violet-200"
+          className="text-sm font-medium text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
         >
           Нэвтрэх хуудас руу буцах →
         </Link>
@@ -123,7 +123,7 @@ function VerifyStep({
     <form action={formAction} className="flex flex-col gap-5" noValidate>
       <input type="hidden" name="email" value={email} />
 
-      <div className="bg-violet-500/10 border border-violet-500/25 rounded-xl px-4 py-3 text-sm text-violet-200">
+      <div className="bg-violet-500/10 border border-violet-500/25 rounded-xl px-4 py-3 text-sm text-violet-200 light:bg-violet-100 light:border-violet-300 light:text-violet-700">
         {requestSuccessMessage ??
           `Утас ${maskedPhone} руу 6 оронтой код илгээлээ.`}
       </div>

@@ -13,14 +13,20 @@ import type { Weekday } from "@/lib/branches";
 import { InlineAccountVehicleForm } from "@/app/(app)/account/inline-account-vehicle-form";
 
 type Branch = { id: string; name: string; openWeekdays: Weekday[] };
+// id нь global Vehicle id (AccountVehicle link биш).
 type Vehicle = { id: string; plate: string; make: string; model: string };
+type Category = { id: string; name: string; branchIds: string[] };
 
 export function BookingForm({
   branches,
   vehicles: initialVehicles,
+  categories,
+  initialBranchId = "",
 }: {
   branches: Branch[];
   vehicles: Vehicle[];
+  categories: Category[];
+  initialBranchId?: string;
 }) {
   const [state, formAction, pending] = useActionState<
     AppointmentActionState,
@@ -29,7 +35,7 @@ export function BookingForm({
   const fe = state?.fieldErrors ?? {};
 
   const [branchId, setBranchId] = useState(
-    branches.length === 1 ? branches[0].id : "",
+    initialBranchId || (branches.length === 1 ? branches[0].id : ""),
   );
   const [vehicles, setVehicles] = useState<Vehicle[]>(initialVehicles);
   const [vehicleId, setVehicleId] = useState(
@@ -37,20 +43,29 @@ export function BookingForm({
   );
   const [showVehForm, setShowVehForm] = useState(false);
   const [selectedIso, setSelectedIso] = useState("");
+  const [categoryId, setCategoryId] = useState("");
 
   const selectedBranch = branches.find((b) => b.id === branchId);
+
+  // Сонгосон салбарт хамаарах ангилал (салбаргүй ангилал бүх салбарт).
+  const branchCategories = branchId
+    ? categories.filter(
+        (c) => c.branchIds.length === 0 || c.branchIds.includes(branchId),
+      )
+    : [];
 
   function onBranchChange(v: string) {
     setBranchId(v);
     setSelectedIso("");
+    setCategoryId(""); // салбар солихед ангиллын жагсаалт өөрчлөгдөнө
   }
 
   function onVehCreated(v: CreatedAccountVehicle) {
     setVehicles((prev) => [
-      { id: v.id, plate: v.plate, make: v.make, model: v.model },
+      { id: v.vehicleId, plate: v.plate, make: v.make, model: v.model },
       ...prev,
     ]);
-    setVehicleId(v.id);
+    setVehicleId(v.vehicleId);
     setShowVehForm(false);
   }
 
@@ -74,20 +89,41 @@ export function BookingForm({
             />
           </Field>
 
+          {branchId && branchCategories.length > 0 ? (
+            <Field
+              label="Үйлчилгээний ангилал"
+              htmlFor="categoryId"
+              hint="заавал биш"
+              error={fe.categoryId}
+            >
+              <Select
+                id="categoryId"
+                name="categoryId"
+                value={categoryId}
+                onChange={setCategoryId}
+                placeholder="— Сонгох —"
+                options={branchCategories.map((c) => ({
+                  value: c.id,
+                  label: c.name,
+                }))}
+              />
+            </Field>
+          ) : null}
+
           <Field
             label="Машин"
-            htmlFor="accountVehicleId"
+            htmlFor="vehicleId"
             hint="заавал биш"
-            error={fe.accountVehicleId}
+            error={fe.vehicleId}
           >
             <div className="flex gap-2">
               <div className="flex-1 min-w-0">
                 <Select
-                  id="accountVehicleId"
-                  name="accountVehicleId"
+                  id="vehicleId"
+                  name="vehicleId"
                   value={vehicleId}
                   onChange={setVehicleId}
-                  error={fe.accountVehicleId}
+                  error={fe.vehicleId}
                   placeholder={
                     vehicles.length === 0 ? "— Машингүй —" : "— Сонгох —"
                   }
@@ -101,7 +137,7 @@ export function BookingForm({
               <button
                 type="button"
                 onClick={() => setShowVehForm((v) => !v)}
-                className="shrink-0 px-2.5 rounded-lg border border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-violet-200 text-xs font-medium transition-colors"
+                className="shrink-0 px-2.5 rounded-lg border border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-violet-200 light:bg-violet-100 light:hover:bg-violet-200 light:border-violet-300 light:text-violet-700 text-xs font-medium transition-colors"
                 title="Шинэ машин нэмэх"
               >
                 {showVehForm ? "✕" : "+"}

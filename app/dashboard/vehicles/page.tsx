@@ -13,8 +13,14 @@ import {
   PrimaryLinkButton,
 } from "@/app/_components/page-header";
 import { Pagination } from "@/app/_components/pagination";
+import { CarIcon } from "@/app/_components/landing-icons";
+import {
+  RowActionsMenu,
+  RowMenuFormItem,
+} from "@/app/_components/row-actions";
 import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { customerLabel } from "@/lib/customers";
+import { POSTPAID_BADGE, POSTPAID_LABEL } from "@/lib/orders";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canView } from "@/lib/auth/roles";
 import { redirect } from "next/navigation";
@@ -27,43 +33,92 @@ export const metadata = {
 export default async function VehiclesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; assigned?: string; page?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    assigned?: string;
+    postpaid?: string;
+    page?: string;
+  }>;
 }) {
   const user = await requireUser();
   if (!canView(user, "vehicles")) redirect("/dashboard");
   const canAdd = canCreate(user, "vehicles");
   const canRemove = canDelete(user, "vehicles");
 
-  const { q = "", assigned = "", page: pageParam } = await searchParams;
-  const where: Prisma.VehicleWhereInput = { tenantId: user.tenantId };
+  const {
+    q = "",
+    assigned = "",
+    postpaid = "",
+    page: pageParam,
+  } = await searchParams;
+  // Тенантын "машинууд" = TenantVehicle link-үүд (global Vehicle руу заана).
+  const where: Prisma.TenantVehicleWhereInput = { tenantId: user.tenantId };
   if (q) {
     where.OR = [
-      { plate: { contains: q, mode: "insensitive" } },
-      { make: { contains: q, mode: "insensitive" } },
-      { model: { contains: q, mode: "insensitive" } },
-      { vin: { contains: q, mode: "insensitive" } },
+      { vehicle: { plate: { contains: q, mode: "insensitive" } } },
+      { vehicle: { make: { contains: q, mode: "insensitive" } } },
+      { vehicle: { model: { contains: q, mode: "insensitive" } } },
+      { vehicle: { vin: { contains: q, mode: "insensitive" } } },
       { customer: { fullName: { contains: q, mode: "insensitive" } } },
       { customer: { phone: { contains: q } } },
     ];
   }
   if (assigned === "yes") where.customerId = { not: null };
   else if (assigned === "no") where.customerId = null;
+  if (postpaid === "yes") where.isPostpaid = true;
+  else if (postpaid === "no") where.isPostpaid = false;
 
   const { page, pageSize, skip, take } = getPageInfo(pageParam);
-  const [vehicles, total] = await Promise.all([
-    prisma.vehicle.findMany({
+  const [links, total] = await Promise.all([
+    prisma.tenantVehicle.findMany({
       where,
       orderBy: { createdAt: "desc" },
       skip,
       take,
-      include: {
+      select: {
+        isPostpaid: true,
         customer: { select: { id: true, fullName: true, phone: true } },
-        _count: { select: { serviceOrders: true } },
+        vehicle: {
+          select: {
+            id: true,
+            plate: true,
+            make: true,
+            model: true,
+            year: true,
+            mileage: true,
+          },
+        },
       },
     }),
-    prisma.vehicle.count({ where }),
+    prisma.tenantVehicle.count({ where }),
   ]);
   const meta = buildMeta(total, page, pageSize);
+
+  // Захиалгын тоог ЭНЭ tenant-аар хязгаарлаж тоолно (global vehicle нийт
+  // tenant-ийн захиалгыг агуулдаг тул шууд _count ашиглах нь буруу).
+  const vehicleIds = links.map((l) => l.vehicle.id);
+  const orderCounts = vehicleIds.length
+    ? await prisma.serviceOrder.groupBy({
+        by: ["vehicleId"],
+        where: { tenantId: user.tenantId, vehicleId: { in: vehicleIds } },
+        _count: { _all: true },
+      })
+    : [];
+  const orderCountMap = new Map(
+    orderCounts.map((o) => [o.vehicleId, o._count._all]),
+  );
+
+  const vehicles = links.map((l) => ({
+    id: l.vehicle.id,
+    plate: l.vehicle.plate,
+    make: l.vehicle.make,
+    model: l.vehicle.model,
+    year: l.vehicle.year,
+    mileage: l.vehicle.mileage,
+    isPostpaid: l.isPostpaid,
+    customer: l.customer,
+    _count: { serviceOrders: orderCountMap.get(l.vehicle.id) ?? 0 },
+  }));
 
   return (
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
@@ -79,14 +134,7 @@ export default async function VehiclesPage({
         }
       />
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "0.5rem",
-          marginBottom: "1rem",
-        }}
-      >
+      <div className="flex flex-wrap items-center gap-2 mb-4">
         <SearchBox placeholder="Дугаар, марк, эзэмшигчээр хайх" />
         <FilterSelect
           paramName="assigned"
@@ -96,14 +144,22 @@ export default async function VehiclesPage({
             { value: "no", label: "Эзэмшигчгүй" },
           ]}
         />
-        <ResetFilters paramNames={["q", "assigned"]} />
+        <FilterSelect
+          paramName="postpaid"
+          placeholder="Төлбөрийн нөхцөл"
+          options={[
+            { value: "yes", label: "Дараа төлбөрт" },
+            { value: "no", label: "Энгийн" },
+          ]}
+        />
+        <ResetFilters paramNames={["q", "assigned", "postpaid"]} />
       </div>
 
       {vehicles.length === 0 ? (
         <EmptyState
-          title={q || assigned ? "Машин олдсонгүй" : "Машин алга"}
+          title={q || assigned || postpaid ? "Машин олдсонгүй" : "Машин алга"}
           description={
-            q || assigned
+            q || assigned || postpaid
               ? "Шүүлтүүрээ цэвэрлэж дахин үзнэ үү."
               : "Эхний машинаа бүртгэж эхлээрэй."
           }
@@ -131,7 +187,7 @@ export default async function VehiclesPage({
                   ].map((h) => (
                     <th
                       key={h}
-                      className="text-left text-xs text-white/30 font-medium px-5 py-3"
+                      className="text-left text-xs text-white/30 light:text-slate-500 font-medium px-5 py-2.5"
                     >
                       {h}
                     </th>
@@ -144,10 +200,10 @@ export default async function VehiclesPage({
                     key={v.id}
                     href={`/dashboard/vehicles/${v.id}`}
                   >
-                    <td className="px-5 py-4">
+                    <td className="px-5 py-2.5">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-500/30 to-blue-500/30 flex items-center justify-center text-lg shrink-0">
-                          🚗
+                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-500/30 to-blue-500/30 flex items-center justify-center text-violet-200 light:text-violet-700 shrink-0">
+                          <CarIcon />
                         </div>
                         <div>
                           <div className="text-sm font-medium text-white/90">
@@ -159,16 +215,23 @@ export default async function VehiclesPage({
                         </div>
                       </div>
                     </td>
-                    <td className="px-5 py-4">
+                    <td className="px-5 py-2.5">
                       <span className="text-sm font-mono font-medium text-white/80">
                         {v.plate}
                       </span>
+                      {v.isPostpaid ? (
+                        <span
+                          className={`ml-2 inline-block align-middle text-[10px] px-1.5 py-0.5 rounded-full ${POSTPAID_BADGE}`}
+                        >
+                          {POSTPAID_LABEL}
+                        </span>
+                      ) : null}
                     </td>
-                    <td className="px-5 py-4 text-sm">
+                    <td className="px-5 py-2.5 text-sm">
                       {v.customer ? (
                         <Link
                           href={`/dashboard/customers/${v.customer.id}`}
-                          className="text-white/70 hover:text-violet-300 transition-colors"
+                          className="text-white/70 hover:text-violet-300 light:hover:text-violet-700 transition-colors"
                         >
                           {customerLabel(v.customer)}
                           <span className="text-white/30 text-xs ml-1">
@@ -179,27 +242,26 @@ export default async function VehiclesPage({
                         <span className="text-white/30">—</span>
                       )}
                     </td>
-                    <td className="px-5 py-4 text-sm text-white/50">
+                    <td className="px-5 py-2.5 text-sm text-white/50">
                       {v.mileage != null
                         ? `${v.mileage.toLocaleString("mn-MN")} км`
                         : "—"}
                     </td>
-                    <td className="px-5 py-4 text-sm text-white/60">
+                    <td className="px-5 py-2.5 text-sm text-white/60">
                       {v._count.serviceOrders}
                     </td>
-                    <td className="px-5 py-4">
+                    <td className="px-5 py-2.5">
                       {canRemove ? (
-                        <div className="flex items-center justify-end">
-                          <form action={deleteVehicleAction}>
-                            <input type="hidden" name="id" value={v.id} />
-                            <button
-                              type="submit"
-                              className="text-xs text-red-400 hover:text-red-300 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-red-500/10"
-                            >
-                              Устгах
-                            </button>
-                          </form>
-                        </div>
+                        <RowActionsMenu>
+                          <RowMenuFormItem
+                            action={deleteVehicleAction}
+                            hidden={{ id: v.id }}
+                            confirmMessage={`${v.plate} машиныг устгах уу?`}
+                            destructive
+                          >
+                            Устгах
+                          </RowMenuFormItem>
+                        </RowActionsMenu>
                       ) : null}
                     </td>
                   </ClickableRow>
@@ -211,7 +273,7 @@ export default async function VehiclesPage({
             page={meta.page}
             totalPages={meta.totalPages}
             total={meta.total}
-            params={{ q, assigned }}
+            params={{ q, assigned, postpaid }}
           />
         </div>
       )}

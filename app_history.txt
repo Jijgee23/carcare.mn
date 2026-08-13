@@ -245,3 +245,765 @@ BUG FIX: Ажилтны утас засахад буруу талбарт алд
   АНХААР: @react-pdf <Image> нь зураг/гарын үсгийг URL-аас client талд
   татдаг тул Firebase storage CORS зөвшөөрөхгүй бол зураг гарахгүй байж
   магадгүй (print хувилбарт энэ асуудал байхгүй). Дев дээр туршина уу.
+
+[2026-06-26] Засвар: "PDFDownloadLink is a web specific API" SSR алдаа
+  AdvancedPDFButton-д mount-guard нэмэв (useState/useEffect). Next App
+  Router нь client component-ийг SSR (Node) дээр бас render хийдэг тул
+  browser-only PDFDownloadLink Node дээр render хийгдэж алдаа гарч байв.
+  Одоо mount хийгдэх хүртэл идэвхгүй placeholder span харуулж, зөвхөн
+  client дээр PDFDownloadLink-ийг render хийнэ.
+
+[2026-06-26] Бүх огноо/цагийг 24 цагийн формат болгов
+  Цаг харуулдаг бүх toLocaleString/toLocaleTimeString дуудлагад
+  hour12: false тодорхой нэмэв (өмнө нь mn-MN локалын анхдагчид найдсан;
+  Node дээр 24ц боловч браузер/орчноор баталгаажуулахын тулд explicit).
+  Засагдсан файлууд (~19): dashboard-ийн audit, appointments(+calendar),
+  notifications, profile, orders(+[id]), diagnostics/reports(+[id]),
+  settings/subscription; (app)/account(+notifications); system-ийн
+  sessions, otp, tenants/[id], qpay-form; _components/subscription-banner;
+  _actions/appointments; api/cron/appointment-reminders.
+  ХӨНДӨӨГҮЙ: toLocaleDateString (огноо, цаггүй), тоон toLocaleString
+  (мөнгө/тоо). ЗАСААГҮЙ: _components/date-picker.tsx-ийн <input type="time">
+  нь OS/браузерын локалаар харагддаг тул HTML-ээр 24ц албадах боломжгүй.
+
+[2026-06-26] Цаг сонгогчийг modern 24-цагийн picker болгов
+  date-picker.tsx-ийн withTime хэсгийн native <input type="time"> (OS
+  локалаар 12ц болдог, хэв маяг тааруу) -ийг устгаж, TimePicker24 +
+  TimeColumn дэд компонент нэмэв: HH | MM хоёр босоо гүйдэг багана,
+  сонгосон утга violet, нээгдэхэд сонгосон мөрийг баганын төвд гүйлгэнэ,
+  дээр нь "HH:mm" readout. Гаралт "HH:mm" хэвээр (API өөрчлөгдөөгүй),
+  зөвхөн orders/order-form.tsx (scheduledAt) хэрэглэдэг.
+  Бусад цаг сонголт аль хэдийн modern+24ц: салбарын open/closeTime нь
+  custom Select (TIME_OPTIONS), захиалгын slot нь branch-time-picker
+  товчнууд.
+
+[2026-06-26] Responsive сайжруулалт (бодит цоорхойг засав)
+  Аудит хийхэд апп аль хэдийн ихэвчлэн responsive (sidebar→mobile topbar,
+  grid-үүд breakpoint-той, list table-ууд overflow-auto-д ороосон) байв.
+  Бодит цоорхой 2:
+  1) Filter bar 6 хуудас inline style={{display:flex}} ашигладаг, 5 нь
+     flexWrap-гүй → mobile дээр хэвтээ халина. Бүгдийг
+     className="flex flex-wrap items-center gap-2 mb-4" болгов
+     (vehicles, audit, employees, notifications, customers, orders).
+  2) Table 4-ийн эцэг нь overflow-hidden, дотор scroll-гүй → min-w mobile
+     дээр таслагдана. Эцгийг overflow-x-auto болгов (хэвтээ гүйлгэнэ,
+     бөөрөнхий булан хэвээр): appointments, system/sessions (2 table),
+     system/otp.
+  ХӨНДӨӨГҮЙ: аль хэдийн overflow-auto-той table-ууд (зөв), scroll хийдэг
+  table доторх whitespace-nowrap огноо (асуудал биш), responsive grid-үүд.
+
+[2026-06-26] Notification dropdown-ийг mobile-д тохирох болгов
+  Асуудал: MobileTopbar header нь glass (backdrop-filter) тул дотор нь
+  байрлах dropdown trap болж, тунгалаг glass жижиг цонх mobile-д тааруу.
+  Засвар (notification-bell.tsx, staff+account 2 realm-д хүрнэ):
+  - Overlay-г createPortal-аар <body> руу гаргав (glass context-оос мултлав).
+  - Mobile (<640px): доод sheet — fixed inset-x-0 bottom-0, бараан scrim,
+    grabber, safe-area padding, max-h-[60vh] gүйлгэнэ.
+  - Desktop: bell-д тулгасан dropdown, getBoundingClientRect-ээр байрлал
+    тооцож align left/right баримтална; scroll/resize-д дахин байрлуулна.
+  - Фоныг faint .glass-аас bg-[#14141f]/95 backdrop-blur-xl болгож
+    уншигдацыг сайжруулав (date-picker dialog-тэй ижил хэв маяг).
+  - Хаах: scrim дарах / Escape. ARIA haspopup/expanded нэмэв.
+
+[2026-06-29] Машинд өнгө, моторын хэмжээ, зориулалт, эзэмшигчийн регистр нэмэв
+  Vehicle модельд 4 шинэ багана: colorName, capacity (Int, см³), purpose,
+  ownerRegnum. Бүгд HUR-аас автоматаар бөглөгдөнө (lib/hur_service.ts —
+  HurVehicle.purpose нэмж parse хийв; color/capacity өмнө нь байсан).
+  - ownerKindFromRegnum() helper: 7 оронтой цэвэр тоо → "Байгууллага",
+    үсэг агуулсан → "Хувь хүн". Form-д hint болон HUR товчоонд харагдана.
+  - vehicle-form.tsx: 4 input талбар + HUR lookup-аас setColorName/
+    setCapacity/setPurpose/setOwnerRegnum. _actions/vehicles.ts validate-д
+    нэмэв (capacity тоон шалгалттай). [id]/page.tsx initial-д дамжуулав.
+  - Migration: 20260629000000_vehicle_color_capacity_purpose_owner.
+
+[2026-06-29] Phase 1: Vehicle-ийг global "hub" болгов (cross-tenant түүх)
+  Шийдвэр: нэг физик машин = нэг global Vehicle мөр. Tenant харьяалал
+  (эзэмшигч) тусдаа TenantVehicle руу шилжив. Identity: VIN тэргүүлэх,
+  plate fallback (хоёул global @unique). Засварын түүх (ServiceOrder/
+  DiagnosticReport/Appointment) global Vehicle руу холбогдох ч tenantId-аар
+  scope хийгдэнэ — dashboard tenant хооронд харагдахгүй; cross-tenant түүх
+  зөвхөн Account (эзэн)-д харагдана (дараагийн phase).
+  - schema.prisma: Vehicle-аас tenantId/customerId хасч global болгов;
+    TenantVehicle (tenantId+vehicleId unique, customerId, notes, isActive);
+    Tenant.vehicles → tenantVehicles, Customer.vehicles → tenantVehicles.
+  - Migration 20260629010000_vehicle_global_hub: TenantVehicle backfill →
+    VIN/plate-ээр canonical нэгтгэл → TenantVehicle/түүхийн FK repoint →
+    давхар цэвэрлэх → Vehicle restructure. Local-д шалгасан: 11 vehicle/
+    11 TV, SO түүх 15/15 зөв, 0 orphan, drift алга.
+  ⚠️ Phase 2 ХИЙГДЭЭГҮЙ: код одоогоор build болохгүй (~68 алдаа, 17 файл):
+    _actions/vehicles.ts, orders.ts, quick-create.ts, diagnostic-reports.ts,
+    lib/appointments.ts, api/v1/{vehicles,orders,diagnostics}, dashboard/
+    {vehicles,orders,customers,diagnostics,page}. resolveVehicle() + Tenant-
+    Vehicle руу шилжүүлэх ажил үлдсэн.
+
+[2026-06-29] Phase 2: кодыг global Vehicle + TenantVehicle загварт тааруулав
+  Шинэ helper lib/vehicles.ts:
+  - resolveVehicle(): VIN тэргүүлэх, plate fallback-аар global Vehicle олж/
+    үүсгэх. Дугаар шилжсэн бол хуучин эзнээс plate-ийг tombstone болгож
+    чөлөөлнө. Олдвол хоосон талбарыг баяжуулна, mileage-г max-аар.
+  - ensureTenantVehicle()/upsertTenantVehicle(): tenant↔Vehicle link upsert.
+  Write урсгалууд:
+  - _actions/vehicles.ts: create→resolve+link (нэг tenant-д давхар бол алдаа),
+    update→global attrs + link.customerId, delete→link устгана (захиалгатай
+    бол блок), max_vehicles хязгаар TenantVehicle-аар тоолно.
+  - quick-create.ts, api/v1/vehicles, lib/appointments(snapshot)→resolve+link.
+  Order/diagnostic: tenant харьяаллыг tenantVehicle link-ээр шалгана
+  (_actions/orders.ts, diagnostic-reports.ts, api/v1/{orders,diagnostics}).
+  Read хуудсууд TenantVehicle-аар query:
+  - vehicles/page (захиалгын тоо tenant-scoped groupBy), vehicles/[id]
+    (link-ээр), dashboard/page count, customers/page+[id] (tenantVehicles),
+    orders/{new,[id],page}+diagnostics/new (selector map), system/tenants/[id].
+  URL param бүх газар global vehicleId. tsc 0 алдаа, next build OK,
+  smoke-test: 10 машин, tenant-scoped захиалгын тоо зөв.
+
+[2026-06-29] Phase 3: Account апп — cross-tenant үйлчилгээний түүх
+  app/(app)/account/history/page.tsx: түүхийг машины эзэмшлээр (global
+  vehicleId) нэгтгэв. Урьд нь зөвхөн customer.accountId-аар шүүдэг тул нэг
+  машин өөр сервист холбоогүй customer дээр бүртгэгдвэл түүх алга болдог байв.
+  - Баталгаатай эзэмшил = TenantVehicle.customer.accountId === account.id
+    (цаг баталгаажихад утсаар тааруулсан холбоос). AccountVehicle нь өөрөө
+    claim хийдэг тул эзэмшлийн нотолгоо БОЛОХГҮЙ — спуфингээс сэргийлэв.
+  - where: OR[ customer.accountId=A , vehicleId in ownedVehicleIds ];
+    plate сонголтоор normalizePlate-аар шүүнэ.
+  Баталгаажуулалт: rollback транзакцаар synthetic cross-tenant захиалга
+  (өөр tenant + холбоогүй customer) ШИНЭ query-д харагдаж, ХУУЧИН-д
+  харагдахгүйг нотлов. tsc 0, next build OK.
+
+[2026-06-29] Phase 4: AccountVehicle-ийг global Vehicle руу нэгтгэв
+  AccountVehicle нь одоо нимгэн link (id, accountId, vehicleId) — машины
+  бие даасан шинж global Vehicle дээр төвлөрч, давхардал арилав. snapshot-copy
+  логик бүрэн устсан.
+  - schema: AccountVehicle attrs (plate/make/model/...) хасч vehicleId FK +
+    unique(accountId,vehicleId); Vehicle.accountLinks нэмэв.
+  - Migration 20260629020000_account_vehicle_link: VIN→plate-ээр тааруулж,
+    тааараагүйг шинэ Vehicle болгож (key-ээр нэгтгэл), давхар link-ийг нэгтгэж
+    appointment-уудыг repoint, attr багана + unique(accountId,plate) хасав.
+    Local: 3 AV бүгд зөв холбогдов (1122УАН одоо байгаа Vehicle-ийг дахин
+    ашиглав, давхардуулаагүй), 2 шинэ Vehicle, 0 orphan, drift 0.
+  - Write: account-vehicles.ts + api/v1/app/vehicles POST → resolveVehicle +
+    link. Reads: account/page, org/[slug]/page, api/v1/app/vehicles GET →
+    vehicle relation-аар (хариуны хэлбэр хадгалсан).
+  - Confirm урсгал (confirmAppointment + api/v1/appointments/[id]) одоо
+    accountVehicle.vehicleId-г шууд аваад ensureTenantVehicle дуудна.
+  - api/v1/appointments {list,[id]}: accountVehicle хариуг shapeAppointment-аар
+    хуучин { plate, make, model } хэлбэрт тэгшилж backward-compat хадгалав.
+  - snapshotVehicleForAccount устгав (lib/appointments.ts).
+  tsc 0, next build OK. Бүх 4 phase дууссан — Vehicle бүрэн global hub.
+
+[2026-06-29] Машины дэлгэрэнгүйд "HUR-аас мэдээлэл шинэчлэх" товч
+  vehicle-form.tsx: HUR татах логикийг applyHurVehicle() болон refreshFromHur()
+  болгож гаргав. Дэлгэрэнгүй (засах) хуудсанд дугаар хэвээр байдаг тул auto-fetch
+  ажиллахгүй — гар товчоор /api/hur/lookup-аас дахин татаж бүх талбарыг (марк,
+  загвар, он, VIN, шатахуун, хүрд, өнгө, хэмжээ, зориулалт, эзэмшигчийн регистр)
+  шинэчилнэ. Хэрэглэгч "Хадгалах" дарж DB-д бичнэ. Дугаар зөв үед л идэвхтэй.
+
+[2026-06-29] Үйлчлүүлэгч нэргүй бол placeholder биш утас харуулна (everywhere)
+  lib/customers.ts customerLabel(): нэр хоосон ЭСВЭЛ placeholder ("Нэргүй",
+  "Цаг захиалсан хэрэглэгч") бол formatPhone(phone)-г буцаана. Ингэснээр
+  customerLabel ашигладаг бүх дэлгэц (захиалга, машин, оношилгоо, тайлан,
+  үйлчлүүлэгч жагсаалт/дэлгэрэнгүй, select-үүд) автоматаар утас харуулна.
+  - lib/appointments.ts: онлайн захиалгаас Customer үүсгэхэд "Цаг захиалсан
+    хэрэглэгч" placeholder бичихээ болив (хоосон үлдээнэ).
+  - appointments/page.tsx + calendar/page.tsx: raw fullName||"—"/"Зочин"-ийг
+    customerLabel-ээр сольж, account/customer select-д phone нэмэв. Нэргүй үед
+    нэрийн мөрд утас, доорх давхар утасны мөрийг нуув.
+  - diagnostics/reports/page.tsx: customer select-д phone нэмэв.
+  - Migration 20260629030000: хуучин placeholder нэрсийг '' болгож цэвэрлэв
+    (засах формд ч харагдахгүй). Local: 0 placeholder үлдсэн.
+  tsc 0, next build OK.
+
+[2026-06-29] Захиалгын дэлгэрэнгүй: үйлчилгээний жагсаалтыг tab-аар ойлгомжтой болгов
+  Шинэ client component order-items.tsx (OrderItems): үйлчилгээний мөрүүдийг
+  төрлөөр нь (Бүгд/Ажил/Оношилгоо/Сэлбэг/Хураамж) tab болгов. Tab бүрд мөрийн
+  тоо, өнгөт цэг. Мөр бүрийг хүснэгт биш цэвэр row-оор: нэр + "тоо × нэгж үнэ"
+  → баруунд дүн + устгах. Доор төрлийн дэд дүн (>1 төрөл үед) + нийт дүн.
+  - Хуучин ItemsGroupedByKind (олон min-width хүснэгт + давхар нийлбэр) устгав.
+  - page.tsx Decimal→string болгож дамжуулна (client boundary). Ашиглагдахаа
+    больсон import-ууд (removeOrderItemAction, ITEM_KIND_BADGE/LABEL, ItemKind)
+    цэвэрлэв. Mobile-д хэвтээ scroll шаардахгүй responsive болов.
+  tsc 0, next build OK.
+
+[2026-06-29] Ажлын ангилалыг Тохиргооноос Үйлчилгээ доорх sub-nav болгов
+  - Шинэ хуудас /dashboard/services/labor-categories (owner-only, бус бол
+    /dashboard/services руу redirect). LaborCategoriesSection-ийг settings-аас
+    services/ руу зөөв (git mv).
+  - settings/system хуудаснаас Ажлын ангиллыг хасч, зөвхөн Хэмжих нэгж үлдээв.
+  - admin-sidebar: Үйлчилгээ group-д "Ажлын ангилал" child (view:"owner")
+    нэмэв. NavGroup-ийн child-уудыг эрхээр шүүдэг болгов (canSeeView) —
+    зөвхөн owner харна. "Ажил" child-д exact:true (labor-categories-тай
+    startsWith давхцлаас сэргийлэв).
+  tsc 0, next build OK (/dashboard/services/labor-categories route үүссэн).
+
+[2026-06-29] LaborCategory→Category: бүх төрөлд + Branch m2m + booking
+  Шийдвэр: ангилал бүх Service төрөлд (Ажил/Оношилгоо/Сэлбэг) ЗААВАЛ; Category↔
+  Branch олон-олон (салбаргүй=бүх салбарт); booking-д салбарын ангилал сонгож
+  appointment-д хадгална.
+  - schema: LaborCategory→Category (rename), Service.laborCategoryId→categoryId,
+    Branch.categories m2m, Appointment.categoryId. Migration 20260629040000:
+    table/constraint RENAME (дата хадгалсан) + _BranchToCategory implicit join +
+    Appointment.categoryId. drift=0, 4 категори/4 service хадгалагдсан.
+  - _actions/categories.ts (хуучин labor-categories.ts): branch connect/set,
+    тенант шалгалт. services.ts: ангилал бүх төрөлд заавал.
+  - UI: /dashboard/services/labor-categories → /categories, "Ажлын ангилал"→
+    "Ангилал", categories-section-д салбарын multi-select (checkbox). sidebar
+    label/href шинэчлэв. service-form-д ангилал бүх төрөлд харагдана.
+  - Booking: org page салбарын идэвхтэй ангилал татна; booking-form салбар
+    сонгоход тухайн салбарын ангилал гарч, сонгосныг appointment.categoryId-д
+    хадгална (createAppointment + api/v1/app/appointments валидацтай). Staff
+    appointments/page + api, account/page, api list-д ангилал харагдана.
+  - api/v1/labor-categories path хэвээр (mobile compat), prisma.category руу.
+  tsc 0, next build OK, m2m booking шүүлт rollback tx-ээр батлагдсан.
+
+[2026-06-29] Оношилгоонд (DiagnosticTemplate) ангилал нэмэв
+  Оношилгоо нь Service биш DiagnosticTemplate загвартай тул өмнөх "category
+  баганаа" аваагүй байсан. Одоо DiagnosticTemplate-д ч Category нэмэв:
+  - schema: DiagnosticTemplate.categoryId + relation, Category.diagnosticTemplates,
+    @@index. Migration 20260629050000 (багана+FK+index), drift=0.
+  - diagnostic-templates.ts: parse-д categoryId (заавал), assertCategory()
+    тенант шалгалт, create/update-д хадгална.
+  - template-editor.tsx: "Ангилал" select (заавал), categories prop +
+    initial.categoryId. new/[id] pages categories татаж дамжуулна.
+  - services/diagnostics жагсаалтад "Ангилал" багана (Төрөл-ийн өмнө).
+  tsc 0, next build OK. Ингэснээр Ажил/Оношилгоо/Сэлбэг гурвуул ангилалтай.
+
+[2026-06-29] Үйлчилгээ/Оношилгоо жагсаалт — мөр бүхэлд нь дарахад дэлгэрэнгүй
+  service-list.tsx (Ажил/Сэлбэг) + services/diagnostics/page.tsx (Оношилгоо)
+  мөрийг ClickableRow болгов — Засах товч дарахгүйгээр мөр дээр дарахад
+  дэлгэрэнгүй/засах хуудас руу ордог (vehicles/customers/branches-тэй ижил).
+  Дотор Засах/Устгах/Хуулах товч хэвээр (ClickableRow тэдгээрийг алгасдаг).
+  tsc 0, next build OK.
+
+[2026-06-29] Ажилтны цаг бүртгэх формд салбарын ангилал сонгуулдаг болгов
+  appointment-form.tsx (registerAppointmentByStaff): салбар сонгоход тухайн
+  салбарт хамаарах идэвхтэй ангилал (салбаргүй=бүгдэд) гарч, сонгосныг
+  appointment.categoryId-д хадгална. new/page.tsx categories(branchIds-тэй)
+  татаж дамжуулна. Action-д тенант+салбар валидацтай (заавал биш).
+  Ингэснээр consumer booking + staff phone-in хоёулаа салбарын ангилалаас
+  сонгуулна. tsc 0, next build OK.
+
+[2026-06-29] Хэрэглэгчийн машин бүртгэх формыг админтай ижил болгов
+  inline-account-vehicle-form.tsx: Өнгө/Моторын хэмжээ/Зориулалт талбарууд +
+  гар "↻ HUR-аас шинэчлэх" товч нэмэв (applyHur/refreshFromHur). HUR auto-fetch
+  нь эдгээрийг ч бөглөнө. account-vehicles.ts quickCreateAccountVehicle нь
+  colorName/capacity/purpose-ийг хүлээж аваад resolveVehicle-д дамжуулна
+  (global Vehicle бүрэн баяжина). ownerRegnum нь PII тул account public
+  lookup-д ороогүй (зориуд). tsc 0, build OK.
+
+[2026-06-29] Account "Миний машинууд" — сервисийн машиныг ч харуулдаг болгов
+  Асуудал: хэрэглэгч өөрөө AccountVehicle нэмээгүй ч tenant нь түүний утсаар
+  Customer+TenantVehicle бүртгэсэн бол account-д машин харагдахгүй байв.
+  Засвар (account/page.tsx): "Миний машинууд" = AccountVehicle (өөрийн,
+  устгах боломжтой) + TenantVehicle (customer.accountId эсвэл утас таарсан —
+  баталгаажсан эзэмшил, зөвхөн харах "сервисээс") нэгтгэж, global Vehicle-ээр
+  давхардал арилгав. account/history-г ч утсаар тааруулдаг болгов
+  (account.phone баталгаажсан тул зөв). tsc 0, build OK.
+
+[2026-06-29] Машины дэлгэрэнгүйг бүрэн болгов (мэдээлэл+захиалга+цаг түүх)
+  dashboard/vehicles/[id]/page.tsx: засах формын (бүх мэдээлэл + HUR шинэчлэх
+  товч аль хэдийн бий) доор 2 хэсэг нэмэв — "Захиалгууд" (тухайн машины энэ
+  tenant дахь ServiceOrder, статус/огноо/салбар/мөр/дүн/төлбөр, дэлгэрэнгүй рүү
+  линктэй) ба "Цаг захиалгын түүх" (Appointment: цаг/статус/салбар/ангилал/
+  тэмдэглэл). Бүгд tenantId+vehicleId-аар scope. tsc 0, build OK.
+
+[2026-06-29] Account талд машины дэлгэрэнгүй — бүх tenant дамнасан (tenant-тэй ижил)
+  Шинэ /account/vehicles/[id]: машины бүх мэдээлэл (read-only, ownerRegnum
+  хасч) + БҮХ tenant дахь захиалга (tenant нэрээр) + БҮХ tenant дахь цаг
+  захиалгын түүх. Эзэмшлийг шалгана: AccountVehicle ЭСВЭЛ account/утсаар
+  холбогдсон Customer-ийн TenantVehicle (бусдын машин харахаас сэргийлнэ).
+  account/page-ийн машины линкийг history?plate=-ээс энэ хуудас руу шилжүүлэв.
+  Ялгаа: tenant тал = зөвхөн тухайн tenant (vehicleId+tenantId); account тал =
+  бүх tenant (зөвхөн vehicleId). tsc 0, build OK.
+
+[2026-06-29] Light theme — суурь систем (Алхам 1-2)
+  Tailwind v4-ийн token-оор бүх UI-г нэг газраас эргүүлэх арга:
+  - globals.css: :root=dark, html.light=light. light үед --color-white-г бараан
+    (#14151c) болгож БҮХ text/bg/border-white/x utility-г эргүүлнэ. Өнгөт
+    (accent) товч/badge-ийн цагаан текстийг safeguard rule-аар хадгалав.
+    Semantic var-ууд: --bg-primary/--surface/--glass-bg/--glass-border/
+    --input-bg/--input-border/--input-fg/--placeholder/--popover/--hover-bg.
+    glass, .auth-input, .compact-input, select option, body бүгд var-аар.
+  - layout.tsx: paint-аас өмнөх no-flash script (localStorage 'theme'='light'
+    бол html.light), body bg var.
+  - theme-toggle.tsx: ThemeToggle (full + icon). Dashboard sidebar footer +
+    account header-д байрлуулав. localStorage-д хадгална.
+  - Inline literal өнгөтэй shared компонентуудыг var болгов: Select, list-filters
+    (SearchBox/FilterSelect dropdown), date-picker/notification-bell popover.
+  - Бүх arbitrary dark bg class (хатуу hex, native option) -> surface / bg-primary
+    var руу (sed, зөвхөн class хэлбэр).
+  tsc 0, next build OK.
+  ҮЛДСЭН (дараагийн алхмууд): chart/map inline literal өнгө (income-chart,
+  discover-map), gradient avatar-ийн initials, marketing/landing хуудаснууд,
+  auth хуудсанд toggle. Эдгээр нь edge tweak — гол UI бүхэлдээ эргэдэг болсон.
+
+[2026-06-29] System admin: бүх хэрэглэгч/үйлчлүүлэгч/машины платформ-даяар жагсаалт
+  3 шинэ super-admin хуудас (requireSuperAdmin, бүх tenant дамнасан):
+  - /system/users: бүх User. Шүүлт: byгууллага (FilterSelect, searchable) +
+    төлөв (Админ/Идэвхтэй/Идэвхгүй) + нэр/имэйл/утас хайлт. Багана: хэрэглэгч,
+    утас, байгууллага, үүрэг, төлөв, огноо.
+  - /system/customers: бүх Customer. Шүүлт: байгууллага + нэр/утас/имэйл хайлт.
+    Багана: үйлчлүүлэгч, утас, байгууллага, машин, захиалга, аккаунт-холбоос.
+  - /system/vehicles: бүх global Vehicle. Шүүлт: байгууллага (tenantLinks.some)
+    + дугаар/марк/VIN хайлт. Багана: машин, дугаар, өнгө, эзэмшигч(регистрээс),
+    байгууллагын тоо, захиалга.
+  Бүгд Pagination, SearchBox/FilterSelect (theme-aware) ашиглав. system-sidebar-д
+  Хэрэглэгчид/Үйлчлүүлэгчид/Машинууд nav нэмэв. tsc 0, build OK.
+
+[2026-06-29] Light theme: subscription banner/анхааруулгын контраст засвар
+  globals.css-д `@custom-variant light (&:where(.light, .light *))` нэмж light-
+  only override боломжтой болгов. subscription-banner.tsx: urgent/warn banner-д
+  light:bg-red-50/amber-50 + light:text-red-700/amber-800 + border нэмж тод
+  болгов (өмнө text-red/amber-200 нь light дэвсгэр дээр харагдахгүй байсан).
+  plan-checkout.tsx: emerald success box, highlighted feature, "буцах" линкэд
+  light: override. tsc 0, build OK.
+
+[2026-06-29] Discover хуудас: Google Map + жагсаалт, нээлттэй/хаалттай төлөв
+  - lib/branches.ts: branchStatusNow() — салбар ОДОО (Asia/Ulaanbaatar цагаар)
+    нээлттэй эсэх + өнөөдрийн цаг (schedule эсвэл default open/close-оор).
+  - discover/page.tsx: tenant+branch (schedule/openTime/lat/lng/хаяг) татаж
+    статус тооцоод DiscoverClient-д дамжуулна. apiKey = process.env.
+    GOOGLE_MAP_API_KEY (server-side уншиж prop-оор; client Maps JS-д хэрэгтэй).
+  - discover-client.tsx (шинэ): Газрын зураг / Жагсаалт toggle.
+    · Google Maps JS API-г module promise-оор нэг удаа ачаална. fullscreenControl
+      (full screen), маркер ногоон=нээлттэй/саарал=хаалттай, дартал салбарын
+      мэдээллийн карт (нэр/хаяг/утас/төлөв + "Цаг захиалах").
+    · Жагсаалт: газар бүрийн салбарууд нээлттэй/хаалттай badge + хаягтай.
+    · Key хоосон бол зөвхөн жагсаалт (fallback).
+  - Хуучин Leaflet discover-map.tsx устгав. .env-д GOOGLE_MAP_API_KEY (хоосон).
+  tsc 0, build OK.
+
+[2026-06-30] Discover: салбарын карт цул дэвсгэр + map theme апптай синк
+  - Сонгосон салбарын карт glass(тунгалаг)-аас bg-[var(--surface)] (цул) болгов
+    — өмнө dark theme-д гэрэл Google map тусаж текст уншигдахгүй байсан.
+  - DARK_MAP_STYLE нэмж, map init үед isLightTheme()-аар light/dark style
+    сонгоно. MutationObserver-аар html.light class өөрчлөгдөхөд map.setOptions
+    styles-г шууд солино (theme toggle → map theme). tsc 0, build OK.
+
+[2026-06-30] Discover: маркерт байгууллагын лого (AdvancedMarkerElement)
+  Тийм — боломжтой. Маркерыг google.maps.marker.AdvancedMarkerElement болгож,
+  контент нь логотой цагаан дугуй badge + өнгөт хүрээ (ногоон=нээлттэй,
+  саарал=хаалттай, ягаан=сонгосон) + доош үзүүр. Лого байхгүй бол эхний үсэг.
+  - libraries=marker нэмэв. mapId шаардлагатай тул GOOGLE_MAP_ID env (хоосон бол
+    DEMO_MAP_ID). mapId-тэй үед inline styles ажиллахгүй тул theme-г colorScheme
+    (LIGHT/DARK)-ээр хийж, theme солигдоход map дахин үүсгэнэ (light state + deps).
+  - AdvancedMarker байхгүй бол энгийн өнгөт цэг рүү fallback. tsc 0, build OK.
+
+[2026-06-30] Account хуудсыг илүү ойлгомжтой болгов
+  app/(app)/account/page.tsx бүтэц шинэчлэв:
+  - Профайл карт: avatar (нэрийн эхний үсэг/icon) + нэр + утас + theme/гарах icon.
+  - Үндсэн үйлдэл: том "Шинэ цаг захиалах" primary товч + Түүх/Мэдэгдэл 2 tile
+    (icon-той). Өмнө гарчгийн мөрөнд шахагдсан байсныг тусгаарлав.
+  - Цагууд: гарчигт тоо; идэвхтэй(хүлээгдэж/баталгаажсан) → ойрын нь дээр, дараа
+    нь өмнөх. Карт бүрд зүүн талд огноо/цагийн chip + гараг + салбар/ангилал;
+    дууссан цаг бүдэг. dateParts() (Asia/Ulaanbaatar).
+  - Машинууд: гарчигт тоо; машины icon, дугаар тод, устгах icon товч.
+  tsc 0, build OK.
+
+[2026-06-30] Discover: дүүргээр шүүх
+  page.tsx branch-д district дамжуулав. discover-client.tsx: data-аас distinct
+  дүүргийн жагсаалт гаргаж, toggle доор chip ("Бүх дүүрэг" + дүүргүүд) нэмэв.
+  Сонгосон дүүргээр visibleOrgs шүүж — газрын зураг (markers), жагсаалт, тоо
+  бүгд шинэчлэгдэнэ. Дүүрэгт газар байхгүй бол тусгай мессеж. tsc 0, build OK.
+
+[2026-06-30] Монголын хаягийн лавлах — scripts/mongolian.sql-аас seed
+  MySQL dump (city→district→khoroo, int id+FK). Postgres руу:
+  - schema: City/District/Khoroo models (id Int @id, FK SetNull). Migration
+    20260630000000_add_mn_address, drift 0.
+  - prisma/seed.ts: mongolian.sql-ийн INSERT-ийг tokenizer-аар задлаж (NULL/
+    'escape' зэрэг), Prisma createMany(skipDuplicates) — идемпотент. city→
+    district→khoroo дарааллаар FK-д нийцүүлэв.
+  - prisma.config.ts migrations.seed = "tsx prisma/seed.ts" (migrate reset/
+    db seed автоматаар). package.json db:seed script.
+  Үр дүн: 22 аймаг/нийслэл, 355 сум/дүүрэг, 496 хороо. УБ=9 дүүрэг/172 хороо,
+  0 orphan FK. tsc 0.
+
+[2026-06-30] Салбарын хаягийг каскад dropdown болгов
+- app/dashboard/branches/address-select.tsx (шинэ): City→District→Khoroo каскад
+  сонголт. Сонгосон НЭРийг city/district/khoroo нэртэй hidden input-аар илгээдэг
+  тул Branch-ийн одоогийн string талбар, branches action өөрчлөгдөөгүй. Дүүрэг нь
+  сонгосон хотоор, хороо нь сонгосон дүүргээр шүүгдэнэ (cascade). Хороогүй бол
+  disable.
+- lib/address.ts (шинэ): getAddressData() — City/District/Khoroo бүхэлд (~870 мөр).
+- branch-form.tsx: 3 текст оронг AddressSelect-ээр сольсон; city/district/khoroo
+  useState устгасан. Дэлгэрэнгүй хаяг (address) текст хэвээр.
+- branches/new + [id]/page.tsx: getAddressData() дуудаж BranchForm-д дамжуулна.
+
+[2026-06-30] Салбарын байршил Google Map + dropdown засвар
+- lib/gmaps.ts (шинэ): loadGoogleMaps() + GMAP_DEMO_MAP_ID — discover-той нийтлэг
+  Google Maps JS API loader (module-level promise).
+- location-picker.tsx: Leaflet→Google Maps руу бүрэн шилжүүлэв. AdvancedMarkerElement
+  (PinElement, gmpDraggable), товшилт/чирэлтээр coords сонгоно, theme colorScheme,
+  tilt:0. Marker чирэхэд дахин төвлүүлэхгүй (skipPanRef).
+- branch-form.tsx: AddressSelect-ийн grid-д relative z-30 нэмж dropdown газрын
+  зургийн дээр гардаг болгов. Шинэ салбарт defaultCity="Улаанбаатар". LocationPicker-д
+  mapApiKey/mapId дамжуулна.
+- address-select.tsx: defaultCity prop нэмэв.
+- branches/new + [id]/page.tsx: GOOGLE_MAP_API_KEY / GOOGLE_MAP_ID env-ийг BranchForm-д
+  дамжуулна.
+
+[2026-06-30] Discover map: gestureHandling greedy
+- discover-client.tsx: Ctrl дарахгүйгээр scroll-оор шууд zoom хийдэг болгов
+  (gestureHandling: "greedy").
+
+[2026-06-30] Map цэг сонгоход аймаг/сум автомат бөглөх (reverse geocode)
+- location-picker.tsx: цэг сонгох/чирэх/geolocation бүрд Google Geocoder-ээр урвуу
+  geocode хийж address_components-ийг (admin_level_1/2/3, locality, sublocality)
+  onGeocode-оор эцэгт мэдэгдэнэ.
+- address-select.tsx: controlled болгов (value/onChange). resolveAddressFromGeocode()
+  — geocode нэрийг seed City/District/Khoroo-той norm() (аймаг/дүүрэг/сум дагавар
+  хасч) тааруулна. defaultCity prop устгав.
+- branch-form.tsx: addr state-ийг өргөж (Улаанбаатар анхдагч), AddressSelect-д
+  value/onChange, LocationPicker-д onGeocode дамжуулна. Хот тогтоогдвол л авто бөглөнө.
+- ⚠ Google Cloud-д Geocoding API key дээр идэвхжсэн байх шаардлагатай.
+
+[2026-06-30] Discover: аймаг/сум каскад шүүлт (default УБ)
+- discover/page.tsx: DiscoverBranch-д city нэмэв.
+- discover-client.tsx: аймаг/хот chip мөр + дүүрэг/сум chip мөр (сонгосон аймагт
+  хамаарна, аймаг солиход district reset). Анхдагч аймаг = Улаанбаатар (байгаа бол).
+  Хоосон үед "Энэ хайлтаар газар олдсонгүй".
+
+[2026-06-30] Discover: tab + шүүлт нэг мөрөнд, dropdown болгов
+- discover-client.tsx: map/list tab, аймаг dropdown, дүүрэг dropdown-ийг нэг flex
+  мөрөнд нэгтгэв (chip → Select). Тоологч мөрний баруун талд (ml-auto).
+
+[2026-06-30] Discover картаас захиалахад салбар урьдчилан сонгогдоно
+- discover-client.tsx: "Цаг захиалах" холбоост ?branch=<id> нэмэв.
+- org/[slug]/page.tsx: searchParams.branch уншиж org-д хамаарвал initialBranchId-р
+  дамжуулна.
+- booking-form.tsx: initialBranchId prop — branchId-ийн анхдагч утга болгоно.
+
+[2026-06-30] Үйлчлүүлэгчийн (app) layout вэб стандарт болгов
+- (app)/layout.tsx: header/main/footer-ийг төвлөрсөн max-w-5xl контейнерт оруулж
+  зэрэгцүүлэв (өмнө бүрэн өргөн → "суга"). main padding py-8.
+- account, account/history, account/notifications, account/vehicles/[id]: хувийн
+  хуудсуудыг mx-auto max-w-2xl нэг баганад төвлүүлэв (нэгдмэл, фокустай).
+- discover, org: browse/booking хуудас 5xl өргөнөөр (тав тухтай), аль хэдийн h1-тэй.
+
+[2026-06-30] Discover list grid + gutter нэгтгэл
+- discover-client.tsx: list харагдацыг ганц багана → grid sm:grid-cols-2 (нягт).
+- (app)/layout.tsx: gutter-ийг landing-тэй ижил px-4 sm:px-6 lg:px-8.
+
+[2026-07-01] Tenant admin sidebar — light mode nav өнгө засвар
+- admin-sidebar.tsx: nav item-ийн active text/icon (text-violet-300/400/200) light горимд цайвар violet → уншигдахгүй байсныг light:text-violet-700/600 болгов. Inactive-д light:text-slate-600, icon light:text-slate-500.
+- globals.css: .nav-item:hover { color:#fff } light горимд цагаан гадаргуу дээр алга болдгийг html.light .nav-item:hover { color:#14151c } override-оор засав.
+
+[2026-07-01] System sidebar + dashboard tabs — light mode өнгө засвар
+- system-sidebar.tsx: active nav (text-red-200 / bg-red-500/15) light-д цайвар улаан → light:text-red-700, icon light:text-red-600. SYSTEM / "Платформын админ" labels light:text-red-600. Desktop + mobile хоёулаа.
+- services/tabs.tsx, diagnostics/tabs.tsx: active tab (text-violet-200) light-д уншигдахгүй → light:text-violet-700 + light:bg-violet-500/12.
+
+[2026-07-01] Ажилтны жагсаалт — light mode chip/avatar өнгө засвар
+- employees/page.tsx: үүрэг chip (violet/blue-300), төлөв chip (red/amber/emerald-300), "идэвхжээгүй" (amber-300), avatar circle текст (violet-300), "(та)" — бүгд light-д цайвар байсныг light:text-{color}-700/600 нэмж тодруулав.
+- Тэмдэглэл: bg-{c}-500/15 + text-{c}-300 chip загвар апп даяар давтагдана (жагсаалтын хуудсууд). Одоохондоо хуудас тус бүрд засаж байгаа.
+
+[2026-07-01] Захиалгын жагсаалт — төлөвийн шүүлтүүрийг drop-down болгов
+- orders/page.tsx: хүснэгтийн толгой дахь төлөвийн chip мөрийг (Бүгд/SCHEDULED/... линкүүд) устгаж, оронд нь бусад шүүлтүүрийн мөрөнд FilterSelect (paramName="status", "Бүх төлөв") нэмэв. Хүснэгтийн толгойд зөвхөн "{n} захиалга" тоолуур үлдээв. Ашиглагдахаа больсон FILTERS массивыг устгав. ResetFilters-д status аль хэдийн байсан.
+
+[2026-07-01] Filter dropdown button — light mode текстийн өнгө сайжруулав
+- globals.css: --accent-strong хувьсагч нэмэв (dark #8b6bff, light #6d28d9/violet-700).
+- list-filters.tsx: FilterSelect trigger button болон DropdownOption-ы active текстийг var(--accent-light) → var(--accent-strong) болгов. Inline style тул light: variant ажиллахгүй, иймд theme-aware CSS var ашиглав. Сонгогдсон шүүлтүүр light-д цайвар ягаан → тод ягаан.
+
+[2026-07-01] Захиалгын жагсаалт/мөр — light mode chip/текст засвар
+- lib/orders.ts: ORDER_STATUS_BADGE, PAYMENT_STATUS_BADGE, ITEM_KIND_BADGE бүх chip-д light:text-{color}-700 (FEE: zinc-600) нэмэв. Энэ badge map апп даяар (мөр, detail, order-items) хуваалцагддаг тул бүх газар зэрэг зассан.
+- orders/page.tsx: захиалгын дугаарын violet link (light:text-violet-700), StatCard тоонууд (amber/blue/emerald-400 → light:text-*-600), thead толгой + "{n} захиалга" тоолуур (light:text-slate-500).
+
+[2026-07-01] Салбарын жагсаалт — light mode бүрэн засвар
+- branches/page.tsx: avatar (violet-300→light:violet-700), "Үндсэн" badge (light:violet-700), Газрын зураг линк (violet-400/80→light:violet-700), Устгах товч (red-400→light:red-600), thead толгой (light:slate-500). Body текстүүд --color-white remap-аар бараан болдог тул хэвээр.
+- Шалгав: page-header.tsx (PageHeader/EmptyState/PrimaryLinkButton) light-д зөв — text-white remap + bg-violet-600 safeguard-аар цагаан текст хадгалагдана, засвар шаардлагагүй.
+
+[2026-07-01] Салбар засах (detail) хуудас — light mode бүрэн засвар
+- select.tsx: form Select-ийн active option өнгө var(--accent-light) → var(--accent-strong) (light-д тод). Апп даяарх бүх form Select-д хамаарна.
+- auth-shell.tsx: Field error, FormError текст/икон text-red-400 → light:text-red-600. Бүх форм дээр хамаарна.
+- branch-form.tsx: Ажиллах өдрийн active toggle text-violet-200 → light:text-violet-700.
+- location-picker.tsx: "Миний байршлыг авах" (violet-200→light:violet-700), "Цэвэрлэх" (red-300→light:red-600), geoError (light:red-600). Газрын зураг өөрөө colorScheme-оор theme-тэй.
+- Форм input-ууд compact-input + CSS var-аар аль хэдийн theme-aware.
+
+[2026-07-01] Хяналтын самбар — light mode бүрэн засвар
+- dashboard/page.tsx: орлогын өсөлт/бууралт badge, StatCard trend badge (emerald/red-300→light:*-700), орлогын мужийн active товч (violet-300→light:violet-700), QuickAction hover (light:group-hover:violet-700), багцын fallback badge, daysLeft red-300, "Дэлгэрэнгүй/түүх" линк.
+- lib/subscription.ts: SUBSCRIPTION_STATUS_BADGE (TRIAL/ACTIVE/EXPIRED) light:text-*-700. Апп даяар (banner, settings) хамаарна.
+- income-chart.tsx: тэнхлэгийн шошго/grid/crosshair/marker цагаан rgba байсныг --chart-* CSS var болгов (light-д алга болдгийг зассан). globals.css-д --chart-grid/label/crosshair/marker-ring нэмэв (dark+light).
+- date-picker.tsx: цагийн заалт + "Өнөөдөр" товч text-violet-300 → light:violet-700. Popover нь bg-[var(--surface)], өдрийн нүд safeguard/remap-аар зөв.
+- Sparkline: emerald/red hex — хоёр theme-д зөв, өөрчлөлтгүй.
+
+[2026-07-01] Үйлчлүүлэгч + Машин (жагсаалт + detail) — light mode засвар
+- customers/page.tsx, vehicles/page.tsx: thead (light:slate-500), avatar violet-300 (light:violet-700), Устгах товч red-400 (light:red-600), эзэмшигч линкийн hover:violet-300 (light:hover:violet-700).
+- customers/[id]/page.tsx: машины plate avatar violet-300 → light:violet-700.
+- vehicles/[id]/page.tsx: захиалгын дугаар violet-300 → light:violet-700 (status badge lib/orders-оор аль хэдийн зассан).
+- lib/appointments.ts: APPOINTMENT_STATUS_BADGE (PENDING/CONFIRMED/REJECTED/CANCELLED/NO_SHOW) light:text-*-700/600. Апп даяар хамаарна.
+- vehicle-form.tsx: HUR spinner (violet-300→light:violet-600), checkmark (emerald-400→light:emerald-600), "HUR-аас шинэчлэх" товч, "HUR-аас татав" info, "Үйлчлүүлэгч нэмэх" линк — бүгд light:violet-700.
+- customer-form.tsx: washed accent байхгүй (shared input theme-aware).
+
+[2026-07-01] Үйлчилгээ хэсэг (бүх таб) — light mode засвар
+- service-list.tsx (Ажил + Сэлбэг/Бараа таб хуваалцана): thead (light:slate-500), нэрийн hover:violet-300 (light:violet-700), ангилал badge violet-300 (light:violet-700), үнэ/emerald-300 (light:emerald-700), Засах violet-400 (light:violet-600), Устгах red-400 (light:red-600).
+- diagnostics/page.tsx: thead, badge, emerald, Засах/Устгах — service-list-тэй ижил.
+- categories-section.tsx (Ангилал): Идэвхтэй badge emerald-300, Засах violet-400, Устгах red-400, form алдаа text-red-400 (2), амжилтын мессеж emerald-300 → бүгд light вариант.
+- stock-adjust-form.tsx: амжилтын мессеж emerald-300 → light:emerald-700.
+- labor/goods/service-form/new/[id] — өөрийн accent markup байхгүй, shared component (service-list, Field, Select)-ээр зассан.
+
+[2026-07-01] Оношилгоо жагсаалт — төрлийн чип (DIAGNOSTIC_TYPE_BADGE)
+- lib/diagnostics.ts: DIAGNOSTIC_TYPE_BADGE (INTAKE/POST_SERVICE/ROUTINE/DAMAGE_REPORT) light:text-*-700 нэмэв. Оношилгоо жагсаалт + бусад газарт хамаарна.
+
+[2026-07-01] Мэдэгдэл — light mode засвар
+- dashboard/notifications/page.tsx: thead (light:slate-500), төрлийн badge violet-300 (light:violet-700), гарчгийн hover:violet-200 (light:violet-700), "Шинэ" badge violet-200 (light:violet-700).
+- notification-bell.tsx (bell dropdown): "Бүгдийг уншсан" товч violet-300 (light:violet-700). Popover bg-[var(--surface)], unread badge bg-violet-500 safeguard-аар цагаан текст — зөв.
+- staff-notification-bell.tsx: NotificationBell-ийг wrap хийдэг, өөрийн засвар шаардлагагүй.
+
+[2026-07-01] Аудит лог — light mode засвар
+- dashboard/audit/page.tsx: ACTION_BADGE map (CREATE/UPDATE/DELETE/STATUS/PAYMENT/STOCK/ITEM_* — emerald/blue/red/violet/amber/cyan/rose-300) бүгд light:text-*-700. thead (light:slate-500), обьектын линк violet-300 (light:violet-700). LOGIN/LOGOUT/OTHER (white) remap-аар зөв.
+
+[2026-07-01] Тайлан — light mode засвар
+- dashboard/reports/page.tsx: хугацааны хурдан сонголтын active товч violet-300 → light:violet-700. Бусад нь аль хэдийн зөв: ITEM_KIND_BADGE/ORDER_STATUS_BADGE (lib/orders), gradient progress bar-ууд хоёр theme-д зөв, BigStat gradient/white remap, DatePicker theme-aware.
+
+[2026-07-01] Тайлан — хугацааны шүүлтүүрийн алдаа (UI + performance)
+- fmt() toISOString() UTC руу хөрвүүлдэг тул UTC+8-д огноо 1 өдрөөр гулсаж муж буруу болдог байсныг локал YYYY-MM-DD болгон зассан.
+- isQuickActive алдаатай: parseRange бүх custom мужийг key="custom" болгодог тул Өнгөрсөн сар/Сүүлийн 30/Энэ жил товч хэзээ ч active харагддаггүй байв. quickBounds()-д төвлөрүүлж, activeQuickKey()-ээр from/to-г тааруулан илрүүлдэг болгов.
+- Performance: тайлангийн query бүх branch/user/customer/service хүснэгтийг татаж байсныг (top-5 нэрлэхэд) 2 давалгаа болгож — эхлээд groupBy, дараа нь зөвхөн гарч ирсэн ID-уудыг {id:{in:[...]}}-ээр татдаг болгов. Том tenant дээр их хэмжээний илүү татацыг арилгав.
+
+[2026-07-01] Тохиргоо (бүх таб) — light mode засвар
+- tenant-form.tsx, logo-form.tsx, qpay-form.tsx: амжилтын мессеж emerald-300 → light:emerald-700. qpay-form устгах товч hover:red-300 → light:hover:red-600.
+- units-section.tsx (Байгууллагын → нэгжүүд): үндсэн badge violet-300, идэвхтэй badge emerald-300, Засах violet-400, Устгах red-400, form алдаа red-400 (2), амжилтын мессеж emerald-300 → бүгд light вариант.
+- subscription/page.tsx: thead → light:slate-500 (SUBSCRIPTION_STATUS_BADGE аль хэдийн зассан).
+- plan-checkout.tsx: emerald-400 checkmark → light:emerald-600 (бусад light: вариант нь өмнө нь орсон байсан).
+- system/page.tsx: washed accent байхгүй (shared Field/Select/toggle). Settings sub-nav нь sidebar-т (аль хэдийн зассан).
+
+[2026-07-01] Үйлчлүүлэгчийн (consumer) хэсэг — админ шиг зүүн sidebar
+- Шинэ app/_components/consumer-sidebar.tsx: admin-sidebar-ийн загвараар зүүн fixed sidebar (ConsumerSidebar) + mobile topbar/drawer (ConsumerMobileTopbar). Nav: Газрууд (/discover), Миний цаг (/account, exact), Үйлчилгээний түүх (/account/history), Мэдэгдэл (/account/notifications). auth item-ууд зөвхөн нэвтэрсэн үед. Footer: профайл + ThemeToggle + Гарах (эсвэл Нэвтрэх товч). Header/topbar-т AccountNotificationBell.
+- (app)/layout.tsx: өмнөх top-nav header-ийг устгаж, dashboard-тай ижил flex + lg:ml-60 + content-bg-layer бүтэц болгов. Light: variant-ууд nav-д шингэсэн.
+- Тэмдэглэл: account/page.tsx-ийн дээд профайл мөр sidebar footer-тэй давхардаж болзошгүй ч агуулгыг хэвээр үлдээв.
+
+[2026-07-01] Consumer — "Миний машинууд" тусдаа хуудас, "Миний цаг"-ийг цэвэрлэв
+- Шинэ app/(app)/account/vehicles/page.tsx: машины жагсаалт (avLinks + ownedTV нэгтгэл) + AddAccountVehicle-ийг account/page.tsx-ээс тусад нь гаргав. light: variant-тай.
+- account/page.tsx: зөвхөн цаг захиалгын түүх (Миний цагууд) + "Шинэ цаг захиалах" + Push toggle үлдээв. Профайл мөр, action card-ууд (sidebar-т давхардаж байсан), машины хэсэг устгав.
+- consumer-sidebar.tsx: "Миний машинууд" (/account/vehicles, машины icon) nav item нэмэв.
+- Тэмдэглэл: Push toggle-д өөр байр байхгүй тул /account дээр үлдээв.
+
+[2026-07-01] Consumer — "Автосервисүүд" нэршил + content max өргөн
+- consumer-sidebar.tsx: nav label "Газрууд" → "Автосервисүүд". discover metadata title, account CTA-г мөн шинэчлэв.
+- (app)/layout.tsx: контентийн max-w-5xl → max-w-7xl (landing-тэй ижил стандарт).
+- account/page.tsx, vehicles, notifications, history, vehicles/[id]: max-w-2xl cap-ыг хасаж w-full (бүрэн өргөн) болгов. vehicles grid sm:2/lg:3/xl:4 багана.
+
+[2026-07-01] Consumer — үйлчилгээний түүхийн дэлгэрэнгүй хуудас
+- Шинэ app/(app)/account/history/[id]/page.tsx: захиалгын дэлгэрэнгүй — төлөв/төлбөр badge, салбар, огноо, мөрүүд (kind badge, тайлбар, тоо × нэгж үнэ, дүн), нийт/төлсөн дүн, тэмдэглэл.
+- Зөвшөөрөл: findFirst({ where:{ id, OR:[customer.accountId, vehicleId in ownedVehicleIds] }}) — түүхийн жагсаалттай ижил эзэмшлийн логик. Өөр хэрэглэгчийн захиалга харах боломжгүй, олдохгүй бол notFound().
+- account/history/page.tsx: карт бүрийг /account/history/[id] руу Link болгов. "Бүх машины түүх" линкэд light: variant.
+
+[2026-07-01] Consumer — "Машин нэмэх" товч + inline форм light mode
+- add-account-vehicle.tsx: "+ Машин нэмэх" товч text-violet-200 → light:violet-700.
+- inline-account-vehicle-form.tsx: "Шинэ машин" гарчиг (violet-200), алдааны мессеж (red-400), "HUR-аас шинэчлэх" товч (violet-300), "HUR-аас татав" текст (violet-300/80) → бүгд light вариант. Бусад input Field/Select/compact-input theme-aware.
+
+[2026-07-01] Sidebar scrollbar — нимгэн, орчин үеийн, цэвэрхэн
+- globals.css: .sidebar-scroll utility (6px өргөн, дугуй thumb, transparent track, hover дээр тодрох, corner button нуусан). Firefox scrollbar-width:thin + WebKit. Theme-aware --scrollbar-thumb/-hover (dark: цагаан 12/22%, light: бараан 18/32%).
+- admin-sidebar, consumer-sidebar, system-sidebar-ийн нав <nav>-д sidebar-scroll класс нэмэв.
+
+[2026-07-01] Admin профайл хуудас — цэвэрхэн, хүчирхэг layout
+- profile/page.tsx: зүүн профайл картыг sticky болгож, gradient banner + том rounded avatar (ring) + stat grid (Идэвхтэй төхөөрөмж / Элссэн он) нэмэв. Байгууллага/утас/огноог тусдаа картад. Секц бүрийг SectionCard (icon badge + title + desc + action) болгож нэгтгэв. Session мөрүүдэд төхөөрөмжийн icon. lg:3/xl:4 багана.
+- Light mode: role badge (violet-300), "Энэ төхөөрөмж" (emerald-300), revoke товчнууд (red-300), SectionCard icon → light вариант. profile-form/password-form амжилтын мессеж emerald-300 → light:emerald-700.
+
+[2026-07-01] Оношилгоо template editor — асуултуудыг нягт grid
+- template-editor.tsx: хэсэг доторх асуултуудыг нэг баганаас → responsive grid (grid-cols-1 lg:2 2xl:3, items-start) болгож дэлгэцэнд олон багтдаг болгов.
+- ItemRow header-ийг 2 мөр болгов: 1) нэр + move/remove товч, 2) төрөл/байрлал select + Заавал (flex-wrap) — нарийхан grid нүдэнд эвдрэхгүй. label-д min-w-0.
+- Light: schema алдаа (red-300), conditional pill (violet-200), showWhenInvalid (amber-400), "Асуулт нэмэх"/remove товч → light вариант.
+- Энэ editor нь diagnostics/[id] засах + шинэ template хоёуланд хамаарна.
+
+[2026-07-01] Оношилгоо — "OK" → "Хэвийн" анхдагч сонголт
+- lib/diagnostics.ts: DEFAULT_CHECK_OPTIONS ["OK",...] → ["Хэвийн", "Анхаарах", "Засах"]. Шинэ template/асуултад хамаарна (хадгалагдсан хуучин template-ийн options өөрчлөгдөхгүй).
+- template-editor.tsx: сонголтын placeholder жишээг "Хэвийн, Анхаарах, Засах" болгов.
+- "OK" string нь өнгө/логикт special-case биш тул аюулгүй.
+
+[2026-07-01] Оношилгоо бөглөх форм — асуултуудыг нягт grid
+- diagnostic-form.tsx (захиалгаас), standalone-form.tsx (бие даасан): бөглөх асуултуудыг нэг баганаас → grid-cols-1 md:2 2xl:3 (items-start). Байрлалтай (positioned) item-ууд дотроо grid-тэй тул md:col-span-2 2xl:col-span-3-ээр бүтэн өргөн эзэлнэ.
+- Light: required "*" (red-400), "Шинэ нэмэх/үүсгэх" линкүүд (violet-300) → light вариант.
+
+[2026-07-01] Оношилгооны тайлангийн дэлгэрэнгүй — нягт grid
+- reports/[id]/page.tsx: секцийн доторх үр дүнг divide-y босоо жагсаалтаас → grid-cols-1 md:2 2xl:3 (карт бүр border-той). Байрлалтай item-ууд бүтэн мөр (col-span) + слотууд дотроо sm:2 lg:4 grid.
+- Light: үйлчлүүлэгч/машин/захиалга линкүүд (violet-300), устгах товч (red-400) → light вариант.
+
+[2026-07-01] Захиалгын дэлгэрэнгүй — light mode бүрэн засвар
+- status-controls.tsx: STATUS_BTN_STYLE 5 өнгө (amber/blue/purple/emerald/red-300) + цуцлах icon → light:*-700.
+- payment-controls.tsx: төлсөн (emerald-300), хэсэгчилсэн active (amber-200→800)/idle (amber-300), буцаах (red-300) → light вариант.
+- add-item-form.tsx: бүх error <p> (red-400), идэвхтэй таб pill (violet-200) → light.
+- order-items.tsx: устгах товч red-400/80 → light:red-600.
+- qpay-widget.tsx: линкүүд (violet-300), алдаа (red-400), амжилт (emerald-200) → light.
+- page.tsx: оношилгоо/линкүүд (violet-300), төлбөрийн сануулга (amber-300/70), danger zone гарчиг+товч (red-300) → light. diagnostics/new линк.
+- Badge-ууд (ORDER/PAYMENT/ITEM_KIND) lib-ээр аль хэдийн зассан.
+
+[2026-07-01] Оношилгооны PDF — асуултуудыг нягт 2 багана
+- pdf-generator.tsx: section item-уудыг босоо жагсаалтаас → flexWrap row 2 багана (itemCol width 50%). Байрлалтай item бүтэн мөр (itemColFull), слотууд нь мөн 2-2 (positionCell). wrap={false}-оор асуулт хуудас дундуур таслагдахгүй. Дэлгэцийн grid-тэй ижил нягт.
+
+[2026-07-01] Оношилгооны тайлан дэлгэрэнгүй — үлдсэн light theming (товчнууд)
+- print-button.tsx: Хэвлэх товч text-violet-200 → light:violet-700.
+- pdf-generator.tsx: "PDF хүүдүүлэх" товчны className text-emerald-200 → light:emerald-700.
+- page.tsx-ийн линк/устгах болон grid нь өмнөх алхмуудад аль хэдийн зассан.
+
+[2026-07-01] Оношилгооны PDF — татахын оронд үзэх
+- pdf-generator.tsx: PDFDownloadLink → BlobProvider. blob URL-ийг target="_blank" (download атрибутгүй) линкээр нээж браузерын PDF viewer дээр inline харуулна. Товчны нэр "PDF хүүдүүлэх" → "PDF үзэх".
+
+[2026-07-01] Оношилгооны тайлан — ганц "PDF" товч
+- reports/[id]/page.tsx: PrintButton хассан (import + JSX). Зөвхөн AdvancedPDFButton үлдээв.
+- pdf-generator.tsx: товчны текст "PDF үзэх"/"PDF үүсэж байна..." → "PDF"/"PDF...".
+- print-button.tsx нь ашиглагдахаа больсон (файл үлдээв).
+
+[2026-07-01] Оношилгооны PDF — зай багасгаж minimize
+- pdf-generator.tsx: page padding 40→26, fontSize 11→10. header/section/title/spacing бүгд багасгав. Info хэсгийг 8 бүтэн мөрөөс → 2 баганын нягт grid (infoWrap/infoCell, notes бүтэн мөр), мөр хоорондын border/зай хассан. Асуултын label qLabel (жижиг, marginBottom 1). Байрлалын positionsRow-с зүүн индент/border хасаж нягтруулав. entrySignature/photo хэмжээ багасгав.
+
+[2026-07-01] Захиалга — үйлчлүүлэгчгүйгээр машинаа түрүүлж сонгох
+- order-form.tsx: машины Select-ийн disabled={!customerId} хассан. Үйлчлүүлэгч сонгоогүй үед эзэмшигчтэй бүх машиныг харуулна (hint-д эзэмшигчийн нэр). Машин сонгоход эзэмшигчийг нь автоматаар customerId болгож тавьна (onVehicleChange). Үйлчлүүлэгч солиход машин нь тухайн хүнийх биш бол цэвэрлэнэ (onCustomerChange).
+- Эзэмшигчгүй машиныг "бүгд" жагсаалтад оруулахгүй — сервер (orders.ts:191) машиныг үйлчлүүлэгчтэй нь тааруулахыг шаарддаг тул. "+ машин нэмэх" товч үйлчлүүлэгчгүйд хэвээр disabled.
+
+[2026-07-02] Оношилгооны загвар — бөглөх урьдчилан харах
+- template-preview.tsx (шинэ): загварыг техникч бөглөх үеийн харагдацаар (DiagnosticForm-той ижил бүтэц) урьдчилан харуулна. Check сонголтууд дарагдах тул showWhen хамаарлыг шууд турших боломжтой, "Цэвэрлэх" товчтой. Photo/signature нь dashed placeholder. Editor-ийн form дотор тул input-уудад name өгөөгүй — submit-д орохгүй.
+- template-editor.tsx: "Бөглөх урьдчилан харах" collapsible хэсэг нэмсэн (Харах/Нуух toggle, default нуугдмал). Editor-ийн schema state-ээс шууд уншдаг тул засвар бүрд live шинэчлэгдэнэ. /dashboard/services/diagnostics/[id] болон /new хоёуланд ажиллана.
+
+[2026-07-02] Автосервисүүд (discover) — шүүлтүүрийн нэршил
+- discover-client.tsx: хотын шүүлтүүрийн placeholder "Бүх аймаг" → "Аймаг/хот", дүүргийнх "Бүх дүүрэг" → "Сум/дүүрэг". Анх хуудсанд ороход Улаанбаатар сонгогдсон байх (жагсаалтад байвал) хэвээр — DEFAULT_CITY логик.
+
+[2026-07-02] Оношилгоо бөглөх — алдааны дараа хариултууд арилдаг байсныг зассан
+- Шалтгаан: React 19-д <form action={...}> нь server action дууссаны дараа (алдаатай буцсан ч) uncontrolled input-уудыг reset хийдэг.
+- diagnostic-form.tsx, standalone-form.tsx: action prop-ын оронд onSubmit + preventDefault + startTransition(() => formAction(fd)) — алдаа буцахад бөглөсөн бүх хариулт (radio, текст, тоо, файл) хэвээр үлдэнэ. Мөн алдааны мессеж гарахад form-ын эхэнд smooth scroll хийж харагдуулна.
+
+[2026-07-02] Оношилгоо — сонгосон хариултын чипийг утгаар нь soft өнгөжүүлсэн
+- lib/diagnostics.ts: checkOptionTone() — хариултын үгнээс өнгөний ай (good/warn/bad). "Анхаарах, дунд, элэгдсэн..." → шар; "Засах, солих, муу, гэмтэлтэй..." → улаан; бусад (Хэвийн г.м.) → ногоон. CHECK_TONE_CHIP (has-checked: variant, uncontrolled radio-д), CHECK_TONE_ACCENT, CHECK_TONE_ACTIVE class map-ууд.
+- diagnostic-form.tsx, standalone-form.tsx: чип label-д has-checked өнгө — сонгоход soft ногоон/шар/улаан болно, radio accent мөн тохирно.
+- template-preview.tsx: preview-ийн идэвхтэй чип violet биш мөн tone өнгөөр — бөглөх хуудастай ижил харагдана.
+
+[2026-07-02] Оношилгооны тайлангийн дэлгэрэнгүй — хариултаар шүүх
+- report-answers.tsx (шинэ, client): тайлангийн хариултуудын рендэрийг page.tsx-ээс салгаж, check хариултын утгуудаас filter chip үүсгэдэг болгосон ("Хариултаар: Бүгд / Хэвийн (5) / Анхаарах (2) / Засах (1)" — тоо ширхэгтэй, tone өнгөтэй). Сонгоход зөвхөн тухайн хариултай асуултууд үлдэнэ; байрлалтай item-д зөвхөн таарсан байрлалын нүд харагдана; хоосон болсон section нуугдана. Дахин дарвал болино. Filter bar no-print.
+- Check хариултын утгыг мөн tone өнгөтэй жижиг badge болгож харуулдаг болсон (bөглөх form-той ижил өнгө).
+- page.tsx: EntryView/renderValue устгаж ReportAnswers ашиглана. Нэг л check утгатай тайланд filter bar гарахгүй (утга >1 үед л).
+
+[2026-07-02] Оношилгоо — анхдагч сонголт "Засах" → "Солих"
+- lib/diagnostics.ts: DEFAULT_CHECK_OPTIONS ["Хэвийн","Анхаарах","Солих"]. Шинэ асуулт/шинэ template-д хамаарна, хадгалагдсан хуучин template-ийн options өөрчлөгдөхгүй. checkOptionTone /соли/ таардаг тул "Солих" улаан tone хэвээр.
+- template-editor.tsx: сонголтын placeholder жишээг мөн шинэчилсэн.
+
+[2026-07-02] Цаг захиалгын жагсаалт — light theme засвар
+- appointments/page.tsx: light горимд цайвар өнгөт текст уншигдахгүй байсныг зассан — "Батлах" text-emerald-300, "Татгалзах" text-red-300, "Захиалга үүсгэх" text-violet-200, ангилалын нэр text-violet-300/80 дөрвөлд light:text-*-700 override нэмсэн (кодбазын convention). Status badge, шүүлтүүр, pagination аль хэдийн light-тэй зөв байсан.
+
+[2026-07-02] Цаг захиалахад бүх машин гарч ирэхгүй байсныг зассан
+- Шалтгаан: org/[slug] booking нь зөвхөн AccountVehicle (хэрэглэгчийн өөрөө нэмсэн) ачаалдаг байсан бол /account/vehicles нь сервисээс бүртгэгдэж холбогдсон (TenantVehicle → Customer.accountId эсвэл утас таарсан) машиныг давхар харуулдаг — хоёр жагсаалт зөрдөг байв.
+- org/[slug]/page.tsx: loadAccountVehicles() — хоёр эх сурвалжийг нэгтгэж global vehicleId-аар давхардал арилгана (/account/vehicles-тэй ижил логик).
+- booking-form.tsx: accountVehicleId → vehicleId (global Vehicle id) илгээнэ; шинээр нэмсэн машинд v.vehicleId.
+- account-vehicles.ts: CreatedAccountVehicle-д vehicleId нэмсэн.
+- appointments.ts createAppointment: vehicleId хүлээж авч эзэмшлийг AccountVehicle ЭСВЭЛ TenantVehicle(Customer account/утас)-аар шалгана; сервисийн машинд AccountVehicle холбоос upsert хийж appointment-д хэрэглэнэ.
+- Мобайл API (/api/v1/app/*) contract хөндөөгүй (ижил хязгаарлалт бий, аппын хувилбартай хамт өөрчлөх нь зүйтэй).
+
+[2026-07-02] Хэрэглэгчид tenant-ийн бүртгэсэн машин харагдахгүй байсан + global-first lookup
+- (1) Account↔Customer тааралт утсаар түлхүүрлэгддэг ч Customer.phone зарим замд канон бус хадгалагддаг байсан:
+  - api/v1/customers POST: normalizePhone нэмж, буруу дугаарт 422 (dashboard action-тай ижил болов).
+  - Миграц 20260702000000_normalize_customer_phones: одоо байгаа Customer.phone-уудыг канон 8 орон болгож нормчилсон (+976/0-prefix/тэмдэгт цэвэрлэж, 5-9-өөр эхэлсэн 8 оронд хөрвүүлсэн үед л шинэчилнэ). Локал DB-д хэрэгжүүлсэн; прод дээр deploy-д migrate deploy-оор орно.
+- (2) Шинэ машин бүртгэхэд global-first lookup: /api/hur/lookup + /api/account/hur/lookup хоёулаа эхлээд prisma.vehicle (plate unique)-ээс хайж, олдвол HUR дуудалгүй шууд буцаана (source: "global" | "hur"). lib/vehicles.ts: vehicleToLookupInfo() — Vehicle → PublicHurVehicle хэлбэр.
+- vehicle-form.tsx, orders/inline-vehicle-form.tsx, inline-account-vehicle-form.tsx: эх сурвалжийн бичиг "Системийн бүртгэлээс"/"Бүртгэлээс олдлоо" vs "HUR-аас татав" ялгаж харуулна.
+
+[2026-07-02] Нэг машин давхар бүртгэгддэг байсныг зассан (plate нормчлол + merge)
+- Шалтгаан: normalizePlate зөвхөн trim+uppercase хийдэг байсан тул "1234ABC" (латин) vs "1234АВС" (кирилл), зайтай бичилт бүрт өөр global Vehicle үүсч, tenant/account түвшний давхардлын хамгаалалт ажиллахгүй байв.
+- lib/vehicles.ts normalizePlate: том үсэг + зай/тэмдэгт хасах + латин төстэй 12 үсгийг (ABCEHKMOPTXY) кирилл болгох канон формат. resolveVehicle-ээр орж ирдэг бүх бүртгэл (dashboard, quick-create, account, 2 API) автоматаар хамрагдана.
+- Миграц 20260702010000_merge_duplicate_vehicles: одоо байгаа давхардлыг нормчилсон дугаараар бүлэглэж канонд (VIN-тэй → хамгийн хуучин) нэгтгэсэн — ServiceOrder/DiagnosticReport/Appointment/TenantVehicle/AccountVehicle заалтуудыг канон руу шилжүүлж, unique мөргөлдөөнтэй link-үүдийг устгаж, VIN-ийг канонд өвлүүлж, давхардлыг устгаад үлдсэн plate-уудыг канон бичилтэд оруулсан. #OLD- tombstone хөндөхгүй. Локал DB-д хэрэгжиж баталгаажсан (0 давхардал).
+- Lookup route-ууд HUR руу ч канон дугаараар ханддаг болсон.
+
+[2026-07-02] HUR-аас өмнө бүртгэлтэй эсэхийг бүх lookup-д шалгадаг болсон
+- Үлдсэн 2 API route-д global-first нэмсэн: /api/v1/app/hur/lookup (мобайл апп), /api/v1/hur/vehicle (tenant API) — эхлээд prisma.vehicle (канон plate), олдвол HUR дуудахгүй (source талбартай, backward-compatible).
+- Lookup хариунд registered флаг: dashboard route-д TenantVehicle (энэ tenant-д бүртгэлтэй эсэх), account route-д AccountVehicle (гаражид байгаа эсэх).
+- vehicle-form.tsx: "танай бүртгэлд аль хэдийн байна — Бүртгэлээс харах →" amber анхааруулга (edit үед гарахгүй). orders/inline-vehicle-form.tsx: "жагсаалтаас сонгоно уу". inline-account-vehicle-form.tsx: "таны бүртгэлд аль хэдийн байна".
+
+[2026-07-02] Өөр tenant-д бүртгэлтэй машиныг эзэнтэй нь хамт бүртгэж авдаг болсон
+- _actions/vehicles.ts createVehicleAction: үйлчлүүлэгч сонгоогүй үед машин global-д байгаа бөгөөд өөр tenant-д эзэнтэй (Customer) холбогдсон бол: (1) энэ tenant-д утас/accountId-аар нь байгаа үйлчлүүлэгч байвал түүнд холбоно, (2) байхгүй бол max_customers план хязгаар зөвшөөрвөл Customer-ийг (нэр, утас, имэйл, accountId) хуулж үүсгээд TenantVehicle-д эзнээр онооно. Хязгаар хүрсэн бол машиныг эзэнгүйгээр бүртгэнэ. Автоматаар үүссэн Customer audit-д тусдаа бүртгэгдэнэ; redirect эзний хуудас руу.
+- /api/hur/lookup: global машинд эзний мэдээлэл (нэр, утас — эхлээд өөрийн tenant-ийн холбоос, үгүй бол өөр tenant-ийн сүүлийн эзэн) хамт буцаадаг болсон — form дээр "Эзэмшигч:" харагдаж, утас таарвал үйлчлүүлэгч автоматаар сонгогдоно.
+
+[2026-07-07] Дараа төлбөрт (гэрээт) машины бүртгэл, захиалгын тусдаа түүх
+- Schema: TenantVehicle.isPostpaid (тенант тус бүрийн тохиргоо), ServiceOrder.isPostpaid (захиалга үүсэх үеийн snapshot — машины тохиргоо хожим өөрчлөгдсөн ч түүх тогтвортой) + [tenantId, isPostpaid] index. db push хийгдсэн.
+- Машины бүртгэл: vehicle-form-д "Дараа төлбөрт машин" checkbox (шинэ + засвар), vehicles жагсаалтад badge + "Төлбөрийн нөхцөл" шүүлтүүр.
+- Захиалга: createOrderAction/updateOrderAction (мөн /api/v1/orders POST) машины isPostpaid-ыг захиалга руу snapshot хийнэ; машин солиход дахин тооцно. order-form-д машин сонголтын hint + сонгосон машин дараа төлбөрт бол sky info banner. Захиалгын жагсаалт/дэлгэрэнгүйд badge, жагсаалтад "Төлбөрийн нөхцөл" шүүлтүүр, төлбөрийн хэсэгт тайлбар.
+- Шинэ хуудас /dashboard/orders/postpaid: stat картууд (машин, захиалга, нийт дүн, төлөгдөөгүй үлдэгдэл), машин тус бүрийн тооцооны нэгтгэл (цуцлагдсаныг тооцохгүй), шүүлтүүртэй захиалгын түүх (машин/төлбөр/огноо). Sidebar-т "Захиалга" бүлэг болж "Бүх захиалга" + "Дараа төлбөрт" children нэмэгдсэн.
+- lib/orders.ts: POSTPAID_LABEL/POSTPAID_BADGE нийтлэг тогтмолууд. quick-create буцаалтад isPostpaid (бүртгэлтэй машины link төлөвийг буцаана).
+
+[2026-07-09] Landing nav-ийг хөвөгч liquid glass болгож, footer-т байгууллагын лого marquee нэмсэн
+- nav.tsx: header нь sticky top-3/4, max-w-7xl rounded-2xl хөвөгч тууз болсон (өмнө нь full-width edge-to-edge байсан); өндөр 64px→56px, mobile цэс rounded дотор нээгддэг. globals.css-д .liquid-glass class: утаатай саарал шил (bg-secondary орчмын кул-грей градиент ~70% alpha, blur 20px + saturate 140%, дээд ирмэгийн highlight, зөөлөн сүүдэр) + light горимын сүүн цагаан хувилбар.
+- footer.tsx + logo-marquee.tsx (шинэ): copyright-ийн дээр бүртгэлтэй (suspended=false, logoUrl-тэй) байгууллагуудын лого+нэр урсдаг тууз. Track ижил 2 хагасаас бүрдэж translateX(-50%) — саадгүй давталт; hover-т зогсоно, ирмэгүүд mask-аар бүдгэрнэ, prefers-reduced-motion-д унтарна. Цөөн лого үед багадаа 10 болтол давтаж цоорхойгүй болгоно. Server component тул landing-ийн ISR (1 цаг)-аар кэшлэгдэнэ.
+
+[2026-07-09] Шинэ брэнд лого (Carcare араат+зүрх)-г төслийн түвшинд нэвтрүүлсэн
+- Эх зургууд app/carcare-1f-dark.png (бараан дэвсгэрт) ба app/carcare-1f-light.png (цайвар дэвсгэрт). scripts/make-brand-assets.mjs (шинэ): эдгээрээс public/brand/mark-{dark,light}.png (араат тэмдэг дангаараа, 512 квадрат), public/brand/logo-{dark,light}.png (бүтэн lockup), app/icon.png (favicon-ы эх — light хувилбарын тод ягаан тэмдэг) үүсгэнэ; дараа нь make-favicons.mjs favicon.ico + apple-icon.png-г шинэчилнэ.
+- brand.tsx BrandMark: theme-aware болсон — dark theme-д mark-dark, light theme-д mark-light. globals.css-д .dark-only/.light-only туслах class (html.light-аар сэлгэнэ). auth-shell-ийн зүүн панел үргэлж бараан тул mark-dark-ийг шууд ашиглана.
+- Хуучин "CC" цэнхэр badge (app/icon.png) бүрэн солигдсон; favicon/apple-icon дахин үүсгэгдсэн.
+
+[2026-07-09] Landing-ийн icon-уудыг нэг стильд нэгтгэж, personas картын overflow хамгаалалт
+- landing-icons.tsx (шинэ): нэгдсэн line-style SVG icon set (24px, stroke 1.8, currentColor) — Gauge, Calendar, Clipboard, Package, Users, Chart, TrendingUp, Wrench, Car, Rocket.
+- features.tsx (6 emoji → SVG), personas.tsx (3 emoji → SVG + features-тэй ижил violet tile загвар), cta-banner.tsx (🚀 → Rocket icon tile). Бүх icon violet-400 нэг өнгө, нэг стиль болсон.
+- Overflow засвар: landing root-д overflow-x-clip (хэвтээ таслалт/scroll гарахгүй), features/personas картуудад min-w-0 (grid хүүхдийн min-width:auto-гоос үүдэх халилтаас сэргийлнэ).
+
+[2026-07-09] Админ panel-ийн UX: устгахыг цэс рүү нуусан, мөр нягтарсан, banner намссан
+- row-actions.tsx (шинэ, нийтлэг): мөрийн «⋯» үйлдлийн цэс (RowActionsMenu) + server action-той item (RowMenuFormItem, confirm асуулттай, destructive загвартай). Цэс position:fixed тул хүснэгтийн overflow контейнерт таслагдахгүй; outside click/Escape/scroll-д хаагдана. Бусад жагсаалт хуудсууд мөн ашиглаж болно.
+- dashboard/vehicles: ил улаан "Устгах" товч → «⋯» цэс доторх confirm-той item болсон (өмнө нь баталгаажуулалтгүй шууд устгадаг байсан!). Мөрийн py-4→py-2.5, thead py-3→py-2.5, avatar 10→9 — нэг дэлгэцэд илүү олон мөр багтана. 🚗 emoji → CarIcon (landing-icons-оос, нэгдсэн стиль).
+- subscription-banner.tsx: том 2 мөрт banner → нам нэг мөрт (icon + гарчиг + дэлгэрэнгүй md+ дээр truncate + "Багц харах" + ✕). trial/expiring төлвүүд dismiss хийгдэнэ (sessionStorage, session бүрт дахин гарна); locked (read-only горим) хаагдахгүй. Client component болсон; огноог toLocaleString-ийн оронд тогтмол форматаар (hydration зөрүүгүй).
+
+
+[2026-07-09] Нэвтрэх хуудасны UX сайжруулалт (дизайн review-ийн топ 3)
+- login-form.tsx EmailStep: "Нууц үг мартсан уу?" линкийг авсан (нууц үгийн талбар байхгүй шатанд утгагүй, PasswordStep дээрээ хэвээр) → оронд нь урсгалын тайлбар: "Дараагийн алхамд нууц үгээ оруулж нэвтэрнэ. Анх удаа бол утсанд код ирнэ."
+- auth-shell BrandPanel: highlights-ийн доор бүтээгдэхүүний мини mockup ("Өнөөдрийн захиалгууд" — 3 мөр: дугаар/ажил/статус pill, aria-hidden чимэглэл) — зүүн панелийн хоосон зайг дүүргэсэн.
+- auth-shell FormPanel: зүүн ирмэгээс violet-800/14 gradient (lg+) — брэнд панелийн ягаанаас формын бараан руу зөөлөн шилжилт; "← Нүүр" линк white/50→70 болж тодорсон.
+
+[2026-07-09] Бүртгүүлэх хуудасны UX (дизайн review-ийн топ 4)
+- signup-form.tsx: 2 алхамт форм болсон — 1) Байгууллага (регистр/нэр/имэйл/утас/лого) 2) Админ хэрэглэгч (+OTP). Алхам 1-ийн талбарууд алхам 2-т DOM-д hidden хэвээр тул нэг submit-ээр бүгд илгээгдэнэ (signUpAction өөрчлөгдөөгүй). "Үргэлжлүүлэх" дээр client-side шалгалт (регистр 7 орон, нэр, имэйл, утас 1); серверээс алхам 1-ийн талбарын алдаа ирвэл автоматаар алхам 1 рүү буцна; awaitingOtp үед алхам 2-т түгжинэ. Дээр нь дугаартай алхамын заагч (1 Байгууллага — 2 Админ, болсон алхамд ✓).
+- Лого upload: native file input → sr-only, custom "Зураг сонгох" glass товч + сонгосон файлын нэр; preview хэвээр.
+- Нууц үг давтан талбарт таарсан үед emerald хүрээ + ✓ icon, таараагүй үед "Таарахгүй байна" hint.
+- auth-shell: wide картын өргөн max-w-4xl→max-w-2xl (форм сунахгүй), Field hint text-white/30→45 (уншигдахуйц); signup-ийн туслах текстүүд мөн тодорсон.
+
+[2026-07-09] Машины дэлгэрэнгүй/засах хуудасны UX (дизайн review-ийн топ 4)
+- vehicle-form.tsx: давтагдсан "HUR-аас автоматаар" hint-үүд (5+) → талбарын label дээр жижиг sky "HUR" badge + grid-ийн доор нэг нэгдсэн тайлбар. HUR-аас бөглөгддөг 10 талбарын input-д зөөлөн sky tint (bg-sky-500/[0.05]) — гараар бөглөх талбаруудаас визуал ялгаатай, засварлагдах хэвээр. auth-shell Field-ийн label prop string→ReactNode.
+- Хадгалах/Буцах → sticky bottom action bar (bg-secondary/90 + backdrop-blur) — урт форм scroll хийхэд ч үргэлж харагдана (шинэ машин үүсгэх хуудсанд ч үйлчилнэ).
+- vehicles/[id]: доод картуудын grid-д items-start (картууд контентдоо тохирсон өндөртэй, хоосон сунахгүй); Захиалгууд картын толгойд "Бүгдийг харах →" (/dashboard/orders?q=дугаар); №дугаарын violet өнгө → нейтрал white/80 (алдаа мэт харагдахгүй).
+
+[2026-07-09] Захиалгын дэлгэрэнгүй хуудасны UX (дизайн review-ийн топ 4)
+- orders/[id]: эцсийн төлөвт (шилжилт байхгүй) "Статус" картыг бүрмөсөн нуудаг болсон — дээд badge-тэй давхардаж "Энэ статус эцсийн төлөв" гэсэн хоосон карт гарахгүй.
+- payment-controls.tsx: Төлөгдсөн/Хагас/Төлөгдөөгүй 3 товч segmented control маягтай — идэвхтэй статус тод өнгөтэй + ✓, бусад нь сул нейтрал (hover-т сэргэдэг). Өмнө нь идэвхтэй нь disabled opacity-50-аар бүдгэрдэг байсныг эсрэгээр нь зассан.
+- globals.css: ₮ (U+20AE) глиф Geist-д байхгүйгээс fallback baseline зөрдөг байсныг @font-face (TugrikGlyph: local Arial, unicode-range U+20AE, size-adjust 94%)-ээр зассан — бүх ₮ дүн тоонуудтайгаа нэг baseline-д.
+- order-items.tsx: "Бүгд" tab-ын бүлгийн толгой pill badge → өнгөт цэг + uppercase хэсгийн гарчиг (мөр бүр дээр badge давтагдсан мэт харагдахгүй).
+
+[2026-07-09] Захиалгын "Үйлчилгээ" хэсгийг хүснэгт хэлбэрт оруулсан
+- order-items.tsx: мөрүүд "нэр + доор жижиг тоо×үнэ" давхар бичээсээс → багана толгойтой хүснэгт (Үйлчилгээ / Тоо / Нэгж үнэ / Дүн) болсон — тоонууд баганаараа зэрэгцэж нүдээр харьцуулахад ойлгомжтой. Бүлгийн толгойд тоо ширхэг нэмэгдсэн (АЖИЛ · 2). Устгах текст товч → ✕ icon (aria-label-тэй). Нарийн дэлгэцэд Тоо/Нэгж үнэ багана нуугдаж нэрийн доор нэг мөрөөр гарна.
+
+[2026-07-09] Хяналтын самбарын UX (дизайн review-ийн топ 4)
+- income-chart.tsx: дата огт байхгүй үед тэг-шугаман "эвдэрсэн мэт" график + утгагүй тэнхлэгийн (1,1,0,0) оронд empty state (icon + "Энэ хугацаанд орлого бүртгэгдээгүй байна").
+- dashboard/page.tsx StatCard badge: өссөн ▲ ногоон / буурсан ▼ улаан / 0% — саарал нейтрал гэж 3 чиглэлээр ялгадаг болсон; badge-д "Сүүлийн 7 хоногийг өмнөх 7 хоногтой харьцуулав" tooltip. Орлогын % badge-д мөн tooltip.
+- subscription-banner: trial/удахгүй дуусна сануулга үргэлж амбер (өмнө нь ≤3 хоногт улаан болдог байсан); улаан зөвхөн locked төлөвт.
+- ₮ baseline: өмнөх TugrikGlyph font-face засвар глобал тул самбарын "0₮" мөн хамрагдсан (нэмэлт өөрчлөлт шаардаагүй).
+
+[2026-07-09] Ажилтан засах/нэмэх хуудасны UX (дизайн review)
+- employees/[id] + employees/new: форм бүтэн өргөнөөр сунадаг байсныг max-w-2xl (~670px) төвлөрсөн карт болгосон (PageHeader-тэй хамт төвлөрнө); glass картын padding p-5/6.
+- employee-form.tsx: grid 4 багана → 2 багана, талбарын max-w-xs хязгаар хасагдсан (баганаа дүүргэнэ); нууц үгийн тайлбар/Идэвхтэй checkbox-ийн туслах текст white/40-45 → 50 тодорсон, max-w-md хязгаарууд хасагдсан.
+- page-header.tsx: PageHeader-т leading prop (гарчгийн зүүн талын элемент) — засах хуудсанд ажилтны нэрийн эхний үсэгтэй дугуй avatar (violet-цэнхэр градиент) нэмэгдсэн.
+
+[2026-07-09] Салбарын дэлгэрэнгүй/шинэ хуудасны redesign (өмнөх хэв маягуудаар)
+- branches/[id]: гарчиг "Салбар засах" → салбарын нэр, доор нь хаягийн мөр (дүүрэг, хороо, тоот); зүүн талд эхний үсэгтэй дугуй avatar (PageHeader leading); баруун талд контекст badge-ууд — "Үндсэн салбар" (violet) + ажиллах цаг (09:00–18:00). Хуудас max-w-3xl төвлөрсөн (газрын зурагтай тул employee-ийн 2xl-ээс өргөн).
+- branch-form.tsx: бүх grid 4 багана → 2 багана, талбарын max-w-xs хязгаар хасагдсан; газрын зураг картын өргөнөөр; "Юу ч сонгохгүй бол Даваа–Баасан" текст white/30→50; Хадгалах/Буцах → sticky bottom action bar (vehicle-form-той ижил). branches/new мөн адил төвлөрсөн.
+
+[2026-07-09] Салбар/ажилтны дэлгэрэнгүйг full-width болгож буцаасан
+- Хэрэглэгчийн хүсэлтээр branches/[id], branches/new, employees/[id], employees/new хуудсуудын max-w-2xl/3xl mx-auto төвлөрөлтийг хасаж full-width болгосон. Grid-үүд адаптив (sm:2/lg:3/xl:4 багана) руу, талбарын max-w-xs болон тайлбар/checkbox-ийн max-w-md хязгаарууд сэргэсэн.
+- Хадгалагдсан сайжруулалтууд: салбарын нэр-гарчиг + хаягийн мөр + avatar + "Үндсэн салбар"/ажиллах цагийн badge, ажилтны avatar, sticky action bar, тодруулсан туслах текстүүд.
+
+[2026-08-10] Хугацаа хэтэрсэн цаг захиалгыг автоматаар цуцлах cron
+- app/api/cron/expire-appointments/route.ts (шинэ): PENDING төлөвтэй, requestedAt нь өнгөрсөн (< now) цаг захиалгуудыг CANCELLED болгоно. expire-subscriptions-тэй ижил хэв маяг (Bearer CRON_SECRET, GET+POST). CONFIRMED захиалгыг хөндөхгүй — тэдгээрийг ажилтан өөрөө "Ирээгүй"/"Цуцлах"-аар шийднэ.
+- docs/deploy-ubuntu.md, README.md: шинэ cron-ыг crontab жишээ + баримтжуулалтад нэмсэн (цаг тутам, :15 минутад ажиллана).
+
+[2026-08-11] Хугацаа хэтэрсэн цаг захиалгын cron-д мэдэгдэл + аудит лог нэмсэн
+- lib/notifications.ts: шинэ "appointment_expired" төрөл (realm: account, "Цаг цуцлагдлаа" — хугацаандаа хариу аваагүйг тодорхой хэлнэ, "appointment_cancelled"-тэй (хэрэглэгч өөрөө цуцалсан) андуурахгүй).
+- app/api/cron/expire-appointments/route.ts: нэг том updateMany-аас мөр бүрээр update+log хийх болгож өөрчилсөн (MAX_BATCH=200, appointment-reminders-тэй ижил хэв маяг). Мөр бүрт AuditLog бичигдэнэ (userId=null, summary-д "систем автоматаар цуцалсан" гэдэг тодорхой) + онлайн захиалга (accountId-тэй) бол хэрэглэгчид push/мэдэгдэл очно.
+
+[2026-08-11] Салбар дамжиж ажилладаг ажилтан — assignableBranchIds
+- prisma/schema.prisma: User.assignableBranchIds String[] @default([]) — үндсэн branchId-аас гадна ажилтныг захиалгад "Хариуцах мастер"-аар сонгож болох НЭМЭЛТ салбарууд (FK-гүй, зөвхөн assignment-д хэрэглэгдэнэ; branchScopeId-ийн дата хандалтын хамрах хүрээг өөрчлөхгүй). Migration: 20260811000000_add_user_assignable_branch_ids.
+- app/_actions/employees.ts: create/update аль алинд нь assignableBranchIds parse+validate (filterOwnBranchIds — зөвхөн tenant-ийн салбаруудыг үлдээнэ, үндсэн branchId-г давхардуулахгүй) + audit before/after-д нэмсэн.
+- employee-form.tsx: "Нэмэлт ажиллах салбарууд" чекбокс жагсаалт (зөвхөн tenant-д 2+ салбартай үед харагдана).
+- order-form.tsx: filteredTechnicians/onBranchChange-д assignableBranchIds-г нэмж шүүлт өргөтгөсөн (isTechAssignableAt helper).
+- САНАМЖ: migrate dev drift илэрсэн — ServiceOrder.isPostpaid/TenantVehicle.isPostpaid багана хэзээ нэгэн цагт `db push`-ээр нэмэгдсэн бөгөөд миграцийн түүхэнд алга (production deploy үед `migrate deploy` эдгээрийг орхигдуулж магадгүй). Миний өөрчлөлтөд шууд нөлөөгүй тул засаагүй — анхаарах шаардлагатай.
+
+[2026-08-13] carcare-schema-fix-plan.md — Үе шат 0/1/2 бүрэн хэрэгжүүлсэн
+- Үе шат 0 (аюулгүй): Device XOR CHECK constraint (device_owner_xor), Appointment.respondedById → User бодит relation, RefreshToken.replacedById → өөрийгөө ишлэсэн unique relation. Гурвуулаа local DB дээр давхардал/orphan шалгасны дараа migration хийсэн.
+- Үе шат 1: Customer.phone-г tenant дотор partial unique болгосон (`Customer_tenantId_phone_unclaimed_key`, зөвхөн accountId IS NULL мөрүүдэд — Account-той Customer-ууд өөр өөр акаунтаар ижил утас ашиглах хууль ёсны тохиолдлыг блоклохгүй). Давхардсан walk-in Customer-уудыг нэгтгэсэн migration бас нэмсэн. AuditLog/OrderPayment/SubscriptionPayment.tenantId Restrict болгож tenant hard-delete-ээс хамгаалсан (OrderPayment.orderId-г ч Restrict болгосон — diamond cascade асуудлаас сэргийлж); deleteOrderAction-д PAID биш төлбөрийг автоматаар цэвэрлэдэг, deleteTenantAction/createCustomerAction/quick-create зэрэгт P2002/P2003-г ойлгомжтой алдаа болгож барьдаг болгосон.
+- Үе шат 2.2/2.3: Branch.isActive нэмж (Restrict-оор устгах хаалттай тул идэвхгүй болгож "нуух"), branches хуудсанд toggle товч + audit; шинэ орд/appointment/diagnostics-ийн Branch сонголтуудыг isActive:true-гаар шүүсэн (edit хуудсанд одоогийн холбоосыг алдагдуулахгүйгээр OR-logic); filterOwnBranchIds (employees.ts)-д isActive шүүлт нэмж assignableBranchIds-ийн эрсдэлийг idle-safe болгосон.
+- Үе шат 2.1 (хамгийн том, Postgres RLS): `lib/tenant-context.ts` (AsyncLocalStorage, globalThis-кэшлэсэн) + `lib/prisma.ts`-ийн `$extends` query extension — бүх Prisma query-г `SET LOCAL app.tenant_id`/`app.bypass_rls`-той transaction дотор ажиллуулна, context тохируулаагүй бол throw. 18 tenant-scoped хүснэгт дээр `ENABLE+FORCE ROW LEVEL SECURITY` + tenant_isolation policy (migrations 20260813060000/070000). Local `.env`-ийг `postgres` superuser-ээс `carcare_local` (non-superuser, NOBYPASSRLS, table owner) role руу шилжүүлсэн — эс бөгөөс superuser RLS-г үргэлж bypass хийдэг тул тестлэх боломжгүй байсан. **ЧУХАЛ нээлт**: `AsyncLocalStorage.enterWith()`-г jose-ийн jwtVerify (WebCrypto) зэрэг async үйлдлээс ӨМНӨ дуудаагүй бол context Next.js Turbopack dev-д "алдагдана" — дэлгэрэнгүй memory: rls-tenant-isolation.md, төлөвлөгөө: ~/.claude/plans/kind-cooking-elephant.md. Прод deploy хийхээс өмнө прод-ын DB role (superuser эсэх) заавал шалгах шаардлагатай — хийгээгүй.
+
+[2026-08-13] carcare-schema-fix-plan.md — Үе шат 3 бүрэн хэрэгжүүлсэн
+- 3.1: Tenant.name-ийн DB unique constraint-ийг авсан (`DROP INDEX Tenant_name_key`, migration 20260813080000) — хэрэглэгчийн шийдвэрээр (2 өөр компани адилхан нэртэй байх нь бодит боломжтой). signUpAction-д давхцлыг шалгаж мессеж өгдөг код өмнөөс байсан; updateTenantAction-д мөн адил pre-check (өөр tenant-той нэр давхцвал fieldError) нэмж, endsэшгүй болсон P2002 "name" branch-ыг устгасан. registerNumber/email хэвээр unique.
+- 3.2: Tenant.plan vs Subscription синкийг бүх mutation цэгээр (createSubscriptionAction, confirmSubscriptionPayment, expire-subscriptions cron, cancelSubscriptionAction) шалгасан — зөвшөөрлийн (upgrade) урсгал зөв sync хийдэг, харин subscription дуусах/цуцлагдахад Tenant.plan-г зориудаар хэвээр үлдээдэг нь (isFeatureEnabled зөвхөн Tenant.plan-аар шалгадаг тул онлайн захиалга дуусаагүй subscription-той адил үргэлжилнэ) хэрэглэгчийн шийдвэрээр **зөвшөөрөгдсөн grace-period зан төлөв** — код өөрчлөлт хийгээгүй.
+- 3.3: `lib/audit.ts`-д `ENTITY_TYPES`/`EntityType` (13 утга) нэмж `AuditInput.entity`-г `string`-ээс `EntityType` болгосон (Notification.type-ийн NOTIFICATION_REGISTRY pattern-тай адил). `app/dashboard/audit/page.tsx`-ийн `ENTITY_LABEL`-г `Record<EntityType, string>` болгож бүрэн (өмнө нь зөвхөн 6/13 entity-д label/filter байсан, одоо бүгд).
+
+[2026-08-13] carcare-schema-fix-plan.md — Үе шат 4 бүрэн хэрэгжүүлсэн
+- 4.1: `VehiclePlateHistory` (vehicleId, plate, changedAt) хүснэгт нэмж (migration 20260813090000), `lib/vehicles.ts`-ийн `resolveVehicle`-д дугаар солигдох хоёр тохиолдол бүрд (VIN таарсан ч дугаар өөр; дугаар өөр машинд шилжиж хуучин эзнээс tombstone хийгдэх) хуучин дугаарыг `recordPlateChange` helper-ээр бичдэг болгосон. `dashboard/vehicles/[id]/page.tsx`-д "Дугаарын түүх" карт нэмж (зөвхөн түүхтэй бол харагдана) харуулдаг болгосон.
+- 4.2: `scripts/mongolian.sql`-аас seed хийсэн бодит дата шалгахад District.name/cityId, Khoroo.name/cityId бүгд 0 NULL байсан тул NOT NULL болгосон (migration 20260813100000). Khoroo.districtId 2 мөрд NULL (Дархан-Уул аймгийн зарим хороо шууд аймагт харьяалагддаг бодит бүтэц) — заавал биш хэвээр үлдээсэн, dead code (`?? ""`) цэвэрлэсэн.
+- **Нэмэлт олдвор**: RLS ажиллуулсны дараа public хуудсуудаас (landing, contact, terms, privacy, signup) дуудагддаг зарим leaf компонент/helper (`lib/address.ts`, `app/_components/pricing.tsx`, `app/_components/logo-marquee.tsx`, `lib/platform-settings.ts`) context тохируулаагүй байсныг олж засварласан (эдгээр нь анхны 15 context цэгийн жагсаалтад ороогүй, шинэ Server Component/helper нэмэх бүрд анхаарах шаардлагатай — дэлгэрэнгүй memory: rls-tenant-isolation.md).

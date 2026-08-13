@@ -102,7 +102,7 @@ function VerifyStep({
     <form action={formAction} className="flex flex-col gap-5" noValidate>
       <input type="hidden" name="email" value={email} />
 
-      <div className="bg-violet-500/10 border border-violet-500/25 rounded-xl px-4 py-3 text-sm text-violet-200">
+      <div className="bg-violet-500/10 border border-violet-500/25 rounded-xl px-4 py-3 text-sm text-violet-200 light:bg-violet-100 light:border-violet-300 light:text-violet-700">
         {requestSuccessMessage ??
           `Утас ${maskedPhone} руу 6 оронтой код илгээлээ.`}
       </div>

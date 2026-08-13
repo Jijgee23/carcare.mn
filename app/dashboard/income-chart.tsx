@@ -65,6 +65,7 @@ export function IncomeChart({
 
   const values = points.map((p) => p.value);
   const maxVal = Math.max(...values, 1);
+  const hasData = values.some((v) => v > 0);
 
   const toX = (i: number) =>
     points.length > 1 ? (i / (points.length - 1)) * innerW : innerW / 2;
@@ -92,12 +93,46 @@ export function IncomeChart({
   const hx = hover != null ? coords[hover].x + PAD.left : 0;
   const hy = hover != null ? coords[hover].y + PAD.top : 0;
 
+  // Дата огт байхгүй үед хоосон тэг-шугаман график "эвдэрсэн" мэт харагддаг
+  // тул оронд нь empty state үзүүлнэ.
+  if (!hasData) {
+    return (
+      <div
+        ref={wrapRef}
+        className="flex flex-col items-center justify-center gap-1.5 text-center"
+        style={{ height: H }}
+      >
+        <svg
+          width="28"
+          height="28"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="text-white/15"
+          aria-hidden="true"
+        >
+          <path d="M3 3v18h18" />
+          <path d="m7 15 4-5 3 3 4-6" />
+        </svg>
+        <p className="text-sm text-white/40">
+          Энэ хугацаанд орлого бүртгэгдээгүй байна.
+        </p>
+        <p className="text-xs text-white/25">
+          Захиалга дуусгахад орлого энд харагдана.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div ref={wrapRef} className="relative w-full">
       {/* hover tooltip */}
       {hv ? (
         <div
-          className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-lg border border-white/10 bg-[#14141f]/95 px-2.5 py-1.5 backdrop-blur-sm"
+          className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-lg border border-white/10 bg-[var(--surface)] px-2.5 py-1.5 backdrop-blur-sm"
           style={{
             left: Math.max(54, Math.min(width - 54, hx)),
             top: Math.max(28, hy - 8),
@@ -162,7 +197,7 @@ export function IncomeChart({
                 y1={toY(t)}
                 x2={innerW}
                 y2={toY(t)}
-                stroke="rgba(255,255,255,0.06)"
+                stroke="var(--chart-grid)"
                 strokeWidth={1}
                 strokeDasharray="4 4"
               />
@@ -171,7 +206,7 @@ export function IncomeChart({
                 y={toY(t)}
                 textAnchor="end"
                 dominantBaseline="middle"
-                fill="rgba(255,255,255,0.35)"
+                fill="var(--chart-label)"
                 fontSize={10}
               >
                 {compact(t)}
@@ -203,7 +238,7 @@ export function IncomeChart({
                 y1={0}
                 x2={coords[hover].x}
                 y2={innerH}
-                stroke="rgba(255,255,255,0.18)"
+                stroke="var(--chart-crosshair)"
                 strokeWidth={1}
                 strokeDasharray="3 3"
               />
@@ -212,7 +247,7 @@ export function IncomeChart({
                 cy={coords[hover].y}
                 r={4.5}
                 fill={stroke}
-                stroke="#14141f"
+                stroke="var(--chart-marker-ring)"
                 strokeWidth={2}
                 filter="url(#incGlow)"
               />
@@ -226,7 +261,7 @@ export function IncomeChart({
                 key={i}
                 x={coords[i].x}
                 y={innerH + 16}
-                fill="rgba(255,255,255,0.35)"
+                fill="var(--chart-label)"
                 fontSize={10}
                 textAnchor={
                   i === 0

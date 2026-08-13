@@ -28,7 +28,7 @@ export default async function DashboardLayout({
 
   return (
     <ToastProvider>
-      <div className="min-h-screen bg-[#0a0a0f] flex">
+      <div className="min-h-screen bg-[var(--shell-bg-primary)] flex">
         <AdminSidebar
           userName={userName}
           userEmail={user.email}
@@ -39,8 +39,8 @@ export default async function DashboardLayout({
           permissions={user.role?.permissions ?? []}
           notificationUnread={unreadNotifications}
         />
-        <div className="flex-1 min-w-0 lg:ml-60 min-h-screen flex flex-col relative isolate">
-          <div aria-hidden className="content-bg-layer" />
+        <div className="app-content-offset flex-1 min-w-0 min-h-screen flex flex-col relative isolate">
+          <div aria-hidden className="shell-content-bg" />
           <MobileTopbar
             userName={userName}
             userEmail={user.email}

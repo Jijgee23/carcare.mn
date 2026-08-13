@@ -2,24 +2,31 @@ import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk } from "@/lib/api";
 import { getApiAccountFromRequest } from "@/lib/auth/account-api-token";
 import { prisma } from "@/lib/prisma";
+import { resolveVehicle } from "@/lib/vehicles";
 
 // GET /api/v1/app/vehicles — миний машинууд (auth).
 export async function GET(req: Request) {
   const account = await getApiAccountFromRequest(req);
   if (!account) return jsonError(401, "Нэвтрэх шаардлагатай.");
 
-  const vehicles = await prisma.accountVehicle.findMany({
+  const links = await prisma.accountVehicle.findMany({
     where: { accountId: account.id },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
-      plate: true,
-      make: true,
-      model: true,
-      year: true,
-      vin: true,
+      vehicle: {
+        select: {
+          plate: true,
+          make: true,
+          model: true,
+          year: true,
+          vin: true,
+        },
+      },
     },
   });
+  // Хариуны хэлбэрийг хадгална: { id, plate, make, model, year, vin }.
+  const vehicles = links.map((l) => ({ id: l.id, ...l.vehicle }));
   return jsonOk({ vehicles });
 }
 
@@ -63,18 +70,25 @@ export async function POST(req: Request) {
   }
 
   try {
-    const vehicle = await prisma.accountVehicle.create({
-      data: {
-        accountId: account.id,
+    const vehicle = await prisma.$transaction(async (tx) => {
+      const v = await resolveVehicle(tx, {
         plate,
+        vin: vin || null,
         make,
         model,
         year,
-        vin: vin || null,
         fuelType: fuelType || null,
         wheelPosition: wheelPosition || null,
-      },
-      select: { id: true, plate: true, make: true, model: true, year: true },
+      });
+      const link = await tx.accountVehicle.create({
+        data: { accountId: account.id, vehicleId: v.id },
+        select: { id: true },
+      });
+      const full = await tx.vehicle.findUniqueOrThrow({
+        where: { id: v.id },
+        select: { plate: true, make: true, model: true, year: true },
+      });
+      return { id: link.id, ...full };
     });
     return jsonOk({ vehicle }, { status: 201 });
   } catch (e) {

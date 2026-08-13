@@ -75,7 +75,7 @@ export default async function DashboardPage({
     prisma.branch.count({ where: { tenantId: user.tenantId } }),
     prisma.user.count({ where: { tenantId: user.tenantId } }),
     prisma.customer.count({ where: { tenantId: user.tenantId } }),
-    prisma.vehicle.count({ where: { tenantId: user.tenantId } }),
+    prisma.tenantVehicle.count({ where: { tenantId: user.tenantId } }),
     prisma.serviceOrder.count({
       where: {
         tenantId: user.tenantId,
@@ -130,7 +130,7 @@ export default async function DashboardPage({
       where: recentWhere,
       select: { createdAt: true },
     }),
-    prisma.vehicle.findMany({
+    prisma.tenantVehicle.findMany({
       where: recentWhere,
       select: { createdAt: true },
     }),
@@ -215,10 +215,11 @@ export default async function DashboardPage({
             </div>
             {income.changePct != null ? (
               <div
+                title="Өмнөх ижил урттай үетэй харьцуулав"
                 className={`mt-1.5 inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
                   incomeUp
-                    ? "bg-emerald-500/15 text-emerald-300"
-                    : "bg-red-500/15 text-red-300"
+                    ? "bg-emerald-500/15 text-emerald-300 light:text-emerald-700"
+                    : "bg-red-500/15 text-red-300 light:text-red-700"
                 }`}
               >
                 <span>{incomeUp ? "▲" : "▼"}</span>
@@ -240,7 +241,7 @@ export default async function DashboardPage({
                 href={incomeRangeHref(q.key)}
                 className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${
                   active
-                    ? "bg-violet-600/30 text-violet-300 border border-violet-500/30"
+                    ? "bg-violet-600/30 text-violet-300 border border-violet-500/30 light:bg-violet-100 light:border-violet-300 light:text-violet-700"
                     : "text-white/40 hover:text-white/70 border border-white/10 hover:border-white/20"
                 }`}
               >
@@ -323,7 +324,7 @@ export default async function DashboardPage({
                   className={`text-xs px-2.5 py-1 rounded-full ${
                     activeSub
                       ? SUBSCRIPTION_STATUS_BADGE[activeSub.subscription.status]
-                      : "bg-violet-500/15 text-violet-300 border border-violet-500/30"
+                      : "bg-violet-500/15 text-violet-300 border border-violet-500/30 light:text-violet-700"
                   }`}
                 >
                   {activeSub
@@ -342,7 +343,7 @@ export default async function DashboardPage({
                     <span
                       className={`block text-[10px] ${
                         activeSub.daysLeft <= 3
-                          ? "text-red-300"
+                          ? "text-red-300 light:text-red-700"
                           : "text-white/40"
                       }`}
                     >
@@ -353,7 +354,7 @@ export default async function DashboardPage({
               ) : null}
               <Link
                 href="/dashboard/settings/subscription"
-                className="mt-3 inline-block text-xs text-violet-300 hover:text-violet-200"
+                className="mt-3 inline-block text-xs text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
               >
                 Дэлгэрэнгүй / түүх →
               </Link>
@@ -378,7 +379,10 @@ function StatCard({
   trend?: Trend;
   accent?: boolean;
 }) {
-  const up = trend?.changePct == null ? true : trend.changePct >= 0;
+  const pct = trend?.changePct ?? null;
+  // Чиглэл: өссөн/буурсан/өөрчлөлтгүй — өнгө, сумыг бодит утгаар ялгана.
+  const dir = pct == null ? null : pct > 0 ? "up" : pct < 0 ? "down" : "flat";
+  const up = pct == null ? true : pct >= 0;
   const inner = (
     <div
       className={`group glass card-hover rounded-2xl p-3 sm:p-4 flex flex-col gap-2.5 sm:gap-3 h-full ${
@@ -396,18 +400,19 @@ function StatCard({
             {value.toLocaleString("mn-MN")}
           </div>
         </div>
-        {trend?.changePct != null ? (
+        {pct != null ? (
           <span
+            title="Сүүлийн 7 хоногийг өмнөх 7 хоногтой харьцуулав"
             className={`shrink-0 inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
-              up
-                ? "bg-emerald-500/15 text-emerald-300"
-                : "bg-red-500/15 text-red-300"
+              dir === "up"
+                ? "bg-emerald-500/15 text-emerald-300 light:text-emerald-700"
+                : dir === "down"
+                  ? "bg-red-500/15 text-red-300 light:text-red-700"
+                  : "bg-white/[0.06] text-white/45 light:text-slate-500"
             }`}
           >
-            <span>{up ? "▲" : "▼"}</span>
-            <span className="tabular-nums">
-              {Math.abs(trend.changePct).toFixed(0)}%
-            </span>
+            <span>{dir === "up" ? "▲" : dir === "down" ? "▼" : "—"}</span>
+            <span className="tabular-nums">{Math.abs(pct).toFixed(0)}%</span>
           </span>
         ) : null}
       </div>
@@ -441,7 +446,7 @@ function QuickAction({
     >
       <div className="text-3xl shrink-0">{icon}</div>
       <div className="min-w-0">
-        <div className="font-semibold text-white group-hover:text-violet-300 transition-colors">
+        <div className="font-semibold text-white group-hover:text-violet-300 light:group-hover:text-violet-700 transition-colors">
           {title}
         </div>
         <div className="text-sm text-white/40 mt-0.5">{desc}</div>

@@ -1,5 +1,5 @@
-import type { Prisma, PrismaClient } from "@/app/generated/prisma/client";
 import type { Weekday } from "@/lib/branches";
+import type { PrismaTransactionClient } from "@/lib/prisma";
 
 // Salбарын slot тохиргооны анхдагч (Branch.slotMinutes/slotCapacity null үед).
 export const DEFAULT_SLOT_MINUTES = 30;
@@ -92,7 +92,7 @@ export function buildDaySlots(opts: {
   return { open: true, slots };
 }
 
-type Client = PrismaClient | Prisma.TransactionClient;
+type Client = PrismaTransactionClient;
 
 /**
  * Сервер тал — тухайн цаг (slot) хараахан дүүрээгүй эсэхийг шалгана

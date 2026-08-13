@@ -15,7 +15,10 @@ datasource db {
 model Tenant {
   id                   String   @id @default(cuid())
   slug                 String   @unique
-  name                 String   @unique
+  // Байгууллагын нэр — DB түвшинд unique биш (хоёр өөр компани адилхан нэртэй
+  // байх нь бодит боломжтой). Давхцлыг зөвхөн бүртгэлийн UX түвшинд (signUpAction)
+  // шалгаж, тодорхой мессеж өгдөг — бизнесийн шийдвэрээр constraint аваагүй.
+  name                 String
   registerNumber       String   @unique // 7 оронтой улсын бүртгэлийн дугаар (string-р хадгална)
   email                String   @unique
   phone1               String
@@ -31,13 +34,13 @@ model Tenant {
   roles                Role[]
   branches             Branch[]
   customers            Customer[]
-  vehicles             Vehicle[]
+  tenantVehicles       TenantVehicle[]
   services             Service[]
   serviceOrders        ServiceOrder[]
   diagnosticTemplates  DiagnosticTemplate[]
   diagnosticReports    DiagnosticReport[]
   units                Unit[]
-  laborCategories      LaborCategory[]
+  categories           Category[]
   subscriptions        Subscription[]
   subscriptionPayments SubscriptionPayment[]
   auditLogs            AuditLog[]
@@ -95,17 +98,26 @@ model User {
   branchId String?
   branch   Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
 
+  // Үндсэн салбар (дээрх branchId)-аас гадна энэ ажилтныг захиалгад хариуцагчаар
+  // сонгож болох НЭМЭЛТ салбаруудын id (олон салбарт дамжиж ажилладаг мастер).
+  // Зөвхөн order-form-ийн "Хариуцах мастер" сонголтод ашиглагдана — өгөгдөл
+  // хандалтын хамрах хүрээг (branchScopeId) өөрчлөхгүй. FK constraint-гүй тул
+  // салбар устахад энд үлдэж болзошгүй — ашиглах үедээ tenant-ийн идэвхтэй
+  // салбаруудтай тааруулж шүүнэ.
+  assignableBranchIds String[] @default([])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  assignedOrders      ServiceOrder[]       @relation("AssignedTo")
-  diagnosticTemplates DiagnosticTemplate[] @relation("DiagnosticTemplateCreatedBy")
-  diagnosticReports   DiagnosticReport[]   @relation("DiagnosticReportFilledBy")
-  refreshTokens       RefreshToken[]
-  sessions            UserSession[]
-  devices             Device[]
-  notifications       Notification[]
-  auditLogs           AuditLog[]           @relation("AuditLogActor")
+  assignedOrders        ServiceOrder[]       @relation("AssignedTo")
+  diagnosticTemplates   DiagnosticTemplate[] @relation("DiagnosticTemplateCreatedBy")
+  diagnosticReports     DiagnosticReport[]   @relation("DiagnosticReportFilledBy")
+  refreshTokens         RefreshToken[]
+  sessions              UserSession[]
+  devices               Device[]
+  notifications         Notification[]
+  auditLogs             AuditLog[]           @relation("AuditLogActor")
+  appointmentsResponded Appointment[]        @relation("AppointmentRespondedBy")
 
   @@index([tenantId])
   @@index([tenantId, isActive])
@@ -147,6 +159,10 @@ model Branch {
   name      String
   phone     String?
   isPrimary Boolean @default(false) // Тенант тус бүрд нэг л үндсэн салбар байна
+  // Ажиллахаа больсон салбарыг устгахгүйгээр "нуух" — Restrict-оор Branch устгах
+  // хаалттай тул ажиллагаагүй болсон салбарыг идэвхгүй болгож жагсаалт/сонголтоос
+  // хасна (өгөгдөл, түүх хадгалагдана).
+  isActive  Boolean @default(true)
 
   // --- Хаяг ---
   city     String? // Хот / Аймаг (жишээ: "Улаанбаатар")
@@ -179,6 +195,7 @@ model Branch {
   schedules         BranchSchedule[]
   auditLogs         AuditLog[]
   appointments      Appointment[]
+  categories        Category[] // олон-олон: энэ салбарт санал болгох ангилалууд
 
   @@index([tenantId])
 }
@@ -236,43 +253,104 @@ model Customer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  vehicles          Vehicle[]
+  tenantVehicles    TenantVehicle[]
   serviceOrders     ServiceOrder[]
   diagnosticReports DiagnosticReport[]
   appointments      Appointment[]
 
+  // "Эзэнгүй" (accountId IS NULL, ажилтан гар аргаар үүсгэсэн walk-in) Customer-уудын
+  // дунд tenant+phone unique — migration-д partial unique index-ээр хэрэгждэг
+  // (Prisma schema DSL филтэртэй index илэрхийлэх боломжгүй тул):
+  // CREATE UNIQUE INDEX "Customer_tenantId_phone_unclaimed_key" ON "Customer"("tenantId", phone) WHERE "accountId" IS NULL;
+  // accountId-тэй мөрүүд үүнд ороогүй — өөр өөр Account ижил утас ашиглах хууль ёсны.
   @@unique([tenantId, accountId])
   @@index([tenantId, phone])
 }
 
 // --- Vehicle --------------------------------------------------------------
 
+// Global "hub" — нэг физик машин = НЭГ мөр (бүх tenant хооронд дундын).
+// Зөвхөн машины бие даасан/тогтмол шинжийг (HUR-аас) хадгална. Харьяалал
+// (эзэмшигч) болон tenant-ийн context нь [[TenantVehicle]] дээр. Засварын
+// түүх (ServiceOrder/DiagnosticReport/Appointment) энэ мөр рүү шууд холбогдох
+// бөгөөд тус бүр өөрийн `tenantId`-аар scope хийгдэнэ — dashboard tenant
+// хооронд харагдахгүй; cross-tenant түүх зөвхөн машины эзэн (Account)-д.
 model Vehicle {
   id            String  @id @default(cuid())
-  plate         String
-  vin           String?
+  // Жинхэнэ identity (cabinNumber). Байвал хайлт/нэгтгэлд тэргүүлнэ.
+  vin           String? @unique
+  // Одоогийн улсын дугаар. Дугаар өөр машинд шилжвэл `resolveVehicle` хуучин
+  // эзнээс нь салгана — тиймээс глобал давтагдашгүй.
+  plate         String  @unique
   make          String
   model         String
   year          Int?
-  mileage       Int?
+  mileage       Int? // сүүлд мэдэгдсэн гүйлт (аль ч tenant шинэчилж болно)
   fuelType      String? // "Бензин", "Дизель", "Хийн", "Цахилгаан" гэх мэт (HUR-аас татна)
   wheelPosition String? // "Зүүн" / "Баруун" — жолооны хүрд аль талд (HUR-аас татна)
-
-  tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  customerId String?
-  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  colorName     String? // Өнгө (HUR colorName — ж: "Цагаан")
+  capacity      Int? // Моторын хэмжээ, см³ (HUR capacity — ж: 1496)
+  purpose       String? // Зориулалт (HUR purpose — ж: "Суудал")
+  // Эзэмшигчийн регистр (HUR ownerRegnum). 7 оронтой цэвэр тоо бол байгууллага,
+  // үсэг агуулсан бол хувь хүн — харьяаллыг `ownerKindFromRegnum` тодорхойлно.
+  ownerRegnum   String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  tenantLinks       TenantVehicle[]
+  accountLinks      AccountVehicle[]
   serviceOrders     ServiceOrder[]
   diagnosticReports DiagnosticReport[]
   appointments      Appointment[]
+  plateHistory      VehiclePlateHistory[]
+}
 
-  @@unique([tenantId, plate])
+// --- VehiclePlateHistory (улсын дугаар солигдсон түүх) --------------------
+// `resolveVehicle`-д машины дугаар солигдохыг илрүүлэх бүрд (VIN таарсан ч
+// одоо байгаа дугаараас өөр, эсвэл дугаар нь өөр машинд шилжиж tombstone
+// хийгдэх үед) хуучин дугаарыг энд бичиж үлдээнэ — ирээдүйд аудит/маргаан
+// шийдвэрлэхэд хэрэг болно.
+model VehiclePlateHistory {
+  id String @id @default(cuid())
+
+  vehicleId String
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  plate     String // солигдохоос өмнөх дугаар
+  changedAt DateTime @default(now())
+
+  @@index([vehicleId, changedAt])
+}
+
+// --- TenantVehicle (tenant ↔ global Vehicle холбоо) ----------------------
+// Tenant бүрийн "өөрийн харагдац": тухайн байгууллагад энэ машин хэний (Customer)
+// эзэмшил вэ, тэмдэглэл г.м. Нэг машин олон tenant-д өөр эзэнтэй байж болох тул
+// харьяалал нь global Vehicle дээр БИШ, энд хадгалагдана.
+model TenantVehicle {
+  id String @id @default(cuid())
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  vehicleId String
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  notes    String?
+  isActive Boolean @default(true)
+  // Дараа төлбөрт (гэрээт) машин — захиалгын төлбөрийг сар/гэрээгээр нэгтгэн
+  // төлдөг. Захиалга үүсэхэд ServiceOrder.isPostpaid руу snapshot хийгдэнэ.
+  isPostpaid Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, vehicleId])
   @@index([tenantId])
+  @@index([customerId])
 }
 
 // --- ServiceOrder ---------------------------------------------------------
@@ -282,6 +360,9 @@ model ServiceOrder {
   number        String
   status        OrderStatus   @default(SCHEDULED)
   paymentStatus PaymentStatus @default(UNPAID)
+  // Үүсгэх үеийн TenantVehicle.isPostpaid snapshot — дараа төлбөрт түүх
+  // тогтвортой үлдэнэ (машины тохиргоо хожим өөрчлөгдсөн ч).
+  isPostpaid    Boolean       @default(false)
   scheduledAt   DateTime?
   startedAt     DateTime?
   completedAt   DateTime?
@@ -316,6 +397,7 @@ model ServiceOrder {
 
   @@unique([tenantId, number])
   @@index([tenantId, status])
+  @@index([tenantId, isPostpaid])
   @@index([branchId, scheduledAt])
 }
 
@@ -387,9 +469,9 @@ model Service {
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  // Ажлын ангилал (зөвхөн LABOR төрөлд хэрэглэнэ — DB-д nullable, app-level дээр LABOR үед заавал)
-  laborCategoryId String?
-  laborCategory   LaborCategory? @relation(fields: [laborCategoryId], references: [id], onDelete: SetNull)
+  // Ангилал — бүх төрөлд (app-level дээр заавал; хуучин мөрийн улмаас DB-д nullable)
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -399,7 +481,7 @@ model Service {
   @@unique([tenantId, type, code])
   @@index([tenantId, type, isActive])
   @@index([tenantId, name])
-  @@index([laborCategoryId])
+  @@index([categoryId])
   @@index([unitId])
   @@index([durationUnitId])
 }
@@ -426,6 +508,10 @@ model DiagnosticTemplate {
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  // Ангилал — бүх үйлчилгээтэй нэгэн адил (app-level дээр заавал; DB nullable).
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
   createdById String?
   createdBy   User?   @relation("DiagnosticTemplateCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
@@ -436,6 +522,7 @@ model DiagnosticTemplate {
   plannedOrders OrderDiagnostic[]
 
   @@index([tenantId, type, isActive])
+  @@index([categoryId])
 }
 
 enum DiagnosticType {
@@ -506,18 +593,25 @@ model OrderDiagnostic {
   @@index([orderId])
 }
 
-// --- LaborCategory (ажлын ангилал — зөвхөн LABOR төрлийн Service-д) ------
-
-model LaborCategory {
+// --- Category (үйлчилгээний ангилал — Ажил/Оношилгоо/Сэлбэг бүгдэд) -------
+// Урьд "ажлын ангилал" байсныг өргөтгөж бүх төрлийн Service-д ашиглана.
+// Салбартай олон-олон холбоотой: тухайн ангилал аль салбаруудад санал
+// болгогдох вэ. Салбар оноогоогүй бол БҮХ салбарт хамаарна (нээлттэй). Онлайн
+// цаг захиалгад үйлчлүүлэгч тухайн салбарын ангиллаас сонгож болно.
+model Category {
   id          String  @id @default(cuid())
-  name        String // "Хөдөлгүүр", "Тоормос", "Цахилгаан", "Биеийн засвар" г.м.
+  name        String // "Хөдөлгүүр", "Тоормос", "Цахилгаан", "Угаалга" г.м.
   description String?
   isActive    Boolean @default(true)
 
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  services Service[]
+  // Олон-олон: ангилал санал болгогдох салбарууд (хоосон бол бүх салбарт).
+  branches            Branch[]
+  services            Service[]
+  diagnosticTemplates DiagnosticTemplate[]
+  appointments        Appointment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -608,11 +702,15 @@ enum OrderPaymentStatus {
 model OrderPayment {
   id String @id @default(cuid())
 
+  // Санхүүгийн бичлэг — tenant/order устахад дагаад устахгүй (Restrict).
+  // Устгахын өмнө холбогдох OrderPayment-уудыг ил тод шийдвэрлэх ёстой
+  // (жишээ нь deleteOrderAction — зөвхөн PENDING/CANCELLED/FAILED-ийг цэвэрлээд,
+  // PAID байвал устгахыг блоклоно).
   tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   orderId String
-  order   ServiceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order   ServiceOrder @relation(fields: [orderId], references: [id], onDelete: Restrict)
 
   amount   Decimal @db.Decimal(12, 2)
   currency String  @default("MNT")
@@ -655,8 +753,9 @@ enum SubscriptionPaymentStatus {
 model SubscriptionPayment {
   id String @id @default(cuid())
 
+  // Санхүүгийн бичлэг — tenant устахад дагаад устахгүй (Restrict).
   tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   // Snapshot fields — PlanPrice устсан ч мэдээлэл хадгалагдана
   plan     Plan
@@ -855,30 +954,32 @@ model Account {
   notifications Notification[]
 }
 
-// --- AccountVehicle (хэрэглэгчийн global машин) ---------------------------
-// Account-ийн өөрийн машинууд. Цаг захиалахад сонгоно; ажилтан баталгаажуулах
-// үед тухайн тенантын [[Vehicle]] руу snapshot хийгдэнэ ([tenantId, plate]).
+// --- AccountVehicle (Account ↔ global Vehicle холбоо) --------------------
+// Хэрэглэгчийн "миний машинууд" — global [[Vehicle]] руу заасан нимгэн link.
+// Машины бие даасан шинж (марк, өнгө г.м.) global Vehicle дээр төвлөрсөн тул
+// энд давхардуулахгүй. Цаг захиалахад сонгоно; баталгаажуулахад тухайн
+// тенантад [[TenantVehicle]] link үүсгэнэ (snapshot хуулалт байхгүй).
+//
+// АНХААР: энэ link нь хэрэглэгч ӨӨРӨӨ нэмдэг (эзэмшил баталгаажаагүй) тул
+// cross-tenant түүхийн эзэмшлийн нотолгоо БОЛОХГҮЙ — түүнд `TenantVehicle`-ийн
+// account-той холбоотой Customer-ийг ашиглана (account/history).
 model AccountVehicle {
-  id            String  @id @default(cuid())
-  plate         String
-  make          String
-  model         String
-  year          Int?
-  vin           String?
-  fuelType      String?
-  wheelPosition String? // "Зүүн" / "Баруун" (HUR-аас)
-  mileage       Int?
+  id String @id @default(cuid())
 
   accountId String
   account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  vehicleId String
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   appointments Appointment[]
 
-  @@unique([accountId, plate])
+  @@unique([accountId, vehicleId])
   @@index([accountId])
+  @@index([vehicleId])
 }
 
 // --- Appointment (онлайн цаг захиалгын хүсэлт) ----------------------------
@@ -918,6 +1019,10 @@ model Appointment {
   accountVehicleId String?
   accountVehicle   AccountVehicle? @relation(fields: [accountVehicleId], references: [id], onDelete: SetNull)
 
+  // Онлайн захиалгад хэрэглэгчийн сонгосон үйлчилгээний ангилал (заавал биш).
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
   // Баталгаажуулахад тенантын Vehicle руу snapshot хийгдсэн машин.
   vehicleId String?
   vehicle   Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
@@ -929,6 +1034,7 @@ model Appointment {
   // Ажилтны хариу — хурдан унших талбарууд (дэлгэрэнгүй нь AuditLog-д).
   respondedAt   DateTime?
   respondedById String?
+  respondedBy   User?     @relation("AppointmentRespondedBy", fields: [respondedById], references: [id], onDelete: SetNull)
 
   // Сануулга SMS илгээсэн эсэх (cron давхар илгээхгүйн тулд).
   reminderSentAt DateTime?
@@ -939,6 +1045,8 @@ model Appointment {
   @@index([tenantId, status])
   @@index([branchId, requestedAt])
   @@index([accountId])
+  @@index([categoryId])
+  @@index([respondedById])
   @@index([status, requestedAt, reminderSentAt])
 }
 
@@ -952,7 +1060,9 @@ model RefreshToken {
 
   expiresAt    DateTime
   revokedAt    DateTime?
-  replacedById String? // rotation хэлхээ — энэ token-ийг ямар token орлоосон бэ
+  replacedById String? @unique // rotation хэлхээ — энэ token-ийг ямар token орлоосон бэ (нэг шинэ token зөвхөн нэг хуучинтай холбогдоно)
+  replacedBy   RefreshToken? @relation("TokenRotation", fields: [replacedById], references: [id], onDelete: SetNull)
+  replacedFrom RefreshToken? @relation("TokenRotation")
   userAgent    String?
   ip           String?
 
@@ -1106,8 +1216,9 @@ model AuditLog {
   before   Json?
   after    Json?
 
+  // Аудитын бичлэг — tenant устахад дагаад устахгүй (Restrict).
   tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   userId String?
   user   User?   @relation("AuditLogActor", fields: [userId], references: [id], onDelete: SetNull)
@@ -1124,4 +1235,43 @@ model AuditLog {
   @@index([tenantId, entity, entityId])
   @@index([tenantId, action, createdAt])
   @@index([userId])
+}
+
+// --- Монголын засаг захиргааны нэгж (хаягийн лавлах) ----------------------
+// scripts/mongolian.sql-аас seed-ээр ачаална. city = аймаг/нийслэл,
+// district = сум/дүүрэг, khoroo = хороо/баг. id-г эх дугаараар нь хадгална
+// (FK болон давтан seed-д тогтвортой).
+model City {
+  id   Int     @id
+  code String?
+  name String
+
+  districts District[]
+  khoroos   Khoroo[]
+}
+
+model District {
+  id     Int    @id
+  code   String?
+  name   String
+  cityId Int
+  city   City   @relation(fields: [cityId], references: [id])
+
+  khoroos Khoroo[]
+
+  @@index([cityId])
+}
+
+model Khoroo {
+  id     Int    @id
+  name   String
+  cityId Int
+  city   City   @relation(fields: [cityId], references: [id])
+  // Заавал биш — зарим аймаг (ж: Дархан-Уул) дэх хороо шууд аймагт (District-гүйгээр)
+  // харьяалагдана (эх өгөгдөлд бодитоор ажиглагдсан бүтэц, дата дутагдал биш).
+  districtId Int?
+  district   District? @relation(fields: [districtId], references: [id])
+
+  @@index([cityId])
+  @@index([districtId])
 }

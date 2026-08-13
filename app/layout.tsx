@@ -55,11 +55,22 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="mn" className={`${geist.variable} h-full antialiased`}>
+    <html
+      lang="mn"
+      className={`${geist.variable} h-full antialiased`}
+      suppressHydrationWarning
+    >
       <body
-        className="min-h-full flex flex-col bg-[#0a0a0f] text-white"
+        className="min-h-full flex flex-col bg-[var(--bg-primary)] text-white"
         suppressHydrationWarning
       >
+        {/* Theme болон sidebar-ийн хумигдсан төлөвийг paint-аас өмнө тогтооно —
+            дараа нь "flash" (буруу өнгө/өргөнөөс гэнэт шилжих) гарахгүй. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{if(localStorage.getItem('theme')==='light')document.documentElement.classList.add('light');if(localStorage.getItem('carcare:sidebar:collapsed')==='1')document.documentElement.style.setProperty('--sidebar-w','4.5rem')}catch(e){}})()`,
+          }}
+        />
         {children}
       </body>
     </html>

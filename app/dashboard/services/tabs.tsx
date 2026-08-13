@@ -22,7 +22,7 @@ export function ServicesTabs() {
               href={tab.href}
               className={`text-sm px-4 py-1.5 rounded-lg transition-colors ${
                 active
-                  ? "bg-violet-600/25 text-violet-200 border border-violet-500/30"
+                  ? "bg-violet-600/25 text-violet-200 border border-violet-500/30 light:bg-violet-100 light:text-violet-700 light:border-violet-300"
                   : "text-white/50 hover:text-white/80 hover:bg-white/[0.04] border border-transparent"
               }`}
             >

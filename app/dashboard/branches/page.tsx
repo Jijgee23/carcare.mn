@@ -1,4 +1,4 @@
-import { deleteBranchAction } from "@/app/_actions/branches";
+import { deleteBranchAction, toggleBranchActiveAction } from "@/app/_actions/branches";
 import { ClickableRow } from "@/app/_components/clickable-row";
 import {
   EmptyState,
@@ -8,7 +8,7 @@ import {
 import { Pagination } from "@/app/_components/pagination";
 import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { requireUser } from "@/lib/auth";
-import { canCreate, canDelete, canView } from "@/lib/auth/roles";
+import { canCreate, canDelete, canEdit, canView } from "@/lib/auth/roles";
 import { redirect } from "next/navigation";
 import { formatAddress, formatWorkDays } from "@/lib/branches";
 import { prisma } from "@/lib/prisma";
@@ -26,6 +26,7 @@ export default async function BranchesPage({
   if (!canView(user, "branches")) redirect("/dashboard");
   const canAdd = canCreate(user, "branches");
   const canRemove = canDelete(user, "branches");
+  const canModify = canEdit(user, "branches");
 
   const { page: pageParam } = await searchParams;
   const where = { tenantId: user.tenantId };
@@ -89,7 +90,7 @@ export default async function BranchesPage({
                   ].map((h) => (
                     <th
                       key={h}
-                      className="text-left text-xs text-white/30 font-medium px-5 py-3"
+                      className="text-left text-xs text-white/30 light:text-slate-500 font-medium px-5 py-3"
                     >
                       {h}
                     </th>
@@ -101,7 +102,7 @@ export default async function BranchesPage({
                   <ClickableRow key={b.id} href={`/dashboard/branches/${b.id}`}>
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-500/30 to-blue-500/30 flex items-center justify-center text-sm font-bold text-violet-300 shrink-0">
+                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-500/30 to-blue-500/30 flex items-center justify-center text-sm font-bold text-violet-300 light:text-violet-700 shrink-0">
                           {b.name[0]?.toUpperCase() ?? "?"}
                         </div>
                         <div>
@@ -110,8 +111,13 @@ export default async function BranchesPage({
                               {b.name}
                             </span>
                             {b.isPrimary ? (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/30">
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/30 light:text-violet-700">
                                 Үндсэн
+                              </span>
+                            ) : null}
+                            {!b.isActive ? (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/[0.06] text-white/40 border border-white/10 light:text-slate-500">
+                                Идэвхгүй
                               </span>
                             ) : null}
                           </div>
@@ -128,7 +134,7 @@ export default async function BranchesPage({
                           href={`https://www.google.com/maps?q=${b.latitude},${b.longitude}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-xs text-violet-400/80 hover:text-violet-300"
+                          className="text-xs text-violet-400/80 hover:text-violet-300 light:text-violet-700 light:hover:text-violet-800"
                         >
                           📍 Газрын зураг
                         </a>
@@ -152,19 +158,30 @@ export default async function BranchesPage({
                       {b._count.serviceOrders}
                     </td>
                     <td className="px-5 py-4">
-                      {canRemove && !b.isPrimary ? (
-                        <div className="flex items-center justify-end">
+                      <div className="flex items-center justify-end gap-1">
+                        {canModify && !(b.isPrimary && b.isActive) ? (
+                          <form action={toggleBranchActiveAction}>
+                            <input type="hidden" name="id" value={b.id} />
+                            <button
+                              type="submit"
+                              className="text-xs text-white/50 hover:text-white/80 light:text-slate-500 light:hover:text-slate-800 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06]"
+                            >
+                              {b.isActive ? "Идэвхгүй болгох" : "Идэвхжүүлэх"}
+                            </button>
+                          </form>
+                        ) : null}
+                        {canRemove && !b.isPrimary ? (
                           <form action={deleteBranchAction}>
                             <input type="hidden" name="id" value={b.id} />
                             <button
                               type="submit"
-                              className="text-xs text-red-400 hover:text-red-300 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-red-500/10"
+                              className="text-xs text-red-400 hover:text-red-300 light:text-red-600 light:hover:text-red-700 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-red-500/10"
                             >
                               Устгах
                             </button>
                           </form>
-                        </div>
-                      ) : null}
+                        ) : null}
+                      </div>
                     </td>
                   </ClickableRow>
                 ))}

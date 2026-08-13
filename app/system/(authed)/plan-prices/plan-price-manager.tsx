@@ -114,7 +114,7 @@ function ViewRow({ row, onEdit }: { row: PlanPriceRow; onEdit: () => void }) {
       </td>
       <td className="px-5 py-3">
         {row.isActive ? (
-          <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+          <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700">
             Идэвхтэй
           </span>
         ) : (
@@ -128,7 +128,7 @@ function ViewRow({ row, onEdit }: { row: PlanPriceRow; onEdit: () => void }) {
           <button
             type="button"
             onClick={onEdit}
-            className="text-xs text-violet-400 hover:text-violet-300 px-2.5 py-1.5 rounded-lg hover:bg-violet-500/10 transition-colors"
+            className="text-xs text-violet-400 hover:text-violet-300 light:text-violet-700 light:hover:text-violet-800 px-2.5 py-1.5 rounded-lg hover:bg-violet-500/10 transition-colors"
           >
             Засах
           </button>
@@ -136,7 +136,7 @@ function ViewRow({ row, onEdit }: { row: PlanPriceRow; onEdit: () => void }) {
             <input type="hidden" name="id" value={row.id} />
             <button
               type="submit"
-              className="text-xs text-red-400 hover:text-red-300 px-2.5 py-1.5 rounded-lg hover:bg-red-500/10 transition-colors"
+              className="text-xs text-red-400 hover:text-red-300 light:text-red-600 light:hover:text-red-700 px-2.5 py-1.5 rounded-lg hover:bg-red-500/10 transition-colors"
             >
               Устгах
             </button>
@@ -175,7 +175,7 @@ function EditRow({
               className="auth-input !py-2 !text-sm"
             >
               {PLANS.map((p) => (
-                <option key={p} value={p} className="bg-[#0d0d14]">
+                <option key={p} value={p} className="bg-[var(--surface)]">
                   {PLAN_LABEL[p]}
                 </option>
               ))}
@@ -186,7 +186,7 @@ function EditRow({
               className="auth-input !py-2 !text-sm"
             >
               {BILLING_PERIODS.map((p) => (
-                <option key={p} value={p} className="bg-[#0d0d14]">
+                <option key={p} value={p} className="bg-[var(--surface)]">
                   {BILLING_PERIOD_LABEL[p]}
                 </option>
               ))}
@@ -262,7 +262,7 @@ function CreateForm() {
       noValidate
     >
       {state?.ok && state.message ? (
-        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-2.5 text-sm text-emerald-300">
+        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-2.5 text-sm text-emerald-300 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700">
           {state.message}
         </div>
       ) : null}
@@ -274,7 +274,7 @@ function CreateForm() {
         <Field label="Багц" htmlFor="pp-plan" error={fe.plan}>
           <select id="pp-plan" name="plan" required className="auth-input">
             {PLANS.map((p) => (
-              <option key={p} value={p} className="bg-[#0d0d14]">
+              <option key={p} value={p} className="bg-[var(--surface)]">
                 {PLAN_LABEL[p]}
               </option>
             ))}
@@ -283,7 +283,7 @@ function CreateForm() {
         <Field label="Хугацаа" htmlFor="pp-period" error={fe.period}>
           <select id="pp-period" name="period" required className="auth-input">
             {BILLING_PERIODS.map((p) => (
-              <option key={p} value={p} className="bg-[#0d0d14]">
+              <option key={p} value={p} className="bg-[var(--surface)]">
                 {BILLING_PERIOD_LABEL[p]}
               </option>
             ))}

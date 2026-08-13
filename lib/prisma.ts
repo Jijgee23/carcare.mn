@@ -1,8 +1,41 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/app/generated/prisma/client";
+import { getTenantContext } from "@/lib/tenant-context";
+
+/**
+ * Postgres RLS-тэй хослуулж ажиллах query extension: query бүрийн өмнө
+ * (нэг transaction дотор) `app.tenant_id` эсвэл `app.bypass_rls` session
+ * variable-г тавьж өгснөөр DB түвшинд tenant тусгаарлалтыг баталгаажуулна.
+ * Context тохируулаагүй (requireUser/requireApiUser/setBypassContext дуудаагүй)
+ * query шууд throw хийнэ — чимээгүй хоосон үр дүн буцаахгүй.
+ */
+function withTenantContext(client: PrismaClient) {
+  return client.$extends({
+    name: "tenant-context-rls",
+    query: {
+      async $allOperations({ args, query }) {
+        const ctx = getTenantContext();
+        if (!ctx) {
+          throw new Error(
+            "Tenant context тохируулагдаагүй байна — requireUser()/requireApiUser()/setBypassContext() дуудсан эсэхээ шалгана уу.",
+          );
+        }
+        const [, result] = await client.$transaction([
+          ctx.mode === "bypass"
+            ? client.$executeRaw`SELECT set_config('app.bypass_rls', 'on', true)`
+            : client.$executeRaw`SELECT set_config('app.tenant_id', ${ctx.tenantId}, true)`,
+          query(args),
+        ]);
+        return result;
+      },
+    },
+  });
+}
+
+type TenantScopedPrismaClient = ReturnType<typeof withTenantContext>;
 
 const globalForPrisma = globalThis as unknown as {
-  prisma?: PrismaClient;
+  prisma?: TenantScopedPrismaClient;
 };
 
 /**
@@ -23,7 +56,7 @@ function poolMax(): number {
   return process.env.VERCEL ? 1 : 10;
 }
 
-function createClient(): PrismaClient {
+function createBaseClient(): PrismaClient {
   const url = process.env.DATABASE_URL;
   if (!url) {
     throw new Error(
@@ -46,7 +79,17 @@ function createClient(): PrismaClient {
   });
 }
 
-export const prisma = globalForPrisma.prisma ?? createClient();
+export const prisma = globalForPrisma.prisma ?? withTenantContext(createBaseClient());
+
+/**
+ * `prisma.$transaction(async (tx) => ...)` дотор өгөгддөг tx client-ийн төрөл —
+ * extension-той client-ээс гаргаж авсан тул `logAudit` зэрэг "tx-ийг сонголтоор
+ * авдаг" helper функцүүдэд ашиглана (base `Prisma.TransactionClient` extension-той
+ * client-тэй нийцэхгүй болсон тул үүнийг оронд нь хэрэглэнэ).
+ */
+export type PrismaTransactionClient = Parameters<
+  Parameters<(typeof prisma)["$transaction"]>[0]
+>[0];
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;

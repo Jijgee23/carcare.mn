@@ -28,6 +28,9 @@ export function InlineAccountVehicleForm({
   const [year, setYear] = useState("");
   const [fuelType, setFuelType] = useState("");
   const [wheelPosition, setWheelPosition] = useState("");
+  const [colorName, setColorName] = useState("");
+  const [capacity, setCapacity] = useState("");
+  const [purpose, setPurpose] = useState("");
   const [pending, setPending] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);
@@ -35,10 +38,58 @@ export function InlineAccountVehicleForm({
   const [hurLoading, setHurLoading] = useState(false);
   const [hurError, setHurError] = useState<string | null>(null);
   const [hurInfo, setHurInfo] = useState<PublicHurVehicle | null>(null);
+  const [hurSource, setHurSource] = useState<"global" | "hur">("hur");
+  // Хэрэглэгчийн гаражид аль хэдийн байгаа — давхар нэмэхээс сэргийлж анхааруулна.
+  const [alreadyRegistered, setAlreadyRegistered] = useState(false);
   const lastFetchedRef = useRef<string | null>(null);
 
   const trimmedPlate = plate.trim().toUpperCase();
   const isValidPlate = PLATE_PATTERN.test(trimmedPlate);
+
+  // HUR-аас ирсэн мэдээллийг талбаруудад тавина (admin-тай ижил).
+  function applyHur(v: PublicHurVehicle) {
+    setHurInfo(v);
+    if (v.plate) setPlate(v.plate);
+    if (v.make) setMake(v.make);
+    if (v.model) setModel(v.model);
+    if (v.year) setYear(String(v.year));
+    if (v.vin) setVin(v.vin);
+    if (v.fuelType) setFuelType(v.fuelType);
+    const w = normalizeWheelPosition(v.wheelPosition);
+    if (w) setWheelPosition(w);
+    if (v.color) setColorName(v.color);
+    if (v.capacity) setCapacity(String(v.capacity));
+    if (v.purpose) setPurpose(v.purpose);
+  }
+
+  // Гар аргаар (товчоор) HUR-аас дахин татах — debounce/guard-гүй.
+  async function refreshFromHur() {
+    const p = plate.trim().toUpperCase();
+    if (!PLATE_PATTERN.test(p)) {
+      setHurError("Дугаар буруу хэлбэртэй.");
+      return;
+    }
+    setHurLoading(true);
+    setHurError(null);
+    setHurInfo(null);
+    try {
+      const res = await fetch(
+        `/api/account/hur/lookup?plate=${encodeURIComponent(p)}`,
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error ?? "HUR-аас мэдээлэл татаж чадсангүй.");
+      }
+      applyHur(data.vehicle as PublicHurVehicle);
+      setHurSource(data.source === "global" ? "global" : "hur");
+      setAlreadyRegistered(Boolean(data.registered));
+      lastFetchedRef.current = p;
+    } catch (e) {
+      setHurError(e instanceof Error ? e.message : "Алдаа гарлаа.");
+    } finally {
+      setHurLoading(false);
+    }
+  }
 
   // Дугаар хүчинтэй болмогц HUR-аас (admin-тай ижил) мэдээллийг автоматаар татна.
   useEffect(() => {
@@ -60,16 +111,9 @@ export function InlineAccountVehicleForm({
         if (!res.ok) {
           throw new Error(data?.error ?? "HUR-аас мэдээлэл татаж чадсангүй.");
         }
-        const v = data.vehicle as PublicHurVehicle;
-        setHurInfo(v);
-        if (v.plate) setPlate(v.plate);
-        if (v.make) setMake(v.make);
-        if (v.model) setModel(v.model);
-        if (v.year) setYear(String(v.year));
-        if (v.vin) setVin(v.vin);
-        if (v.fuelType) setFuelType(v.fuelType);
-        const w = normalizeWheelPosition(v.wheelPosition);
-        if (w) setWheelPosition(w);
+        applyHur(data.vehicle as PublicHurVehicle);
+        setHurSource(data.source === "global" ? "global" : "hur");
+        setAlreadyRegistered(Boolean(data.registered));
       } catch (e) {
         if (controller.signal.aborted) return;
         setHurError(e instanceof Error ? e.message : "Алдаа гарлаа.");
@@ -83,6 +127,7 @@ export function InlineAccountVehicleForm({
       clearTimeout(timer);
       controller.abort();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trimmedPlate, isValidPlate]);
 
   async function onSubmit() {
@@ -98,6 +143,9 @@ export function InlineAccountVehicleForm({
         vin: vin || null,
         fuelType: fuelType || null,
         wheelPosition: wheelPosition || null,
+        colorName: colorName || null,
+        capacity: capacity || null,
+        purpose: purpose || null,
       });
       if (res.ok && res.vehicle) {
         onCreated(res.vehicle);
@@ -108,6 +156,9 @@ export function InlineAccountVehicleForm({
         setYear("");
         setFuelType("");
         setWheelPosition("");
+        setColorName("");
+        setCapacity("");
+        setPurpose("");
         return;
       }
       setFieldErrors(res.fieldErrors ?? {});
@@ -122,7 +173,7 @@ export function InlineAccountVehicleForm({
   return (
     <div className="rounded-lg border border-violet-500/25 bg-violet-500/[0.06] p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-violet-200">Шинэ машин</h3>
+        <h3 className="text-sm font-medium text-violet-200 light:text-violet-700">Шинэ машин</h3>
         {onCancel ? (
           <button
             type="button"
@@ -134,7 +185,7 @@ export function InlineAccountVehicleForm({
         ) : null}
       </div>
 
-      {message ? <p className="text-xs text-red-400">{message}</p> : null}
+      {message ? <p className="text-xs text-red-400 light:text-red-600">{message}</p> : null}
 
       <div className="grid gap-3 sm:grid-cols-2">
         <Field
@@ -169,13 +220,31 @@ export function InlineAccountVehicleForm({
         </Field>
       </div>
 
-      {hurInfo ? (
-        <div className="text-xs text-violet-300">
-          HUR-аас татав
-          {hurInfo.color ? ` · ${hurInfo.color}` : ""}
-          {hurInfo.fuelType ? ` · ${hurInfo.fuelType}` : ""}
-        </div>
+      {alreadyRegistered ? (
+        <p className="text-xs text-amber-400 light:text-amber-700">
+          Энэ дугаартай машин таны бүртгэлд аль хэдийн байна.
+        </p>
       ) : null}
+
+      <div className="flex items-center gap-3 flex-wrap">
+        <button
+          type="button"
+          onClick={refreshFromHur}
+          disabled={hurLoading || !isValidPlate}
+          className="inline-flex items-center gap-1.5 text-xs text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800 disabled:text-white/30 disabled:cursor-not-allowed border border-violet-500/30 disabled:border-white/[0.08] bg-violet-500/[0.06] hover:bg-violet-500/[0.12] disabled:bg-transparent transition-all px-3 py-1.5 rounded-lg font-medium"
+        >
+          {hurLoading ? "Татаж байна..." : "↻ HUR-аас шинэчлэх"}
+        </button>
+        {hurInfo ? (
+          <span className="text-xs text-violet-300/80 light:text-violet-700">
+            {hurSource === "global" ? "Бүртгэлээс олдлоо" : "HUR-аас татав"}
+            {hurInfo.color ? ` · ${hurInfo.color}` : ""}
+            {hurInfo.capacity ? ` · ${hurInfo.capacity} см³` : ""}
+            {hurInfo.fuelType ? ` · ${hurInfo.fuelType}` : ""}
+            {hurInfo.purpose ? ` · ${hurInfo.purpose}` : ""}
+          </span>
+        ) : null}
+      </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Марк" htmlFor="av-make" error={fieldErrors.make}>
@@ -237,6 +306,39 @@ export function InlineAccountVehicleForm({
               { value: "Зүүн", label: "Зүүн талдаа" },
               { value: "Баруун", label: "Баруун талдаа" },
             ]}
+          />
+        </Field>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Field label="Өнгө" htmlFor="av-color" hint="заавал биш">
+          <input
+            id="av-color"
+            type="text"
+            value={colorName}
+            onChange={(e) => setColorName(e.target.value)}
+            className="compact-input"
+            placeholder="Цагаан"
+          />
+        </Field>
+        <Field label="Моторын хэмжээ (см³)" htmlFor="av-capacity" hint="заавал биш">
+          <input
+            id="av-capacity"
+            inputMode="numeric"
+            value={capacity}
+            onChange={(e) => setCapacity(e.target.value.replace(/\D/g, ""))}
+            className="compact-input"
+            placeholder="1496"
+          />
+        </Field>
+        <Field label="Зориулалт" htmlFor="av-purpose" hint="заавал биш">
+          <input
+            id="av-purpose"
+            type="text"
+            value={purpose}
+            onChange={(e) => setPurpose(e.target.value)}
+            className="compact-input"
+            placeholder="Суудал"
           />
         </Field>
       </div>

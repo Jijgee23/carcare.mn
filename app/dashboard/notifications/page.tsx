@@ -25,6 +25,7 @@ function fmtDate(d: Date): string {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
   });
 }
 
@@ -59,14 +60,7 @@ export default async function StaffNotificationsPage({
         description="Танд ирсэн мэдэгдлүүдийн түүх."
       />
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "0.5rem",
-          marginBottom: "1rem",
-        }}
-      >
+      <div className="flex flex-wrap items-center gap-2 mb-4">
         <FilterSelect
           paramName="type"
           placeholder="Бүх төрөл"
@@ -94,7 +88,7 @@ export default async function StaffNotificationsPage({
                   {["Огноо", "Төрөл", "Мэдэгдэл", "Төлөв"].map((h) => (
                     <th
                       key={h}
-                      className="text-left text-xs text-white/30 font-medium px-5 py-3"
+                      className="text-left text-xs text-white/30 light:text-slate-500 font-medium px-5 py-3"
                     >
                       {h}
                     </th>
@@ -115,7 +109,7 @@ export default async function StaffNotificationsPage({
                         {fmtDate(n.createdAt)}
                       </td>
                       <td className="px-5 py-3">
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/30 whitespace-nowrap">
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/30 light:text-violet-700 whitespace-nowrap">
                           {NOTIFICATION_TYPE_LABEL[
                             n.type as keyof typeof NOTIFICATION_TYPE_LABEL
                           ] ?? n.type}
@@ -124,7 +118,7 @@ export default async function StaffNotificationsPage({
                       <td className="px-5 py-3 text-sm">
                         <Link
                           href={href}
-                          className="text-white/85 hover:text-violet-200 font-medium transition-colors"
+                          className="text-white/85 hover:text-violet-200 light:hover:text-violet-700 font-medium transition-colors"
                         >
                           {n.title}
                         </Link>
@@ -134,7 +128,7 @@ export default async function StaffNotificationsPage({
                         {n.readAt ? (
                           <span className="text-xs text-white/30">Уншсан</span>
                         ) : (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-200">
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-200 light:bg-violet-100 light:text-violet-700">
                             Шинэ
                           </span>
                         )}

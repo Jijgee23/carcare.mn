@@ -17,6 +17,7 @@ import {
 } from "@/lib/appointments";
 import { requireUser } from "@/lib/auth";
 import { branchScopeId, canCreate, canEdit, canView } from "@/lib/auth/roles";
+import { customerLabel } from "@/lib/customers";
 import { formatPhone } from "@/lib/phone";
 import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
@@ -36,6 +37,7 @@ function formatDateTime(d: Date): string {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
   });
 }
 
@@ -92,6 +94,7 @@ export default async function AppointmentsPage({
         account: { select: { name: true, phone: true } },
         customer: { select: { fullName: true, phone: true } },
         branch: { select: { name: true } },
+        category: { select: { name: true } },
         serviceOrder: { select: { id: true, number: true } },
       },
     }),
@@ -152,7 +155,7 @@ export default async function AppointmentsPage({
           Цаг захиалгын хүсэлт алга.
         </div>
       ) : (
-        <div className="glass rounded-2xl overflow-hidden border border-white/[0.08]">
+        <div className="glass rounded-2xl overflow-x-auto border border-white/[0.08]">
           <table className="w-full min-w-[760px]">
             <thead>
               <tr className="border-b border-white/[0.06]">
@@ -179,9 +182,17 @@ export default async function AppointmentsPage({
                   appointmentId: a.id,
                 }).toString()}`;
                 // Онлайн бол Account-аас, утсаар бүртгэсэн бол Customer-аас.
-                const displayName =
-                  a.account?.name || a.customer?.fullName || "—";
-                const displayPhone = a.account?.phone ?? a.customer?.phone ?? "";
+                // Нэргүй бол placeholder биш — утсаар нь харуулна (customerLabel).
+                const apptPhone = a.account?.phone ?? a.customer?.phone ?? "";
+                const displayName = customerLabel({
+                  fullName: a.account?.name ?? a.customer?.fullName,
+                  phone: apptPhone,
+                });
+                // displayName өөрөө утас болсон бол доор давхардуулахгүй.
+                const phoneLine =
+                  apptPhone && displayName !== formatPhone(apptPhone)
+                    ? formatPhone(apptPhone)
+                    : null;
                 return (
                   <tr
                     key={a.id}
@@ -191,12 +202,19 @@ export default async function AppointmentsPage({
                       <div className="text-sm font-medium text-white/85">
                         {displayName}
                       </div>
-                      <div className="text-xs text-white/40 tabular-nums">
-                        {displayPhone ? formatPhone(displayPhone) : "—"}
-                      </div>
+                      {phoneLine ? (
+                        <div className="text-xs text-white/40 tabular-nums">
+                          {phoneLine}
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-5 py-4 text-sm text-white/60">
                       {a.branch.name}
+                      {a.category ? (
+                        <span className="block text-xs text-violet-300/80 light:text-violet-700 mt-0.5">
+                          {a.category.name}
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-5 py-4 text-sm text-white/70 tabular-nums whitespace-nowrap">
                       {formatDateTime(a.requestedAt)}
@@ -228,7 +246,7 @@ export default async function AppointmentsPage({
                               <input type="hidden" name="id" value={a.id} />
                               <button
                                 type="submit"
-                                className="text-xs px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 font-medium transition-colors"
+                                className="text-xs px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 light:bg-emerald-100 light:hover:bg-emerald-200 light:border-emerald-300 light:text-emerald-700 font-medium transition-colors"
                               >
                                 Батлах
                               </button>
@@ -237,7 +255,7 @@ export default async function AppointmentsPage({
                               <input type="hidden" name="id" value={a.id} />
                               <button
                                 type="submit"
-                                className="text-xs px-3 py-1.5 rounded-lg border border-red-500/25 bg-red-500/10 hover:bg-red-500/20 text-red-300 font-medium transition-colors"
+                                className="text-xs px-3 py-1.5 rounded-lg border border-red-500/25 bg-red-500/10 hover:bg-red-500/20 text-red-300 light:text-red-700 font-medium transition-colors"
                               >
                                 Татгалзах
                               </button>
@@ -251,7 +269,7 @@ export default async function AppointmentsPage({
                           <>
                             <Link
                               href={orderHref}
-                              className="text-xs px-3 py-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-violet-200 font-medium transition-colors whitespace-nowrap"
+                              className="text-xs px-3 py-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-violet-200 light:bg-violet-100 light:hover:bg-violet-200 light:border-violet-300 light:text-violet-700 font-medium transition-colors whitespace-nowrap"
                             >
                               Захиалга үүсгэх →
                             </Link>

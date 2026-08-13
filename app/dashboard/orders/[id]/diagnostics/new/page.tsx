@@ -104,7 +104,7 @@ export default async function NewReportPage({
           </p>
           <Link
             href="/dashboard/services/diagnostics/new"
-            className="inline-block text-sm text-violet-300 hover:text-violet-200"
+            className="inline-block text-sm text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
           >
             Шинэ загвар үүсгэх →
           </Link>

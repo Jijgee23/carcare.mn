@@ -111,8 +111,11 @@ export async function POST(req: Request) {
     prisma.customer.findFirst({
       where: { id: customerId, tenantId: auth.user.tenantId },
     }),
-    prisma.vehicle.findFirst({
-      where: { id: vehicleId, tenantId: auth.user.tenantId },
+    prisma.tenantVehicle.findUnique({
+      where: {
+        tenantId_vehicleId: { tenantId: auth.user.tenantId, vehicleId },
+      },
+      select: { id: true, isPostpaid: true },
     }),
   ]);
 
@@ -152,6 +155,7 @@ export async function POST(req: Request) {
           branchId,
           customerId,
           vehicleId,
+          isPostpaid: vehicle.isPostpaid,
           ...(assignedToId && { assignedToId }),
           ...(scheduledAt && { scheduledAt }),
           ...(notes && { notes }),

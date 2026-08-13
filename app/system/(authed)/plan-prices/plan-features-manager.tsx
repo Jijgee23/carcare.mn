@@ -103,7 +103,7 @@ function ViewRow({
             {feature.label}
           </span>
           {feature.highlighted ? (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/25">
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/25 light:bg-violet-100 light:border-violet-300 light:text-violet-700">
               Тод
             </span>
           ) : null}
@@ -119,7 +119,7 @@ function ViewRow({
         <button
           type="button"
           onClick={onEdit}
-          className="text-xs text-violet-400 hover:text-violet-300 px-2 py-1 rounded hover:bg-violet-500/10"
+          className="text-xs text-violet-400 hover:text-violet-300 light:text-violet-700 light:hover:text-violet-800 px-2 py-1 rounded hover:bg-violet-500/10"
         >
           Засах
         </button>
@@ -127,7 +127,7 @@ function ViewRow({
           <input type="hidden" name="id" value={feature.id} />
           <button
             type="submit"
-            className="text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded hover:bg-red-500/10"
+            className="text-xs text-red-400 hover:text-red-300 light:text-red-600 light:hover:text-red-700 px-2 py-1 rounded hover:bg-red-500/10"
           >
             ✕
           </button>
@@ -163,7 +163,7 @@ function EditRow({
           className="auth-input !py-1.5 !text-xs"
         >
           {PLANS.map((p) => (
-            <option key={p} value={p} className="bg-[#0d0d14]">
+            <option key={p} value={p} className="bg-[var(--surface)]">
               {PLAN_LABEL[p]}
             </option>
           ))}
@@ -238,7 +238,7 @@ function CreateForm() {
   return (
     <form key={formKey} action={formAction} className="flex flex-col gap-3" noValidate>
       {state?.ok && state.message ? (
-        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-2.5 text-sm text-emerald-300">
+        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-2.5 text-sm text-emerald-300 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700">
           {state.message}
         </div>
       ) : null}
@@ -250,7 +250,7 @@ function CreateForm() {
         <Field label="Багц" htmlFor="pf-plan" error={fe.plan}>
           <select id="pf-plan" name="plan" required className="auth-input">
             {PLANS.map((p) => (
-              <option key={p} value={p} className="bg-[#0d0d14]">
+              <option key={p} value={p} className="bg-[var(--surface)]">
                 {PLAN_LABEL[p]}
               </option>
             ))}

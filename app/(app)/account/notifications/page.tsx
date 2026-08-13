@@ -16,6 +16,7 @@ function formatDate(d: Date): string {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
   });
 }
 
@@ -29,7 +30,7 @@ export default async function AccountNotificationsPage() {
   });
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="w-full flex flex-col gap-6">
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Мэдэгдэл</h1>
@@ -67,7 +68,7 @@ export default async function AccountNotificationsPage() {
                     <span className="font-semibold text-white/90">
                       {n.title}
                     </span>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/30">
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/30 light:bg-violet-100 light:border-violet-300 light:text-violet-700">
                       {NOTIFICATION_TYPE_LABEL[
                         n.type as keyof typeof NOTIFICATION_TYPE_LABEL
                       ] ?? n.type}

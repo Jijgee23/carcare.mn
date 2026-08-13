@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { deleteServiceAction } from "@/app/_actions/services";
+import { ClickableRow } from "@/app/_components/clickable-row";
 import {
   EmptyState,
   PageHeader,
@@ -48,6 +49,7 @@ export async function ServiceList({
         _count: { select: { items: true } },
         unit: { select: { name: true } },
         durationUnit: { select: { name: true } },
+        category: { select: { name: true } },
       },
     }),
     prisma.service.count({ where }),
@@ -78,16 +80,16 @@ export async function ServiceList({
       ) : (
         <div className="glass rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
           <div className="overflow-auto flex-1 min-h-0">
-            <table className="w-full min-w-[640px]">
+            <table className="w-full min-w-[760px]">
               <thead>
                 <tr className="border-b border-white/[0.06]">
                   {(isGoods
-                    ? ["Код", "Нэр", "Үлдэгдэл", "Өртөг", "Үнэ", "Статус", ""]
-                    : ["Код", "Нэр", "Хугацаа", "Үнэ", "Хэрэглэсэн", "Төлөв", ""]
+                    ? ["Код", "Нэр", "Ангилал", "Үлдэгдэл", "Өртөг", "Үнэ", "Статус", ""]
+                    : ["Код", "Нэр", "Ангилал", "Хугацаа", "Үнэ", "Хэрэглэсэн", "Төлөв", ""]
                   ).map((h) => (
                     <th
                       key={h}
-                      className="text-left text-xs text-white/30 font-medium px-5 py-3"
+                      className="text-left text-xs text-white/30 light:text-slate-500 font-medium px-5 py-3"
                     >
                       {h}
                     </th>
@@ -101,9 +103,9 @@ export async function ServiceList({
                     : 0;
                   const level = isGoods ? stockLevel(stockNum) : null;
                   return (
-                    <tr
+                    <ClickableRow
                       key={svc.id}
-                      className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors"
+                      href={`/dashboard/services/${svc.id}`}
                     >
                       <td className="px-5 py-4 text-xs font-mono text-white/60">
                         {svc.code ?? "—"}
@@ -111,7 +113,7 @@ export async function ServiceList({
                       <td className="px-5 py-4">
                         <Link
                           href={`/dashboard/services/${svc.id}`}
-                          className="text-sm font-medium text-white/90 hover:text-violet-300 transition-colors"
+                          className="text-sm font-medium text-white/90 hover:text-violet-300 light:hover:text-violet-700 transition-colors"
                         >
                           {svc.name}
                         </Link>
@@ -120,6 +122,15 @@ export async function ServiceList({
                             {svc.description}
                           </div>
                         ) : null}
+                      </td>
+                      <td className="px-5 py-4 text-sm">
+                        {svc.category ? (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-300 border border-violet-500/20 light:text-violet-700">
+                            {svc.category.name}
+                          </span>
+                        ) : (
+                          <span className="text-white/30 text-xs">—</span>
+                        )}
                       </td>
                       {isGoods ? (
                         <td className="px-5 py-4 text-sm text-white/80">
@@ -167,7 +178,7 @@ export async function ServiceList({
                             {STOCK_LABEL[level]}
                           </span>
                         ) : svc.isActive ? (
-                          <span className="text-xs text-emerald-300">
+                          <span className="text-xs text-emerald-300 light:text-emerald-700">
                             Идэвхтэй
                           </span>
                         ) : (
@@ -181,7 +192,7 @@ export async function ServiceList({
                           <div className="flex items-center justify-end gap-1">
                             <Link
                               href={`/dashboard/services/${svc.id}`}
-                              className="text-xs text-violet-400 hover:text-violet-300 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-violet-500/10"
+                              className="text-xs text-violet-400 hover:text-violet-300 light:text-violet-600 light:hover:text-violet-700 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-violet-500/10"
                             >
                               Засах
                             </Link>
@@ -189,7 +200,7 @@ export async function ServiceList({
                               <input type="hidden" name="id" value={svc.id} />
                               <button
                                 type="submit"
-                                className="text-xs text-red-400 hover:text-red-300 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-red-500/10"
+                                className="text-xs text-red-400 hover:text-red-300 light:text-red-600 light:hover:text-red-700 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-red-500/10"
                                 title={
                                   svc._count.items > 0
                                     ? "Захиалгад ашиглагдсан тул архивлагдана"
@@ -202,7 +213,7 @@ export async function ServiceList({
                           </div>
                         ) : null}
                       </td>
-                    </tr>
+                    </ClickableRow>
                   );
                 })}
               </tbody>

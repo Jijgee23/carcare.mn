@@ -18,15 +18,9 @@ export const revalidate = 3600;
 
 export default function LandingPage() {
   return (
-    <div className="relative flex flex-col min-h-screen">
-      {/* Background wallpaper — blur-тэй, унших боломжтой байлгахын тулд бараан давхаргатай */}
-      <div aria-hidden className="fixed inset-0 -z-10">
-        <div
-          className="absolute inset-0 scale-110 bg-cover bg-center"
-          style={{ backgroundImage: "url('/wallpaper.jpg')" }}
-        />
-        <div className="absolute inset-0 bg-[#0a0a0f]/85" />
-      </div>
+    <div className="relative flex flex-col min-h-screen overflow-x-clip">
+      {/* Gradient дэвсгэр — fixed тул scroll-д дахин зурагдахгүй, хөнгөн */}
+      <div aria-hidden className="landing-bg-layer" />
       <Nav />
       <main className="flex-1">
         <Hero />

@@ -11,6 +11,12 @@ import {
 import { Field, FormError } from "@/app/_components/auth-shell";
 import { Select } from "@/app/_components/select";
 import { DEFAULT_OPEN_DAYS, WEEK_DAYS, type Weekday } from "@/lib/branches";
+import {
+  type AddressData,
+  type AddressValue,
+  AddressSelect,
+  resolveAddressFromGeocode,
+} from "./address-select";
 
 // Ажиллах цагийн сонголт — 30 минутын алхамтай, 24 цагийн формат (00:00–23:30).
 const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
@@ -49,7 +55,17 @@ type Initial = {
   isPrimary: boolean;
 };
 
-export function BranchForm({ initial }: { initial?: Initial }) {
+export function BranchForm({
+  initial,
+  addressData,
+  mapApiKey,
+  mapId,
+}: {
+  initial?: Initial;
+  addressData: AddressData;
+  mapApiKey: string;
+  mapId: string;
+}) {
   const isEdit = Boolean(initial?.id);
   const action = isEdit
     ? updateBranchAction.bind(null, initial!.id!)
@@ -71,10 +87,13 @@ export function BranchForm({ initial }: { initial?: Initial }) {
   // Controlled — action амжилтгүй болсон үед утгууд цэвэрлэгдэхгүй
   const [name, setName] = useState(initial?.name ?? "");
   const [phone, setPhone] = useState(initial?.phone ?? "");
-  const [city, setCity] = useState(initial?.city ?? "");
-  const [district, setDistrict] = useState(initial?.district ?? "");
-  const [khoroo, setKhoroo] = useState(initial?.khoroo ?? "");
   const [address, setAddress] = useState(initial?.address ?? "");
+  const [addr, setAddr] = useState<AddressValue>({
+    // Шинэ салбарт Улаанбаатар анхдагч; засварлахад хадгалсан утга.
+    city: initial?.city ?? (isEdit ? "" : "Улаанбаатар"),
+    district: initial?.district ?? "",
+    khoroo: initial?.khoroo ?? "",
+  });
   const [openTime, setOpenTime] = useState(initial?.openTime ?? "");
   const [closeTime, setCloseTime] = useState(initial?.closeTime ?? "");
   const [slotMinutes, setSlotMinutes] = useState(
@@ -118,6 +137,7 @@ export function BranchForm({ initial }: { initial?: Initial }) {
     });
   }
 
+  // Full-width хуудсанд талбарууд хэт сунахгүйн тулд хязгаартай.
   const FIELD_MW = "max-w-xs";
 
   return (
@@ -183,40 +203,13 @@ export function BranchForm({ initial }: { initial?: Initial }) {
           Хаяг
         </h2>
 
-        <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          <Field label="Хот / Аймаг" htmlFor="city" error={fe.city} className={FIELD_MW}>
-            <input
-              id="city"
-              name="city"
-              type="text"
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              className="compact-input"
-              placeholder="Улаанбаатар"
-            />
-          </Field>
-          <Field label="Дүүрэг / Сум" htmlFor="district" error={fe.district} className={FIELD_MW}>
-            <input
-              id="district"
-              name="district"
-              type="text"
-              value={district}
-              onChange={(e) => setDistrict(e.target.value)}
-              className="compact-input"
-              placeholder="Баянзүрх"
-            />
-          </Field>
-          <Field label="Хороо / Баг" htmlFor="khoroo" error={fe.khoroo} className={FIELD_MW}>
-            <input
-              id="khoroo"
-              name="khoroo"
-              type="text"
-              value={khoroo}
-              onChange={(e) => setKhoroo(e.target.value)}
-              className="compact-input"
-              placeholder="6-р хороо"
-            />
-          </Field>
+        <div className="relative z-30 grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <AddressSelect
+            data={addressData}
+            value={addr}
+            onChange={setAddr}
+            fieldClassName={FIELD_MW}
+          />
           <Field
             label="Дэлгэрэнгүй хаяг"
             htmlFor="address"
@@ -244,6 +237,13 @@ export function BranchForm({ initial }: { initial?: Initial }) {
             latitude={lat}
             longitude={lng}
             onChange={onMapPick}
+            onGeocode={(parts) => {
+              const resolved = resolveAddressFromGeocode(addressData, parts);
+              // Хот тогтоогдсон тохиолдолд л автоматаар бөглөнө.
+              if (resolved.city) setAddr(resolved);
+            }}
+            apiKey={mapApiKey}
+            mapId={mapId}
           />
         </div>
 
@@ -367,7 +367,7 @@ export function BranchForm({ initial }: { initial?: Initial }) {
                   key={d.value}
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border cursor-pointer transition-colors text-sm ${
                     active
-                      ? "bg-violet-600/20 text-violet-200 border-violet-500/30"
+                      ? "bg-violet-600/20 text-violet-200 border-violet-500/30 light:bg-violet-100 light:border-violet-300 light:text-violet-700"
                       : "bg-white/[0.03] text-white/50 border-white/[0.06] hover:bg-white/[0.06]"
                   }`}
                 >
@@ -384,13 +384,14 @@ export function BranchForm({ initial }: { initial?: Initial }) {
               );
             })}
           </div>
-          <p className="text-xs text-white/30 mt-2">
+          <p className="text-xs text-white/50 mt-2">
             Юу ч сонгохгүй бол анхдагч Даваа–Баасан ашиглагдана.
           </p>
         </div>
       </section>
 
-      <div className="flex gap-2 pt-3 border-t border-white/[0.05]">
+      {/* Sticky action bar — урт форм scroll хийхэд ч Хадгалах үргэлж харагдана */}
+      <div className="sticky bottom-0 z-10 flex gap-2 pt-3 pb-3 -mb-1 border-t border-white/[0.05] bg-[var(--bg-secondary)]/90 backdrop-blur-md">
         <Link
           href="/dashboard/branches"
           className="bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] transition-all px-5 py-2 rounded-lg font-medium text-sm text-white/60 text-center"

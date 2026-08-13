@@ -30,7 +30,7 @@ export function QPaySettingsForm({ initial }: { initial: Initial }) {
   return (
     <form action={formAction} className="flex flex-col gap-5" noValidate>
       {state?.ok && state.message ? (
-        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-2.5 text-sm text-emerald-300">
+        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-2.5 text-sm text-emerald-300 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700">
           {state.message}
         </div>
       ) : null}
@@ -108,7 +108,7 @@ export function QPaySettingsForm({ initial }: { initial: Initial }) {
       {initial.tokenExpiresAt ? (
         <p className="text-xs text-white/40">
           Сүүлд токен дуусах:{" "}
-          {new Date(initial.tokenExpiresAt).toLocaleString("mn-MN")}
+          {new Date(initial.tokenExpiresAt).toLocaleString("mn-MN", { hour12: false })}
         </p>
       ) : (
         <p className="text-xs text-white/40">

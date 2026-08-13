@@ -44,8 +44,15 @@ type Vehicle = {
   make: string;
   model: string;
   customerId: string | null;
+  isPostpaid?: boolean;
 };
-type Tech = { id: string; firstName: string; lastName: string };
+type Tech = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  branchId: string | null;
+  assignableBranchIds: string[];
+};
 type DiagTemplate = { id: string; name: string; type: DiagnosticType };
 
 const FIELD_MW = "max-w-xs";
@@ -116,10 +123,62 @@ export function OrderForm({
 
   const fe = state?.fieldErrors ?? {};
 
+  const customerById = useMemo(
+    () => new Map(customers.map((c) => [c.id, c])),
+    [customers],
+  );
+
+  // Үйлчлүүлэгч сонгоогүй бол эзэмшигчтэй бүх машиныг харуулна (машинаа түрүүлж
+  // сонгож болно — эзэмшигч нь автоматаар бичигдэнэ). Эзэмшигчгүй машиныг
+  // харуулахгүй — сервер захиалгыг эзэмшигчтэй нь тааруулахыг шаарддаг.
+  // Үйлчлүүлэгч сонгосон бол зөвхөн түүний машинууд.
   const filteredVehicles = useMemo(() => {
-    if (!customerId) return [];
+    if (!customerId) return vehicles.filter((v) => v.customerId);
     return vehicles.filter((v) => v.customerId === customerId);
   }, [vehicles, customerId]);
+
+  // Хариуцах мастерыг сонгосон салбараар шүүнэ: тухайн салбарын ажилтан +
+  // салбар харьяалалгүй (branchId=null, ж: эзэн/удирдлага бүх салбарыг
+  // хариуцдаг) хүмүүс + тухайн салбарыг нэмэлтээр ажилладаг гэж тэмдэглэсэн
+  // хүмүүс (олон салбарт дамжиж ажилладаг мастер). Салбар сонгоогүй бол
+  // бүгдийг харуулна.
+  function isTechAssignableAt(tech: Tech, branch: string): boolean {
+    return (
+      !tech.branchId ||
+      tech.branchId === branch ||
+      tech.assignableBranchIds.includes(branch)
+    );
+  }
+
+  const filteredTechnicians = useMemo(() => {
+    if (!branchId) return technicians;
+    return technicians.filter((t) => isTechAssignableAt(t, branchId));
+  }, [technicians, branchId]);
+
+  // Салбар солиход одоо сонгогдсон мастер шинэ салбарт хамаарахгүй бол цэвэрлэнэ.
+  function onBranchChange(v: string) {
+    setBranchId(v);
+    const tech = technicians.find((t) => t.id === assignedToId);
+    if (tech && !isTechAssignableAt(tech, v)) {
+      setAssignedToId("");
+    }
+  }
+
+  // Машин сонгоход эзэмшигчийг нь автоматаар үйлчлүүлэгч болгож тавина.
+  function onVehicleChange(v: string) {
+    setVehicleId(v);
+    const veh = vehicles.find((x) => x.id === v);
+    if (veh?.customerId && veh.customerId !== customerId) {
+      setCustomerId(veh.customerId);
+    }
+  }
+
+  // Үйлчлүүлэгч солиход — сонгосон машин нь шинэ эзэмшигчийнх биш бол цэвэрлэнэ.
+  function onCustomerChange(v: string) {
+    setCustomerId(v);
+    const veh = vehicles.find((x) => x.id === vehicleId);
+    if (!veh || veh.customerId !== v) setVehicleId("");
+  }
 
   function onCustomerCreated(c: CreatedCustomer) {
     setCustomers((prev) => [c, ...prev]);
@@ -140,7 +199,7 @@ export function OrderForm({
         <input type="hidden" name="appointmentId" value={appointmentId} />
       ) : null}
       {state?.ok ? (
-        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 text-sm text-emerald-300">
+        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 text-sm text-emerald-300 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700">
           {state.message ?? "Хадгалагдлаа."}
         </div>
       ) : null}
@@ -153,7 +212,7 @@ export function OrderForm({
             name="branchId"
             required
             value={branchId}
-            onChange={setBranchId}
+            onChange={onBranchChange}
             error={fe.branchId}
             options={branches.map((b) => ({ value: b.id, label: b.name }))}
           />
@@ -172,7 +231,7 @@ export function OrderForm({
             value={assignedToId}
             onChange={setAssignedToId}
             error={fe.assignedToId}
-            options={technicians.map((t) => ({
+            options={filteredTechnicians.map((t) => ({
               value: t.id,
               label: `${t.lastName} ${t.firstName}`,
             }))}
@@ -187,10 +246,7 @@ export function OrderForm({
                 name="customerId"
                 required
                 value={customerId}
-                onChange={(v) => {
-                  setCustomerId(v);
-                  setVehicleId("");
-                }}
+                onChange={onCustomerChange}
                 error={fe.customerId}
                 placeholder={
                   customers.length === 0 ? "— Бүртгэгдээгүй —" : "— Сонгох —"
@@ -206,7 +262,7 @@ export function OrderForm({
               type="button"
               onClick={() => setShowCustomerForm((v) => !v)}
               data-stop-row-click
-              className="shrink-0 px-2.5 rounded-lg border border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-violet-200 text-xs font-medium transition-colors"
+              className="shrink-0 px-2.5 rounded-lg border border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-violet-200 light:bg-violet-100 light:hover:bg-violet-200 light:border-violet-300 light:text-violet-700 text-xs font-medium transition-colors"
               title="Шинэ үйлчлүүлэгч нэмэх"
             >
               {showCustomerForm ? "✕" : "+"}
@@ -219,7 +275,7 @@ export function OrderForm({
           htmlFor="vehicleId"
           hint={
             !customerId
-              ? "Эхлээд үйлчлүүлэгч"
+              ? "Сонгоход эзэмшигч автоматаар бичигдэнэ"
               : filteredVehicles.length === 0
                 ? "Машин бүртгэгдээгүй"
                 : undefined
@@ -234,14 +290,22 @@ export function OrderForm({
                 name="vehicleId"
                 required
                 value={vehicleId}
-                onChange={setVehicleId}
-                disabled={!customerId}
+                onChange={onVehicleChange}
                 error={fe.vehicleId}
-                options={filteredVehicles.map((v) => ({
-                  value: v.id,
-                  label: v.plate,
-                  hint: `${v.make} ${v.model}`,
-                }))}
+                options={filteredVehicles.map((v) => {
+                  const owner = v.customerId
+                    ? customerById.get(v.customerId)
+                    : null;
+                  const base =
+                    !customerId && owner
+                      ? `${v.make} ${v.model} · ${customerLabel(owner)}`
+                      : `${v.make} ${v.model}`;
+                  return {
+                    value: v.id,
+                    label: v.plate,
+                    hint: v.isPostpaid ? `${base} · Дараа төлбөрт` : base,
+                  };
+                })}
               />
             </div>
             <button
@@ -249,7 +313,7 @@ export function OrderForm({
               disabled={!customerId}
               onClick={() => setShowVehicleForm((v) => !v)}
               data-stop-row-click
-              className="shrink-0 px-2.5 rounded-lg border border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-violet-200 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="shrink-0 px-2.5 rounded-lg border border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-violet-200 light:bg-violet-100 light:hover:bg-violet-200 light:border-violet-300 light:text-violet-700 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               title={
                 customerId
                   ? "Шинэ машин нэмэх"
@@ -272,11 +336,20 @@ export function OrderForm({
             id="scheduledAt"
             name="scheduledAt"
             withTime
-            defaultValue={toLocalDatetimeInput(initial?.scheduledAt ?? null)}
+            defaultValue={toLocalDatetimeInput(
+              initial?.scheduledAt ?? (isEdit ? null : new Date()),
+            )}
             error={Boolean(fe.scheduledAt)}
           />
         </Field>
       </div>
+
+      {vehicles.find((v) => v.id === vehicleId)?.isPostpaid ? (
+        <div className="rounded-lg border border-sky-500/25 bg-sky-500/[0.08] px-4 py-2.5 text-xs text-sky-300 light:text-sky-700 max-w-2xl">
+          Энэ машин <strong>дараа төлбөрт</strong> нөхцөлтэй — захиалга «Дараа
+          төлбөрт» түүхэнд бүртгэгдэж, төлбөрийг нэгтгэн төлнө.
+        </div>
+      ) : null}
 
       {showCustomerForm ? (
         <InlineCustomerForm
@@ -339,7 +412,7 @@ export function OrderForm({
                           onClick={() => toggleDiagnostic(t.id)}
                           className={`text-sm px-3 py-1.5 rounded-lg border transition-colors ${
                             on
-                              ? "bg-violet-600/30 text-violet-200 border-violet-500/40"
+                              ? "bg-violet-600/30 text-violet-200 border-violet-500/40 light:bg-violet-100 light:text-violet-700 light:border-violet-300"
                               : "bg-white/[0.04] text-white/60 border-white/10 hover:border-white/20"
                           }`}
                         >

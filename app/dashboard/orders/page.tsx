@@ -24,6 +24,8 @@ import {
   ORDER_STATUS_LABEL,
   PAYMENT_STATUS_BADGE,
   PAYMENT_STATUS_LABEL,
+  POSTPAID_BADGE,
+  POSTPAID_LABEL,
   type ItemKind,
   type OrderStatus,
   type PaymentStatus,
@@ -36,15 +38,6 @@ export const metadata = {
   title: "Захиалга",
 };
 
-const FILTERS: { value: "all" | OrderStatus; label: string }[] = [
-  { value: "all", label: "Бүгд" },
-  { value: "SCHEDULED", label: ORDER_STATUS_LABEL.SCHEDULED },
-  { value: "IN_PROGRESS", label: ORDER_STATUS_LABEL.IN_PROGRESS },
-  { value: "WAITING_PARTS", label: ORDER_STATUS_LABEL.WAITING_PARTS },
-  { value: "COMPLETED", label: ORDER_STATUS_LABEL.COMPLETED },
-  { value: "CANCELLED", label: ORDER_STATUS_LABEL.CANCELLED },
-];
-
 export default async function OrdersPage({
   searchParams,
 }: {
@@ -53,6 +46,7 @@ export default async function OrdersPage({
     q?: string;
     branchId?: string;
     paymentStatus?: string;
+    postpaid?: string;
     customerId?: string;
     vehicleId?: string;
     dateFrom?: string;
@@ -69,6 +63,7 @@ export default async function OrdersPage({
     q = "",
     branchId = "",
     paymentStatus = "",
+    postpaid = "",
     customerId = "",
     vehicleId = "",
     dateFrom = "",
@@ -97,6 +92,8 @@ export default async function OrdersPage({
   ) {
     where.paymentStatus = paymentStatus as PaymentStatus;
   }
+  if (postpaid === "yes") where.isPostpaid = true;
+  else if (postpaid === "no") where.isPostpaid = false;
   // Огнооны муж — товлосон огноо (scheduledAt)-аар шүүнэ
   const scheduledAt: Prisma.DateTimeFilter = {};
   if (dateFrom) scheduledAt.gte = new Date(`${dateFrom}T00:00:00`);
@@ -122,7 +119,7 @@ export default async function OrdersPage({
       skip,
       take,
       include: {
-        customer: { select: { fullName: true } },
+        customer: { select: { fullName: true, phone: true } },
         vehicle: { select: { plate: true, make: true, model: true } },
         branch: { select: { name: true } },
         assignedTo: { select: { firstName: true, lastName: true } },
@@ -156,11 +153,17 @@ export default async function OrdersPage({
       orderBy: { fullName: "asc" },
       select: { id: true, fullName: true, phone: true },
     }),
-    prisma.vehicle.findMany({
-      where: { tenantId: user.tenantId },
-      orderBy: { plate: "asc" },
-      select: { id: true, plate: true, make: true, model: true },
-    }),
+    prisma.tenantVehicle
+      .findMany({
+        where: { tenantId: user.tenantId, isActive: true },
+        orderBy: { vehicle: { plate: "asc" } },
+        select: {
+          vehicle: {
+            select: { id: true, plate: true, make: true, model: true },
+          },
+        },
+      })
+      .then((rows) => rows.map((r) => r.vehicle)),
   ]);
 
   const countByStatus = Object.fromEntries(
@@ -188,30 +191,33 @@ export default async function OrdersPage({
         <StatCard
           label={ORDER_STATUS_LABEL.SCHEDULED}
           value={countByStatus.SCHEDULED ?? 0}
-          color="text-amber-400"
+          color="text-amber-400 light:text-amber-600"
         />
         <StatCard
           label={ORDER_STATUS_LABEL.IN_PROGRESS}
           value={countByStatus.IN_PROGRESS ?? 0}
-          color="text-blue-400"
+          color="text-blue-400 light:text-blue-600"
         />
         <StatCard
           label={ORDER_STATUS_LABEL.COMPLETED}
           value={countByStatus.COMPLETED ?? 0}
-          color="text-emerald-400"
+          color="text-emerald-400 light:text-emerald-600"
         />
       </div>
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "0.5rem",
-          marginBottom: "1rem",
-          flexWrap: "wrap",
-        }}
-      >
+      <div className="flex flex-wrap items-center gap-2 mb-4">
         <SearchBox placeholder="№, үйлчлүүлэгч, машинаар хайх" />
+        <FilterSelect
+          paramName="status"
+          placeholder="Бүх төлөв"
+          options={[
+            { value: "SCHEDULED", label: ORDER_STATUS_LABEL.SCHEDULED },
+            { value: "IN_PROGRESS", label: ORDER_STATUS_LABEL.IN_PROGRESS },
+            { value: "WAITING_PARTS", label: ORDER_STATUS_LABEL.WAITING_PARTS },
+            { value: "COMPLETED", label: ORDER_STATUS_LABEL.COMPLETED },
+            { value: "CANCELLED", label: ORDER_STATUS_LABEL.CANCELLED },
+          ]}
+        />
         <FilterSelect
           paramName="branchId"
           placeholder="Бүх салбар"
@@ -248,6 +254,14 @@ export default async function OrdersPage({
             { value: "PAID", label: PAYMENT_STATUS_LABEL.PAID },
           ]}
         />
+        <FilterSelect
+          paramName="postpaid"
+          placeholder="Төлбөрийн нөхцөл"
+          options={[
+            { value: "yes", label: POSTPAID_LABEL },
+            { value: "no", label: "Энгийн" },
+          ]}
+        />
         <DateRangeFilter label="Товлосон" />
         <ResetFilters
           paramNames={[
@@ -256,6 +270,7 @@ export default async function OrdersPage({
             "customerId",
             "vehicleId",
             "paymentStatus",
+            "postpaid",
             "dateFrom",
             "dateTo",
             "status",
@@ -264,29 +279,8 @@ export default async function OrdersPage({
       </div>
 
       <div className="glass rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
-        <div className="p-4 border-b border-white/[0.06] flex items-center gap-2 flex-wrap">
-          {FILTERS.map((f) => {
-            const active =
-              (f.value === "all" && !status) || f.value === status;
-            return (
-              <Link
-                key={f.value}
-                href={
-                  f.value === "all"
-                    ? "/dashboard/orders"
-                    : `/dashboard/orders?status=${f.value}`
-                }
-                className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${
-                  active
-                    ? "bg-violet-600/30 text-violet-300 border border-violet-500/30"
-                    : "text-white/40 hover:text-white/70 border border-white/10 hover:border-white/20"
-                }`}
-              >
-                {f.label}
-              </Link>
-            );
-          })}
-          <div className="ml-auto text-xs text-white/30">
+        <div className="px-4 py-2.5 border-b border-white/[0.06] flex items-center">
+          <div className="ml-auto text-xs text-white/30 light:text-slate-500">
             {filteredTotal} захиалга
           </div>
         </div>
@@ -315,7 +309,7 @@ export default async function OrdersPage({
                   ].map((h) => (
                     <th
                       key={h}
-                      className="text-left text-xs text-white/30 font-medium px-5 py-3"
+                      className="text-left text-xs text-white/30 light:text-slate-500 font-medium px-5 py-3"
                     >
                       {h}
                     </th>
@@ -331,7 +325,7 @@ export default async function OrdersPage({
                     <td className="px-5 py-4">
                       <Link
                         href={`/dashboard/orders/${o.id}`}
-                        className="font-mono text-sm font-semibold text-violet-300 hover:text-violet-200"
+                        className="font-mono text-sm font-semibold text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
                       >
                         #{o.number}
                       </Link>
@@ -393,6 +387,7 @@ export default async function OrdersPage({
                             day: "2-digit",
                             hour: "2-digit",
                             minute: "2-digit",
+                            hour12: false,
                           })
                         : "—"}
                     </td>
@@ -409,6 +404,13 @@ export default async function OrdersPage({
                       >
                         {PAYMENT_STATUS_LABEL[o.paymentStatus as PaymentStatus]}
                       </span>
+                      {o.isPostpaid ? (
+                        <span
+                          className={`mt-1 ml-1 inline-block text-[10px] px-1.5 py-0.5 rounded-full ${POSTPAID_BADGE}`}
+                        >
+                          Дараа
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-5 py-4">
                       <span
@@ -437,6 +439,7 @@ export default async function OrdersPage({
             customerId,
             vehicleId,
             paymentStatus,
+            postpaid,
             dateFrom,
             dateTo,
           }}

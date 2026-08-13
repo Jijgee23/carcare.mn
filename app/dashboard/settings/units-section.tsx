@@ -81,7 +81,7 @@ function ViewRow({ unit, onEdit }: { unit: UnitRow; onEdit: () => void }) {
         <div className="flex items-center gap-2">
           <span>{unit.name}</span>
           {system ? (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/25">
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/25 light:text-violet-700">
               Систем
             </span>
           ) : null}
@@ -92,7 +92,7 @@ function ViewRow({ unit, onEdit }: { unit: UnitRow; onEdit: () => void }) {
       </td>
       <td className="px-4 py-3">
         {unit.isActive ? (
-          <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+          <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 light:text-emerald-700">
             Идэвхтэй
           </span>
         ) : (
@@ -106,7 +106,7 @@ function ViewRow({ unit, onEdit }: { unit: UnitRow; onEdit: () => void }) {
           <button
             type="button"
             onClick={onEdit}
-            className="text-xs text-violet-400 hover:text-violet-300 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-violet-500/10"
+            className="text-xs text-violet-400 hover:text-violet-300 light:text-violet-600 light:hover:text-violet-700 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-violet-500/10"
           >
             Засах
           </button>
@@ -122,7 +122,7 @@ function ViewRow({ unit, onEdit }: { unit: UnitRow; onEdit: () => void }) {
               <input type="hidden" name="id" value={unit.id} />
               <button
                 type="submit"
-                className="text-xs text-red-400 hover:text-red-300 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-red-500/10"
+                className="text-xs text-red-400 hover:text-red-300 light:text-red-600 light:hover:text-red-700 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-red-500/10"
               >
                 Устгах
               </button>
@@ -185,8 +185,8 @@ function EditRow({ unit, onClose }: { unit: UnitRow; onClose: () => void }) {
               Идэвхтэй
             </label>
           </div>
-          {fe.name ? <p className="text-red-400 text-xs">{fe.name}</p> : null}
-          {fe.code ? <p className="text-red-400 text-xs">{fe.code}</p> : null}
+          {fe.name ? <p className="text-red-400 text-xs light:text-red-600">{fe.name}</p> : null}
+          {fe.code ? <p className="text-red-400 text-xs light:text-red-600">{fe.code}</p> : null}
           <div className="flex gap-2 justify-end">
             <button
               type="button"
@@ -229,7 +229,7 @@ function CreateForm() {
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium text-white/80">Шинэ нэгж нэмэх</h3>
         {state?.ok && state.message ? (
-          <span className="text-xs text-emerald-300">{state.message}</span>
+          <span className="text-xs text-emerald-300 light:text-emerald-700">{state.message}</span>
         ) : null}
       </div>
 

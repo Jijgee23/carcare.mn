@@ -160,11 +160,11 @@ function PriceCell({
       />
       <div className="text-[10px] h-3">
         {pending ? (
-          <span className="text-violet-300">Хадгалж...</span>
+          <span className="text-violet-300 light:text-violet-700">Хадгалж...</span>
         ) : error ? (
-          <span className="text-red-400">{error}</span>
+          <span className="text-red-400 light:text-red-700">{error}</span>
         ) : savedAt ? (
-          <span className="text-emerald-400">✓ Хадгалав</span>
+          <span className="text-emerald-400 light:text-emerald-700">✓ Хадгалав</span>
         ) : null}
       </div>
     </div>

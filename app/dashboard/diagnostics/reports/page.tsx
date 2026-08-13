@@ -38,7 +38,7 @@ export default async function ReportsListPage({
       take,
       include: {
         template: { select: { name: true, type: true } },
-        customer: { select: { fullName: true } },
+        customer: { select: { fullName: true, phone: true } },
         vehicle: { select: { plate: true, make: true, model: true } },
         branch: { select: { name: true } },
         filledBy: { select: { firstName: true, lastName: true } },
@@ -111,6 +111,7 @@ export default async function ReportsListPage({
                           day: "2-digit",
                           hour: "2-digit",
                           minute: "2-digit",
+                          hour12: false,
                         })}
                       </td>
                       <td className="px-5 py-3">
@@ -150,7 +151,7 @@ export default async function ReportsListPage({
                       <td className="px-5 py-3">
                         <Link
                           href={`/dashboard/diagnostics/reports/${r.id}`}
-                          className="text-xs text-violet-400 hover:text-violet-300 px-2.5 py-1.5 rounded-lg hover:bg-violet-500/10"
+                          className="text-xs text-violet-400 hover:text-violet-300 light:text-violet-700 light:hover:text-violet-800 px-2.5 py-1.5 rounded-lg hover:bg-violet-500/10"
                         >
                           Үзэх
                         </Link>

@@ -85,7 +85,7 @@ export function PlanLimitsManager({ limits }: { limits: PlanLimitRow[] }) {
                     <div className="text-[11px] text-white/40 mt-0.5">
                       {meta.description}
                     </div>
-                    <code className="text-[10px] text-violet-300/70 mt-0.5 inline-block">
+                    <code className="text-[10px] text-violet-300/70 light:text-violet-700/80 mt-0.5 inline-block">
                       {code}
                     </code>
                   </td>
@@ -183,9 +183,9 @@ function LimitCell({
       </label>
       <div className="text-[10px] h-3">
         {pending ? (
-          <span className="text-violet-300">Хадгалж...</span>
+          <span className="text-violet-300 light:text-violet-700">Хадгалж...</span>
         ) : savedAt ? (
-          <span className="text-emerald-400">✓ Хадгалав</span>
+          <span className="text-emerald-400 light:text-emerald-700">✓ Хадгалав</span>
         ) : null}
       </div>
     </div>

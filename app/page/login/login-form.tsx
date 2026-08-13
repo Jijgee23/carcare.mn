@@ -80,14 +80,11 @@ function EmailStep({
 
       <SubmitButton pending={pending}>Үргэлжлүүлэх →</SubmitButton>
 
-      <div className="text-center">
-        <Link
-          href="/page/forgot"
-          className="text-xs text-violet-300 hover:text-violet-200"
-        >
-          Нууц үг мартсан уу?
-        </Link>
-      </div>
+      {/* Progressive урсгалыг тайлбарлана — нууц үг дараагийн шатанд асуугдана */}
+      <p className="text-center text-xs text-white/40">
+        Дараагийн алхамд нууц үгээ оруулж нэвтэрнэ. Анх удаагийн нэвтрэлт бол
+        утсанд тань баталгаажуулах код ирнэ.
+      </p>
     </form>
   );
 }
@@ -147,7 +144,7 @@ function PasswordStep({ email }: { email: string }) {
         </a>
         <Link
           href="/page/forgot"
-          className="text-xs text-violet-300 hover:text-violet-200"
+          className="text-xs text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
         >
           Нууц үг мартсан уу?
         </Link>
@@ -181,7 +178,7 @@ function ActivateStep({
     <form action={formAction} className="flex flex-col gap-5" noValidate>
       <input type="hidden" name="email" value={email} />
 
-      <div className="bg-violet-500/10 border border-violet-500/25 rounded-xl px-4 py-3 text-sm text-violet-200">
+      <div className="bg-violet-500/10 border border-violet-500/25 rounded-xl px-4 py-3 text-sm text-violet-200 light:bg-violet-100 light:border-violet-300 light:text-violet-700">
         Анх удаа нэвтрэх тул нууц үгээ үүсгэнэ үү.{" "}
         {notice ?? `Утас ${maskedPhone} руу 6 оронтой код илгээлээ.`}
       </div>
@@ -276,7 +273,7 @@ function NotRegistered({ message }: { message?: string }) {
       </div>
       <Link
         href="/page/signup"
-        className="text-sm font-medium text-violet-300 hover:text-violet-200"
+        className="text-sm font-medium text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
       >
         Байгууллага бүртгүүлэх →
       </Link>

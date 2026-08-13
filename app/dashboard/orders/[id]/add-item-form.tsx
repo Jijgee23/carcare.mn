@@ -187,7 +187,7 @@ function FormContent({
             disabled={!tabEnabled[t]}
             className={`px-3 py-1 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
               tab === t
-                ? "bg-violet-600/30 text-violet-200"
+                ? "bg-violet-600/30 text-violet-200 light:bg-violet-100 light:text-violet-700"
                 : "text-white/50 hover:text-white/80"
             }`}
           >
@@ -240,7 +240,7 @@ function FormContent({
                 }))}
               />
               {fe.serviceId ? (
-                <p className="mt-1 text-xs text-red-400">{fe.serviceId}</p>
+                <p className="mt-1 text-xs text-red-400 light:text-red-600">{fe.serviceId}</p>
               ) : null}
             </div>
           </>
@@ -260,7 +260,7 @@ function FormContent({
               }))}
             />
             {fe.diagnosticTemplateId ? (
-              <p className="mt-1 text-xs text-red-400">
+              <p className="mt-1 text-xs text-red-400 light:text-red-600">
                 {fe.diagnosticTemplateId}
               </p>
             ) : null}
@@ -281,7 +281,7 @@ function FormContent({
               }))}
             />
             {fe.serviceId ? (
-              <p className="mt-1 text-xs text-red-400">{fe.serviceId}</p>
+              <p className="mt-1 text-xs text-red-400 light:text-red-600">{fe.serviceId}</p>
             ) : null}
           </div>
         ) : null}
@@ -314,7 +314,7 @@ function FormContent({
                 className={`compact-input ${fe.description ? "border-red-500/50" : ""}`}
               />
               {fe.description ? (
-                <p className="mt-1 text-xs text-red-400">{fe.description}</p>
+                <p className="mt-1 text-xs text-red-400 light:text-red-600">{fe.description}</p>
               ) : null}
             </div>
           </>
@@ -331,7 +331,7 @@ function FormContent({
             className={`compact-input ${fe.quantity ? "border-red-500/50" : ""}`}
           />
           {fe.quantity ? (
-            <p className="mt-1 text-xs text-red-400">{fe.quantity}</p>
+            <p className="mt-1 text-xs text-red-400 light:text-red-600">{fe.quantity}</p>
           ) : null}
         </div>
 
@@ -347,7 +347,7 @@ function FormContent({
             className={`compact-input ${fe.unitPrice ? "border-red-500/50" : ""}`}
           />
           {fe.unitPrice ? (
-            <p className="mt-1 text-xs text-red-400">{fe.unitPrice}</p>
+            <p className="mt-1 text-xs text-red-400 light:text-red-600">{fe.unitPrice}</p>
           ) : null}
         </div>
       </div>

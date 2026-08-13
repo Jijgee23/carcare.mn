@@ -3,6 +3,7 @@ import {
   deleteTemplateAction,
   duplicateTemplateAction,
 } from "@/app/_actions/diagnostic-templates";
+import { ClickableRow } from "@/app/_components/clickable-row";
 import {
   EmptyState,
   PageHeader,
@@ -44,7 +45,10 @@ export default async function DiagnosticsServicesPage({
       orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
       skip,
       take,
-      include: { _count: { select: { reports: true } } },
+      include: {
+        _count: { select: { reports: true } },
+        category: { select: { name: true } },
+      },
     }),
     prisma.diagnosticTemplate.count({ where }),
   ]);
@@ -84,6 +88,7 @@ export default async function DiagnosticsServicesPage({
                 <tr className="border-b border-white/[0.06]">
                   {[
                     "Нэр",
+                    "Ангилал",
                     "Төрөл",
                     "Үнэ",
                     "Хугацаа",
@@ -94,7 +99,7 @@ export default async function DiagnosticsServicesPage({
                   ].map((h) => (
                     <th
                       key={h}
-                      className="text-left text-xs text-white/30 font-medium px-5 py-3"
+                      className="text-left text-xs text-white/30 light:text-slate-500 font-medium px-5 py-3"
                     >
                       {h}
                     </th>
@@ -105,9 +110,9 @@ export default async function DiagnosticsServicesPage({
                 {templates.map((t) => {
                   const type = t.type as DiagnosticType;
                   return (
-                    <tr
+                    <ClickableRow
                       key={t.id}
-                      className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors"
+                      href={`/dashboard/services/diagnostics/${t.id}`}
                     >
                       <td className="px-5 py-4">
                         <div className="text-sm font-medium text-white/90">
@@ -118,6 +123,15 @@ export default async function DiagnosticsServicesPage({
                             {t.description}
                           </div>
                         ) : null}
+                      </td>
+                      <td className="px-5 py-4 text-sm">
+                        {t.category ? (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-300 border border-violet-500/20 light:text-violet-700">
+                            {t.category.name}
+                          </span>
+                        ) : (
+                          <span className="text-white/30 text-xs">—</span>
+                        )}
                       </td>
                       <td className="px-5 py-4">
                         <span
@@ -140,7 +154,7 @@ export default async function DiagnosticsServicesPage({
                       </td>
                       <td className="px-5 py-4">
                         {t.isActive ? (
-                          <span className="text-xs text-emerald-300">
+                          <span className="text-xs text-emerald-300 light:text-emerald-700">
                             Идэвхтэй
                           </span>
                         ) : (
@@ -154,7 +168,7 @@ export default async function DiagnosticsServicesPage({
                           <div className="flex items-center justify-end gap-1">
                             <Link
                               href={`/dashboard/services/diagnostics/${t.id}`}
-                              className="text-xs text-violet-400 hover:text-violet-300 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-violet-500/10"
+                              className="text-xs text-violet-400 hover:text-violet-300 light:text-violet-600 light:hover:text-violet-700 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-violet-500/10"
                             >
                               Засах
                             </Link>
@@ -171,7 +185,7 @@ export default async function DiagnosticsServicesPage({
                               <input type="hidden" name="id" value={t.id} />
                               <button
                                 type="submit"
-                                className="text-xs text-red-400 hover:text-red-300 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-red-500/10"
+                                className="text-xs text-red-400 hover:text-red-300 light:text-red-600 light:hover:text-red-700 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-red-500/10"
                                 title={
                                   t._count.reports > 0
                                     ? "Бөглөгдсөн тайлантай тул архивлагдана"
@@ -184,7 +198,7 @@ export default async function DiagnosticsServicesPage({
                           </div>
                         ) : null}
                       </td>
-                    </tr>
+                    </ClickableRow>
                   );
                 })}
               </tbody>

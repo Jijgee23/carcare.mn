@@ -9,6 +9,7 @@ import { assertActiveSubscription } from "@/lib/subscription-server";
 import { normalizeWheelPosition } from "@/lib/hur_service";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
+import { ensureTenantVehicle, resolveVehicle } from "@/lib/vehicles";
 
 // Захиалга үүсгэх явцад үйлчлүүлэгч / машин шинээр бүртгэх — хуудас сольж redirect
 // хийхгүй, шинээр үүсгэсэн бичлэгийг буцаана.
@@ -77,6 +78,12 @@ export async function quickCreateCustomerAction(input: {
       select: { id: true, fullName: true, phone: true },
     });
   } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      return {
+        ok: false,
+        fieldErrors: { phone: "Энэ утасны дугаартай үйлчлүүлэгч аль хэдийн бүртгэлтэй байна." },
+      };
+    }
     return {
       ok: false,
       message: e instanceof Error ? e.message : "Үүсгэх явцад алдаа гарлаа.",
@@ -107,6 +114,7 @@ export type QuickVehicleResult = {
     make: string;
     model: string;
     customerId: string | null;
+    isPostpaid: boolean;
   };
   fieldErrors?: Record<string, string>;
   message?: string;
@@ -157,10 +165,17 @@ export async function quickCreateVehicleAction(input: {
     if (!c) return { ok: false, fieldErrors: { customerId: "Үйлчлүүлэгч олдсонгүй." } };
   }
 
-  let created;
+  let created: {
+    id: string;
+    plate: string;
+    make: string;
+    model: string;
+    customerId: string | null;
+    isPostpaid: boolean;
+  };
   try {
-    created = await prisma.vehicle.create({
-      data: {
+    created = await prisma.$transaction(async (tx) => {
+      const v = await resolveVehicle(tx, {
         plate,
         vin,
         make,
@@ -168,26 +183,26 @@ export async function quickCreateVehicleAction(input: {
         year,
         fuelType,
         wheelPosition,
-        customerId,
+      });
+      await ensureTenantVehicle(tx, {
         tenantId: user.tenantId,
-      },
-      select: {
-        id: true,
-        plate: true,
-        make: true,
-        model: true,
-        customerId: true,
-      },
+        vehicleId: v.id,
+        customerId,
+      });
+      const full = await tx.vehicle.findUniqueOrThrow({
+        where: { id: v.id },
+        select: { id: true, plate: true, make: true, model: true },
+      });
+      // Машин өмнө нь бүртгэлтэй байсан бол link-ийн одоогийн төлөвийг авна.
+      const link = await tx.tenantVehicle.findUnique({
+        where: {
+          tenantId_vehicleId: { tenantId: user.tenantId, vehicleId: v.id },
+        },
+        select: { isPostpaid: true },
+      });
+      return { ...full, customerId, isPostpaid: link?.isPostpaid ?? false };
     });
   } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      return {
-        ok: false,
-        fieldErrors: {
-          plate: "Энэ улсын дугаартай машин аль хэдийн бүртгэгдсэн байна.",
-        },
-      };
-    }
     return {
       ok: false,
       message: e instanceof Error ? e.message : "Үүсгэх явцад алдаа гарлаа.",

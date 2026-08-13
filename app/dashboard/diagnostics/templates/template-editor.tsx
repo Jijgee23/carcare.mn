@@ -24,6 +24,7 @@ import {
   type TemplateSchema,
   type TemplateSection,
 } from "@/lib/diagnostics";
+import { TemplatePreview } from "./template-preview";
 
 type Initial = {
   id?: string;
@@ -34,7 +35,10 @@ type Initial = {
   schema: TemplateSchema;
   price: string | null;
   durationMin: number | null;
+  categoryId: string | null;
 };
+
+export type CategoryOption = { id: string; name: string; isActive: boolean };
 
 function newId(prefix: string) {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
@@ -60,7 +64,13 @@ function defaultSchema(): TemplateSchema {
   };
 }
 
-export function TemplateEditor({ initial }: { initial?: Initial }) {
+export function TemplateEditor({
+  initial,
+  categories = [],
+}: {
+  initial?: Initial;
+  categories?: CategoryOption[];
+}) {
   const isEdit = Boolean(initial?.id);
   const action = isEdit
     ? updateTemplateAction.bind(null, initial!.id!)
@@ -73,10 +83,17 @@ export function TemplateEditor({ initial }: { initial?: Initial }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [type, setType] = useState<DiagnosticType>(initial?.type ?? "INTAKE");
+  const [categoryId, setCategoryId] = useState(initial?.categoryId ?? "");
   const [isActive, setIsActive] = useState(initial?.isActive ?? true);
+
+  // Идэвхтэй ангилал + одоо сонгогдсон (идэвхгүй болсон ч хадгалагдсаныг харуулна).
+  const visibleCategories = categories.filter(
+    (c) => c.isActive || c.id === initial?.categoryId,
+  );
   const [schema, setSchema] = useState<TemplateSchema>(
     initial?.schema ?? defaultSchema(),
   );
+  const [showPreview, setShowPreview] = useState(false);
 
   const fe = state?.fieldErrors ?? {};
   const schemaJson = useMemo(() => JSON.stringify(schema), [schema]);
@@ -188,7 +205,7 @@ export function TemplateEditor({ initial }: { initial?: Initial }) {
     <form action={formAction} className="flex flex-col gap-6">
       <FormError message={state?.message} />
       {fe.schema ? (
-        <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-sm text-red-300">
+        <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-sm text-red-300 light:text-red-600">
           {fe.schema}
         </div>
       ) : null}
@@ -208,6 +225,36 @@ export function TemplateEditor({ initial }: { initial?: Initial }) {
               className={`compact-input ${fe.name ? "border-red-500/50" : ""}`}
               placeholder="Жишээ: Машин хүлээж авах ерөнхий үзлэг"
             />
+          </Field>
+          <Field
+            label="Ангилал"
+            htmlFor="categoryId"
+            error={fe.categoryId}
+            hint={
+              visibleCategories.length > 0
+                ? undefined
+                : "Үйлчилгээ → Ангилалд эхлээд бүртгээрэй."
+            }
+            className="max-w-xs"
+          >
+            <select
+              id="categoryId"
+              name="categoryId"
+              required
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value)}
+              className={`compact-input ${fe.categoryId ? "border-red-500/50" : ""}`}
+            >
+              <option value="" className="bg-[var(--surface)]">
+                — Ангилал —
+              </option>
+              {visibleCategories.map((c) => (
+                <option key={c.id} value={c.id} className="bg-[var(--surface)]">
+                  {c.name}
+                  {c.isActive ? "" : " (идэвхгүй)"}
+                </option>
+              ))}
+            </select>
           </Field>
           <Field
             label="Үнэ (₮)"
@@ -364,7 +411,8 @@ export function TemplateEditor({ initial }: { initial?: Initial }) {
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-2 pl-3 border-l-2 border-white/[0.04]">
+                <div className="pl-3 border-l-2 border-white/[0.04] flex flex-col gap-2">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-2 items-start">
                   {sec.items.map((item, iIdx) => {
                     // Энэ item-ийн өмнө орших, бүх хэсэгт байгаа check item-ууд
                     // (зөвхөн дээд талын check item-аас хамаарч болно)
@@ -400,10 +448,11 @@ export function TemplateEditor({ initial }: { initial?: Initial }) {
                       />
                     );
                   })}
+                  </div>
                   <button
                     type="button"
                     onClick={() => addItem(sIdx)}
-                    className="self-start text-xs text-violet-300 hover:text-violet-200 px-2 py-1 rounded-md hover:bg-violet-500/10"
+                    className="self-start text-xs text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800 px-2 py-1 rounded-md hover:bg-violet-500/10"
                   >
                     + Асуулт нэмэх
                   </button>
@@ -412,6 +461,20 @@ export function TemplateEditor({ initial }: { initial?: Initial }) {
             ))}
           </div>
         )}
+      </section>
+
+      <section className="glass rounded-xl p-4 sm:p-5 border border-white/[0.08] flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold text-sm">Бөглөх урьдчилан харах</h2>
+          <button
+            type="button"
+            onClick={() => setShowPreview((v) => !v)}
+            className="text-xs bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] px-3 py-1.5 rounded-lg transition-colors"
+          >
+            {showPreview ? "Нуух" : "Харах"}
+          </button>
+        </div>
+        {showPreview ? <TemplatePreview schema={schema} /> : null}
       </section>
 
       <input type="hidden" name="schema" value={schemaJson} />
@@ -493,51 +556,10 @@ function ItemRow({
           type="text"
           value={item.label}
           onChange={(e) => onChange({ label: e.target.value })}
-          className="flex-1 bg-transparent border-b border-white/[0.04] focus:border-violet-500/50 outline-none text-sm text-white/80 pb-1"
+          className="flex-1 min-w-0 bg-transparent border-b border-white/[0.04] focus:border-violet-500/50 outline-none text-sm text-white/80 pb-1"
           placeholder="Асуултын нэр"
         />
-        <select
-          value={item.type}
-          onChange={(e) => onChange({ type: e.target.value as ItemType })}
-          className="text-xs bg-white/[0.06] border border-white/[0.08] rounded-md px-2 py-1 text-white/70"
-        >
-          {ITEM_TYPES.map((t) => (
-            <option key={t} value={t} className="bg-[#0d0d14]">
-              {ITEM_TYPE_LABEL[t]}
-            </option>
-          ))}
-        </select>
-        <select
-          value={item.positionSet ?? ""}
-          onChange={(e) =>
-            onChange({
-              positionSet: e.target.value
-                ? (e.target.value as PositionSetKey)
-                : undefined,
-            })
-          }
-          title="Байрлал бүрээр давтах (зүүн/баруун, 4 булан г.м.)"
-          className="text-xs bg-white/[0.06] border border-white/[0.08] rounded-md px-2 py-1 text-white/70"
-        >
-          <option value="" className="bg-[#0d0d14]">
-            Байрлалгүй
-          </option>
-          {POSITION_SET_KEYS.map((k) => (
-            <option key={k} value={k} className="bg-[#0d0d14]">
-              {POSITION_SETS[k].label}
-            </option>
-          ))}
-        </select>
-        <label className="flex items-center gap-1 text-xs text-white/50">
-          <input
-            type="checkbox"
-            checked={item.required}
-            onChange={(e) => onChange({ required: e.target.checked })}
-            className="accent-violet-500"
-          />
-          Заавал
-        </label>
-        <div className="flex items-center gap-0.5 text-white/40">
+        <div className="flex items-center gap-0.5 text-white/40 shrink-0">
           <button
             type="button"
             onClick={() => onMove(-1)}
@@ -557,11 +579,55 @@ function ItemRow({
           <button
             type="button"
             onClick={onRemove}
-            className="p-1 hover:text-red-300 text-xs"
+            className="p-1 hover:text-red-300 light:hover:text-red-600 text-xs"
           >
             ✕
           </button>
         </div>
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <select
+          value={item.type}
+          onChange={(e) => onChange({ type: e.target.value as ItemType })}
+          className="text-xs bg-white/[0.06] border border-white/[0.08] rounded-md px-2 py-1 text-white/70"
+        >
+          {ITEM_TYPES.map((t) => (
+            <option key={t} value={t} className="bg-[var(--surface)]">
+              {ITEM_TYPE_LABEL[t]}
+            </option>
+          ))}
+        </select>
+        <select
+          value={item.positionSet ?? ""}
+          onChange={(e) =>
+            onChange({
+              positionSet: e.target.value
+                ? (e.target.value as PositionSetKey)
+                : undefined,
+            })
+          }
+          title="Байрлал бүрээр давтах (зүүн/баруун, 4 булан г.м.)"
+          className="text-xs bg-white/[0.06] border border-white/[0.08] rounded-md px-2 py-1 text-white/70"
+        >
+          <option value="" className="bg-[var(--surface)]">
+            Байрлалгүй
+          </option>
+          {POSITION_SET_KEYS.map((k) => (
+            <option key={k} value={k} className="bg-[var(--surface)]">
+              {POSITION_SETS[k].label}
+            </option>
+          ))}
+        </select>
+        <label className="flex items-center gap-1 text-xs text-white/50">
+          <input
+            type="checkbox"
+            checked={item.required}
+            onChange={(e) => onChange({ required: e.target.checked })}
+            className="accent-violet-500"
+          />
+          Заавал
+        </label>
       </div>
 
       {item.type === "check" ? (
@@ -577,7 +643,7 @@ function ItemRow({
             onChange({ options: arr.length ? arr : DEFAULT_CHECK_OPTIONS });
           }}
           className="auth-input text-xs"
-          placeholder="Сонголтуудыг таслалаар тусгаарлана уу (жишээ: OK, Анхаарах, Засах)"
+          placeholder="Сонголтуудыг таслалаар тусгаарлана уу (жишээ: Хэвийн, Анхаарах, Солих)"
         />
       ) : null}
 
@@ -591,11 +657,11 @@ function ItemRow({
               onChange={(e) => setShowWhenItem(e.target.value)}
               className="text-xs bg-white/[0.04] border border-white/[0.08] rounded px-2 py-0.5 text-white/70"
             >
-              <option value="" className="bg-[#0d0d14]">
+              <option value="" className="bg-[var(--surface)]">
                 — Хамаарал байхгүй —
               </option>
               {priorCheckItems.map((p) => (
-                <option key={p.id} value={p.id} className="bg-[#0d0d14]">
+                <option key={p.id} value={p.id} className="bg-[var(--surface)]">
                   {p.label}
                 </option>
               ))}
@@ -614,7 +680,7 @@ function ItemRow({
                     key={opt}
                     className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] cursor-pointer border transition-colors ${
                       checked
-                        ? "bg-violet-500/15 border-violet-500/40 text-violet-200"
+                        ? "bg-violet-500/15 border-violet-500/40 text-violet-200 light:text-violet-700"
                         : "bg-white/[0.02] border-white/[0.06] text-white/55 hover:bg-white/[0.05]"
                     }`}
                   >
@@ -634,7 +700,7 @@ function ItemRow({
           ) : null}
 
           {showWhenInvalid ? (
-            <p className="text-[11px] text-amber-400">
+            <p className="text-[11px] text-amber-400 light:text-amber-700">
               Хамаарал тогтоосон асуулт алга болсон байна — дахин сонгоно уу.
             </p>
           ) : null}

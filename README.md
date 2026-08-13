@@ -150,8 +150,9 @@ npm run system:create-admin
 ### Cron (хуваарьт ажил)
 - `POST /api/cron/expire-subscriptions` — хугацаа дууссан багцыг EXPIRED болгох.
 - `POST /api/cron/appointment-reminders` — удахгүй болох цагуудад SMS + push сануулга.
+- `POST /api/cron/expire-appointments` — хугацаа хэтэрсэн, хариу өгөөгүй (PENDING) цаг захиалгыг CANCELLED болгох.
 
-Хоёулаа `Authorization: Bearer $CRON_SECRET`-ээр хамгаалагдсан.
+Бүгд `Authorization: Bearer $CRON_SECRET`-ээр хамгаалагдсан.
 
 ### Мобайл REST API
 `/api/v1/...` (token-based). Хэрэглэгчийн апп: `/api/v1/app/*` (OTP auth, orgs каталог, appointments, vehicles, devices, HUR lookup). Дэлгэрэнгүйг [`docs/mobile-device-push.md`](docs/mobile-device-push.md).

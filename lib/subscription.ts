@@ -47,10 +47,13 @@ export const SUBSCRIPTION_STATUS_LABEL: Record<SubscriptionStatus, string> = {
 };
 
 export const SUBSCRIPTION_STATUS_BADGE: Record<SubscriptionStatus, string> = {
-  TRIAL: "bg-amber-500/15 text-amber-300 border border-amber-500/30",
-  ACTIVE: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30",
-  EXPIRED: "bg-red-500/15 text-red-300 border border-red-500/30",
-  CANCELLED: "bg-white/10 text-white/50 border border-white/15",
+  TRIAL:
+    "bg-amber-500/15 text-amber-300 border border-amber-500/30 light:bg-amber-100 light:border-amber-300 light:text-amber-700",
+  ACTIVE:
+    "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700",
+  EXPIRED:
+    "bg-red-500/15 text-red-300 border border-red-500/30 light:bg-red-100 light:border-red-300 light:text-red-700",
+  CANCELLED: "bg-white/10 text-white/50 border border-white/15 light:bg-slate-100 light:border-slate-300 light:text-slate-600",
 };
 
 export const PLAN_LABEL: Record<Plan, string> = {

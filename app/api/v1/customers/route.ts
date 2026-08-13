@@ -1,5 +1,6 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
+import { normalizePhone } from "@/lib/phone";
 import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
@@ -66,30 +67,43 @@ export async function POST(req: Request) {
   const emailStr = typeof email === "string" ? email.trim() : "";
   const noteStr = typeof note === "string" ? note.trim() : "";
 
+  // Account ↔ Customer тааралт утсаар түлхүүрлэгддэг тул канон 8 оронтой
+  // форматаар хадгална (dashboard action-тай ижил).
+  const canonicalPhone = normalizePhone(phoneStr);
   const fieldErrors: Record<string, string> = {};
   // Зөвхөн утас заавал. Овог нэр заавал биш.
   if (!phoneStr) fieldErrors.phone = "Утас шаардлагатай.";
+  else if (!canonicalPhone)
+    fieldErrors.phone = "Утасны дугаар 8 оронтой тоо байх ёстой.";
   if (Object.keys(fieldErrors).length > 0) {
     return jsonError(422, "Хүсэлт буруу.", { fieldErrors });
   }
 
-  const customer = await prisma.customer.create({
-    data: {
-      tenantId: auth.user.tenantId,
-      fullName: nameStr,
-      phone: phoneStr,
-      email: emailStr || null,
-      note: noteStr || null,
-    },
-    select: {
-      id: true,
-      fullName: true,
-      phone: true,
-      email: true,
-      note: true,
-      createdAt: true,
-    },
-  });
+  let customer;
+  try {
+    customer = await prisma.customer.create({
+      data: {
+        tenantId: auth.user.tenantId,
+        fullName: nameStr,
+        phone: canonicalPhone!,
+        email: emailStr || null,
+        note: noteStr || null,
+      },
+      select: {
+        id: true,
+        fullName: true,
+        phone: true,
+        email: true,
+        note: true,
+        createdAt: true,
+      },
+    });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      return jsonError(409, "Энэ утасны дугаартай харилцагч аль хэдийн бүртгэлтэй байна.");
+    }
+    throw e;
+  }
 
   return jsonOk({ customer }, { status: 201 });
 }

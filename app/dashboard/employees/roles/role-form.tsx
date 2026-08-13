@@ -197,7 +197,7 @@ export function RoleForm({
             </p>
           </div>
           {fe.permissions ? (
-            <p className="text-red-400 text-xs">{fe.permissions}</p>
+            <p className="text-red-400 light:text-red-600 text-xs">{fe.permissions}</p>
           ) : null}
         </div>
 
@@ -223,7 +223,7 @@ export function RoleForm({
                           onClick={() => toggleActionColumn(a.key, allOn)}
                           className={`inline-flex flex-col items-center gap-0.5 transition-colors ${
                             allOn
-                              ? "text-violet-300"
+                              ? "text-violet-300 light:text-violet-700"
                               : "text-white/40 hover:text-white/70"
                           }`}
                           title={
@@ -244,7 +244,7 @@ export function RoleForm({
                     <button
                       type="button"
                       onClick={() => toggleAllCrud(allCrudOn)}
-                      className="text-violet-300 hover:text-violet-200 transition-colors"
+                      className="text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800 transition-colors"
                       title={allCrudOn ? "Бүгдийг хасах" : "Бүгдийг сонгох"}
                     >
                       {allCrudOn ? "Бүгдийг хасах" : "Бүгдийг сонгох"}
@@ -406,7 +406,7 @@ function RowGroup({
                 onClick={() => onToggleRow(r.key, allOn)}
                 className={`text-xs transition-colors ${
                   allOn
-                    ? "text-violet-300 hover:text-violet-200"
+                    ? "text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
                     : "text-white/40 hover:text-white/70"
                 }`}
               >

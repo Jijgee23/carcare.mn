@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   Document,
   Page,
@@ -8,7 +9,7 @@ import {
   StyleSheet,
   Image,
   Font,
-  PDFDownloadLink,
+  BlobProvider,
 } from "@react-pdf/renderer";
 import {
   itemPositions,
@@ -32,148 +33,160 @@ Font.register({
 
 const styles = StyleSheet.create({
   page: {
-    padding: 40,
+    padding: 26,
     fontFamily: "DejaVuSans",
-    fontSize: 11,
+    fontSize: 10,
     color: "#000",
   },
   header: {
-    marginBottom: 30,
-    borderBottomWidth: 2,
+    marginBottom: 10,
+    borderBottomWidth: 1,
     borderBottomColor: "#e5e7eb",
-    paddingBottom: 20,
+    paddingBottom: 7,
   },
   title: {
-    fontSize: 20,
+    fontSize: 15,
     fontWeight: "bold",
-    marginBottom: 5,
+    marginBottom: 2,
     color: "#111",
   },
   subtitle: {
-    fontSize: 10,
+    fontSize: 9,
     color: "#666",
-    marginBottom: 15,
   },
   section: {
-    marginBottom: 20,
+    marginBottom: 8,
     borderTopWidth: 1,
-    borderTopColor: "#e5e7eb",
-    paddingTop: 15,
+    borderTopColor: "#eee",
+    paddingTop: 7,
   },
   sectionTitle: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: "bold",
-    marginBottom: 12,
-    color: "#111",
-  },
-  row: {
-    display: "flex",
-    flexDirection: "row",
-    marginBottom: 10,
-    paddingBottom: 8,
-    borderBottomWidth: 0.5,
-    borderBottomColor: "#f0f0f0",
-  },
-  rowLabel: {
-    width: "35%",
-    fontSize: 10,
-    fontWeight: "bold",
-    color: "#444",
-  },
-  rowValue: {
-    width: "65%",
-    fontSize: 10,
-    color: "#111",
-  },
-  itemLabel: {
-    fontSize: 10,
-    fontWeight: "bold",
-    marginTop: 10,
     marginBottom: 5,
     color: "#111",
   },
-  itemValue: {
-    fontSize: 10,
-    color: "#333",
-    marginBottom: 3,
+  // Мэдээлэл — 2 баганаар нягт
+  infoWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+  },
+  infoCell: {
+    width: "50%",
+    flexDirection: "row",
+    marginBottom: 2,
+    paddingRight: 10,
+  },
+  infoCellFull: {
+    width: "100%",
+    flexDirection: "row",
+    marginBottom: 2,
+  },
+  rowLabel: {
+    width: "34%",
+    fontSize: 9,
+    fontWeight: "bold",
+    color: "#555",
+  },
+  rowValue: {
+    width: "66%",
+    fontSize: 9,
+    color: "#111",
   },
   signatureSection: {
-    marginTop: 36,
+    marginTop: 12,
     borderTopWidth: 1,
     borderTopColor: "#e5e7eb",
-    paddingTop: 16,
+    paddingTop: 8,
   },
-  // Хадгалсан гарын үсгийн зургийг хоосон мөрний дээр харуулна
   signatureImage: {
-    width: 150,
-    height: 60,
+    width: 140,
+    height: 50,
     marginBottom: 4,
     objectFit: "contain",
   },
   signRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 28,
+    marginTop: 14,
   },
   signBlock: {
     width: "45%",
   },
-  // Гараар гарын үсэг зурах хоосон мөр (доод хүрээ)
   signLine: {
     borderBottomWidth: 1,
     borderBottomColor: "#333",
     height: 1,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   signCaption: {
-    fontSize: 9,
+    fontSize: 8,
     color: "#666",
   },
-  // Оношилгооны item-ууд
-  itemBlock: {
-    marginBottom: 8,
+  // Оношилгооны асуултууд — 2 баганаар нягт
+  itemsWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
   },
-  positionWrap: {
-    marginLeft: 10,
-    paddingLeft: 8,
-    borderLeftWidth: 1,
-    borderLeftColor: "#e5e7eb",
+  itemCol: {
+    width: "50%",
+    paddingRight: 12,
+    marginBottom: 4,
   },
-  positionLabel: {
+  itemColFull: {
+    width: "100%",
+    marginBottom: 4,
+  },
+  qLabel: {
     fontSize: 9,
-    color: "#888",
-    marginTop: 4,
+    fontWeight: "bold",
+    color: "#444",
+    marginBottom: 1,
+  },
+  // Байрлалуудыг 2-2-оор (индентгүй, нягт)
+  positionsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+  },
+  positionCell: {
+    width: "50%",
+    paddingRight: 8,
     marginBottom: 2,
   },
+  positionLabel: {
+    fontSize: 8,
+    color: "#888",
+    marginBottom: 1,
+  },
   entryValue: {
-    fontSize: 10,
+    fontSize: 9,
     color: "#111",
   },
   entryNote: {
-    fontSize: 9,
+    fontSize: 8,
     color: "#666",
     fontStyle: "italic",
-    marginTop: 2,
+    marginTop: 1,
   },
   entrySignature: {
-    width: 120,
-    height: 60,
+    width: 110,
+    height: 50,
     objectFit: "contain",
     marginTop: 2,
   },
   photoRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    marginTop: 3,
+    marginTop: 2,
   },
   photo: {
-    width: 70,
-    height: 70,
+    width: 60,
+    height: 60,
     objectFit: "cover",
     borderWidth: 1,
     borderColor: "#e5e7eb",
-    marginRight: 4,
-    marginBottom: 4,
+    marginRight: 3,
+    marginBottom: 3,
   },
 });
 
@@ -249,79 +262,87 @@ function DiagnosticReportPDF({ report }: { report: DiagnosticReportData }) {
         
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Үйлчлүүлэгч ба Машин</Text>
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Үйлчлүүлэгч:</Text>
-            <Text style={styles.rowValue}>{report.customerName}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Утас:</Text>
-            <Text style={styles.rowValue}>{report.customerPhone}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Машин:</Text>
-            <Text style={styles.rowValue}>
-              {report.vehicleMake} {report.vehicleModel}
-            </Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Дугаар:</Text>
-            <Text style={styles.rowValue}>{report.vehiclePlate}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Салбар:</Text>
-            <Text style={styles.rowValue}>{report.branchName}</Text>
-          </View>
-          {report.filledByName ? (
-            <View style={styles.row}>
-              <Text style={styles.rowLabel}>Бөглөсөн:</Text>
-              <Text style={styles.rowValue}>{report.filledByName}</Text>
+          <View style={styles.infoWrap}>
+            <View style={styles.infoCell}>
+              <Text style={styles.rowLabel}>Үйлчлүүлэгч:</Text>
+              <Text style={styles.rowValue}>{report.customerName}</Text>
             </View>
-          ) : null}
-          {report.mileageAtReport !== undefined ? (
-            <View style={styles.row}>
-              <Text style={styles.rowLabel}>Гүйлт:</Text>
+            <View style={styles.infoCell}>
+              <Text style={styles.rowLabel}>Утас:</Text>
+              <Text style={styles.rowValue}>{report.customerPhone}</Text>
+            </View>
+            <View style={styles.infoCell}>
+              <Text style={styles.rowLabel}>Машин:</Text>
               <Text style={styles.rowValue}>
-                {report.mileageAtReport.toLocaleString("mn-MN")} км
+                {report.vehicleMake} {report.vehicleModel}
               </Text>
             </View>
-          ) : null}
-          {report.notes ? (
-            <View style={styles.row}>
-              <Text style={styles.rowLabel}>Тэмдэглэл:</Text>
-              <Text style={styles.rowValue}>{report.notes}</Text>
+            <View style={styles.infoCell}>
+              <Text style={styles.rowLabel}>Дугаар:</Text>
+              <Text style={styles.rowValue}>{report.vehiclePlate}</Text>
             </View>
-          ) : null}
+            <View style={styles.infoCell}>
+              <Text style={styles.rowLabel}>Салбар:</Text>
+              <Text style={styles.rowValue}>{report.branchName}</Text>
+            </View>
+            {report.filledByName ? (
+              <View style={styles.infoCell}>
+                <Text style={styles.rowLabel}>Бөглөсөн:</Text>
+                <Text style={styles.rowValue}>{report.filledByName}</Text>
+              </View>
+            ) : null}
+            {report.mileageAtReport !== undefined ? (
+              <View style={styles.infoCell}>
+                <Text style={styles.rowLabel}>Гүйлт:</Text>
+                <Text style={styles.rowValue}>
+                  {report.mileageAtReport.toLocaleString("mn-MN")} км
+                </Text>
+              </View>
+            ) : null}
+            {report.notes ? (
+              <View style={styles.infoCellFull}>
+                <Text style={styles.rowLabel}>Тэмдэглэл:</Text>
+                <Text style={styles.rowValue}>{report.notes}</Text>
+              </View>
+            ) : null}
+          </View>
         </View>
 
         {/* Оношилгооны хэсэг бүр + item-ууд (page.tsx-ийн бүтэцтэй ижил) */}
         {report.sections.map((section) => (
           <View key={section.id} style={styles.section}>
             <Text style={styles.sectionTitle}>{section.title}</Text>
-            {section.items.map((item) => {
-              const positions = itemPositions(item);
-              return (
-                <View key={item.id} style={styles.itemBlock}>
-                  <Text style={styles.rowLabel}>{item.label}</Text>
-                  {positions ? (
-                    <View style={styles.positionWrap}>
-                      {positions.map((pos) => (
-                        <View key={pos.code}>
-                          <Text style={styles.positionLabel}>{pos.label}</Text>
-                          <EntryPdf
-                            item={item}
-                            entry={
-                              report.data[positionedKey(item.id, pos.code)] ?? {}
-                            }
-                          />
-                        </View>
-                      ))}
-                    </View>
-                  ) : (
-                    <EntryPdf item={item} entry={report.data[item.id] ?? {}} />
-                  )}
-                </View>
-              );
-            })}
+            <View style={styles.itemsWrap}>
+              {section.items.map((item) => {
+                const positions = itemPositions(item);
+                return (
+                  <View
+                    key={item.id}
+                    style={positions ? styles.itemColFull : styles.itemCol}
+                    wrap={false}
+                  >
+                    <Text style={styles.qLabel}>{item.label}</Text>
+                    {positions ? (
+                      <View style={styles.positionsRow}>
+                        {positions.map((pos) => (
+                          <View key={pos.code} style={styles.positionCell}>
+                            <Text style={styles.positionLabel}>{pos.label}</Text>
+                            <EntryPdf
+                              item={item}
+                              entry={
+                                report.data[positionedKey(item.id, pos.code)] ?? {}
+                              }
+                            />
+                          </View>
+                        ))}
+                      </View>
+                    ) : (
+                      <EntryPdf item={item} entry={report.data[item.id] ?? {}} />
+                    )}
+                  </View>
+                );
+              })}
+            </View>
           </View>
         ))}
 
@@ -349,13 +370,37 @@ function DiagnosticReportPDF({ report }: { report: DiagnosticReportData }) {
 }
 
 export function AdvancedPDFButton({ report }: { report: DiagnosticReportData }) {
+  // BlobProvider нь зөвхөн browser API. Next App Router-д client component-ийг
+  // SSR (Node) дээр бас render хийдэг тул mount хийгдэх хүртэл render хийхгүй —
+  // эс бөгөөс "web specific API" алдаа гарна.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  const className =
+    "no-print text-xs px-3 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-200 light:text-emerald-700 hover:bg-emerald-500/25 border border-emerald-400/20";
+
+  if (!mounted) {
+    return <span className={`${className} opacity-50`}>PDF</span>;
+  }
+
+  // Татахын оронд шинэ таб дээр нээж (inline) үзүүлнэ — blob URL-ийг
+  // download атрибутгүй target="_blank" линкээр нээхэд браузер PDF-ийг харуулна.
   return (
-    <PDFDownloadLink
-      document={<DiagnosticReportPDF report={report} />}
-      fileName={`diagnostic-report-${report.reportId}.pdf`}
-      className="no-print text-xs px-3 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25 border border-emerald-400/20"
-    >
-      {({ loading }) => (loading ? "PDF үүсэж байна..." : "PDF хүүдүүлэх")}
-    </PDFDownloadLink>
+    <BlobProvider document={<DiagnosticReportPDF report={report} />}>
+      {({ url, loading }) =>
+        loading || !url ? (
+          <span className={`${className} opacity-50`}>PDF...</span>
+        ) : (
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className={className}
+          >
+            PDF
+          </a>
+        )
+      }
+    </BlobProvider>
   );
 }

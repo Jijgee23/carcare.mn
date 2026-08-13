@@ -30,7 +30,7 @@ export function QPayWidget({
         QPay тохируулаагүй.{" "}
         <a
           href="/dashboard/settings/qpay"
-          className="text-violet-300 hover:text-violet-200 underline"
+          className="text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800 underline"
         >
           Тохируулах →
         </a>
@@ -61,7 +61,7 @@ function CreateButton({ orderId }: { orderId: string }) {
         {formPending ? "Үүсгэж..." : "QPay QR үүсгэх"}
       </button>
       {state && !state.ok && state.message ? (
-        <p className="text-xs text-red-400 mt-2">{state.message}</p>
+        <p className="text-xs text-red-400 light:text-red-600 mt-2">{state.message}</p>
       ) : null}
     </form>
   );
@@ -120,7 +120,7 @@ function QRPanel({
       </div>
 
       {paid ? (
-        <div className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-200 rounded-lg px-3 py-2 text-xs text-center">
+        <div className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-200 light:text-emerald-700 rounded-lg px-3 py-2 text-xs text-center">
           ✓ Төлбөр амжилттай
         </div>
       ) : pending.qrImage ? (
@@ -139,7 +139,7 @@ function QRPanel({
       {pending.qrText ? (
         <a
           href={pending.qrText}
-          className="text-[11px] text-violet-300 hover:text-violet-200"
+          className="text-[11px] text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
         >
           Банкны апп нээх →
         </a>

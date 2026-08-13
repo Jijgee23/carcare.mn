@@ -1,5 +1,5 @@
-import { Prisma, type PrismaClient } from "@/app/generated/prisma/client";
 import { normalizePhone } from "@/lib/phone";
+import type { PrismaTransactionClient } from "@/lib/prisma";
 
 export const APPOINTMENT_STATUSES = [
   "PENDING",
@@ -20,11 +20,16 @@ export const APPOINTMENT_STATUS_LABEL: Record<AppointmentStatus, string> = {
 };
 
 export const APPOINTMENT_STATUS_BADGE: Record<AppointmentStatus, string> = {
-  PENDING: "bg-amber-500/15 text-amber-400 border border-amber-500/25",
-  CONFIRMED: "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25",
-  REJECTED: "bg-red-500/10 text-red-400 border border-red-500/20",
-  CANCELLED: "bg-zinc-500/15 text-zinc-300 border border-zinc-500/25",
-  NO_SHOW: "bg-purple-500/15 text-purple-300 border border-purple-500/25",
+  PENDING:
+    "bg-amber-500/15 text-amber-400 border border-amber-500/25 light:bg-amber-100 light:border-amber-300 light:text-amber-700",
+  CONFIRMED:
+    "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700",
+  REJECTED:
+    "bg-red-500/10 text-red-400 border border-red-500/20 light:bg-red-100 light:border-red-300 light:text-red-700",
+  CANCELLED:
+    "bg-zinc-500/15 text-zinc-300 border border-zinc-500/25 light:bg-zinc-100 light:border-zinc-300 light:text-zinc-600",
+  NO_SHOW:
+    "bg-purple-500/15 text-purple-300 border border-purple-500/25 light:bg-purple-100 light:border-purple-300 light:text-purple-700",
 };
 
 // Ажилтны хийж болох төлвийн шилжилт.
@@ -39,7 +44,7 @@ export const APPOINTMENT_STATUS_TRANSITIONS: Record<
   NO_SHOW: [],
 };
 
-type Client = PrismaClient | Prisma.TransactionClient;
+type Client = PrismaTransactionClient;
 
 /**
  * Гүүр — global Account-ийг тенантын дотоод Customer-той утсаар нь холбоно.
@@ -94,7 +99,9 @@ export async function resolveCustomerForAccount(
     data: {
       tenantId,
       accountId: account.id,
-      fullName: account.name?.trim() || "Цаг захиалсан хэрэглэгч",
+      // Нэргүй бол placeholder бичихгүй — хоосон үлдээж, дэлгэцэнд утсаар нь
+      // харуулна ([[customerLabel]]).
+      fullName: account.name?.trim() || "",
       phone,
       email: account.email,
     },
@@ -103,57 +110,3 @@ export async function resolveCustomerForAccount(
   return created.id;
 }
 
-/**
- * Хэрэглэгчийн global AccountVehicle-ийг тенантын Vehicle руу snapshot хийнэ.
- *  - [tenantId, plate]-аар тааруулж, байвал тэр Vehicle-ийг (эзэнгүй бол
- *    customer-т холбож) буцаана.
- *  - Үгүй бол тухайн customer-т шинэ Vehicle үүсгэнэ.
- */
-export async function snapshotVehicleForAccount(
-  client: Client,
-  tenantId: string,
-  customerId: string,
-  v: {
-    plate: string;
-    make: string;
-    model: string;
-    year: number | null;
-    vin: string | null;
-    fuelType: string | null;
-    wheelPosition: string | null;
-    mileage: number | null;
-  },
-): Promise<string> {
-  const plate = v.plate.trim();
-
-  const existing = await client.vehicle.findUnique({
-    where: { tenantId_plate: { tenantId, plate } },
-    select: { id: true, customerId: true },
-  });
-  if (existing) {
-    if (!existing.customerId) {
-      await client.vehicle.update({
-        where: { id: existing.id },
-        data: { customerId },
-      });
-    }
-    return existing.id;
-  }
-
-  const created = await client.vehicle.create({
-    data: {
-      tenantId,
-      customerId,
-      plate,
-      make: v.make,
-      model: v.model,
-      year: v.year,
-      vin: v.vin,
-      fuelType: v.fuelType,
-      wheelPosition: v.wheelPosition,
-      mileage: v.mileage,
-    },
-    select: { id: true },
-  });
-  return created.id;
-}

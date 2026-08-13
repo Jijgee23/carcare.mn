@@ -55,36 +55,53 @@ const QUICK_RANGES = [
   { key: "this-year", label: "Энэ жил" },
 ] as const;
 
-function buildQuickHref(key: (typeof QUICK_RANGES)[number]["key"]): string {
+// Хурдан мужийн огнооны хил — buildQuickHref болон active илрүүлэлт хоёулаа
+// нэг эх сурвалжаас авахын тулд нэг функцэд төвлөрүүлэв.
+function quickBounds(key: string): { from: Date; to: Date } {
   const now = new Date();
-  let from: Date;
-  let to: Date = now;
   switch (key) {
-    case "this-month":
-      return "/dashboard/reports";
     case "last-month": {
-      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
-      from = start;
-      to = end;
-      break;
+      const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const to = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+      return { from, to };
     }
     case "last-30":
-      from = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      break;
+      return {
+        from: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
+        to: now,
+      };
     case "this-year":
-      from = new Date(now.getFullYear(), 0, 1);
-      break;
+      return { from: new Date(now.getFullYear(), 0, 1), to: now };
+    default:
+      return { from: new Date(now.getFullYear(), now.getMonth(), 1), to: now };
   }
+}
+
+function buildQuickHref(key: (typeof QUICK_RANGES)[number]["key"]): string {
+  if (key === "this-month") return "/dashboard/reports";
+  const { from, to } = quickBounds(key);
   return `/dashboard/reports?from=${fmt(from)}&to=${fmt(to)}`;
 }
 
+// Локал цагаар YYYY-MM-DD. toISOString() нь UTC руу хөрвүүлдэг тул UTC+8-д
+// шөнө дундын огноо өмнөх өдөр рүү "гулсаж" муж 1 өдрөөр буруу болдгийг зассан.
 function fmt(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
-function isQuickActive(active: Range, key: string): boolean {
-  return active.key === key || (key === "this-month" && active.key === "this-month");
+// Одоогийн from/to параметр аль хурдан мужид яг тохирч байгааг тодорхойлно.
+// (parseRange бүх custom мужийг "custom" болгодог тул active-ийг үүгээр илрүүлнэ.)
+function activeQuickKey(params: { from?: string; to?: string }): string {
+  if (!params.from && !params.to) return "this-month";
+  for (const q of QUICK_RANGES) {
+    if (q.key === "this-month") continue;
+    const { from, to } = quickBounds(q.key);
+    if (fmt(from) === params.from && fmt(to) === params.to) return q.key;
+  }
+  return "custom";
 }
 
 export default async function ReportsPage({
@@ -95,6 +112,7 @@ export default async function ReportsPage({
   const user = await requireUser();
   const params = await searchParams;
   const range = parseRange(params);
+  const activeKey = activeQuickKey(params);
 
   const scopeBranchId = branchScopeId(user);
   const branchFilter = scopeBranchId ? { branchId: scopeBranchId } : {};
@@ -115,6 +133,7 @@ export default async function ReportsPage({
     ],
   };
 
+  // 1-р давалгаа — нэгтгэлүүд (lookup entity-гүйгээр).
   const [
     revenueAgg,
     completedCount,
@@ -124,10 +143,6 @@ export default async function ReportsPage({
     kindTotals,
     topCustomers,
     topPartsRaw,
-    branchesMap,
-    techsMap,
-    customersMap,
-    partsMap,
   ] = await Promise.all([
     prisma.serviceOrder.aggregate({
       where: completedWhere,
@@ -178,27 +193,54 @@ export default async function ReportsPage({
       orderBy: { _sum: { total: "desc" } },
       take: 5,
     }),
-    prisma.branch.findMany({
-      where: { tenantId: user.tenantId },
-      select: { id: true, name: true },
-    }),
-    prisma.user.findMany({
-      where: { tenantId: user.tenantId },
-      select: { id: true, firstName: true, lastName: true },
-    }),
-    prisma.customer.findMany({
-      where: { tenantId: user.tenantId },
-      select: { id: true, fullName: true, phone: true },
-    }),
-    prisma.service.findMany({
-      where: { tenantId: user.tenantId, type: "GOODS" },
-      select: {
-        id: true,
-        code: true,
-        name: true,
-        unit: { select: { name: true } },
-      },
-    }),
+  ]);
+
+  // 2-р давалгаа — зөвхөн дээрх нэгтгэлд гарч ирсэн ID-уудыг л нэрлэхийн тулд
+  // татна. Өмнө нь бүх салбар/ажилтан/үйлчлүүлэгч/сэлбэгийг татдаг байсан нь
+  // том tenant дээр удаан байсныг (top-5 гаргахад мянга мянган мөр) зассан.
+  const branchIds = byBranch
+    .map((r) => r.branchId)
+    .filter((id): id is string => Boolean(id));
+  const techIds = byTech
+    .map((r) => r.assignedToId)
+    .filter((id): id is string => Boolean(id));
+  const customerIds = topCustomers
+    .map((r) => r.customerId)
+    .filter((id): id is string => Boolean(id));
+  const partIds = topPartsRaw
+    .map((r) => r.serviceId)
+    .filter((id): id is string => Boolean(id));
+
+  const [branchesMap, techsMap, customersMap, partsMap] = await Promise.all([
+    branchIds.length
+      ? prisma.branch.findMany({
+          where: { tenantId: user.tenantId, id: { in: branchIds } },
+          select: { id: true, name: true },
+        })
+      : [],
+    techIds.length
+      ? prisma.user.findMany({
+          where: { tenantId: user.tenantId, id: { in: techIds } },
+          select: { id: true, firstName: true, lastName: true },
+        })
+      : [],
+    customerIds.length
+      ? prisma.customer.findMany({
+          where: { tenantId: user.tenantId, id: { in: customerIds } },
+          select: { id: true, fullName: true, phone: true },
+        })
+      : [],
+    partIds.length
+      ? prisma.service.findMany({
+          where: { tenantId: user.tenantId, id: { in: partIds } },
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            unit: { select: { name: true } },
+          },
+        })
+      : [],
   ]);
 
   const branchById = new Map(branchesMap.map((b) => [b.id, b]));
@@ -290,14 +332,14 @@ export default async function ReportsPage({
 
       <div className="flex items-center gap-2 flex-wrap mb-6">
         {QUICK_RANGES.map((q) => {
-          const active = isQuickActive(range, q.key);
+          const active = activeKey === q.key;
           return (
             <Link
               key={q.key}
               href={buildQuickHref(q.key)}
               className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${
                 active
-                  ? "bg-violet-600/30 text-violet-300 border border-violet-500/30"
+                  ? "bg-violet-600/30 text-violet-300 border border-violet-500/30 light:bg-violet-100 light:border-violet-300 light:text-violet-700"
                   : "text-white/40 hover:text-white/70 border border-white/10 hover:border-white/20"
               }`}
             >

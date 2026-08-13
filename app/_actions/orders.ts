@@ -168,9 +168,11 @@ async function validateRefs(tenantId: string, data: OrderInput) {
         })
       : null,
     data.vehicleId
-      ? prisma.vehicle.findFirst({
-          where: { id: data.vehicleId, tenantId },
-          select: { id: true, customerId: true },
+      ? prisma.tenantVehicle.findUnique({
+          where: {
+            tenantId_vehicleId: { tenantId, vehicleId: data.vehicleId },
+          },
+          select: { vehicleId: true, customerId: true, isPostpaid: true },
         })
       : null,
     data.assignedToId
@@ -190,7 +192,8 @@ async function validateRefs(tenantId: string, data: OrderInput) {
     errors.vehicleId = "Энэ машин сонгосон үйлчлүүлэгчийнх биш.";
   }
 
-  return errors;
+  // Машины дараа төлбөрт төлөв — захиалга руу snapshot хийхэд ашиглана.
+  return { errors, vehicleIsPostpaid: vehicle?.isPostpaid ?? false };
 }
 
 export async function createOrderAction(
@@ -209,7 +212,10 @@ export async function createOrderAction(
     return { ok: false, fieldErrors: errors };
   }
 
-  const refErrors = await validateRefs(user.tenantId, data);
+  const { errors: refErrors, vehicleIsPostpaid } = await validateRefs(
+    user.tenantId,
+    data,
+  );
   if (Object.keys(refErrors).length > 0) {
     return { ok: false, fieldErrors: refErrors };
   }
@@ -268,6 +274,7 @@ export async function createOrderAction(
           assignedToId: data.assignedToId,
           scheduledAt: data.scheduledAt,
           notes: data.notes,
+          isPostpaid: vehicleIsPostpaid,
         },
         select: { id: true },
       });
@@ -360,7 +367,10 @@ export async function updateOrderAction(
     return { ok: false, fieldErrors: errors };
   }
 
-  const refErrors = await validateRefs(user.tenantId, data);
+  const { errors: refErrors, vehicleIsPostpaid } = await validateRefs(
+    user.tenantId,
+    data,
+  );
   if (Object.keys(refErrors).length > 0) {
     return { ok: false, fieldErrors: refErrors };
   }
@@ -395,9 +405,10 @@ export async function updateOrderAction(
   }
 
   try {
+    // Машин солигдож болзошгүй тул дараа төлбөрт snapshot-ыг дахин тооцно.
     const updated = await prisma.serviceOrder.updateMany({
       where: scopedOrderWhere,
-      data,
+      data: { ...data, isPostpaid: vehicleIsPostpaid },
     });
     if (updated.count === 0) {
       return { ok: false, message: "Захиалга олдсонгүй." };
@@ -673,8 +684,26 @@ export async function deleteOrderAction(formData: FormData): Promise<void> {
     select: { number: true },
   });
 
-  await prisma.serviceOrder.delete({
-    where: { id, tenantId: user.tenantId },
+  const hasPaidPayment = await prisma.orderPayment.findFirst({
+    where: { orderId: id, status: "PAID" },
+    select: { id: true },
+  });
+  if (hasPaidPayment) {
+    throw new Error(
+      "Энэ захиалгад төлбөр төлөгдсөн тул устгах боломжгүй.",
+    );
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // PENDING/CANCELLED/FAILED зэрэг бодит мөнгө хөдлөөгүй оролдлогуудыг
+    // устгана — OrderPayment.orderId одоо Restrict тул захиалга устахаас
+    // өмнө эдгээрийг цэвэрлэх шаардлагатай.
+    await tx.orderPayment.deleteMany({
+      where: { orderId: id, status: { not: "PAID" } },
+    });
+    await tx.serviceOrder.delete({
+      where: { id, tenantId: user.tenantId },
+    });
   });
 
   await logAudit({

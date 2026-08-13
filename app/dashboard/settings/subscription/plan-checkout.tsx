@@ -103,7 +103,9 @@ function PlanList({ prices }: { prices: PlanPriceOption[] }) {
                   <li
                     key={`${f.label}-${i}`}
                     className={`flex items-start gap-2 ${
-                      f.highlighted ? "text-violet-200" : "text-white/70"
+                      f.highlighted
+                        ? "text-violet-200 light:text-violet-700"
+                        : "text-white/70"
                     }`}
                   >
                     <svg
@@ -115,7 +117,7 @@ function PlanList({ prices }: { prices: PlanPriceOption[] }) {
                       strokeWidth="3"
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      className="mt-0.5 shrink-0 text-emerald-400"
+                      className="mt-0.5 shrink-0 text-emerald-400 light:text-emerald-600"
                     >
                       <polyline points="20 6 9 17 4 12" />
                     </svg>
@@ -198,7 +200,7 @@ function QRPanel({ pending }: { pending: PendingPayment }) {
       </div>
 
       {paid ? (
-        <div className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-200 rounded-xl px-4 py-3 text-sm">
+        <div className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-200 light:bg-emerald-50 light:border-emerald-300 light:text-emerald-700 rounded-xl px-4 py-3 text-sm">
           Төлбөр амжилттай — багц идэвхжиж байна...
         </div>
       ) : pending.qrImage ? (
@@ -217,7 +219,7 @@ function QRPanel({ pending }: { pending: PendingPayment }) {
       {pending.qrText ? (
         <a
           href={pending.qrText}
-          className="text-xs text-violet-300 hover:text-violet-200"
+          className="text-xs text-violet-300 hover:text-violet-200 light:text-violet-600"
         >
           Банкны апп руу шилжих →
         </a>

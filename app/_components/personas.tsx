@@ -1,20 +1,21 @@
+import { CarIcon, TrendingUpIcon, WrenchIcon } from "./landing-icons";
 import { SectionHeading } from "./section-heading";
 
 const PERSONAS = [
   {
-    icon: "📈",
+    icon: <TrendingUpIcon />,
     role: "Сервисийн эзэн",
     title: "Олон салбараа нэг дороос удирд",
     desc: "Орлого, ачаалал, нөөц, ажилчдын гүйцэтгэлийг бодит цагт хяна. Шийдвэрээ өгөгдөл дээр тулгуурлан гарга.",
   },
   {
-    icon: "🛠️",
+    icon: <WrenchIcon />,
     role: "Менежер / Мастер",
     title: "Өдрийн ажлын явц гартаа",
     desc: "Захиалга, машины түүх, ашиглах сэлбэг — гар утаснаасаа л шууд харна. Урт жагсаалт хэвлэхээ боль.",
   },
   {
-    icon: "🚗",
+    icon: <CarIcon />,
     role: "Үйлчлүүлэгч",
     title: "Машиныхаа эрүүл мэндийг мэдэх",
     desc: "Өмнөх засваруудын түүх, дараагийн ТО-ны хугацаа, үнийн саналыг утсан дээрээ.",
@@ -32,8 +33,10 @@ export function Personas() {
 
         <div className="grid md:grid-cols-3 gap-6">
           {PERSONAS.map((p) => (
-            <div key={p.role} className="glass card-hover rounded-2xl p-7">
-              <div className="text-4xl mb-4">{p.icon}</div>
+            <div key={p.role} className="glass card-hover rounded-2xl p-7 min-w-0">
+              <div className="w-12 h-12 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-violet-400 mb-4">
+                {p.icon}
+              </div>
               <span className="text-xs font-semibold uppercase tracking-wider text-violet-400">
                 {p.role}
               </span>

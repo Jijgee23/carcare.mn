@@ -28,7 +28,7 @@ function Section({
 
 export default function PrivacyPage() {
   return (
-    <div className="min-h-screen flex flex-col bg-[#0a0a0f]">
+    <div className="min-h-screen flex flex-col bg-[var(--bg-primary)]">
       <header className="border-b border-white/[0.06]">
         <div className="mx-auto max-w-5xl px-4 h-16 flex items-center justify-between">
           <Link href="/">
@@ -122,7 +122,7 @@ export default function PrivacyPage() {
               Имэйл:{" "}
               <a
                 href={`mailto:${CONTACT.email}`}
-                className="text-violet-300 hover:text-violet-200"
+                className="text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
               >
                 {CONTACT.email}
               </a>

@@ -74,7 +74,7 @@ export function Select({
   const hasError = Boolean(error) || ariaInvalid;
   const borderColor = hasError
     ? "rgba(239, 68, 68, 0.5)"
-    : "rgba(255, 255, 255, 0.1)";
+    : "var(--input-border)";
 
   return (
     <div
@@ -102,8 +102,8 @@ export function Select({
           padding: "0.5rem 0.75rem",
           borderRadius: "0.5rem",
           border: `1px solid ${borderColor}`,
-          background: "rgba(255, 255, 255, 0.04)",
-          color: selected ? "rgba(255, 255, 255, 0.95)" : "rgba(255, 255, 255, 0.4)",
+          background: "var(--input-bg)",
+          color: selected ? "var(--input-fg)" : "var(--placeholder)",
           fontSize: "0.875rem",
           cursor: disabled ? "not-allowed" : "pointer",
           opacity: disabled ? 0.5 : 1,
@@ -159,8 +159,8 @@ export function Select({
             left: 0,
             right: 0,
             marginTop: "0.25rem",
-            background: "#15151f",
-            border: "1px solid rgba(255, 255, 255, 0.12)",
+            background: "var(--popover)",
+            border: "1px solid var(--input-border)",
             borderRadius: "0.625rem",
             boxShadow: "0 20px 50px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0,0,0,0.4)",
             overflow: "hidden",
@@ -226,13 +226,13 @@ function SelectOptionRow({
         background: active
           ? "rgba(139, 107, 255, 0.18)"
           : hover
-            ? "rgba(255, 255, 255, 0.06)"
+            ? "var(--hover-bg)"
             : "transparent",
         color: active
-          ? "#e2dafe"
+          ? "var(--accent-strong)"
           : muted
-            ? "rgba(255, 255, 255, 0.55)"
-            : "rgba(255, 255, 255, 0.92)",
+            ? "var(--placeholder)"
+            : "var(--input-fg)",
         cursor: "pointer",
         border: "none",
         transition: "background 0.1s ease",
@@ -257,7 +257,7 @@ function SelectOptionRow({
           <div
             style={{
               fontSize: "0.75rem",
-              color: "rgba(255, 255, 255, 0.4)",
+              color: "var(--placeholder)",
               marginTop: "0.125rem",
             }}
           >

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CONTACT } from "@/lib/contact";
 import { getPlatformSettings } from "@/lib/platform-settings";
 import { Brand } from "./brand";
+import { LogoMarquee } from "./logo-marquee";
 
 export async function Footer() {
   const { facebookUrl, youtubeUrl } = await getPlatformSettings();
@@ -100,6 +101,8 @@ export async function Footer() {
           <div className="text-white/40 text-xs mt-0.5">{CONTACT.address}</div>
         </div>
       </div>
+
+      <LogoMarquee />
 
       <div className="max-w-7xl mx-auto mt-8 pt-6 border-t border-white/[0.04] text-xs text-white/25">
         {CONTACT.copyright}

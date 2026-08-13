@@ -26,8 +26,8 @@ export default async function NewServicePage({
       ? SERVICE_KIND_BY_SLUG[typeSlug]
       : undefined;
 
-  const [laborCategories, units] = await Promise.all([
-    prisma.laborCategory.findMany({
+  const [categories, units] = await Promise.all([
+    prisma.category.findMany({
       where: { tenantId: user.tenantId },
       orderBy: [{ isActive: "desc" }, { name: "asc" }],
       select: { id: true, name: true, isActive: true },
@@ -49,7 +49,7 @@ export default async function NewServicePage({
       <div className="glass rounded-xl p-4 sm:p-5 border border-white/[0.08]">
         <ServiceForm
           fixedType={fixedType}
-          laborCategories={laborCategories}
+          categories={categories}
           units={units}
         />
       </div>

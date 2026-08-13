@@ -24,7 +24,7 @@ export function AccountLoginForm() {
   return (
     <form action={formAction} className="flex flex-col gap-5" noValidate>
       {awaiting && state?.message ? (
-        <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl px-4 py-3 text-sm text-violet-200">
+        <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl px-4 py-3 text-sm text-violet-200 light:bg-violet-100 light:border-violet-300 light:text-violet-700">
           {state.message}
         </div>
       ) : (

@@ -11,15 +11,15 @@ import type { OrderStatus } from "@/lib/orders";
 
 const STATUS_BTN_STYLE: Record<OrderStatus, string> = {
   SCHEDULED:
-    "bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30",
+    "bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 light:text-amber-700",
   IN_PROGRESS:
-    "bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30",
+    "bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 light:text-blue-700",
   WAITING_PARTS:
-    "bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30",
+    "bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 light:text-purple-700",
   COMPLETED:
-    "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30",
+    "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 light:text-emerald-700",
   CANCELLED:
-    "bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30",
+    "bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 light:text-red-700",
 };
 
 const STATUS_BTN_LABEL: Record<OrderStatus, string> = {
@@ -99,10 +99,10 @@ export function StatusControls({
               <div
                 role="alertdialog"
                 aria-modal="true"
-                className="fixed left-1/2 top-1/2 z-[110] w-[min(92vw,24rem)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-white/10 bg-[#14141f]/95 p-5 shadow-2xl backdrop-blur-xl"
+                className="fixed left-1/2 top-1/2 z-[110] w-[min(92vw,24rem)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-white/10 bg-[var(--surface)] p-5 shadow-2xl backdrop-blur-xl"
               >
                 <div className="flex items-start gap-3">
-                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-red-500/15 text-red-300">
+                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-red-500/15 text-red-300 light:text-red-700">
                     <svg
                       width="18"
                       height="18"

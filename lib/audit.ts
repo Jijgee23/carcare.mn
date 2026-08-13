@@ -1,5 +1,5 @@
-import { Prisma, type PrismaClient } from "@/app/generated/prisma/client";
-import { prisma } from "./prisma";
+import { Prisma } from "@/app/generated/prisma/client";
+import { prisma, type PrismaTransactionClient } from "./prisma";
 
 export type AuditAction =
   | "CREATE"
@@ -15,9 +15,30 @@ export type AuditAction =
   | "LOGOUT"
   | "OTHER";
 
+// DB enum биш (уян хатан байлгах зорилготой) ч typo-г compile үед барихын тулд
+// TypeScript const — шинэ entity нэмэхдээ энд нэмнэ (audit хуудасны ENTITY_LABEL
+// `Record<EntityType, string>` тул мартвал typecheck алдаа өгнө).
+export const ENTITY_TYPES = [
+  "ServiceOrder",
+  "Service",
+  "Customer",
+  "Vehicle",
+  "User",
+  "Branch",
+  "Category",
+  "Unit",
+  "Tenant",
+  "Role",
+  "DiagnosticTemplate",
+  "DiagnosticReport",
+  "Appointment",
+] as const;
+
+export type EntityType = (typeof ENTITY_TYPES)[number];
+
 export type AuditInput = {
   tenantId: string;
-  entity: string;
+  entity: EntityType;
   entityId: string;
   action: AuditAction;
   summary?: string | null;
@@ -31,7 +52,7 @@ export type AuditInput = {
 
 // $transaction-н дотор зэрэг үүсгэх боломжтой болгох үүднээс client-ийг
 // сонголтоор авдаг (default — глобал prisma).
-type Client = PrismaClient | Prisma.TransactionClient;
+type Client = PrismaTransactionClient;
 
 /**
  * AuditLog бичлэг үүсгэнэ. Үндсэн үйлдлийн транзакцийн дотроос дуудах нь

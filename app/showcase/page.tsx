@@ -18,7 +18,7 @@ export default function ShowcasePage() {
   return (
     <div className="relative min-h-screen overflow-hidden">
       {/* Бараан неон backdrop — fixed, нэг л удаа paint хийгдэнэ */}
-      <div aria-hidden className="fixed inset-0 -z-10 bg-[#0a0a0f]">
+      <div aria-hidden className="fixed inset-0 -z-10 bg-[var(--bg-primary)]">
         <div
           className="absolute inset-0"
           style={{
@@ -163,7 +163,7 @@ export default function ShowcasePage() {
           <Cell className="flex flex-col">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-sm font-semibold">Сүүлийн үйл явдал</h2>
-              <span className="cursor-pointer text-xs text-violet-300 hover:text-violet-200">
+              <span className="cursor-pointer text-xs text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800">
                 Бүгд →
               </span>
             </div>

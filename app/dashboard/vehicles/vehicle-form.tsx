@@ -10,7 +10,11 @@ import {
 import { Field, FormError } from "@/app/_components/auth-shell";
 import { Select } from "@/app/_components/select";
 import { customerLabel } from "@/lib/customers";
-import { type HurVehicle, normalizeWheelPosition } from "@/lib/hur_service";
+import {
+  type HurVehicle,
+  normalizeWheelPosition,
+  ownerKindFromRegnum,
+} from "@/lib/hur_service";
 
 // Монгол улсын дугаарын хэлбэр: 4 цифр + 3 үсэг (Кирилл эсвэл Латин).
 // 4 цифр + 3 үсэг. Кирилл `А-Я` муж нь Монгол тусгай үсэг Ө/Ү/Ё-г агуулдаггүй
@@ -28,12 +32,43 @@ type Initial = {
   mileage: number | null;
   fuelType: string | null;
   wheelPosition: string | null;
+  colorName: string | null;
+  capacity: number | null;
+  purpose: string | null;
+  ownerRegnum: string | null;
   customerId: string | null;
+  isPostpaid?: boolean;
 };
 
 type Customer = { id: string; fullName: string; phone: string };
 
 const FIELD_MW = "max-w-xs";
+
+/* HUR-аас автоматаар бөглөгддөг талбарын тэмдэглэгээ: талбар бүрт hint
+   давтахын оронд label дээр жижиг badge + grid-ийн доор нэг тайлбар. */
+function HurBadge() {
+  return (
+    <span
+      title="HUR-аас автоматаар бөглөгдөнө"
+      className="inline-flex items-center rounded px-1 py-px text-[9px] font-semibold tracking-wider bg-sky-500/15 text-sky-300 light:bg-sky-100 light:text-sky-700"
+    >
+      HUR
+    </span>
+  );
+}
+
+function HurLabel({ children }: { children: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {children}
+      <HurBadge />
+    </span>
+  );
+}
+
+/* HUR-аас бөглөгддөг талбаруудын input-д зөөлөн туяа — гараар бөглөх
+   талбаруудаас визуалаар ялгана (засах боломжтой хэвээр). */
+const HUR_TINT = "bg-sky-500/[0.05]";
 
 export function VehicleForm({
   initial,
@@ -72,13 +107,26 @@ export function VehicleForm({
   const [wheelPosition, setWheelPosition] = useState<string>(
     initial?.wheelPosition ?? "",
   );
+  const [colorName, setColorName] = useState<string>(initial?.colorName ?? "");
+  const [capacity, setCapacity] = useState<string>(
+    initial?.capacity != null ? String(initial.capacity) : "",
+  );
+  const [purpose, setPurpose] = useState<string>(initial?.purpose ?? "");
+  const [ownerRegnum, setOwnerRegnum] = useState<string>(
+    initial?.ownerRegnum ?? "",
+  );
   const [customerId, setCustomerId] = useState(
     initial?.customerId ?? defaultCustomerId ?? "",
   );
+  const [isPostpaid, setIsPostpaid] = useState(initial?.isPostpaid ?? false);
 
   const [hurLoading, setHurLoading] = useState(false);
   const [hurError, setHurError] = useState<string | null>(null);
   const [hurInfo, setHurInfo] = useState<HurVehicle | null>(null);
+  // Мэдээллийн эх сурвалж: системийн global бүртгэл эсвэл HUR registry.
+  const [hurSource, setHurSource] = useState<"global" | "hur">("hur");
+  // Энэ tenant-д аль хэдийн бүртгэлтэй — хадгалахад алдаа өгөх тул урьдчилан анхааруулна.
+  const [alreadyRegistered, setAlreadyRegistered] = useState(false);
   const lastFetchedRef = useRef<string | null>(initial?.plate ?? null);
 
   const trimmedPlate = plate.trim().toUpperCase();
@@ -93,6 +141,57 @@ export function VehicleForm({
       (c) => c.phone.replace(/\D/g, "") === normalized,
     );
     return found?.id ?? null;
+  }
+
+  // HUR-аас ирсэн мэдээллийг form талбаруудад тавина.
+  function applyHurVehicle(v: HurVehicle) {
+    setHurInfo(v);
+    if (v.plate) setPlate(v.plate);
+    if (v.make) setMake(v.make);
+    if (v.model) setModel(v.model);
+    if (v.year) setYear(String(v.year));
+    if (v.vin) setVin(v.vin);
+    if (v.fuelType) setFuelType(v.fuelType);
+    const normalizedWheel = normalizeWheelPosition(v.wheelPosition);
+    if (normalizedWheel) setWheelPosition(normalizedWheel);
+    if (v.color) setColorName(v.color);
+    if (v.capacity) setCapacity(String(v.capacity));
+    if (v.purpose) setPurpose(v.purpose);
+    if (v.owner?.regnum) setOwnerRegnum(v.owner.regnum);
+    if (!customerId && v.owner?.phone) {
+      const matched = matchCustomerByPhone(v.owner.phone);
+      if (matched) setCustomerId(matched);
+    }
+  }
+
+  // Гар аргаар HUR-аас дахин татах (debounce/guard-гүй). Дэлгэрэнгүй хуудсанд
+  // дугаар хэвээр байгаа тул auto-fetch ажиллахгүй — энэ товчоор шинэчилнэ.
+  async function refreshFromHur() {
+    const p = plate.trim().toUpperCase();
+    if (!PLATE_PATTERN.test(p)) {
+      setHurError("Дугаар буруу хэлбэртэй.");
+      return;
+    }
+    setHurLoading(true);
+    setHurError(null);
+    setHurInfo(null);
+    try {
+      const res = await fetch(
+        `/api/hur/lookup?plate=${encodeURIComponent(p)}`,
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error ?? "HUR-аас мэдээлэл татаж чадсангүй.");
+      }
+      applyHurVehicle(data.vehicle as HurVehicle);
+      setHurSource(data.source === "global" ? "global" : "hur");
+      setAlreadyRegistered(Boolean(data.registered) && !isEdit);
+      lastFetchedRef.current = p;
+    } catch (e) {
+      setHurError(e instanceof Error ? e.message : "Алдаа гарлаа.");
+    } finally {
+      setHurLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -114,20 +213,9 @@ export function VehicleForm({
         if (!res.ok) {
           throw new Error(data?.error ?? "HUR-аас мэдээлэл татаж чадсангүй.");
         }
-        const v = data.vehicle as HurVehicle;
-        setHurInfo(v);
-        if (v.plate) setPlate(v.plate);
-        if (v.make) setMake(v.make);
-        if (v.model) setModel(v.model);
-        if (v.year) setYear(String(v.year));
-        if (v.vin) setVin(v.vin);
-        if (v.fuelType) setFuelType(v.fuelType);
-        const normalizedWheel = normalizeWheelPosition(v.wheelPosition);
-        if (normalizedWheel) setWheelPosition(normalizedWheel);
-        if (!customerId && v.owner?.phone) {
-          const matched = matchCustomerByPhone(v.owner.phone);
-          if (matched) setCustomerId(matched);
-        }
+        applyHurVehicle(data.vehicle as HurVehicle);
+        setHurSource(data.source === "global" ? "global" : "hur");
+        setAlreadyRegistered(Boolean(data.registered) && !isEdit);
       } catch (e) {
         if (controller.signal.aborted) return;
         setHurError(e instanceof Error ? e.message : "Алдаа гарлаа.");
@@ -204,7 +292,7 @@ export function VehicleForm({
             <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
               {hurLoading ? (
                 <svg
-                  className="w-4 h-4 animate-spin text-violet-300"
+                  className="w-4 h-4 animate-spin text-violet-300 light:text-violet-600"
                   viewBox="0 0 24 24"
                   fill="none"
                 >
@@ -212,7 +300,7 @@ export function VehicleForm({
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
                 </svg>
               ) : isValidPlate && hurInfo ? (
-                <svg className="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg className="w-4 h-4 text-emerald-400 light:text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
               ) : null}
@@ -220,7 +308,7 @@ export function VehicleForm({
           </div>
         </Field>
 
-        <Field label="VIN" htmlFor="vin" hint="17 тэмдэгт, заавал биш" error={fe.vin} className={FIELD_MW}>
+        <Field label={<HurLabel>VIN</HurLabel>} htmlFor="vin" hint="17 тэмдэгт, заавал биш" error={fe.vin} className={FIELD_MW}>
           <input
             id="vin"
             name="vin"
@@ -228,12 +316,12 @@ export function VehicleForm({
             maxLength={17}
             value={vin}
             onChange={(e) => setVin(e.target.value.toUpperCase())}
-            className={`compact-input uppercase ${fe.vin ? "border-red-500/50" : ""}`}
+            className={`compact-input uppercase ${HUR_TINT} ${fe.vin ? "border-red-500/50" : ""}`}
             placeholder="JT2BF22K1W0123456"
           />
         </Field>
 
-        <Field label="Марк" htmlFor="make" error={fe.make} className={FIELD_MW}>
+        <Field label={<HurLabel>Марк</HurLabel>} htmlFor="make" error={fe.make} className={FIELD_MW}>
           <input
             id="make"
             name="make"
@@ -241,11 +329,11 @@ export function VehicleForm({
             required
             value={make}
             onChange={(e) => setMake(e.target.value)}
-            className={`compact-input ${fe.make ? "border-red-500/50" : ""}`}
+            className={`compact-input ${HUR_TINT} ${fe.make ? "border-red-500/50" : ""}`}
             placeholder="Toyota"
           />
         </Field>
-        <Field label="Модель" htmlFor="model" error={fe.model} className={FIELD_MW}>
+        <Field label={<HurLabel>Модель</HurLabel>} htmlFor="model" error={fe.model} className={FIELD_MW}>
           <input
             id="model"
             name="model"
@@ -253,12 +341,12 @@ export function VehicleForm({
             required
             value={model}
             onChange={(e) => setModel(e.target.value)}
-            className={`compact-input ${fe.model ? "border-red-500/50" : ""}`}
+            className={`compact-input ${HUR_TINT} ${fe.model ? "border-red-500/50" : ""}`}
             placeholder="Prius 30"
           />
         </Field>
 
-        <Field label="Үйлдвэрлэсэн он" htmlFor="year" hint="заавал биш" error={fe.year} className={FIELD_MW}>
+        <Field label={<HurLabel>Үйлдвэрлэсэн он</HurLabel>} htmlFor="year" hint="заавал биш" error={fe.year} className={FIELD_MW}>
           <input
             id="year"
             name="year"
@@ -267,7 +355,7 @@ export function VehicleForm({
             max={2100}
             value={year}
             onChange={(e) => setYear(e.target.value)}
-            className={`compact-input ${fe.year ? "border-red-500/50" : ""}`}
+            className={`compact-input ${HUR_TINT} ${fe.year ? "border-red-500/50" : ""}`}
             placeholder="2015"
           />
         </Field>
@@ -284,7 +372,7 @@ export function VehicleForm({
           />
         </Field>
 
-        <Field label="Шатахуун" htmlFor="fuelType" hint="HUR-аас автоматаар" error={fe.fuelType} className={FIELD_MW}>
+        <Field label={<HurLabel>Шатахуун</HurLabel>} htmlFor="fuelType" error={fe.fuelType} className={FIELD_MW}>
           <input
             id="fuelType"
             name="fuelType"
@@ -292,7 +380,7 @@ export function VehicleForm({
             list="fuel-types"
             value={fuelType}
             onChange={(e) => setFuelType(e.target.value)}
-            className={`compact-input ${fe.fuelType ? "border-red-500/50" : ""}`}
+            className={`compact-input ${HUR_TINT} ${fe.fuelType ? "border-red-500/50" : ""}`}
             placeholder="Бензин"
           />
           <datalist id="fuel-types">
@@ -303,7 +391,7 @@ export function VehicleForm({
             <option value="Эрлийз" />
           </datalist>
         </Field>
-        <Field label="Жолооны хүрд" htmlFor="wheelPosition" error={fe.wheelPosition} className={FIELD_MW}>
+        <Field label={<HurLabel>Жолооны хүрд</HurLabel>} htmlFor="wheelPosition" error={fe.wheelPosition} className={FIELD_MW}>
           <Select
             id="wheelPosition"
             name="wheelPosition"
@@ -316,14 +404,132 @@ export function VehicleForm({
             ]}
           />
         </Field>
+
+        <Field label={<HurLabel>Өнгө</HurLabel>} htmlFor="colorName" error={fe.colorName} className={FIELD_MW}>
+          <input
+            id="colorName"
+            name="colorName"
+            type="text"
+            value={colorName}
+            onChange={(e) => setColorName(e.target.value)}
+            className={`compact-input ${HUR_TINT} ${fe.colorName ? "border-red-500/50" : ""}`}
+            placeholder="Цагаан"
+          />
+        </Field>
+        <Field label={<HurLabel>Моторын хэмжээ (см³)</HurLabel>} htmlFor="capacity" error={fe.capacity} className={FIELD_MW}>
+          <input
+            id="capacity"
+            name="capacity"
+            type="number"
+            min={0}
+            value={capacity}
+            onChange={(e) => setCapacity(e.target.value)}
+            className={`compact-input ${HUR_TINT} ${fe.capacity ? "border-red-500/50" : ""}`}
+            placeholder="1496"
+          />
+        </Field>
+        <Field label={<HurLabel>Зориулалт</HurLabel>} htmlFor="purpose" error={fe.purpose} className={FIELD_MW}>
+          <input
+            id="purpose"
+            name="purpose"
+            type="text"
+            value={purpose}
+            onChange={(e) => setPurpose(e.target.value)}
+            className={`compact-input ${HUR_TINT} ${fe.purpose ? "border-red-500/50" : ""}`}
+            placeholder="Суудал"
+          />
+        </Field>
+        <Field
+          label={<HurLabel>Эзэмшигчийн регистр</HurLabel>}
+          htmlFor="ownerRegnum"
+          hint={ownerKindFromRegnum(ownerRegnum) ?? undefined}
+          error={fe.ownerRegnum}
+          className={FIELD_MW}
+        >
+          <input
+            id="ownerRegnum"
+            name="ownerRegnum"
+            type="text"
+            value={ownerRegnum}
+            onChange={(e) => setOwnerRegnum(e.target.value)}
+            className={`compact-input ${HUR_TINT} ${fe.ownerRegnum ? "border-red-500/50" : ""}`}
+            placeholder="РГ95112617 / 1234567"
+          />
+        </Field>
       </div>
+
+      {/* HUR badge-ийн нэгдсэн тайлбар — талбар бүрт hint давтахгүй */}
+      <p className="text-xs text-white/40 flex items-center gap-1.5 flex-wrap">
+        <HurBadge /> тэмдэгтэй талбарууд улсын дугаараар HUR буюу системийн
+        бүртгэлээс автоматаар бөглөгдөнө — шаардлагатай бол гараар засаж болно.
+      </p>
+
+      <label className="flex items-start gap-2.5 cursor-pointer select-none max-w-2xl">
+        <input
+          type="checkbox"
+          name="isPostpaid"
+          checked={isPostpaid}
+          onChange={(e) => setIsPostpaid(e.target.checked)}
+          className="mt-0.5 w-4 h-4 accent-violet-600 shrink-0"
+        />
+        <span>
+          <span className="text-sm text-white/85 font-medium">
+            Дараа төлбөрт машин
+          </span>
+          <span className="block text-xs text-white/40 mt-0.5">
+            Захиалгын төлбөрийг тухай бүрд нь биш, гэрээгээр (сараар) нэгтгэн
+            төлнө. Захиалгууд нь «Дараа төлбөрт» түүхэнд тусдаа харагдана.
+          </span>
+        </span>
+      </label>
+
+      <div className="flex items-center gap-3 flex-wrap">
+        <button
+          type="button"
+          onClick={refreshFromHur}
+          disabled={hurLoading || !isValidPlate}
+          className="inline-flex items-center gap-2 text-sm text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800 disabled:text-white/30 disabled:cursor-not-allowed border border-violet-500/30 hover:border-violet-500/50 disabled:border-white/[0.08] bg-violet-500/[0.06] hover:bg-violet-500/[0.12] disabled:bg-transparent transition-all px-4 py-2 rounded-lg font-medium"
+        >
+          {hurLoading ? (
+            <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+            </svg>
+          ) : (
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 2v6h-6M3 12a9 9 0 0115-6.7L21 8M3 22v-6h6M21 12a9 9 0 01-15 6.7L3 16" />
+            </svg>
+          )}
+          {hurLoading ? "Татаж байна..." : "HUR-аас мэдээлэл шинэчлэх"}
+        </button>
+        {!isValidPlate ? (
+          <span className="text-xs text-white/30">
+            Зөв улсын дугаар оруулсны дараа боломжтой
+          </span>
+        ) : null}
+      </div>
+
+      {alreadyRegistered ? (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-300 light:bg-amber-100 light:border-amber-300 light:text-amber-700 max-w-3xl">
+          Энэ улсын дугаартай машин танай бүртгэлд аль хэдийн байна — дахин
+          үүсгэх боломжгүй.{" "}
+          <Link
+            href={`/dashboard/vehicles?q=${encodeURIComponent(trimmedPlate)}`}
+            className="underline hover:no-underline"
+          >
+            Бүртгэлээс харах →
+          </Link>
+        </div>
+      ) : null}
 
       {hurInfo ? (
         <div className="rounded-lg border border-violet-500/20 bg-violet-500/[0.06] px-4 py-3 text-xs text-white/70 flex flex-col gap-1 max-w-3xl">
-          <div className="text-violet-300 font-medium">
-            HUR-аас татав
+          <div className="text-violet-300 light:text-violet-700 font-medium">
+            {hurSource === "global" ? "Системийн бүртгэлээс" : "HUR-аас татав"}
             {hurInfo.color ? ` · ${hurInfo.color}` : ""}
+            {hurInfo.capacity ? ` · ${hurInfo.capacity} см³` : ""}
             {hurInfo.fuelType ? ` · ${hurInfo.fuelType}` : ""}
+            {hurInfo.purpose ? ` · ${hurInfo.purpose}` : ""}
             {hurInfo.country ? ` · ${hurInfo.country}` : ""}
             {hurInfo.wheelPosition ? ` · ${hurInfo.wheelPosition} жолоо` : ""}
           </div>
@@ -331,13 +537,16 @@ export function VehicleForm({
             <div>
               <span className="text-white/40">Эзэмшигч:</span>{" "}
               {hurInfo.owner.lastName ?? ""} {hurInfo.owner.firstName ?? "—"}
+              {ownerKindFromRegnum(hurInfo.owner.regnum)
+                ? ` · ${ownerKindFromRegnum(hurInfo.owner.regnum)}`
+                : ""}
               {hurInfo.owner.phone ? ` · ${hurInfo.owner.phone}` : ""}
               {hurInfo.owner.address ? ` · ${hurInfo.owner.address}` : ""}
               {!customerId && hurInfo.owner.phone ? (
                 <Link
                   href={`/dashboard/customers/new?fullName=${encodeURIComponent(`${hurInfo.owner.lastName ?? ""} ${hurInfo.owner.firstName ?? ""}`.trim())}&phone=${encodeURIComponent(hurInfo.owner.phone)}`}
                   target="_blank"
-                  className="ml-2 text-violet-300 hover:text-violet-200"
+                  className="ml-2 text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
                 >
                   → Үйлчлүүлэгч нэмэх
                 </Link>
@@ -347,7 +556,8 @@ export function VehicleForm({
         </div>
       ) : null}
 
-      <div className="flex gap-2 pt-3 border-t border-white/[0.05]">
+      {/* Sticky action bar — урт форм scroll хийхэд ч Хадгалах үргэлж харагдана */}
+      <div className="sticky bottom-0 z-10 flex gap-2 pt-3 pb-3 -mb-1 border-t border-white/[0.05] bg-[var(--bg-secondary)]/90 backdrop-blur-md">
         <Link
           href={backHref}
           className="bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] transition-all px-5 py-2 rounded-lg font-medium text-sm text-white/60 text-center"

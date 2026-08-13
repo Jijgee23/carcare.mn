@@ -345,6 +345,43 @@ export async function updateBranchAction(
   redirect("/dashboard/branches");
 }
 
+export async function toggleBranchActiveAction(formData: FormData): Promise<void> {
+  const user = await authorize("edit");
+  const id = s(formData, "id");
+  if (!id) return;
+
+  const target = await prisma.branch.findFirst({
+    where: { id, tenantId: user.tenantId },
+    select: { isPrimary: true, isActive: true, name: true },
+  });
+  if (!target) return;
+  if (target.isPrimary && target.isActive) {
+    throw new Error(
+      "Үндсэн салбарыг идэвхгүй болгохын тулд эхлээд өөр салбарыг үндсэн болгоно уу.",
+    );
+  }
+
+  const nextActive = !target.isActive;
+  await prisma.branch.update({
+    where: { id },
+    data: { isActive: nextActive },
+  });
+
+  await logAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    entity: "Branch",
+    entityId: id,
+    action: "STATUS_CHANGE",
+    summary: `${target.name} · ${nextActive ? "идэвхжүүлсэн" : "идэвхгүй болгосон"}`,
+    before: { isActive: target.isActive },
+    after: { isActive: nextActive },
+  });
+
+  revalidatePath("/dashboard/branches");
+  revalidatePath("/dashboard");
+}
+
 export async function deleteBranchAction(formData: FormData): Promise<void> {
   const user = await authorize("delete");
   const id = s(formData, "id");

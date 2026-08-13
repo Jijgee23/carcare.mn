@@ -23,7 +23,20 @@ export default async function EditCustomerPage({
   const customer = await prisma.customer.findFirst({
     where: { id, tenantId: user.tenantId },
     include: {
-      vehicles: { orderBy: { createdAt: "desc" } },
+      tenantVehicles: {
+        orderBy: { createdAt: "desc" },
+        select: {
+          vehicle: {
+            select: {
+              id: true,
+              plate: true,
+              make: true,
+              model: true,
+              year: true,
+            },
+          },
+        },
+      },
       _count: { select: { serviceOrders: true } },
     },
   });
@@ -62,19 +75,19 @@ export default async function EditCustomerPage({
               </Link>
             </div>
 
-            {customer.vehicles.length === 0 ? (
+            {customer.tenantVehicles.length === 0 ? (
               <div className="px-5 py-10 text-center text-sm text-white/40">
                 Энэ үйлчлүүлэгчид машин бүртгээгүй байна.
               </div>
             ) : (
               <ul className="divide-y divide-white/[0.04]">
-                {customer.vehicles.map((v) => (
+                {customer.tenantVehicles.map(({ vehicle: v }) => (
                   <li key={v.id}>
                     <Link
                       href={`/dashboard/vehicles/${v.id}`}
                       className="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.02] transition-colors"
                     >
-                      <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-500/20 to-blue-500/20 flex items-center justify-center text-xs font-mono font-semibold text-violet-300 shrink-0">
+                      <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-500/20 to-blue-500/20 flex items-center justify-center text-xs font-mono font-semibold text-violet-300 light:text-violet-700 shrink-0">
                         {v.plate.slice(0, 3).toUpperCase()}
                       </div>
                       <div className="min-w-0 flex-1">

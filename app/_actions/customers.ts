@@ -100,6 +100,12 @@ export async function createCustomerAction(
       select: { id: true },
     });
   } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      return {
+        ok: false,
+        fieldErrors: { phone: "Энэ утасны дугаартай үйлчлүүлэгч аль хэдийн бүртгэлтэй байна." },
+      };
+    }
     return {
       ok: false,
       message: e instanceof Error ? e.message : "Үүсгэх явцад алдаа гарлаа.",
@@ -147,6 +153,12 @@ export async function updateCustomerAction(
       return { ok: false, message: "Үйлчлүүлэгч олдсонгүй." };
     }
   } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      return {
+        ok: false,
+        fieldErrors: { phone: "Энэ утасны дугаартай үйлчлүүлэгч аль хэдийн бүртгэлтэй байна." },
+      };
+    }
     return {
       ok: false,
       message: e instanceof Error ? e.message : "Шинэчлэх явцад алдаа гарлаа.",

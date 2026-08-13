@@ -12,12 +12,29 @@ const APPT_SELECT = {
   note: true,
   createdAt: true,
   branch: { select: { id: true, name: true } },
+  category: { select: { id: true, name: true } },
   account: { select: { name: true, phone: true } },
   customer: { select: { id: true, fullName: true, phone: true } },
-  accountVehicle: { select: { plate: true, make: true, model: true } },
+  accountVehicle: {
+    select: { vehicle: { select: { plate: true, make: true, model: true } } },
+  },
   vehicle: { select: { id: true, plate: true, make: true, model: true } },
   serviceOrder: { select: { id: true, number: true } },
 } satisfies Prisma.AppointmentSelect;
+
+// AccountVehicle нь global Vehicle руу заадаг болсон тул хариунд хуучин хэлбэрээр
+// (accountVehicle: { plate, make, model } | null) тэгшлэн буцаана.
+export function shapeAppointment<
+  T extends {
+    accountVehicle: {
+      vehicle: { plate: string; make: string; model: string };
+    } | null;
+  },
+>(a: T): Omit<T, "accountVehicle"> & {
+  accountVehicle: { plate: string; make: string; model: string } | null;
+} {
+  return { ...a, accountVehicle: a.accountVehicle?.vehicle ?? null };
+}
 
 // GET /api/v1/appointments
 // Query: status?, date? (YYYY-MM-DD), month? (YYYY-MM), branchId?, page?, pageSize?
@@ -100,7 +117,7 @@ export async function GET(req: Request) {
   ]);
 
   return jsonOk({
-    appointments: items,
+    appointments: items.map(shapeAppointment),
     pagination: buildMeta(total, page, pageSize),
   });
 }

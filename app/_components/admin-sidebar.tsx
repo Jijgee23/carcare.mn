@@ -3,9 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { signOutAction } from "@/app/_actions/auth";
-import { Brand } from "./brand";
+import { Brand, BrandMark } from "./brand";
 import { StaffNotificationBell } from "./staff-notification-bell";
+import { ThemeToggle } from "./theme-toggle";
+import { useSidebarCollapse } from "./use-sidebar-collapse";
 
 type NavLeaf = {
   href: string;
@@ -79,6 +82,10 @@ const navItems: NavItem[] = [
         <path d="M16 3.13a4 4 0 0 1 0 7.75" />
       </svg>
     ),
+    children: [
+      { href: "/dashboard/employees", label: "Ажилтнууд", exact: true },
+      { href: "/dashboard/employees/roles", label: "Үүргүүд", view: "owner" },
+    ],
   },
   {
     href: "/dashboard/orders",
@@ -90,6 +97,10 @@ const navItems: NavItem[] = [
         <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
       </svg>
     ),
+    children: [
+      { href: "/dashboard/orders", label: "Бүх захиалга", exact: true },
+      { href: "/dashboard/orders/postpaid", label: "Дараа төлбөрт" },
+    ],
   },
   {
     href: "/dashboard/appointments",
@@ -139,9 +150,14 @@ const navItems: NavItem[] = [
       </svg>
     ),
     children: [
-      { href: "/dashboard/services/labor", label: "Ажил" },
+      { href: "/dashboard/services/labor", label: "Ажил", exact: true },
       { href: "/dashboard/services/diagnostics", label: "Оношилгоо" },
       { href: "/dashboard/services/goods", label: "Сэлбэг / Бараа" },
+      {
+        href: "/dashboard/services/categories",
+        label: "Ангилал",
+        view: "owner",
+      },
     ],
   },
 ];
@@ -218,18 +234,23 @@ function isGroupActive(pathname: string, group: NavGroup): boolean {
   return group.children.some((c) => isLeafActive(pathname, c));
 }
 
-// Тенант мөр — лого + нэр + (заавал биш) мэдэгдлийн хонх.
+// Тенант мөр — лого + нэр + (заавал биш) мэдэгдлийн хонх. Хумигдсан үед
+// зөвхөн лого (эсвэл юу ч биш) харуулна — доор header дотор бас лого байгаа
+// тул давхардахгүйн тулд бүрэн нуучихна.
 function SidebarTenantRow({
   tenantName,
   tenantLogoUrl,
   notificationUnread,
   showBell = true,
+  collapsed = false,
 }: {
   tenantName: string;
   tenantLogoUrl?: string | null;
   notificationUnread: number;
   showBell?: boolean;
+  collapsed?: boolean;
 }) {
+  if (collapsed) return null;
   return (
     <div className="px-3 pt-3 pb-2 flex items-center gap-2 text-xs text-white/40 min-w-0">
       {tenantLogoUrl ? (
@@ -256,18 +277,30 @@ function SidebarNavList({
   isOwner,
   permissions,
   onNavigate,
+  collapsed = false,
 }: {
   isOwner: boolean;
   permissions: string[];
   onNavigate?: () => void;
+  collapsed?: boolean;
 }) {
   const pathname = usePathname();
-  const visibleNav = navItems.filter((it) =>
-    canSeeView(it.view, isOwner, permissions),
-  );
-  const visibleSecondary = secondaryItems.filter((it) =>
-    canSeeView(it.view, isOwner, permissions),
-  );
+  // Бүлгийн дотоод child-уудыг ч эрхээр нь шүүнэ (ж: "Ажлын ангилал" зөвхөн owner).
+  const filterChildren = (it: NavItem): NavItem =>
+    hasChildren(it)
+      ? {
+          ...it,
+          children: it.children.filter((c) =>
+            canSeeView(c.view, isOwner, permissions),
+          ),
+        }
+      : it;
+  const visibleNav = navItems
+    .filter((it) => canSeeView(it.view, isOwner, permissions))
+    .map(filterChildren);
+  const visibleSecondary = secondaryItems
+    .filter((it) => canSeeView(it.view, isOwner, permissions))
+    .map(filterChildren);
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const hydratedRef = useRef(false);
@@ -310,7 +343,7 @@ function SidebarNavList({
   }
 
   return (
-    <nav className="flex-1 overflow-y-auto pb-4 px-3 space-y-0.5">
+    <nav className={`sidebar-scroll flex-1 overflow-y-auto pb-4 space-y-0.5 ${collapsed ? "px-2" : "px-3"}`}>
       {visibleNav.map((item) =>
         hasChildren(item) ? (
           <NavGroupItem
@@ -320,6 +353,7 @@ function SidebarNavList({
             open={isOpen(item.href)}
             onToggle={() => toggleGroup(item.href)}
             onNavigate={onNavigate}
+            collapsed={collapsed}
           />
         ) : (
           <NavLeafLink
@@ -327,14 +361,18 @@ function SidebarNavList({
             item={item}
             pathname={pathname}
             onNavigate={onNavigate}
+            collapsed={collapsed}
           />
         ),
       )}
 
-      {visibleSecondary.length > 0 ? (
+      {visibleSecondary.length > 0 && !collapsed ? (
         <div className="pt-4 pb-2 px-3 text-[10px] text-white/30 uppercase tracking-wider">
           Бусад
         </div>
+      ) : null}
+      {visibleSecondary.length > 0 && collapsed ? (
+        <div className="my-3 h-px bg-white/[0.06] light:bg-black/[0.06]" />
       ) : null}
 
       {visibleSecondary.map((item) =>
@@ -346,6 +384,7 @@ function SidebarNavList({
             open={isOpen(item.href)}
             onToggle={() => toggleGroup(item.href)}
             onNavigate={onNavigate}
+            collapsed={collapsed}
           />
         ) : (
           <NavLeafLink
@@ -353,6 +392,7 @@ function SidebarNavList({
             item={item}
             pathname={pathname}
             onNavigate={onNavigate}
+            collapsed={collapsed}
           />
         ),
       )}
@@ -360,19 +400,138 @@ function SidebarNavList({
   );
 }
 
-// Хэрэглэгчийн footer — нэр, и-мэйл, гарах товч.
+// Collapsed rail дотор hover flyout байрлуулах helper. `nav`-ийн эцэг элемент
+// нь `overflow-y-auto` тул (CSS-ийн дүрмээр overflow-x нь мөн "auto" болж,
+// хажуу тийш гарсан зүйлийг таслачихдаг) `absolute`-аар байрлуулсан tooltip/цэс
+// харагдахгүй байсан — тиймээс `document.body`-руу portal хийж, trigger-ийн
+// bounding rect дээр үндэслэн `position: fixed`-ээр байрлуулна (DatePicker-тэй
+// ижил зарчим). Портал хийсэн ч hover тасрахгүйн тулд flyout дээр очиход ч мөн
+// нээлттэй хэвээр байлгаж, бага зэрэг саатал (120ms)-тайгаар хаана.
+type FlyoutPos = { top: number; left: number };
+
+function useHoverFlyout() {
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<FlyoutPos>({ top: 0, left: 0 });
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function clearCloseTimer() {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  }
+  function onEnter() {
+    clearCloseTimer();
+    const el = anchorRef.current;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      setPos({ top: r.top, left: r.right + 12 });
+    }
+    setOpen(true);
+  }
+  function onLeave() {
+    clearCloseTimer();
+    closeTimer.current = setTimeout(() => setOpen(false), 120);
+  }
+  useEffect(() => clearCloseTimer, []);
+
+  return { anchorRef, open, pos, onEnter, onLeave };
+}
+
+function HoverFlyoutPortal({
+  pos,
+  open,
+  onEnter,
+  onLeave,
+  center,
+  children,
+}: {
+  pos: FlyoutPos;
+  open: boolean;
+  onEnter: () => void;
+  onLeave: () => void;
+  center?: boolean;
+  children: React.ReactNode;
+}) {
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div
+      onMouseEnter={onEnter}
+      onMouseLeave={onLeave}
+      style={{ position: "fixed", top: pos.top, left: pos.left }}
+      className={`sidebar-tooltip z-[200] origin-left transition-all ${
+        center ? "-translate-y-1/2" : ""
+      } ${open ? "pointer-events-auto opacity-100 scale-100" : "pointer-events-none opacity-0 scale-95"}`}
+    >
+      {children}
+    </div>,
+    document.body,
+  );
+}
+
+// Collapsed үед hover дээр гарч ирэх жижиг tooltip — label дэлгэрэнгүй биш
+// үед харагдахгүй болсон тул орлуулна.
+function NavTooltip({ label }: { label: string }) {
+  return (
+    <span className="whitespace-nowrap rounded-lg bg-[var(--popover)] border border-white/10 light:border-black/10 px-2.5 py-1.5 text-xs font-medium text-white/90 light:text-slate-800 shadow-xl block">
+      {label}
+    </span>
+  );
+}
+
+const activePillClasses =
+  "bg-violet-600 text-white shadow-[0_10px_28px_-12px_rgba(124,58,237,0.75)]";
+const inactivePillClasses =
+  "text-white/50 hover:bg-white/[0.04] hover:text-white light:text-slate-500 light:hover:bg-black/[0.04] light:hover:text-slate-900";
+
+// Хэрэглэгчийн footer — нэр, и-мэйл, гарах товч. Collapsed үед зөвхөн
+// avatar + icon товчнууд төвд эгнэнэ.
 function SidebarUserFooter({
   initials,
   userName,
   userEmail,
+  collapsed = false,
 }: {
   initials: string;
   userName: string;
   userEmail: string;
+  collapsed?: boolean;
 }) {
+  if (collapsed) {
+    return (
+      <div className="p-3 border-t border-white/[0.06] flex flex-col items-center gap-2">
+        <Link
+          href="/dashboard/profile"
+          title={userName}
+          className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-xs font-bold shrink-0"
+        >
+          {initials}
+        </Link>
+        <ThemeToggle variant="icon" />
+        <form action={signOutAction}>
+          <button
+            type="submit"
+            title="Гарах"
+            className="p-2 rounded-lg text-white/50 hover:text-white light:text-slate-500 light:hover:text-slate-900 hover:bg-white/[0.06] transition-colors"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+          </button>
+        </form>
+      </div>
+    );
+  }
+
   return (
     <div className="p-3 border-t border-white/[0.06] space-y-2">
-      <div className="flex items-center gap-3 p-2.5 rounded-xl">
+      <Link
+        href="/dashboard/profile"
+        className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-white/[0.04] transition-colors"
+      >
         <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-xs font-bold shrink-0">
           {initials}
         </div>
@@ -382,7 +541,11 @@ function SidebarUserFooter({
           </div>
           <div className="text-xs text-white/30 truncate">{userEmail}</div>
         </div>
-      </div>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-white/25 shrink-0">
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+      </Link>
+      <ThemeToggle />
       <form action={signOutAction}>
         <button
           type="submit"
@@ -414,28 +577,53 @@ export function AdminSidebar({
   permissions: string[];
   notificationUnread: number;
 }) {
+  const { collapsed, toggle } = useSidebarCollapse();
+
   return (
-    <aside className="fixed top-0 left-0 h-screen w-60 bg-[#0d0d14] border-r border-white/[0.06] flex-col z-40 hidden lg:flex">
-      <Link
-        href="/dashboard"
-        className="flex items-center gap-2.5 px-5 h-16 border-b border-white/[0.06]"
-      >
-        <Brand />
-        <div className="text-[10px] text-white/30 leading-none">Админ</div>
-      </Link>
+    <aside className="app-sidebar fixed top-0 left-0 h-screen bg-[var(--shell-surface)] border-r border-white/[0.06] flex-col z-40 hidden lg:flex">
+      <div className="relative h-16 border-b border-white/[0.06] flex items-center shrink-0">
+        <Link
+          href="/dashboard"
+          className={`flex items-center gap-2.5 flex-1 min-w-0 overflow-hidden ${collapsed ? "justify-center px-2" : "px-5"}`}
+        >
+          {collapsed ? <BrandMark size="sm" /> : <Brand />}
+          {!collapsed ? (
+            <div className="text-[10px] text-white/30 leading-none whitespace-nowrap">
+              Админ
+            </div>
+          ) : null}
+        </Link>
+        <button
+          type="button"
+          onClick={toggle}
+          data-collapsed={collapsed}
+          aria-label={collapsed ? "Цэс дэлгэх" : "Цэс хумих"}
+          className="sidebar-collapse-btn absolute top-1/2 -right-3 -translate-y-1/2 w-6 h-6 rounded-full border border-white/10 light:border-black/10 bg-[var(--shell-surface)] text-white/50 hover:text-white light:text-slate-500 light:hover:text-slate-900 flex items-center justify-center shadow-md z-10"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+        </button>
+      </div>
 
       <SidebarTenantRow
         tenantName={tenantName}
         tenantLogoUrl={tenantLogoUrl}
         notificationUnread={notificationUnread}
+        collapsed={collapsed}
       />
 
-      <SidebarNavList isOwner={isOwner} permissions={permissions} />
+      <SidebarNavList
+        isOwner={isOwner}
+        permissions={permissions}
+        collapsed={collapsed}
+      />
 
       <SidebarUserFooter
         initials={initials}
         userName={userName}
         userEmail={userEmail}
+        collapsed={collapsed}
       />
     </aside>
   );
@@ -445,29 +633,43 @@ function NavLeafLink({
   item,
   pathname,
   onNavigate,
+  collapsed = false,
 }: {
   item: NavLeaf;
   pathname: string;
   onNavigate?: () => void;
+  collapsed?: boolean;
 }) {
   const active = isLeafActive(pathname, item);
+  const { anchorRef, open, pos, onEnter, onLeave } = useHoverFlyout();
   return (
-    <Link
-      href={item.href}
-      onClick={onNavigate}
-      className={`nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
-        active
-          ? "is-active bg-violet-600/20 text-violet-300 border border-violet-500/25"
-          : "text-white/50 hover:text-white"
-      }`}
+    <div
+      ref={anchorRef}
+      className="relative"
+      onMouseEnter={collapsed ? onEnter : undefined}
+      onMouseLeave={collapsed ? onLeave : undefined}
     >
-      {item.icon ? (
-        <span className={`nav-icon ${active ? "text-violet-400" : "text-white/40"}`}>
-          {item.icon}
-        </span>
+      <Link
+        href={item.href}
+        onClick={onNavigate}
+        title={collapsed ? item.label : undefined}
+        className={`flex h-11 items-center gap-3 rounded-xl text-[13px] font-medium transition-colors ${
+          collapsed ? "justify-center px-0" : "px-3"
+        } ${active ? activePillClasses : inactivePillClasses}`}
+      >
+        {item.icon ? (
+          <span className={`nav-icon shrink-0 ${active ? "" : "text-white/40 light:text-slate-500"}`}>
+            {item.icon}
+          </span>
+        ) : null}
+        {!collapsed ? item.label : null}
+      </Link>
+      {collapsed ? (
+        <HoverFlyoutPortal pos={pos} open={open} onEnter={onEnter} onLeave={onLeave} center>
+          <NavTooltip label={item.label} />
+        </HoverFlyoutPortal>
       ) : null}
-      {item.label}
-    </Link>
+    </div>
   );
 }
 
@@ -477,29 +679,87 @@ function NavGroupItem({
   open,
   onToggle,
   onNavigate,
+  collapsed = false,
 }: {
   item: NavGroup;
   pathname: string;
   open: boolean;
   onToggle: () => void;
   onNavigate?: () => void;
+  collapsed?: boolean;
 }) {
   const parentActive = isGroupActive(pathname, item);
+  const { anchorRef, open: flyoutOpen, pos, onEnter, onLeave } = useHoverFlyout();
+
+  // Хумигдсан rail дотор дэд цэсийг мөрөнд харуулах зай байхгүй тул hover
+  // дээр баруун талд нь бүх дэд холбоосыг жагсаасан flyout цэс гарна —
+  // icon дээр дарахад шууд group.href рүү орно, харин hover flyout-оос
+  // тодорхой дэд item-ээ сонгож болно. `nav`-ийн эцэг элемент scroll хийдэг
+  // (overflow-y-auto) тул `absolute`-аар байрлуулбал хажуу тийш гарсан хэсэг
+  // таслагдчихдаг — иймд document.body-руу portal хийж fixed байрлуулна.
+  if (collapsed) {
+    return (
+      <div
+        ref={anchorRef}
+        className="relative"
+        onMouseEnter={onEnter}
+        onMouseLeave={onLeave}
+      >
+        <Link
+          href={item.href}
+          onClick={onNavigate}
+          title={item.label}
+          className={`flex h-11 items-center justify-center rounded-xl text-[13px] font-medium transition-colors ${
+            parentActive ? activePillClasses : inactivePillClasses
+          }`}
+        >
+          {item.icon ? (
+            <span className={`nav-icon ${parentActive ? "" : "text-white/40 light:text-slate-500"}`}>
+              {item.icon}
+            </span>
+          ) : null}
+        </Link>
+
+        <HoverFlyoutPortal pos={pos} open={flyoutOpen} onEnter={onEnter} onLeave={onLeave}>
+          <div className="min-w-[11rem] overflow-hidden rounded-xl border border-white/10 bg-[var(--popover)] py-1.5 shadow-xl light:border-black/10">
+            <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-white/35 light:text-slate-400">
+              {item.label}
+            </div>
+            {item.children.map((child) => {
+              const childActive = isLeafActive(pathname, child);
+              return (
+                <Link
+                  key={child.href}
+                  href={child.href}
+                  onClick={onNavigate}
+                  className={`block px-3 py-2 text-[13px] transition-colors ${
+                    childActive
+                      ? "bg-violet-500/10 text-violet-200 light:bg-violet-100 light:text-violet-700"
+                      : "text-white/70 hover:bg-white/[0.06] hover:text-white light:text-slate-600 light:hover:bg-black/[0.04] light:hover:text-slate-900"
+                  }`}
+                >
+                  {child.label}
+                </Link>
+              );
+            })}
+          </div>
+        </HoverFlyoutPortal>
+      </div>
+    );
+  }
 
   return (
     <div>
       <button
         type="button"
         onClick={onToggle}
-        className={`nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
-          parentActive
-            ? "is-active bg-violet-600/20 text-violet-300 border border-violet-500/25"
-            : "text-white/50 hover:text-white"
+        className={`w-full flex h-11 items-center gap-3 px-3 rounded-xl text-[13px] font-medium transition-colors ${
+          parentActive ? activePillClasses : inactivePillClasses
         }`}
         aria-expanded={open}
       >
         {item.icon ? (
-          <span className={`nav-icon ${parentActive ? "text-violet-400" : "text-white/40"}`}>
+          <span className={`nav-icon ${parentActive ? "" : "text-white/40 light:text-slate-500"}`}>
             {item.icon}
           </span>
         ) : null}
@@ -515,7 +775,7 @@ function NavGroupItem({
           strokeLinejoin="round"
           className={`transition-transform duration-200 ${
             open ? "rotate-90" : ""
-          } ${parentActive ? "text-violet-400/80" : "text-white/30"}`}
+          } ${parentActive ? "" : "text-white/30 light:text-slate-400"}`}
         >
           <polyline points="9 18 15 12 9 6" />
         </svg>
@@ -530,10 +790,10 @@ function NavGroupItem({
                 key={child.href}
                 href={child.href}
                 onClick={onNavigate}
-                className={`nav-item flex items-center px-3 py-1.5 rounded-lg text-sm ${
+                className={`flex items-center px-3 py-1.5 rounded-lg text-[13px] transition-colors ${
                   childActive
-                    ? "is-active bg-violet-500/10 text-violet-200"
-                    : "text-white/45 hover:text-white"
+                    ? "bg-violet-500/10 text-violet-200 light:bg-violet-100 light:text-violet-700"
+                    : "text-white/45 hover:text-white light:text-slate-600 light:hover:text-slate-900"
                 }`}
               >
                 {child.label}
@@ -646,7 +906,7 @@ export function MobileTopbar({
           role="dialog"
           aria-modal="true"
           aria-label="Үндсэн цэс"
-          className={`absolute top-0 left-0 h-full w-72 max-w-[85vw] bg-[#0d0d14] border-r border-white/[0.06] flex flex-col shadow-2xl transition-transform duration-300 ease-out ${
+          className={`absolute top-0 left-0 h-full w-72 max-w-[85vw] bg-[var(--shell-surface)] border-r border-white/[0.06] flex flex-col shadow-2xl transition-transform duration-300 ease-out ${
             open ? "translate-x-0" : "-translate-x-full"
           }`}
         >

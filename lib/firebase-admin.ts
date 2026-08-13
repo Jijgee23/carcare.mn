@@ -60,7 +60,9 @@ function loadServiceAccount(): ServiceAccount | null {
     process.env.FIREBASE_SERVICE_ACCOUNT_FILE ??
     (process.env.NODE_ENV !== "production" ? DEFAULT_DEV_FILE : undefined);
   if (file) {
-    const abs = path.isAbsolute(file) ? file : path.join(process.cwd(), file);
+    const abs = path.isAbsolute(file)
+      ? file
+      : path.join(/*turbopackIgnore: true*/ process.cwd(), file);
     if (existsSync(abs)) {
       try {
         return toServiceAccount(JSON.parse(readFileSync(abs, "utf8")));

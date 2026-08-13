@@ -11,20 +11,12 @@
  */
 
 import "dotenv/config";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "../app/generated/prisma/client";
-
-const url = process.env.DATABASE_URL;
-if (!url) {
-  console.error("DATABASE_URL орчны хувьсагч тохируулагдаагүй.");
-  process.exit(1);
-}
-
-const prisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: url }),
-});
+import { prisma } from "@/lib/prisma";
+import { setBypassContext } from "@/lib/tenant-context";
 
 async function main() {
+  // Бүх tenant дундуур bulk update хийдэг скрипт тул RLS-г тойрч гарна.
+  setBypassContext();
   const now = new Date();
   const result = await prisma.user.updateMany({
     where: {

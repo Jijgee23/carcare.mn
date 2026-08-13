@@ -22,9 +22,9 @@ const STATUS_LABEL: Record<SessionStatus, string> = {
   expired: "Дууссан",
 };
 const STATUS_BADGE: Record<SessionStatus, string> = {
-  active: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/25",
-  revoked: "bg-zinc-500/15 text-zinc-300 border border-zinc-500/25",
-  expired: "bg-red-500/10 text-red-400 border border-red-500/20",
+  active: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700",
+  revoked: "bg-zinc-500/15 text-zinc-300 border border-zinc-500/25 light:bg-zinc-100 light:border-zinc-300 light:text-zinc-600",
+  expired: "bg-red-500/10 text-red-400 border border-red-500/20 light:bg-red-100 light:border-red-300 light:text-red-700",
 };
 
 function fmt(d: Date | null): string {
@@ -35,6 +35,7 @@ function fmt(d: Date | null): string {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
   });
 }
 
@@ -71,7 +72,7 @@ export default async function SystemSessionsPage({
           href={tabHref("staff")}
           className={`px-4 py-1.5 text-sm transition-colors ${
             tab === "staff"
-              ? "bg-violet-600/30 text-violet-200"
+              ? "bg-violet-600/30 text-violet-200 light:bg-violet-100 light:text-violet-700"
               : "text-white/60 hover:bg-white/[0.06]"
           }`}
         >
@@ -81,7 +82,7 @@ export default async function SystemSessionsPage({
           href={tabHref("customer")}
           className={`px-4 py-1.5 text-sm transition-colors border-l border-white/[0.1] ${
             tab === "customer"
-              ? "bg-violet-600/30 text-violet-200"
+              ? "bg-violet-600/30 text-violet-200 light:bg-violet-100 light:text-violet-700"
               : "text-white/60 hover:bg-white/[0.06]"
           }`}
         >
@@ -171,7 +172,7 @@ async function StaffTab({
       {rows.length === 0 ? (
         <Empty />
       ) : (
-        <div className="glass rounded-2xl overflow-hidden border border-white/[0.08]">
+        <div className="glass rounded-2xl overflow-x-auto border border-white/[0.08]">
           <table className="w-full min-w-[860px]">
             <thead>
               <tr className="border-b border-white/[0.06]">
@@ -283,7 +284,7 @@ async function CustomerTab({
       {rows.length === 0 ? (
         <Empty />
       ) : (
-        <div className="glass rounded-2xl overflow-hidden border border-white/[0.08]">
+        <div className="glass rounded-2xl overflow-x-auto border border-white/[0.08]">
           <table className="w-full min-w-[640px]">
             <thead>
               <tr className="border-b border-white/[0.06]">

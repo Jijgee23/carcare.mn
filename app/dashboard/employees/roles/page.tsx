@@ -128,7 +128,7 @@ export default async function RolesPage({
                     </td>
                     <td className="px-5 py-4">
                       {r.isActive ? (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700">
                           Идэвхтэй
                         </span>
                       ) : (

@@ -117,8 +117,10 @@ export async function createReportAction(
       where: { id: customerId, tenantId: user.tenantId },
       select: { id: true },
     }),
-    prisma.vehicle.findFirst({
-      where: { id: vehicleId, tenantId: user.tenantId },
+    prisma.tenantVehicle.findUnique({
+      where: {
+        tenantId_vehicleId: { tenantId: user.tenantId, vehicleId },
+      },
       select: { id: true },
     }),
     prisma.branch.findFirst({

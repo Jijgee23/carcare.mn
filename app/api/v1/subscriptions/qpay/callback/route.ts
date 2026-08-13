@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { confirmSubscriptionPayment } from "@/lib/subscription-payments";
+import { setBypassContext } from "@/lib/tenant-context";
 
 /**
  * QPay callback. Invoice үүсгэхдээ callback_url-д `?payment_id=<id>` нэмж өгсөн —
@@ -16,6 +17,8 @@ async function handle(req: Request): Promise<NextResponse> {
       status: 400,
     });
   }
+  // tenantId нь paymentId-аар өөрөө DB-ээс уншигдах хүртэл тодорхойгүй.
+  setBypassContext();
 
   const result = await confirmSubscriptionPayment(paymentId);
   // QPay-д 200 буцаах нь чухал (эс бөгөөс дахин дуудсаар байна). Үр дүнг JSON-оор

@@ -65,7 +65,7 @@ export function InlineCustomerForm({
       </div>
 
       {message ? (
-        <p className="text-xs text-red-400">{message}</p>
+        <p className="text-xs text-red-400 light:text-red-600">{message}</p>
       ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2">

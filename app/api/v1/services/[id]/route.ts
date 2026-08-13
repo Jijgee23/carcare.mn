@@ -15,7 +15,7 @@ const SERVICE_DETAIL_SELECT = {
   durationValue: true,
   unit: { select: { id: true, name: true, code: true } },
   durationUnit: { select: { id: true, name: true, code: true } },
-  laborCategory: { select: { id: true, name: true } },
+  category: { select: { id: true, name: true } },
   createdAt: true,
   updatedAt: true,
   _count: { select: { items: true } },

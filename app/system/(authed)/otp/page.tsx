@@ -55,7 +55,7 @@ export default async function SystemOtpPage() {
           сэргээнэ үү.
         </div>
       ) : (
-        <div className="glass rounded-2xl overflow-hidden border border-white/[0.08]">
+        <div className="glass rounded-2xl overflow-x-auto border border-white/[0.08]">
           <table className="w-full min-w-[640px]">
             <thead>
               <tr className="border-b border-white/[0.06]">
@@ -80,7 +80,7 @@ export default async function SystemOtpPage() {
                     <td className="px-5 py-4">
                       <span
                         className={`font-mono text-lg font-bold tracking-widest tabular-nums ${
-                          expired ? "text-white/30 line-through" : "text-emerald-300"
+                          expired ? "text-white/30 line-through" : "text-emerald-300 light:text-emerald-700"
                         }`}
                       >
                         {o.code}
@@ -93,15 +93,15 @@ export default async function SystemOtpPage() {
                       {o.email ?? o.phone}
                     </td>
                     <td className="px-5 py-4 text-xs text-white/40">
-                      {o.createdAt.toLocaleTimeString("mn-MN")}
+                      {o.createdAt.toLocaleTimeString("mn-MN", { hour12: false })}
                     </td>
                     <td className="px-5 py-4">
                       {expired ? (
-                        <span className="text-xs px-2.5 py-1 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
+                        <span className="text-xs px-2.5 py-1 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 light:bg-red-100 light:border-red-300 light:text-red-700">
                           Хугацаа дууссан
                         </span>
                       ) : (
-                        <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">
+                        <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700">
                           Хүчинтэй
                         </span>
                       )}

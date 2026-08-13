@@ -18,10 +18,16 @@ import {
   revokeUserSession,
 } from "@/lib/auth/user-session";
 import { prisma } from "@/lib/prisma";
+import { setBypassContext, setTenantContext } from "@/lib/tenant-context";
 import { sendOtpSms } from "@/lib/sms";
 import { saveUpload } from "@/lib/storage";
 import { logAudit } from "@/lib/audit";
-import { ALL_WEEKDAYS, DEFAULT_OPEN_DAYS } from "@/lib/branches";
+import {
+  ALL_WEEKDAYS,
+  DEFAULT_OPEN_DAYS,
+  isValidTime,
+  isWeekday,
+} from "@/lib/branches";
 import { trialEndDate } from "@/lib/subscription";
 import { DEFAULT_UNITS } from "@/lib/units";
 
@@ -75,6 +81,8 @@ export async function signUpAction(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  // Шинэ tenant бүртгэгдэх урсгал — session/tenant хараахан байхгүй.
+  setBypassContext();
   // Organization
   const orgName = getStr(formData, "orgName");
   const registerNumber = getStr(formData, "registerNumber");
@@ -82,6 +90,17 @@ export async function signUpAction(
   const phone1 = getStr(formData, "phone1");
   const phone2 = getStr(formData, "phone2");
   const logoFile = formData.get("logo");
+
+  // Үндсэн салбар
+  const branchCity = getStr(formData, "city");
+  const branchDistrict = getStr(formData, "district");
+  const branchKhoroo = getStr(formData, "khoroo");
+  const branchAddress = getStr(formData, "address");
+  const branchLatRaw = getStr(formData, "latitude");
+  const branchLngRaw = getStr(formData, "longitude");
+  const branchOpenTimeRaw = getStr(formData, "openTime");
+  const branchCloseTimeRaw = getStr(formData, "closeTime");
+  const branchWorkDays = formData.getAll("workDays").map(String).filter(isWeekday);
 
   // Admin
   const lastName = getStr(formData, "lastName");
@@ -118,6 +137,32 @@ export async function signUpAction(
     fieldErrors.phone1 = "Утасны дугаар 8 оронтой тоо байх ёстой.";
   if (phone2 && !isValidPhone(phone2))
     fieldErrors.phone2 = "Утасны дугаар 8 оронтой тоо байх ёстой.";
+
+  // Үндсэн салбарын хаяг — хэрэглэгчид харагдах, захиалга авахад заавал хэрэгтэй.
+  if (!branchCity) fieldErrors.city = "Хотоо сонгоно уу.";
+  if (!branchDistrict) fieldErrors.district = "Дүүргээ сонгоно уу.";
+  if (!branchAddress) fieldErrors.address = "Дэлгэрэнгүй хаягаа оруулна уу.";
+
+  let branchLat: number | null = null;
+  if (branchLatRaw) {
+    const n = Number.parseFloat(branchLatRaw);
+    if (!Number.isFinite(n) || n < -90 || n > 90)
+      fieldErrors.latitude = "Latitude -90 ба 90-ийн хооронд байна.";
+    else branchLat = n;
+  }
+  let branchLng: number | null = null;
+  if (branchLngRaw) {
+    const n = Number.parseFloat(branchLngRaw);
+    if (!Number.isFinite(n) || n < -180 || n > 180)
+      fieldErrors.longitude = "Longitude -180 ба 180-ийн хооронд байна.";
+    else branchLng = n;
+  }
+  const branchOpenTime = branchOpenTimeRaw || null;
+  const branchCloseTime = branchCloseTimeRaw || null;
+  if (branchOpenTime && !isValidTime(branchOpenTime))
+    fieldErrors.openTime = "Цагийн форматыг HH:MM (24 цаг) хэлбэрээр оруулна уу.";
+  if (branchCloseTime && !isValidTime(branchCloseTime))
+    fieldErrors.closeTime = "Цагийн форматыг HH:MM (24 цаг) хэлбэрээр оруулна уу.";
 
   if (!lastName) fieldErrors.lastName = "Овгоо оруулна уу.";
   if (!firstName) fieldErrors.firstName = "Нэрээ оруулна уу.";
@@ -287,23 +332,35 @@ export async function signUpAction(
         },
       });
 
-      // Үндсэн салбар үүсгэнэ — тенант бүртгэлийн утсыг өвлүүлнэ
+      // Үндсэн салбар үүсгэнэ — тенант бүртгэлийн утсыг өвлүүлж, бүртгэлийн
+      // үед хэрэглэгчийн бөглөсөн хаяг/цагийн мэдээллийг хадгална.
       const branch = await tx.branch.create({
         data: {
           tenantId: tenant.id,
           name: "Үндсэн салбар",
           phone: normPhone1,
           isPrimary: true,
+          city: branchCity,
+          district: branchDistrict,
+          khoroo: branchKhoroo || null,
+          address: branchAddress,
+          latitude: branchLat,
+          longitude: branchLng,
+          openTime: branchOpenTime,
+          closeTime: branchCloseTime,
         },
       });
 
-      // Долоо хоногийн 7 өдрийн default хуваарь (Даваа–Баасан нээлттэй)
-      const defaultOpen = new Set(DEFAULT_OPEN_DAYS);
+      // Долоо хоногийн 7 өдрийн хуваарь — хэрэглэгч сонгосон өдрүүд, эсвэл
+      // юу ч сонгоогүй бол анхдагч Даваа–Баасан.
+      const openDays = new Set(
+        branchWorkDays.length ? branchWorkDays : DEFAULT_OPEN_DAYS,
+      );
       await tx.branchSchedule.createMany({
         data: ALL_WEEKDAYS.map((wd) => ({
           branchId: branch.id,
           weekday: wd,
-          isOpen: defaultOpen.has(wd),
+          isOpen: openDays.has(wd),
         })),
       });
 
@@ -376,6 +433,8 @@ export async function checkLoginEmailAction(
     return { ok: false, fieldErrors: { email: "Имэйл хаяг буруу." } };
   }
 
+  // Нэвтрэхээс өмнө — session/tenant хараахан байхгүй.
+  setBypassContext();
   const user = await prisma.user.findUnique({
     where: { email },
     select: { id: true, verified: true, passwordHash: true, phone: true },
@@ -443,6 +502,8 @@ export async function signInAction(
   if (!password) fieldErrors.password = "Нууц үгээ оруулна уу.";
   if (Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors };
 
+  // Нэвтрэхээс өмнө — session/tenant хараахан байхгүй.
+  setBypassContext();
   const user = await prisma.user.findUnique({
     where: { email },
     include: { tenant: { select: { suspended: true } } },
@@ -555,9 +616,13 @@ export async function signInAction(
 export async function signOutAction(): Promise<void> {
   // Logout-аас өмнө хэрэглэгчийн мэдээллийг авна (cookie clear хийсний дараа танигдахгүй)
   try {
+    // session.tenantId олдох хүртэл (доор) — getSession() өөрөө UserSession уншина.
+    setBypassContext();
     const { getSession } = await import("@/lib/auth");
     const session = await getSession();
     if (session) {
+      // JWT дотор гарын үсэгтэй ирсэн, найдвартай tenantId.
+      setTenantContext(session.tenantId);
       // Энэ төхөөрөмжийн session-ийг revoke (идэвхтэй жагсаалтаас хасна).
       if (session.sid) {
         await revokeUserSession(session.sid, session.userId);
@@ -613,6 +678,8 @@ export async function requestPasswordResetAction(
     };
   }
 
+  // Нууц үг сэргээхээс өмнө — session/tenant хараахан байхгүй.
+  setBypassContext();
   const user = await prisma.user.findUnique({
     where: { email },
     select: { id: true, phone: true },
@@ -679,6 +746,8 @@ export async function resetPasswordAction(
     return { ok: false, step: "verify", email, fieldErrors };
   }
 
+  // Нууц үг сэргээхээс өмнө — session/tenant хараахан байхгүй.
+  setBypassContext();
   const otp = await verifyOtp({ email, type: "RESET_PASSWORD", code });
   if (!otp.ok) {
     const message =
@@ -758,6 +827,8 @@ export async function requestActivationAction(
     };
   }
 
+  // Идэвхжүүлэхээс өмнө — session/tenant хараахан байхгүй.
+  setBypassContext();
   const user = await prisma.user.findUnique({
     where: { email },
     select: { id: true, phone: true, verified: true },
@@ -831,6 +902,8 @@ export async function activateAccountAction(
     return { ok: false, step: "verify", email, fieldErrors };
   }
 
+  // Идэвхжүүлэхээс өмнө — session/tenant хараахан байхгүй.
+  setBypassContext();
   const otp = await verifyOtp({ email, type: "SET_PASSWORD", code });
   if (!otp.ok) {
     const message =

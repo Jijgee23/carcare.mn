@@ -123,14 +123,7 @@ export default async function EmployeesPage({
         }
       />
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "0.5rem",
-          marginBottom: "1rem",
-        }}
-      >
+      <div className="flex flex-wrap items-center gap-2 mb-4">
         <SearchBox placeholder="Нэр, имэйл, утсаар хайх" />
         <FilterSelect
           paramName="roleId"
@@ -203,9 +196,9 @@ export default async function EmployeesPage({
                   const isMe = u.id === me.id;
                   const roleName = u.isOwner ? "Админ" : (u.role?.name ?? "—");
                   const roleClass = u.isOwner
-                    ? "bg-violet-500/15 text-violet-300 border border-violet-500/30"
+                    ? "bg-violet-500/15 text-violet-300 border border-violet-500/30 light:text-violet-700"
                     : u.role
-                      ? "bg-blue-500/15 text-blue-300 border border-blue-500/30"
+                      ? "bg-blue-500/15 text-blue-300 border border-blue-500/30 light:text-blue-700"
                       : "bg-white/10 text-white/60 border border-white/15";
                   return (
                     <ClickableRow
@@ -214,20 +207,20 @@ export default async function EmployeesPage({
                     >
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500/30 to-blue-500/30 flex items-center justify-center text-xs font-bold text-violet-300 shrink-0">
+                          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500/30 to-blue-500/30 flex items-center justify-center text-xs font-bold text-violet-300 light:text-violet-700 shrink-0">
                             {initials}
                           </div>
                           <div>
                             <div className="text-sm font-medium text-white/90">
                               {u.lastName} {u.firstName}
                               {isMe ? (
-                                <span className="ml-1.5 text-[10px] text-violet-400">
+                                <span className="ml-1.5 text-[10px] text-violet-400 light:text-violet-600">
                                   (та)
                                 </span>
                               ) : null}
                               {!u.verified ? (
                                 <span
-                                  className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 align-middle"
+                                  className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 light:text-amber-700 align-middle"
                                   title="Ажилтан анхны нэвтрэлт хийж нууц үгээ үүсгээгүй байна."
                                 >
                                   идэвхжээгүй
@@ -264,20 +257,20 @@ export default async function EmployeesPage({
                           }
                           if (expired) {
                             return (
-                              <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-500/30">
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-500/30 light:text-red-700">
                                 Хугацаа дууссан
                               </span>
                             );
                           }
                           if (u.activeUntil) {
                             return (
-                              <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 light:text-amber-700">
                                 Түр
                               </span>
                             );
                           }
                           return (
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 light:text-emerald-700">
                               Идэвхтэй
                             </span>
                           );
@@ -295,7 +288,7 @@ export default async function EmployeesPage({
                               <input type="hidden" name="id" value={u.id} />
                               <button
                                 type="submit"
-                                className="text-xs text-red-400 hover:text-red-300 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-red-500/10"
+                                className="text-xs text-red-400 hover:text-red-300 light:text-red-600 light:hover:text-red-700 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-red-500/10"
                               >
                                 Устгах
                               </button>

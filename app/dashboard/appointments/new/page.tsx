@@ -15,10 +15,11 @@ export default async function NewAppointmentPage() {
   if (!canCreate(user, "appointments")) redirect("/dashboard/appointments");
   const scopeBranchId = branchScopeId(user);
 
-  const [branches, customers] = await Promise.all([
+  const [branches, customers, categories] = await Promise.all([
     prisma.branch.findMany({
       where: {
         tenantId: user.tenantId,
+        isActive: true,
         ...(scopeBranchId ? { id: scopeBranchId } : {}),
       },
       orderBy: { name: "asc" },
@@ -35,6 +36,19 @@ export default async function NewAppointmentPage() {
       orderBy: { fullName: "asc" },
       select: { id: true, fullName: true, phone: true },
     }),
+    prisma.category
+      .findMany({
+        where: { tenantId: user.tenantId, isActive: true },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, branches: { select: { id: true } } },
+      })
+      .then((rows) =>
+        rows.map((c) => ({
+          id: c.id,
+          name: c.name,
+          branchIds: c.branches.map((b) => b.id),
+        })),
+      ),
   ]);
 
   return (
@@ -51,6 +65,7 @@ export default async function NewAppointmentPage() {
             openWeekdays: openWeekdaysOf(b),
           }))}
           customers={customers}
+          categories={categories}
           defaultBranchId={scopeBranchId ?? undefined}
         />
       </div>

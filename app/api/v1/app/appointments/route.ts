@@ -20,10 +20,18 @@ export async function GET(req: Request) {
       note: true,
       tenant: { select: { name: true, slug: true } },
       branch: { select: { name: true } },
-      accountVehicle: { select: { plate: true } },
+      category: { select: { name: true } },
+      accountVehicle: { select: { vehicle: { select: { plate: true } } } },
     },
   });
-  return jsonOk({ appointments });
+  // Хариуны хэлбэрийг хадгална: accountVehicle: { plate } | null.
+  const shaped = appointments.map((a) => ({
+    ...a,
+    accountVehicle: a.accountVehicle
+      ? { plate: a.accountVehicle.vehicle.plate }
+      : null,
+  }));
+  return jsonOk({ appointments: shaped });
 }
 
 // POST /api/v1/app/appointments — цаг захиалах (auth).
@@ -42,6 +50,7 @@ export async function POST(req: Request) {
     branchId?: unknown;
     requestedAt?: unknown;
     accountVehicleId?: unknown;
+    categoryId?: unknown;
     note?: unknown;
   };
   const branchId = typeof b.branchId === "string" ? b.branchId.trim() : "";
@@ -51,6 +60,8 @@ export async function POST(req: Request) {
     typeof b.accountVehicleId === "string" && b.accountVehicleId
       ? b.accountVehicleId
       : null;
+  const categoryIdRaw =
+    typeof b.categoryId === "string" && b.categoryId ? b.categoryId : null;
 
   if (!branchId) return jsonError(400, "branchId шаардлагатай.");
   const when = new Date(requestedRaw);
@@ -89,12 +100,28 @@ export async function POST(req: Request) {
     if (!owned) return jsonError(400, "Машин олдсонгүй.");
   }
 
+  // Ангилал — заавал биш; салбарт хамаарах (эсвэл салбаргүй) идэвхтэйг л авна.
+  let categoryId: string | null = categoryIdRaw;
+  if (categoryId) {
+    const cat = await prisma.category.findFirst({
+      where: {
+        id: categoryId,
+        tenantId: branch.tenantId,
+        isActive: true,
+        OR: [{ branches: { some: { id: branch.id } } }, { branches: { none: {} } }],
+      },
+      select: { id: true },
+    });
+    if (!cat) categoryId = null;
+  }
+
   const appt = await prisma.appointment.create({
     data: {
       tenantId: branch.tenantId,
       branchId: branch.id,
       accountId: account.id,
       accountVehicleId,
+      categoryId,
       requestedAt: when,
       note: note || null,
       status: "PENDING",

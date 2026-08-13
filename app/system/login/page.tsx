@@ -8,7 +8,7 @@ export const metadata = {
 
 export default function SystemLoginPage() {
   return (
-    <div className="min-h-screen flex flex-col bg-[#0a0a0f]">
+    <div className="min-h-screen flex flex-col bg-[var(--bg-primary)]">
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-0 left-1/3 w-96 h-96 bg-red-600/10 rounded-full blur-3xl" />
         <div className="absolute bottom-0 right-1/3 w-80 h-80 bg-violet-600/8 rounded-full blur-3xl" />
@@ -49,7 +49,7 @@ export default function SystemLoginPage() {
             эзэн юу?{" "}
             <Link
               href="/page/login"
-              className="text-violet-400 hover:text-violet-300"
+              className="text-violet-400 hover:text-violet-300 light:text-violet-700 light:hover:text-violet-800"
             >
               Энд нэвтэр
             </Link>

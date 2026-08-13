@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { setBypassContext, setTenantContext } from "@/lib/tenant-context";
 import { checkUserActive } from "./active";
 import { clearSessionCookie, getSessionCookie } from "./cookies";
 import { verifySession, type SessionPayload } from "./session";
@@ -13,13 +14,22 @@ export type { SessionPayload } from "./session";
  * Request бүрд нэг л удаа дуудна (React cache).
  */
 export const getSession = cache(async (): Promise<SessionPayload | null> => {
+  // ЧУХАЛ: enterWith-г JWT verify (WebCrypto ашигладаг, jose) зэрэг async
+  // үйлдлээс ӨМНӨ дуудах ёстой — эс бөгөөс дараа нь тавьсан context Node.js-ийн
+  // async_hooks-ийн зарим хувилбарт "алга" болдог нюанс ажиглагдсан (бодит
+  // тест: crypto үйлдлийн өмнө нэг ч удаа enterWith дуудагдаагүй байхад дараа
+  // нь дуудсан context дараагийн prisma query-д харагдахгүй байсан).
+  setBypassContext();
   const token = await getSessionCookie();
   if (!token) return null;
   const payload = await verifySession(token);
   if (!payload) return null;
-  // sid-тэй (шинэ) token бол DB session-ийг шалгана — revoke/expire-д шууд гарна.
-  // sid-гүй хуучин token-ийг JWT хүчинтэй хэвээр (backward-compat) үлдээнэ.
-  if (payload.sid && !(await validateUserSession(payload.sid))) return null;
+  // sid-тэй (шинэ) token бол DB session-ийг шалгана (UserSession — tenant-гүй
+  // хүснэгт). sid-гүй хуучин token-ийг JWT хүчинтэй хэвээр (backward-compat)
+  // үлдээнэ.
+  if (payload.sid) {
+    if (!(await validateUserSession(payload.sid))) return null;
+  }
   return payload;
 });
 
@@ -38,6 +48,10 @@ export async function requireSession(): Promise<SessionPayload> {
  */
 export const requireUser = cache(async () => {
   const session = await requireSession();
+  // Ямар tenant-тай болохыг хараахан мэдэхгүй тул өөрийн session.userId-аар
+  // (найдвартай, сервэрийн session-оос гарсан id) нэг мөр татахад л bypass —
+  // доор tenantId олдмогц бүх дараагийн query-г тухайн tenant-д хязгаарлана.
+  setBypassContext();
   const user = await prisma.user.findUnique({
     where: { id: session.userId },
     include: {
@@ -56,5 +70,6 @@ export const requireUser = cache(async () => {
     await clearSessionCookie();
     redirect("/page/login");
   }
+  setTenantContext(user.tenantId);
   return user;
 });

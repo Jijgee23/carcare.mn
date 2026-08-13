@@ -31,10 +31,10 @@ type Initial = {
   durationUnitId: string | null;
   description: string | null;
   isActive: boolean;
-  laborCategoryId: string | null;
+  categoryId: string | null;
 };
 
-export type LaborCategoryOption = {
+export type CategoryOption = {
   id: string;
   name: string;
   isActive: boolean;
@@ -52,12 +52,12 @@ const FIELD_MW = "max-w-xs";
 export function ServiceForm({
   initial,
   fixedType,
-  laborCategories,
+  categories,
   units,
 }: {
   initial?: Initial;
   fixedType?: ServiceKind;
-  laborCategories: LaborCategoryOption[];
+  categories: CategoryOption[];
   units: UnitOption[];
 }) {
   const isEdit = Boolean(initial?.id);
@@ -72,8 +72,8 @@ export function ServiceForm({
   const [type, setType] = useState<ServiceKind>(
     initial?.type ?? fixedType ?? "LABOR",
   );
-  const [laborCategoryId, setLaborCategoryId] = useState<string>(
-    initial?.laborCategoryId ?? "",
+  const [categoryId, setCategoryId] = useState<string>(
+    initial?.categoryId ?? "",
   );
   // Шинэ бичлэгт хэмжих нэгжийг `хүн/цаг`-аар анхдагчаар сонгоно.
   const defaultUnitId =
@@ -102,14 +102,13 @@ export function ServiceForm({
 
   const fe = state?.fieldErrors ?? {};
   const isGoods = type === "GOODS";
-  const isLabor = type === "LABOR";
 
   const backHref = `/dashboard/services/${SERVICE_KIND_SLUG[type]}`;
 
-  const visibleCategories = laborCategories.filter(
-    (c) => c.isActive || c.id === initial?.laborCategoryId,
+  const visibleCategories = categories.filter(
+    (c) => c.isActive || c.id === initial?.categoryId,
   );
-  const hasAnyCategory = laborCategories.length > 0;
+  const hasAnyCategory = categories.length > 0;
 
   const visibleUnits = (selectedId: string | null | undefined) =>
     units.filter((u) => u.isActive || u.id === selectedId);
@@ -164,35 +163,33 @@ export function ServiceForm({
       </Field>
 
       <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {isLabor ? (
-          <Field
-            label="Ажлын ангилал"
-            htmlFor="laborCategoryId"
-            error={fe.laborCategoryId}
-            hint={
-              hasAnyCategory
-                ? undefined
-                : "Тохиргоо → Системийн → Ажлын ангилалд бүртгээрэй."
+        <Field
+          label="Ангилал"
+          htmlFor="categoryId"
+          error={fe.categoryId}
+          hint={
+            hasAnyCategory
+              ? undefined
+              : "Үйлчилгээ → Ангилалд эхлээд бүртгээрэй."
+          }
+          className={FIELD_MW}
+        >
+          <Select
+            id="categoryId"
+            name="categoryId"
+            required
+            value={categoryId}
+            onChange={setCategoryId}
+            error={fe.categoryId}
+            placeholder={
+              hasAnyCategory ? "— Ангилал —" : "Ангилал бүртгэгдээгүй"
             }
-            className={FIELD_MW}
-          >
-            <Select
-              id="laborCategoryId"
-              name="laborCategoryId"
-              required
-              value={laborCategoryId}
-              onChange={setLaborCategoryId}
-              error={fe.laborCategoryId}
-              placeholder={
-                hasAnyCategory ? "— Ангилал —" : "Ангилал бүртгэгдээгүй"
-              }
-              options={visibleCategories.map((c) => ({
-                value: c.id,
-                label: `${c.name}${c.isActive ? "" : " (идэвхгүй)"}`,
-              }))}
-            />
-          </Field>
-        ) : null}
+            options={visibleCategories.map((c) => ({
+              value: c.id,
+              label: `${c.name}${c.isActive ? "" : " (идэвхгүй)"}`,
+            }))}
+          />
+        </Field>
 
         <Field label="Нэр" htmlFor="name" error={fe.name} className={FIELD_MW}>
           <input

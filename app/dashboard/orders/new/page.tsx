@@ -58,6 +58,7 @@ export default async function NewOrderPage({
     prisma.branch.findMany({
       where: {
         tenantId: user.tenantId,
+        isActive: true,
         ...(scopeBranchId ? { id: scopeBranchId } : {}),
       },
       orderBy: { createdAt: "asc" },
@@ -68,17 +69,25 @@ export default async function NewOrderPage({
       orderBy: { fullName: "asc" },
       select: { id: true, fullName: true, phone: true },
     }),
-    prisma.vehicle.findMany({
-      where: { tenantId: user.tenantId },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        plate: true,
-        make: true,
-        model: true,
-        customerId: true,
-      },
-    }),
+    prisma.tenantVehicle
+      .findMany({
+        where: { tenantId: user.tenantId, isActive: true },
+        orderBy: { createdAt: "desc" },
+        select: {
+          customerId: true,
+          isPostpaid: true,
+          vehicle: {
+            select: { id: true, plate: true, make: true, model: true },
+          },
+        },
+      })
+      .then((rows) =>
+        rows.map((r) => ({
+          ...r.vehicle,
+          customerId: r.customerId,
+          isPostpaid: r.isPostpaid,
+        })),
+      ),
     prisma.user.findMany({
       where: {
         tenantId: user.tenantId,
@@ -90,6 +99,8 @@ export default async function NewOrderPage({
         id: true,
         firstName: true,
         lastName: true,
+        branchId: true,
+        assignableBranchIds: true,
         isOwner: true,
         role: { select: { name: true } },
       },

@@ -18,14 +18,17 @@ import { customerLabel } from "@/lib/customers";
 
 type Branch = { id: string; name: string; openWeekdays: Weekday[] };
 type Customer = { id: string; fullName: string; phone: string };
+type Category = { id: string; name: string; branchIds: string[] };
 
 export function AppointmentForm({
   branches,
   customers: initialCustomers,
+  categories,
   defaultBranchId,
 }: {
   branches: Branch[];
   customers: Customer[];
+  categories: Category[];
   defaultBranchId?: string;
 }) {
   const [state, formAction, pending] = useActionState<
@@ -38,13 +41,22 @@ export function AppointmentForm({
   const [customerId, setCustomerId] = useState("");
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [selectedIso, setSelectedIso] = useState("");
+  const [categoryId, setCategoryId] = useState("");
 
   const fe = state?.fieldErrors ?? {};
   const selectedBranch = branches.find((b) => b.id === branchId);
 
+  // Сонгосон салбарт хамаарах ангилал (салбаргүй ангилал бүх салбарт).
+  const branchCategories = branchId
+    ? categories.filter(
+        (c) => c.branchIds.length === 0 || c.branchIds.includes(branchId),
+      )
+    : [];
+
   function onBranchChange(v: string) {
     setBranchId(v);
     setSelectedIso("");
+    setCategoryId("");
   }
 
   function onCustomerCreated(c: CreatedCustomer) {
@@ -73,6 +85,27 @@ export function AppointmentForm({
             />
           </Field>
 
+          {branchId && branchCategories.length > 0 ? (
+            <Field
+              label="Үйлчилгээний ангилал"
+              htmlFor="categoryId"
+              hint="заавал биш"
+              error={fe.categoryId}
+            >
+              <Select
+                id="categoryId"
+                name="categoryId"
+                value={categoryId}
+                onChange={setCategoryId}
+                placeholder="— Сонгох —"
+                options={branchCategories.map((c) => ({
+                  value: c.id,
+                  label: c.name,
+                }))}
+              />
+            </Field>
+          ) : null}
+
           <Field label="Үйлчлүүлэгч" htmlFor="customerId" error={fe.customerId}>
             <div className="flex gap-2">
               <div className="flex-1 min-w-0">
@@ -96,7 +129,7 @@ export function AppointmentForm({
               <button
                 type="button"
                 onClick={() => setShowCustomerForm((v) => !v)}
-                className="shrink-0 px-2.5 rounded-lg border border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-violet-200 text-xs font-medium transition-colors"
+                className="shrink-0 px-2.5 rounded-lg border border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-violet-200 light:bg-violet-100 light:hover:bg-violet-200 light:border-violet-300 light:text-violet-700 text-xs font-medium transition-colors"
                 title="Шинэ үйлчлүүлэгч нэмэх"
               >
                 {showCustomerForm ? "✕" : "+"}

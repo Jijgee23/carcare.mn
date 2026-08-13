@@ -42,7 +42,7 @@ export default async function SystemTenantDetailPage({
           users: true,
           branches: true,
           customers: true,
-          vehicles: true,
+          tenantVehicles: true,
           services: true,
           serviceOrders: true,
         },
@@ -101,11 +101,11 @@ export default async function SystemTenantDetailPage({
         description={`#${tenant.registerNumber} · ${tenant.email}`}
         actions={
           tenant.suspended ? (
-            <span className="text-xs px-3 py-1.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25">
+            <span className="text-xs px-3 py-1.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 light:bg-amber-100 light:border-amber-300 light:text-amber-700">
               Зогссон
             </span>
           ) : (
-            <span className="text-xs px-3 py-1.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
+            <span className="text-xs px-3 py-1.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700">
               Идэвхтэй
             </span>
           )
@@ -116,13 +116,13 @@ export default async function SystemTenantDetailPage({
         <BigStat label="Салбар" value={tenant._count.branches} />
         <BigStat label="Ажилтан" value={tenant._count.users} />
         <BigStat label="Үйлчлүүлэгч" value={tenant._count.customers} />
-        <BigStat label="Машин" value={tenant._count.vehicles} />
+        <BigStat label="Машин" value={tenant._count.tenantVehicles} />
         <BigStat label="Үйлчилгээ" value={tenant._count.services} />
         <BigStat label="Захиалга" value={tenant._count.serviceOrders} />
         <BigStat
           label="Дуусгасан"
           value={revenueAgg._count._all}
-          color="text-emerald-400"
+          color="text-emerald-400 light:text-emerald-700"
         />
         <BigStat
           label="Орлого"
@@ -147,7 +147,7 @@ export default async function SystemTenantDetailPage({
               ) : null}
               <Row
                 label="Бүртгүүлсэн"
-                value={tenant.createdAt.toLocaleString("mn-MN")}
+                value={tenant.createdAt.toLocaleString("mn-MN", { hour12: false })}
               />
             </dl>
           </section>
@@ -240,7 +240,7 @@ export default async function SystemTenantDetailPage({
                                 />
                                 <button
                                   type="submit"
-                                  className="text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded-md hover:bg-red-500/10 transition-colors"
+                                  className="text-xs text-red-400 hover:text-red-300 light:text-red-600 light:hover:text-red-700 px-2 py-1 rounded-md hover:bg-red-500/10 transition-colors"
                                 >
                                   Цуцлах
                                 </button>
@@ -273,7 +273,7 @@ export default async function SystemTenantDetailPage({
                           {u.email} · {u.phone}
                         </div>
                       </div>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/30">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/30 light:bg-violet-100 light:border-violet-300 light:text-violet-700">
                         Админ
                       </span>
                     </div>
@@ -350,13 +350,13 @@ export default async function SystemTenantDetailPage({
                   defaultValue={tenant.plan}
                   className="auth-input !py-2 !text-sm"
                 >
-                  <option value="FREE" className="bg-[#0d0d14]">
+                  <option value="FREE" className="bg-[var(--surface)]">
                     FREE
                   </option>
-                  <option value="BUSINESS" className="bg-[#0d0d14]">
+                  <option value="BUSINESS" className="bg-[var(--surface)]">
                     BUSINESS
                   </option>
-                  <option value="ENTERPRISE" className="bg-[#0d0d14]">
+                  <option value="ENTERPRISE" className="bg-[var(--surface)]">
                     ENTERPRISE
                   </option>
                 </select>
@@ -365,10 +365,10 @@ export default async function SystemTenantDetailPage({
                   defaultValue="ACTIVE"
                   className="auth-input !py-2 !text-sm"
                 >
-                  <option value="ACTIVE" className="bg-[#0d0d14]">
+                  <option value="ACTIVE" className="bg-[var(--surface)]">
                     ACTIVE
                   </option>
-                  <option value="TRIAL" className="bg-[#0d0d14]">
+                  <option value="TRIAL" className="bg-[var(--surface)]">
                     TRIAL
                   </option>
                 </select>
@@ -414,7 +414,7 @@ export default async function SystemTenantDetailPage({
               action={activateTenantAction}
               className="glass rounded-2xl p-5 border border-emerald-500/20"
             >
-              <h2 className="font-semibold mb-1 text-sm text-emerald-300">
+              <h2 className="font-semibold mb-1 text-sm text-emerald-300 light:text-emerald-700">
                 Сэргээх
               </h2>
               <p className="text-xs text-white/40 mb-4">
@@ -423,7 +423,7 @@ export default async function SystemTenantDetailPage({
               <input type="hidden" name="id" value={tenant.id} />
               <button
                 type="submit"
-                className="w-full bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 transition-colors py-2.5 rounded-xl text-sm font-medium"
+                className="w-full bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 transition-colors py-2.5 rounded-xl text-sm font-medium light:bg-emerald-100 light:hover:bg-emerald-200 light:border-emerald-300 light:text-emerald-700"
               >
                 Идэвхжүүлэх
               </button>
@@ -433,7 +433,7 @@ export default async function SystemTenantDetailPage({
               action={suspendTenantAction}
               className="glass rounded-2xl p-5 border border-amber-500/20"
             >
-              <h2 className="font-semibold mb-1 text-sm text-amber-300">
+              <h2 className="font-semibold mb-1 text-sm text-amber-300 light:text-amber-700">
                 Түр зогсоох
               </h2>
               <p className="text-xs text-white/40 mb-4">
@@ -442,7 +442,7 @@ export default async function SystemTenantDetailPage({
               <input type="hidden" name="id" value={tenant.id} />
               <button
                 type="submit"
-                className="w-full bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 transition-colors py-2.5 rounded-xl text-sm font-medium"
+                className="w-full bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 transition-colors py-2.5 rounded-xl text-sm font-medium light:bg-amber-100 light:hover:bg-amber-200 light:border-amber-300 light:text-amber-700"
               >
                 Зогсоох
               </button>
@@ -453,7 +453,7 @@ export default async function SystemTenantDetailPage({
             action={deleteTenantAction}
             className="glass rounded-2xl p-5 border border-red-500/30"
           >
-            <h2 className="font-semibold mb-1 text-sm text-red-300">
+            <h2 className="font-semibold mb-1 text-sm text-red-300 light:text-red-700">
               Бүрэн устгах
             </h2>
             <p className="text-xs text-white/40 mb-4">
@@ -470,7 +470,7 @@ export default async function SystemTenantDetailPage({
             />
             <button
               type="submit"
-              className="w-full bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 transition-colors py-2.5 rounded-xl text-sm font-medium"
+              className="w-full bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 transition-colors py-2.5 rounded-xl text-sm font-medium light:bg-red-100 light:hover:bg-red-200 light:border-red-300 light:text-red-700"
             >
               Устгах
             </button>

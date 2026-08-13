@@ -16,7 +16,7 @@ export default function ForgotPage() {
           Нэвтрэх юм уу?{" "}
           <Link
             href="/page/login"
-            className="font-medium text-violet-300 hover:text-violet-200"
+            className="font-medium text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
           >
             Буцах
           </Link>

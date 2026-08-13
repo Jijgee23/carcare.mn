@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { Prisma } from "@/app/generated/prisma/client";
 import { requireSuperAdmin } from "@/lib/auth/system";
 import { prisma } from "@/lib/prisma";
 
@@ -70,7 +71,16 @@ export async function deleteTenantAction(formData: FormData): Promise<void> {
     );
   }
 
-  await prisma.tenant.delete({ where: { id } });
+  try {
+    await prisma.tenant.delete({ where: { id } });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") {
+      throw new Error(
+        "Энэ байгууллага санхүү/аудитын түүхтэй (төлбөр, лог) тул устгах боломжгүй. Оронд нь идэвхгүй болгоно уу.",
+      );
+    }
+    throw e;
+  }
   revalidatePath("/system/tenants");
   revalidatePath("/system");
   redirect("/system/tenants");

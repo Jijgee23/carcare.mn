@@ -133,8 +133,13 @@ export async function POST(req: Request) {
       where: { id: finalCustomerId, tenantId: auth.user.tenantId },
       select: { id: true },
     }),
-    prisma.vehicle.findFirst({
-      where: { id: finalVehicleId, tenantId: auth.user.tenantId },
+    prisma.tenantVehicle.findUnique({
+      where: {
+        tenantId_vehicleId: {
+          tenantId: auth.user.tenantId,
+          vehicleId: finalVehicleId,
+        },
+      },
       select: { id: true },
     }),
     prisma.branch.findFirst({

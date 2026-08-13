@@ -23,9 +23,16 @@ export default async function EditDiagnosticTemplatePage({
   if (!canEdit(user, "diagnostics")) redirect("/dashboard/services/diagnostics");
 
   const { id } = await params;
-  const template = await prisma.diagnosticTemplate.findFirst({
-    where: { id, tenantId: user.tenantId },
-  });
+  const [template, categories] = await Promise.all([
+    prisma.diagnosticTemplate.findFirst({
+      where: { id, tenantId: user.tenantId },
+    }),
+    prisma.category.findMany({
+      where: { tenantId: user.tenantId },
+      orderBy: [{ isActive: "desc" }, { name: "asc" }],
+      select: { id: true, name: true, isActive: true },
+    }),
+  ]);
   if (!template) notFound();
 
   let schema: TemplateSchema;
@@ -43,6 +50,7 @@ export default async function EditDiagnosticTemplatePage({
         description={`v${template.version} · ${template.name}`}
       />
       <TemplateEditor
+        categories={categories}
         initial={{
           id: template.id,
           name: template.name,
@@ -52,6 +60,7 @@ export default async function EditDiagnosticTemplatePage({
           schema,
           price: template.price?.toString() ?? null,
           durationMin: template.durationMin,
+          categoryId: template.categoryId,
         }}
       />
     </div>
