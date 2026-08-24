@@ -17,12 +17,18 @@ export function CtaBanner() {
             <p className="text-white/50 mb-10 leading-relaxed max-w-lg mx-auto">
               14 хоног үнэгүй туршиж үзээрэй. Карт хэрэггүй, ямар ч үед цуцалж болно.
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap gap-4 justify-center">
               <Link
                 href="/page/signup"
                 className="glow-btn bg-violet-600 hover:bg-violet-500 transition-all px-8 py-3.5 rounded-xl font-semibold"
               >
                 Үнэгүй эхлүүлэх
+              </Link>
+              <Link
+                href="/page/guide"
+                className="glass hover:bg-white/[0.08] transition-all px-8 py-3.5 rounded-xl font-semibold text-white/70"
+              >
+                Гарын авлага үзэх
               </Link>
               <a
                 href="mailto:hi@carcare.mn"
