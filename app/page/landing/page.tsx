@@ -7,6 +7,7 @@ import { HowItWorks } from "../../_components/how-it-works";
 import { Nav } from "../../_components/nav";
 import { Personas } from "../../_components/personas";
 import { Pricing } from "../../_components/pricing";
+import { RoleLoginBar } from "../../_components/role-login-bar";
 import { Stats } from "../../_components/stats";
 
 export const metadata = {
@@ -21,6 +22,7 @@ export default function LandingPage() {
     <div className="relative flex flex-col min-h-screen overflow-x-clip">
       {/* Gradient дэвсгэр — fixed тул scroll-д дахин зурагдахгүй, хөнгөн */}
       <div aria-hidden className="landing-bg-layer" />
+      <RoleLoginBar />
       <Nav />
       <main className="flex-1">
         <Hero />
