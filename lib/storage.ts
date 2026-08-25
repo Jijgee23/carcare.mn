@@ -20,14 +20,14 @@ const EXT_BY_MIME: Record<string, string> = {
 
 const MAX_BYTES = 2 * 1024 * 1024; // 2 MB
 
-const PUBLIC_DIR = path.join(process.cwd(), "public");
+const PUBLIC_DIR = path.join(/* turbopackIgnore: true */ process.cwd(), "public");
 
 // Прод дээр persistent диск дээрх тусдаа замд (жнь: /var/www/carcare-uploads)
 // бичихийн тулд UPLOAD_DIR-г тохируулна. Тохируулаагүй бол dev-ийн адил
 // public/uploads-д бичнэ. Symlink-аар public/uploads-г project root-оос
 // гадагш чиглүүлэх шаардлагагүй болгоно (Turbopack ийм symlink-г зөвшөөрдөггүй).
 const UPLOAD_ROOT = process.env.UPLOAD_DIR
-  ? path.resolve(process.env.UPLOAD_DIR)
+  ? path.resolve(/* turbopackIgnore: true */ process.env.UPLOAD_DIR)
   : path.join(PUBLIC_DIR, "uploads");
 
 /**
