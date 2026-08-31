@@ -6,10 +6,8 @@ import {
   ResetFilters,
   SearchBox,
 } from "@/app/_components/list-filters";
-import {
-  PageHeader,
-  PrimaryLinkButton,
-} from "@/app/_components/page-header";
+import { AddLinkButton } from "@/app/_components/landing-ops-ui";
+import { PageHeader } from "@/app/_components/page-header";
 import { Pagination } from "@/app/_components/pagination";
 import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { customerLabel } from "@/lib/customers";
@@ -179,9 +177,9 @@ export default async function OrdersPage({
         description="Бүх ажил, статус, орлогын бүртгэл"
         actions={
           canAdd ? (
-            <PrimaryLinkButton href="/dashboard/orders/new">
+            <AddLinkButton href="/dashboard/orders/new">
               Захиалга үүсгэх
-            </PrimaryLinkButton>
+            </AddLinkButton>
           ) : null
         }
       />

@@ -237,33 +237,150 @@ html.light
   }
 }
 
-/* Landing-ийн gradient дэвсгэр — wallpaper зургийн оронд. content-bg-layer-тэй
-   ижил зарчим (fixed + static = нэг удаа зурагдана) боловч sidebar clear хийхгүй,
-   өнгө нь арай баялаг: дээд хэсэгт violet/цэнхэр туяа, доор зөөлөн violet. */
-.landing-bg-layer {
-  position: fixed;
-  inset: 0;
-  z-index: -10;
-  pointer-events: none;
-  background-color: var(--bg-primary);
-  background-image:
-    radial-gradient(
-      70rem 50rem at 15% -5%,
-      rgba(108, 71, 255, 0.22),
-      transparent 60%
-    ),
-    radial-gradient(
-      60rem 46rem at 100% 0%,
-      rgba(59, 130, 246, 0.16),
-      transparent 55%
-    ),
-    radial-gradient(
-      56rem 56rem at 50% 110%,
-      rgba(139, 107, 255, 0.12),
-      transparent 60%
-    );
+/* ── "Ops Console" landing theme (designs/Ops Console ба Precision Light/) ──
+   Зөвхөн /page/landing дотор `.landing-ops` wrapper дор хэрэглэгдэнэ. Бусад
+   апп (dashboard/account/system) энэ token-уудыг мэдэхгүй, --accent/--bg-primary
+   зэрэг глобал token-той огт мөргөлдөхгүй (тусдаа `--oc-` угтвар). */
+.landing-ops {
+  --oc-carbon: #0b0d10;
+  --oc-panel: #0e1116;
+  --oc-panel2: #101318;
+  --oc-line: #23272e;
+  --oc-line2: #191d23;
+  --oc-ink: #f4f5f7;
+  --oc-ink2: #edeef0;
+  --oc-muted: #a7adb6;
+  --oc-muted2: #8a8f98;
+  --oc-muted3: #6e747e;
+  --oc-muted4: #4a4d54;
+  --oc-accent: #f5a524;
+  --oc-accent-hi: #ffc65c;
+  --oc-ok: #3ddc97;
+  /* Accent товч/badge дээрх текст — theme өөрчлөгдсөн ч бараан хэвээр үлдэнэ. */
+  --oc-on-accent: #14120c;
+  /* `Select`/`FilterSelect`/`DatePicker` зэрэг олон хуудсанд хуваалцдаг
+     компонентууд дотроо ердийн violet брэндийн CSS var/inline-style ашигладаг
+     тул энд Ops Console (amber) руу дарж бичнэ — компонентын код өөрчлөгдөхгүй. */
+  --accent-strong: var(--oc-accent-hi);
+  --select-option-active-bg: rgba(245, 165, 36, 0.18);
+  --filter-active-border: rgba(245, 165, 36, 0.45);
+  --filter-active-bg: rgba(245, 165, 36, 0.18);
 }
-
+html.light .landing-ops {
+  --oc-carbon: #f6f5f2;
+  --oc-panel: #ffffff;
+  --oc-panel2: #faf9f8;
+  --oc-line: #e3e0da;
+  --oc-line2: #eae7e1;
+  --oc-ink: #16171b;
+  --oc-ink2: #1e1f24;
+  --oc-muted: #5c6067;
+  --oc-muted2: #74787f;
+  --oc-muted3: #90949b;
+  --oc-muted4: #b7babf;
+  --oc-accent: #c9820a;
+  --oc-accent-hi: #e0991f;
+  --oc-ok: #1e9f6e;
+  --accent-strong: var(--oc-accent-hi);
+  --select-option-active-bg: rgba(201, 130, 10, 0.14);
+  --filter-active-border: rgba(201, 130, 10, 0.4);
+  --filter-active-bg: rgba(201, 130, 10, 0.14);
+}
+.landing-ops {
+  background-color: var(--oc-carbon);
+  color: var(--oc-ink);
+  font-family: var(--font-plex-sans), "TugrikGlyph", Arial, sans-serif;
+}
+.landing-ops .bg-oc-grid {
+  background-image:
+    linear-gradient(var(--oc-line2) 1px, transparent 1px),
+    linear-gradient(90deg, var(--oc-line2) 1px, transparent 1px);
+  background-size: 72px 72px;
+}
+/* Tailwind-ийн `font-[family-name:...]` arbitrary utility нь эцгээс өвлөгдөх
+   fallback stack-ийг (TugrikGlyph гэх мэт) орлуулж бичдэг тул ₮ тэмдэгт
+   өөр font-ээр (өөр baseline/жинтэй) гарч ирдэг байсныг эндээс тогтмол
+   class-аар зассан — fallback-ыг үргэлж дагуулна. */
+.landing-ops .font-plex-mono {
+  font-family: var(--font-plex-mono), "TugrikGlyph", Arial, sans-serif;
+}
+/* .auth-input-ийн focus өнгө нь ердийн violet бренд-д зориулагдсан тул Ops
+   Console (amber) хуудсуудад (жнь: /page/login) энд түрж дарна. */
+.landing-ops .auth-input:focus {
+  border-color: rgba(245, 165, 36, 0.6);
+  box-shadow: 0 0 0 3px rgba(245, 165, 36, 0.15);
+}
+/* `BrandWordmark`-ийн "care" хэсэг ердийн violet брэндэд зориулагдсан ч Ops
+   Console (amber) хуудсуудад (dashboard sidebar, /system/login гэх мэт)
+   энд түрж дарна — /contact, /page/guide зэрэг хараахан шилжээгүй хуудсууд
+   энэ scope-д ороогүй тул violet хэвээрээ үлдэнэ. */
+.landing-ops .brand-care-accent {
+  color: var(--oc-accent);
+}
+/* `DatePicker` (`app/_components/date-picker.tsx`) олон хуудсанд (шилжсэн ба
+   шилжээгүй аль алинд нь) хуваалцдаг тул үндсэн violet class-уудыг хэвээр нь
+   үлдээж, Ops Console хуудсуудад зөвхөн эдгээр тогтмол hook class-аар дарж
+   бичнэ. Календарийн панель `createPortal`-аар `document.body`-д шууд
+   залгагддаг тул `.landing-ops`-ийн ДОТОР биш, ХАЖУУД (sibling) орших —
+   энгийн `.landing-ops .hook` удам сонгогч энд хүрэхгүй (мөн `--oc-*` var
+   ч удамшихгүй тул шууд hex утга ашиглана). `:has()`-аар "энэ баримт бичигт
+   хаа нэгтээ .landing-ops байгаа эсэх"-ийг шалгаж, олдвол body-ийн аль ч
+   удамд (portal хамаарна) дарж бичнэ. */
+body:has(.landing-ops) .dp-accent-border {
+  border-color: rgba(245, 165, 36, 0.6) !important;
+  box-shadow: 0 0 0 2px rgba(245, 165, 36, 0.15) !important;
+}
+body:has(.landing-ops) .dp-accent-active {
+  background-color: #f5a524 !important;
+  color: #14120c !important;
+}
+body:has(.landing-ops) .dp-accent-inrange {
+  background-color: rgba(245, 165, 36, 0.15) !important;
+}
+body:has(.landing-ops) .dp-accent-ring {
+  --tw-ring-color: rgba(245, 165, 36, 0.5);
+}
+body:has(.landing-ops) .dp-accent-text {
+  color: #f5a524 !important;
+}
+body:has(.landing-ops) .dp-accent-text:hover {
+  background-color: rgba(245, 165, 36, 0.1) !important;
+}
+body:has(.landing-ops) .dp-accent-btn {
+  background-color: #f5a524 !important;
+  color: #14120c !important;
+}
+body:has(.landing-ops) .dp-accent-btn:hover {
+  background-color: #ffc65c !important;
+}
+/* Гэрэлт горим — `.landing-ops`-ийн light override-той тааруулав. */
+html.light body:has(.landing-ops) .dp-accent-border {
+  border-color: rgba(201, 130, 10, 0.55) !important;
+  box-shadow: 0 0 0 2px rgba(201, 130, 10, 0.15) !important;
+}
+html.light body:has(.landing-ops) .dp-accent-active {
+  background-color: #c9820a !important;
+  color: #14120c !important;
+}
+html.light body:has(.landing-ops) .dp-accent-inrange {
+  background-color: rgba(201, 130, 10, 0.14) !important;
+}
+html.light body:has(.landing-ops) .dp-accent-ring {
+  --tw-ring-color: rgba(201, 130, 10, 0.45);
+}
+html.light body:has(.landing-ops) .dp-accent-text {
+  color: #c9820a !important;
+}
+html.light body:has(.landing-ops) .dp-accent-text:hover {
+  background-color: rgba(201, 130, 10, 0.1) !important;
+}
+html.light body:has(.landing-ops) .dp-accent-btn {
+  background-color: #c9820a !important;
+  color: #14120c !important;
+}
+html.light body:has(.landing-ops) .dp-accent-btn:hover {
+  background-color: #e0991f !important;
+}
 @keyframes float {
   0%, 100% { transform: translateY(0px); }
   50% { transform: translateY(-12px); }

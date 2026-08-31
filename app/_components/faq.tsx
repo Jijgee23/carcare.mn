@@ -1,4 +1,4 @@
-import { SectionLabel } from "./section-label";
+import { Container, Eyebrow } from "./landing-ops-ui";
 
 const ITEMS = [
   {
@@ -29,45 +29,36 @@ const ITEMS = [
 
 export function Faq() {
   return (
-    <section id="faq" className="scroll-mt-24 py-24 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-3xl mx-auto">
-        <SectionLabel>Асуулт хариулт</SectionLabel>
-        <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">
-          Түгээмэл асуултууд
-        </h2>
-        <p className="text-center text-white/40 text-sm mb-12">
-          Хариулт олдсонгүй юу?{" "}
-          <a
-            href="mailto:hi@carcare.mn"
-            className="text-violet-400 hover:text-violet-300 light:text-violet-700 light:hover:text-violet-800"
-          >
-            hi@carcare.mn
-          </a>
-        </p>
-
-        <div className="flex flex-col gap-3">
+    <Container className="pt-24">
+      <div id="faq" className="scroll-mt-24 grid gap-10 lg:gap-14 lg:grid-cols-[340px_1fr]">
+        <div>
+          <Eyebrow>Асуулт хариулт</Eyebrow>
+          <h2 className="mt-4 text-2xl sm:text-3xl lg:text-[34px] font-semibold tracking-[-0.03em] text-[var(--oc-ink)]">
+            Түгээмэл асуултууд
+          </h2>
+          <p className="mt-4 text-[14.5px] leading-relaxed text-[var(--oc-muted2)]">
+            Хариулт олдсонгүй юу?{" "}
+            <a href="mailto:hi@carcare.mn" className="text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]">
+              hi@carcare.mn
+            </a>
+          </p>
+        </div>
+        <div className="flex flex-col">
           {ITEMS.map((it, i) => (
-            <details
+            <div
               key={it.q}
-              className="group glass rounded-2xl px-5 py-4 sm:px-6"
-              {...(i === 0 ? { open: true } : {})}
+              className={`border-t border-[var(--oc-line)] py-[22px] ${
+                i === ITEMS.length - 1 ? "border-b" : ""
+              }`}
             >
-              <summary className="flex cursor-pointer list-none items-start justify-between gap-4 text-left font-medium">
-                <span>{it.q}</span>
-                <span
-                  aria-hidden
-                  className="mt-0.5 w-6 h-6 shrink-0 rounded-full bg-white/5 border border-white/10 text-white/60 text-sm flex items-center justify-center transition-transform group-open:rotate-45"
-                >
-                  +
-                </span>
-              </summary>
-              <p className="mt-2 text-sm text-white/50 leading-relaxed">
+              <div className="text-[16.5px] font-semibold text-[var(--oc-ink2)]">{it.q}</div>
+              <div className="mt-2.5 max-w-[700px] text-[14.5px] leading-relaxed text-[var(--oc-muted2)]">
                 {it.a}
-              </p>
-            </details>
+              </div>
+            </div>
           ))}
         </div>
       </div>
-    </section>
+    </Container>
   );
 }

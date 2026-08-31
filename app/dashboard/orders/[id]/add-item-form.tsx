@@ -6,6 +6,7 @@ import {
   addOrderItemAction,
 } from "@/app/_actions/orders";
 import { FormError } from "@/app/_components/auth-shell";
+import { Btn, TabButton } from "@/app/_components/landing-ops-ui";
 import { Select } from "@/app/_components/select";
 import type { ServiceKind } from "@/lib/services";
 
@@ -178,21 +179,16 @@ function FormContent({
       />
 
       {/* Табууд */}
-      <div className="flex flex-wrap items-center gap-1 self-start p-0.5 rounded-lg bg-white/[0.03] border border-white/[0.06] text-xs">
+      <div className="flex flex-wrap items-center gap-1 self-start">
         {TABS.map((t) => (
-          <button
+          <TabButton
             key={t}
-            type="button"
+            active={tab === t}
             onClick={() => switchTab(t)}
             disabled={!tabEnabled[t]}
-            className={`px-3 py-1 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-              tab === t
-                ? "bg-violet-600/30 text-violet-200 light:bg-violet-100 light:text-violet-700"
-                : "text-white/50 hover:text-white/80"
-            }`}
           >
             {TAB_LABEL[t]}
-          </button>
+          </TabButton>
         ))}
       </div>
 
@@ -311,7 +307,7 @@ function FormContent({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Нэр (жишээ: Тосны солилт)"
-                className={`compact-input ${fe.description ? "border-red-500/50" : ""}`}
+                className={`auth-input ${fe.description ? "border-red-500/50" : ""}`}
               />
               {fe.description ? (
                 <p className="mt-1 text-xs text-red-400 light:text-red-600">{fe.description}</p>
@@ -328,7 +324,7 @@ function FormContent({
             value={quantity}
             onChange={(e) => setQuantity(e.target.value)}
             placeholder="Тоо"
-            className={`compact-input ${fe.quantity ? "border-red-500/50" : ""}`}
+            className={`auth-input ${fe.quantity ? "border-red-500/50" : ""}`}
           />
           {fe.quantity ? (
             <p className="mt-1 text-xs text-red-400 light:text-red-600">{fe.quantity}</p>
@@ -344,7 +340,7 @@ function FormContent({
             value={unitPrice}
             onChange={(e) => setUnitPrice(e.target.value)}
             placeholder="Нэгж үнэ (₮)"
-            className={`compact-input ${fe.unitPrice ? "border-red-500/50" : ""}`}
+            className={`auth-input ${fe.unitPrice ? "border-red-500/50" : ""}`}
           />
           {fe.unitPrice ? (
             <p className="mt-1 text-xs text-red-400 light:text-red-600">{fe.unitPrice}</p>
@@ -352,13 +348,9 @@ function FormContent({
         </div>
       </div>
 
-      <button
-        type="submit"
-        disabled={pending || !canSubmit}
-        className="self-end inline-flex items-center gap-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-60 disabled:cursor-not-allowed transition-colors px-4 py-2 rounded-lg text-sm font-medium"
-      >
+      <Btn type="submit" disabled={pending || !canSubmit} size="sm" className="self-end">
         {pending ? "Нэмж байна..." : "+ Мөр нэмэх"}
-      </button>
+      </Btn>
     </form>
   );
 }

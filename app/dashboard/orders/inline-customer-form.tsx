@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { quickCreateCustomerAction } from "@/app/_actions/quick-create";
 import { Field } from "@/app/_components/auth-shell";
+import { Btn } from "@/app/_components/landing-ops-ui";
 
 export type CreatedCustomer = {
   id: string;
@@ -50,15 +51,15 @@ export function InlineCustomerForm({
   }
 
   return (
-    <div className="rounded-lg border border-violet-500/25 bg-violet-500/[0.06] p-4 flex flex-col gap-3">
+    <div className="rounded-lg border border-[var(--oc-accent)]/25 bg-[var(--oc-accent)]/[0.06] p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-violet-200">
+        <h3 className="text-sm font-medium text-[var(--oc-accent)]">
           Шинэ үйлчлүүлэгч
         </h3>
         <button
           type="button"
           onClick={onCancel}
-          className="text-xs text-white/50 hover:text-white/80 transition-colors"
+          className="text-xs text-[var(--oc-muted3)] hover:text-[var(--oc-ink2)] transition-colors"
         >
           ✕ Болих
         </button>
@@ -75,7 +76,7 @@ export function InlineCustomerForm({
             type="text"
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
-            className={`compact-input ${fieldErrors.fullName ? "border-red-500/50" : ""}`}
+            className={`auth-input ${fieldErrors.fullName ? "border-red-500/50" : ""}`}
             placeholder="Бат Болд"
           />
         </Field>
@@ -86,7 +87,7 @@ export function InlineCustomerForm({
             required
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            className={`compact-input ${fieldErrors.phone ? "border-red-500/50" : ""}`}
+            className={`auth-input ${fieldErrors.phone ? "border-red-500/50" : ""}`}
             placeholder="99887766"
           />
         </Field>
@@ -104,7 +105,7 @@ export function InlineCustomerForm({
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className={`compact-input ${fieldErrors.email ? "border-red-500/50" : ""}`}
+            className={`auth-input ${fieldErrors.email ? "border-red-500/50" : ""}`}
           />
         </Field>
         <Field label="Тэмдэглэл" htmlFor="qc-note" hint="заавал биш">
@@ -113,20 +114,15 @@ export function InlineCustomerForm({
             type="text"
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            className="compact-input"
+            className="auth-input"
           />
         </Field>
       </div>
 
       <div className="flex justify-end">
-        <button
-          type="button"
-          disabled={pending}
-          onClick={onSubmit}
-          className="bg-violet-600 hover:bg-violet-500 disabled:opacity-60 transition-colors px-4 py-2 rounded-lg text-sm font-medium"
-        >
+        <Btn type="button" disabled={pending} onClick={onSubmit}>
           {pending ? "Үүсгэж..." : "Үйлчлүүлэгч үүсгэх"}
-        </button>
+        </Btn>
       </div>
     </div>
   );

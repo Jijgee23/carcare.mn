@@ -1,11 +1,8 @@
 import Link from "next/link";
 import { deleteServiceAction } from "@/app/_actions/services";
 import { ClickableRow } from "@/app/_components/clickable-row";
-import {
-  EmptyState,
-  PageHeader,
-  PrimaryLinkButton,
-} from "@/app/_components/page-header";
+import { AddLinkButton, Chip } from "@/app/_components/landing-ops-ui";
+import { EmptyState } from "@/app/_components/page-header";
 import { Pagination } from "@/app/_components/pagination";
 import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { requireUser } from "@/lib/auth";
@@ -14,16 +11,22 @@ import { redirect } from "next/navigation";
 import { formatTugrik } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
 import {
-  STOCK_BADGE,
   STOCK_LABEL,
   SERVICE_KIND_DESCRIPTION,
   SERVICE_KIND_LABEL,
   SERVICE_KIND_SLUG,
   type ServiceKind,
+  type StockLevel,
   formatDuration,
   formatStock,
   stockLevel,
 } from "@/lib/services";
+
+const STOCK_TONE: Record<StockLevel, "danger" | "warn" | "ok"> = {
+  out: "danger",
+  low: "warn",
+  ok: "ok",
+};
 
 export async function ServiceList({
   type,
@@ -61,42 +64,44 @@ export async function ServiceList({
 
   return (
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
-      <PageHeader
-        title={SERVICE_KIND_LABEL[type]}
-        description={SERVICE_KIND_DESCRIPTION[type]}
-        actions={
-          canAdd ? <PrimaryLinkButton href={newHref}>Нэмэх</PrimaryLinkButton> : null
-        }
-      />
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">
+            {SERVICE_KIND_LABEL[type]}
+          </h1>
+          <p className="text-sm text-[var(--oc-muted3)] mt-1">
+            {SERVICE_KIND_DESCRIPTION[type]}
+          </p>
+        </div>
+        {canAdd ? <AddLinkButton href={newHref}>Нэмэх</AddLinkButton> : null}
+      </div>
 
       {services.length === 0 ? (
         <EmptyState
           title={`${SERVICE_KIND_LABEL[type]} бүртгээгүй байна`}
           description="Шинээр нэмж эхлээрэй."
-          cta={
-            canAdd ? <PrimaryLinkButton href={newHref}>Эхний нэмэх</PrimaryLinkButton> : null
-          }
+          cta={canAdd ? <AddLinkButton href={newHref}>Эхний нэмэх</AddLinkButton> : null}
         />
       ) : (
-        <div className="glass rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
+        <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden flex-1 min-h-0 flex flex-col">
           <div className="overflow-auto flex-1 min-h-0">
             <table className="w-full min-w-[760px]">
               <thead>
-                <tr className="border-b border-white/[0.06]">
+                <tr className="border-b border-[var(--oc-line)]">
                   {(isGoods
-                    ? ["Код", "Нэр", "Ангилал", "Үлдэгдэл", "Өртөг", "Үнэ", "Статус", ""]
-                    : ["Код", "Нэр", "Ангилал", "Хугацаа", "Үнэ", "Хэрэглэсэн", "Төлөв", ""]
+                    ? ["Код", "Нэр", "Ангилал", "Үлдэгдэл", "Өртөг", "Үнэ", "Статус", "Үйлдэл"]
+                    : ["Код", "Нэр", "Ангилал", "Хугацаа", "Үнэ", "Хэрэглэсэн", "Төлөв", "Үйлдэл"]
                   ).map((h) => (
                     <th
                       key={h}
-                      className="text-left text-xs text-white/30 light:text-slate-500 font-medium px-5 py-3"
+                      className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-5 py-3"
                     >
                       {h}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-[var(--oc-line)]">
                 {services.map((svc) => {
                   const stockNum = svc.stock
                     ? Number.parseFloat(svc.stock.toString())
@@ -107,37 +112,35 @@ export async function ServiceList({
                       key={svc.id}
                       href={`/dashboard/services/${svc.id}`}
                     >
-                      <td className="px-5 py-4 text-xs font-mono text-white/60">
+                      <td className="px-5 py-4 font-plex-mono text-xs text-[var(--oc-muted2)]">
                         {svc.code ?? "—"}
                       </td>
                       <td className="px-5 py-4">
                         <Link
                           href={`/dashboard/services/${svc.id}`}
-                          className="text-sm font-medium text-white/90 hover:text-violet-300 light:hover:text-violet-700 transition-colors"
+                          className="text-sm font-medium text-[var(--oc-ink)] hover:text-[var(--oc-accent-hi)] transition-colors"
                         >
                           {svc.name}
                         </Link>
                         {svc.description ? (
-                          <div className="text-xs text-white/40 mt-0.5 line-clamp-1">
+                          <div className="text-xs text-[var(--oc-muted3)] mt-0.5 line-clamp-1">
                             {svc.description}
                           </div>
                         ) : null}
                       </td>
                       <td className="px-5 py-4 text-sm">
                         {svc.category ? (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-300 border border-violet-500/20 light:text-violet-700">
-                            {svc.category.name}
-                          </span>
+                          <Chip tone="neutral" bordered>{svc.category.name}</Chip>
                         ) : (
-                          <span className="text-white/30 text-xs">—</span>
+                          <span className="text-[var(--oc-muted4)] text-xs">—</span>
                         )}
                       </td>
                       {isGoods ? (
-                        <td className="px-5 py-4 text-sm text-white/80">
+                        <td className="px-5 py-4 text-sm text-[var(--oc-ink2)]">
                           {formatStock(stockNum, svc.unit?.name ?? null)}
                         </td>
                       ) : (
-                        <td className="px-5 py-4 text-sm text-white/80">
+                        <td className="px-5 py-4 text-sm text-[var(--oc-ink2)]">
                           {formatDuration(
                             svc.durationValue?.toString() ?? null,
                             svc.durationUnit?.name ?? null,
@@ -145,16 +148,16 @@ export async function ServiceList({
                         </td>
                       )}
                       {isGoods ? (
-                        <td className="px-5 py-4 text-sm text-white/50">
+                        <td className="px-5 py-4 font-plex-mono text-sm text-[var(--oc-muted2)]">
                           {svc.costPrice
                             ? formatTugrik(svc.costPrice.toString())
                             : "—"}
                         </td>
                       ) : (
-                        <td className="px-5 py-4 text-sm text-white/80">
+                        <td className="px-5 py-4 font-plex-mono text-sm text-[var(--oc-ink2)]">
                           {formatTugrik(svc.price.toString())}
                           {svc.unit?.name ? (
-                            <span className="text-white/30">
+                            <span className="text-[var(--oc-muted4)]">
                               {" / "}
                               {svc.unit.name}
                             </span>
@@ -162,40 +165,26 @@ export async function ServiceList({
                         </td>
                       )}
                       {isGoods ? (
-                        <td className="px-5 py-4 text-sm text-white/80">
+                        <td className="px-5 py-4 font-plex-mono text-sm text-[var(--oc-ink2)]">
                           {formatTugrik(svc.price.toString())}
                         </td>
                       ) : (
-                        <td className="px-5 py-4 text-sm text-white/60">
+                        <td className="px-5 py-4 font-plex-mono text-sm text-[var(--oc-muted2)]">
                           {svc._count.items}
                         </td>
                       )}
                       <td className="px-5 py-4">
                         {isGoods && level ? (
-                          <span
-                            className={`text-xs px-2.5 py-1 rounded-full ${STOCK_BADGE[level]}`}
-                          >
-                            {STOCK_LABEL[level]}
-                          </span>
-                        ) : svc.isActive ? (
-                          <span className="text-xs text-emerald-300 light:text-emerald-700">
-                            Идэвхтэй
-                          </span>
+                          <Chip tone={STOCK_TONE[level]}>{STOCK_LABEL[level]}</Chip>
                         ) : (
-                          <span className="text-xs text-white/40">
-                            Идэвхгүй
-                          </span>
+                          <Chip tone={svc.isActive ? "ok" : "neutral"}>
+                            {svc.isActive ? "Идэвхтэй" : "Идэвхгүй"}
+                          </Chip>
                         )}
                       </td>
                       <td className="px-5 py-4">
                         {canRemove ? (
-                          <div className="flex items-center justify-end gap-1">
-                            <Link
-                              href={`/dashboard/services/${svc.id}`}
-                              className="text-xs text-violet-400 hover:text-violet-300 light:text-violet-600 light:hover:text-violet-700 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-violet-500/10"
-                            >
-                              Засах
-                            </Link>
+                          <div className="flex items-center justify-end">
                             <form action={deleteServiceAction}>
                               <input type="hidden" name="id" value={svc.id} />
                               <button

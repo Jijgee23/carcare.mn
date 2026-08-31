@@ -10,7 +10,7 @@ import {
   Field,
   FormError,
   SubmitButton,
-} from "@/app/_components/auth-shell";
+} from "@/app/_components/landing-ops-ui";
 
 export function SystemLoginForm() {
   const [state, formAction, pending] = useActionState<
@@ -57,14 +57,16 @@ export function SystemLoginForm() {
           <button
             type="button"
             onClick={() => setShow(!show)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors text-xs"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--oc-muted3)] hover:text-[var(--oc-muted)] transition-colors text-xs"
           >
             {show ? "Нуух" : "Харах"}
           </button>
         </div>
       </Field>
 
-      <SubmitButton pending={pending}>Нэвтрэх →</SubmitButton>
+      <SubmitButton pending={pending} tone="danger">
+        Нэвтрэх →
+      </SubmitButton>
     </form>
   );
 }

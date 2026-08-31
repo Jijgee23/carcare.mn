@@ -15,6 +15,8 @@ export const NOTIFICATION_TYPES = [
   "appointment_cancelled",
   "appointment_expired",
   "subscription_expiring",
+  "feedback_replied_staff",
+  "feedback_replied_account",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -30,6 +32,8 @@ export const NOTIFICATION_TYPE_LABEL: Record<NotificationType, string> = {
   appointment_cancelled: "Цаг цуцлагдсан",
   appointment_expired: "Цаг хугацаа хэтэрсэн",
   subscription_expiring: "Багц дуусах",
+  feedback_replied_staff: "Санал хүсэлтэд хариу ирсэн",
+  feedback_replied_account: "Санал хүсэлтэд хариу ирсэн",
 };
 
 // Event тус бүрд дамжуулах түүхий утгууд (бүгд string — FCM data-д ч мөн).
@@ -121,6 +125,24 @@ export const NOTIFICATION_REGISTRY: Record<NotificationType, NotificationDef> = 
       },
     }),
     href: () => "/dashboard/settings/subscription",
+  },
+  feedback_replied_staff: {
+    realm: "staff",
+    build: (i) => ({
+      title: "Санал хүсэлтэд хариу ирлээ",
+      body: i.message ?? "",
+      data: { type: "feedback_replied_staff", feedbackId: i.feedbackId ?? "" },
+    }),
+    href: () => "/dashboard",
+  },
+  feedback_replied_account: {
+    realm: "account",
+    build: (i) => ({
+      title: "Санал хүсэлтэд хариу ирлээ",
+      body: i.message ?? "",
+      data: { type: "feedback_replied_account", feedbackId: i.feedbackId ?? "" },
+    }),
+    href: () => "/account",
   },
 };
 

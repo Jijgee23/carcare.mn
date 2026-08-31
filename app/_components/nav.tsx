@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Brand } from "./brand";
+import { ThemeToggle } from "./theme-toggle";
 
 const links = [
-  { href: "#features", label: "Боломжууд" },
-  { href: "#how", label: "Хэрхэн ажилладаг" },
-  { href: "#pricing", label: "Үнэ" },
+  { href: "#boloms", label: "Боломжууд" },
+  { href: "#hows", label: "Хэрхэн ажилладаг" },
+  { href: "#price", label: "Үнэ" },
   { href: "#faq", label: "Асуулт хариулт" },
 ];
 
@@ -22,19 +23,19 @@ export function Nav() {
   }, [open]);
 
   return (
-    <header className="sticky top-3 sm:top-4 z-50 px-3 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto rounded-2xl glass overflow-hidden">
-        <div className="flex items-center justify-between h-14 px-4 sm:px-5">
+    <header className="sticky top-0 z-50 border-b border-[var(--oc-line2)] bg-[var(--oc-carbon)]/90 backdrop-blur">
+      <div className="max-w-[1240px] mx-auto">
+        <div className="flex items-center justify-between h-14 px-4 sm:px-6 lg:px-8">
           <Link href="/">
             <Brand />
           </Link>
 
-          <nav className="hidden md:flex items-center gap-8 text-sm text-white/60">
+          <nav className="hidden md:flex items-center gap-8 text-[14px] text-[var(--oc-muted)]">
             {links.map((l) => (
               <a
                 key={l.href}
                 href={l.href}
-                className="hover:text-white transition-colors"
+                className="hover:text-[var(--oc-accent-hi)] transition-colors"
               >
                 {l.label}
               </a>
@@ -42,49 +43,55 @@ export function Nav() {
           </nav>
 
           <div className="hidden md:flex items-center gap-2">
+            <ThemeToggle variant="icon" />
             <Link
               href="/page/login"
-              className="text-sm text-white/70 hover:text-white transition-colors px-3 py-1.5 rounded-xl hover:bg-white/[0.06]"
+              className="text-[14px] text-[var(--oc-ink2)] hover:text-[var(--oc-accent-hi)] transition-colors px-3 py-2"
             >
               Нэвтрэх
             </Link>
             <Link
               href="/page/signup"
-              className="text-sm font-medium bg-violet-600 hover:bg-violet-500 transition-colors px-4 py-1.5 rounded-xl"
+              className="text-[14px] font-semibold rounded-md bg-[var(--oc-accent)] px-[18px] py-2.5 text-[var(--oc-on-accent)] hover:bg-[var(--oc-accent-hi)] transition-colors"
             >
               Бүртгүүлэх
             </Link>
           </div>
 
-          <button
-            type="button"
-            aria-label={open ? "Цэс хаах" : "Цэс нээх"}
-            aria-expanded={open}
-            onClick={() => setOpen((v) => !v)}
-            className="md:hidden w-10 h-10 rounded-xl border border-white/10 bg-white/[0.04] flex items-center justify-center"
-          >
-            <span className="block w-5 h-0.5 bg-white relative">
-              <span
-                className={`absolute left-0 w-5 h-0.5 bg-white transition-transform ${open ? "rotate-45 top-0" : "-top-1.5"
+          <div className="flex md:hidden items-center gap-2">
+            <ThemeToggle variant="icon" />
+            <button
+              type="button"
+              aria-label={open ? "Цэс хаах" : "Цэс нээх"}
+              aria-expanded={open}
+              onClick={() => setOpen((v) => !v)}
+              className="w-10 h-10 rounded-lg border border-[var(--oc-line)] bg-[var(--oc-panel)] flex items-center justify-center"
+            >
+              <span className="block w-5 h-0.5 bg-[var(--oc-ink2)] relative">
+                <span
+                  className={`absolute left-0 w-5 h-0.5 bg-[var(--oc-ink2)] transition-transform ${
+                    open ? "rotate-45 top-0" : "-top-1.5"
                   }`}
-              />
-              <span
-                className={`absolute left-0 w-5 h-0.5 bg-white transition-transform ${open ? "-rotate-45 top-0" : "top-1.5"
+                />
+                <span
+                  className={`absolute left-0 w-5 h-0.5 bg-[var(--oc-ink2)] transition-transform ${
+                    open ? "-rotate-45 top-0" : "top-1.5"
                   }`}
-              />
-            </span>
-          </button>
+                />
+              </span>
+            </button>
+          </div>
         </div>
 
         {open ? (
-          <div className="md:hidden border-t border-white/[0.08]">
+          <div className="md:hidden border-t border-[var(--oc-line2)]">
             <div className="px-3 py-3 flex flex-col gap-1">
               {links.map((l) => (
                 <a
                   key={l.href}
                   href={l.href}
                   onClick={() => setOpen(false)}
-                  className="px-3 py-3 rounded-xl text-base font-medium text-white/80 hover:bg-white/[0.05]"
+                  className="px-3 py-3 rounded-lg text-base font-medium text-[var(--oc-ink2)] hover:bg-[var(--oc-panel)]"
                 >
                   {l.label}
                 </a>
@@ -93,14 +100,14 @@ export function Nav() {
                 <Link
                   href="/page/login"
                   onClick={() => setOpen(false)}
-                  className="h-11 inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-sm font-medium"
+                  className="h-11 inline-flex items-center justify-center rounded-lg border border-[var(--oc-line)] bg-[var(--oc-panel)] text-sm font-medium text-[var(--oc-ink2)]"
                 >
                   Нэвтрэх
                 </Link>
                 <Link
                   href="/page/signup"
                   onClick={() => setOpen(false)}
-                  className="h-11 inline-flex items-center justify-center rounded-xl bg-violet-600 hover:bg-violet-500 text-sm font-medium"
+                  className="h-11 inline-flex items-center justify-center rounded-lg bg-[var(--oc-accent)] text-sm font-semibold text-[var(--oc-on-accent)]"
                 >
                   Бүртгүүлэх
                 </Link>

@@ -4,11 +4,8 @@ import {
   duplicateTemplateAction,
 } from "@/app/_actions/diagnostic-templates";
 import { ClickableRow } from "@/app/_components/clickable-row";
-import {
-  EmptyState,
-  PageHeader,
-  PrimaryLinkButton,
-} from "@/app/_components/page-header";
+import { AddLinkButton, Chip } from "@/app/_components/landing-ops-ui";
+import { EmptyState } from "@/app/_components/page-header";
 import { Pagination } from "@/app/_components/pagination";
 import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { requireUser } from "@/lib/auth";
@@ -56,17 +53,17 @@ export default async function DiagnosticsServicesPage({
 
   return (
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
-      <PageHeader
-        title="Оношилгоо"
-        description="Оношилгооны үйлчилгээний жагсаалт. Үнэ ба бүтэц тус бүрд тохируулна."
-        actions={
-          canAdd ? (
-            <PrimaryLinkButton href="/dashboard/services/diagnostics/new">
-              Нэмэх
-            </PrimaryLinkButton>
-          ) : null
-        }
-      />
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">Оношилгоо</h1>
+          <p className="text-sm text-[var(--oc-muted3)] mt-1">
+            Оношилгооны үйлчилгээний жагсаалт. Үнэ ба бүтэц тус бүрд тохируулна.
+          </p>
+        </div>
+        {canAdd ? (
+          <AddLinkButton href="/dashboard/services/diagnostics/new">Нэмэх</AddLinkButton>
+        ) : null}
+      </div>
 
       {templates.length === 0 ? (
         <EmptyState
@@ -74,18 +71,18 @@ export default async function DiagnosticsServicesPage({
           description="Машин хүлээж авах, үйлчилгээний дараах шалгалт зэрэгт зориулсан оношилгоо үүсгээрэй."
           cta={
             canAdd ? (
-              <PrimaryLinkButton href="/dashboard/services/diagnostics/new">
+              <AddLinkButton href="/dashboard/services/diagnostics/new">
                 Эхний оношилгоо үүсгэх
-              </PrimaryLinkButton>
+              </AddLinkButton>
             ) : null
           }
         />
       ) : (
-        <div className="glass rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
+        <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden flex-1 min-h-0 flex flex-col">
           <div className="overflow-auto flex-1 min-h-0">
             <table className="w-full min-w-[800px]">
               <thead>
-                <tr className="border-b border-white/[0.06]">
+                <tr className="border-b border-[var(--oc-line)]">
                   {[
                     "Нэр",
                     "Ангилал",
@@ -95,18 +92,18 @@ export default async function DiagnosticsServicesPage({
                     "Хувилбар",
                     "Хэрэглэсэн",
                     "Төлөв",
-                    "",
+                    "Үйлдэл",
                   ].map((h) => (
                     <th
                       key={h}
-                      className="text-left text-xs text-white/30 light:text-slate-500 font-medium px-5 py-3"
+                      className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-5 py-3"
                     >
                       {h}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-[var(--oc-line)]">
                 {templates.map((t) => {
                   const type = t.type as DiagnosticType;
                   return (
@@ -115,22 +112,20 @@ export default async function DiagnosticsServicesPage({
                       href={`/dashboard/services/diagnostics/${t.id}`}
                     >
                       <td className="px-5 py-4">
-                        <div className="text-sm font-medium text-white/90">
+                        <div className="text-sm font-medium text-[var(--oc-ink)]">
                           {t.name}
                         </div>
                         {t.description ? (
-                          <div className="text-xs text-white/40 mt-0.5 line-clamp-1">
+                          <div className="text-xs text-[var(--oc-muted3)] mt-0.5 line-clamp-1">
                             {t.description}
                           </div>
                         ) : null}
                       </td>
                       <td className="px-5 py-4 text-sm">
                         {t.category ? (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-300 border border-violet-500/20 light:text-violet-700">
-                            {t.category.name}
-                          </span>
+                          <Chip tone="neutral" bordered>{t.category.name}</Chip>
                         ) : (
-                          <span className="text-white/30 text-xs">—</span>
+                          <span className="text-[var(--oc-muted4)] text-xs">—</span>
                         )}
                       </td>
                       <td className="px-5 py-4">
@@ -140,35 +135,29 @@ export default async function DiagnosticsServicesPage({
                           {DIAGNOSTIC_TYPE_LABEL[type]}
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-sm text-white/80">
+                      <td className="px-5 py-4 font-plex-mono text-sm text-[var(--oc-ink2)]">
                         {t.price ? formatTugrik(t.price.toString()) : "—"}
                       </td>
-                      <td className="px-5 py-4 text-sm text-white/60">
+                      <td className="px-5 py-4 font-plex-mono text-sm text-[var(--oc-muted2)]">
                         {t.durationMin != null ? `${t.durationMin}мин` : "—"}
                       </td>
-                      <td className="px-5 py-4 text-sm text-white/60">
+                      <td className="px-5 py-4 font-plex-mono text-sm text-[var(--oc-muted2)]">
                         v{t.version}
                       </td>
-                      <td className="px-5 py-4 text-sm text-white/60">
+                      <td className="px-5 py-4 font-plex-mono text-sm text-[var(--oc-muted2)]">
                         {t._count.reports}
                       </td>
                       <td className="px-5 py-4">
-                        {t.isActive ? (
-                          <span className="text-xs text-emerald-300 light:text-emerald-700">
-                            Идэвхтэй
-                          </span>
-                        ) : (
-                          <span className="text-xs text-white/40">
-                            Идэвхгүй
-                          </span>
-                        )}
+                        <Chip tone={t.isActive ? "ok" : "neutral"}>
+                          {t.isActive ? "Идэвхтэй" : "Идэвхгүй"}
+                        </Chip>
                       </td>
                       <td className="px-5 py-4">
                         {canRemove ? (
                           <div className="flex items-center justify-end gap-1">
                             <Link
                               href={`/dashboard/services/diagnostics/${t.id}`}
-                              className="text-xs text-violet-400 hover:text-violet-300 light:text-violet-600 light:hover:text-violet-700 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-violet-500/10"
+                              className="text-xs text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors px-2.5 py-1.5 rounded-lg hover:bg-[var(--oc-accent)]/10"
                             >
                               Засах
                             </Link>
@@ -176,7 +165,7 @@ export default async function DiagnosticsServicesPage({
                               <input type="hidden" name="id" value={t.id} />
                               <button
                                 type="submit"
-                                className="text-xs text-white/50 hover:text-white/80 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06]"
+                                className="text-xs text-[var(--oc-muted2)] hover:text-[var(--oc-ink2)] transition-colors px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06]"
                               >
                                 Хуулах
                               </button>

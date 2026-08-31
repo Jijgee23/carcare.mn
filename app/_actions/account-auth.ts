@@ -20,7 +20,6 @@ export type AccountAuthState = {
   // 2-р шат (OTP оруулах) идэвхжсэн эсэх. Канон утсыг form-д буцааж барина.
   awaitingOtp?: boolean;
   phone?: string;
-  name?: string;
 } | null;
 
 function s(fd: FormData, key: string): string {
@@ -32,7 +31,6 @@ function s(fd: FormData, key: string): string {
  * Эцсийн хэрэглэгчийн утсаар нэвтрэх — 2 шаттай:
  *   1) phone → OTP илгээх (awaitingOtp=true)
  *   2) phone + otpCode → баталгаажуулж Account resolve/create, session тогтооно.
- * Анхны нэвтрэлтэд `name` нэмж болно (заавал биш).
  */
 export async function accountLoginAction(
   _prevState: AccountAuthState,
@@ -43,13 +41,11 @@ export async function accountLoginAction(
 
   const phone = normalizePhone(s(formData, "phone"));
   const otpCode = s(formData, "otpCode");
-  const name = s(formData, "name");
 
   if (!phone) {
     return {
       ok: false,
       fieldErrors: { phone: "Зөв утасны дугаар оруулна уу." },
-      name,
     };
   }
 
@@ -75,7 +71,6 @@ export async function accountLoginAction(
           ok: false,
           message: "Код илгээгдсэнгүй. Дараа дахин оролдоно уу.",
           phone,
-          name,
         };
       }
     } catch (e) {
@@ -83,14 +78,12 @@ export async function accountLoginAction(
         ok: false,
         message: e instanceof Error ? e.message : "Код илгээхэд алдаа гарлаа.",
         phone,
-        name,
       };
     }
     return {
       ok: false,
       awaitingOtp: true,
       phone,
-      name,
       message: `${formatPhone(phone)} руу 6 оронтой код илгээлээ.`,
     };
   }
@@ -101,7 +94,6 @@ export async function accountLoginAction(
       ok: false,
       awaitingOtp: true,
       phone,
-      name,
       fieldErrors: { otpCode: "6 оронтой код оруулна уу." },
     };
   }
@@ -122,7 +114,6 @@ export async function accountLoginAction(
       ok: false,
       awaitingOtp: true,
       phone,
-      name,
       fieldErrors: { otpCode: message },
     };
   }
@@ -134,21 +125,18 @@ export async function accountLoginAction(
       ok: false,
       awaitingOtp: true,
       phone,
-      name,
       message: "Энэ дугаар түр хаагдсан байна.",
     };
   }
   if (!account) {
     account = await prisma.account.create({
-      data: { phone, name: name || null, lastLoginAt: new Date() },
+      data: { phone, lastLoginAt: new Date() },
     });
   } else {
     account = await prisma.account.update({
       where: { id: account.id },
       data: {
         lastLoginAt: new Date(),
-        // Нэр хоосон байсан үед анхны нэвтрэлтийн нэрээр бөглөнө.
-        ...(name && !account.name ? { name } : {}),
       },
     });
   }

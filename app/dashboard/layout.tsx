@@ -1,3 +1,4 @@
+import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import {
   AdminSidebar,
   MobileTopbar,
@@ -8,6 +9,19 @@ import { ToastProvider } from "@/app/_components/toast";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getSubscriptionState } from "@/lib/subscription-server";
+
+// Ops Console дизайны фонт — landing/auth хуудсуудтай ижил механизм, зөвхөн
+// dashboard route-д scoped (бусад апп — account/system — Geist хэвээр).
+const plexSans = IBM_Plex_Sans({
+  subsets: ["latin", "cyrillic"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-plex-sans",
+});
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin", "cyrillic"],
+  weight: ["400", "500", "600"],
+  variable: "--font-plex-mono",
+});
 
 export default async function DashboardLayout({
   children,
@@ -28,7 +42,9 @@ export default async function DashboardLayout({
 
   return (
     <ToastProvider>
-      <div className="min-h-screen bg-[var(--shell-bg-primary)] flex">
+      <div
+        className={`${plexSans.variable} ${plexMono.variable} landing-ops min-h-screen bg-[var(--oc-carbon)] flex`}
+      >
         <AdminSidebar
           userName={userName}
           userEmail={user.email}
@@ -40,7 +56,6 @@ export default async function DashboardLayout({
           notificationUnread={unreadNotifications}
         />
         <div className="app-content-offset flex-1 min-w-0 min-h-screen flex flex-col relative isolate">
-          <div aria-hidden className="shell-content-bg" />
           <MobileTopbar
             userName={userName}
             userEmail={user.email}

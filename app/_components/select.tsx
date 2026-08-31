@@ -72,9 +72,6 @@ export function Select({
   }
 
   const hasError = Boolean(error) || ariaInvalid;
-  const borderColor = hasError
-    ? "rgba(239, 68, 68, 0.5)"
-    : "var(--input-border)";
 
   return (
     <div
@@ -84,6 +81,9 @@ export function Select({
       {/* Hidden field carries value to FormData */}
       <input type="hidden" name={name} value={value} />
 
+      {/* .auth-input class-аар текст input-той яг ижил өндөр/өргөн/border-radius —
+          нэг стандарт хэлбэр (харах: globals.css). Зөвхөн flex layout + сонгогдоогүй
+          үеийн бүдэг өнгийг энд нэмнэ. */}
       <button
         type="button"
         id={id}
@@ -93,29 +93,12 @@ export function Select({
         aria-expanded={open}
         aria-invalid={hasError || undefined}
         aria-required={required || undefined}
+        className={`auth-input flex items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-50 ${
+          hasError ? "border-red-500/50" : ""
+        }`}
         style={{
-          width: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "0.5rem",
-          padding: "0.5rem 0.75rem",
-          borderRadius: "0.5rem",
-          border: `1px solid ${borderColor}`,
-          background: "var(--input-bg)",
           color: selected ? "var(--input-fg)" : "var(--placeholder)",
-          fontSize: "0.875rem",
           cursor: disabled ? "not-allowed" : "pointer",
-          opacity: disabled ? 0.5 : 1,
-          textAlign: "left",
-          transition: "border-color 0.15s ease",
-          outline: "none",
-        }}
-        onFocus={(e) => {
-          if (!hasError) e.currentTarget.style.borderColor = "rgba(139, 107, 255, 0.5)";
-        }}
-        onBlur={(e) => {
-          e.currentTarget.style.borderColor = borderColor;
         }}
       >
         <span
@@ -224,7 +207,7 @@ function SelectOptionRow({
         textAlign: "left",
         fontSize: "0.875rem",
         background: active
-          ? "rgba(139, 107, 255, 0.18)"
+          ? "var(--select-option-active-bg, rgba(139, 107, 255, 0.18))"
           : hover
             ? "var(--hover-bg)"
             : "transparent",

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
 import {
   createTemplateAction,
@@ -8,6 +7,7 @@ import {
   updateTemplateAction,
 } from "@/app/_actions/diagnostic-templates";
 import { Field, FormError } from "@/app/_components/auth-shell";
+import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
 import {
   DEFAULT_CHECK_OPTIONS,
   DIAGNOSTIC_TYPES,
@@ -26,6 +26,8 @@ import {
 } from "@/lib/diagnostics";
 import { TemplatePreview } from "./template-preview";
 
+export const TEMPLATE_EDITOR_FORM_ID = "template-editor-form";
+
 type Initial = {
   id?: string;
   name: string;
@@ -39,6 +41,30 @@ type Initial = {
 };
 
 export type CategoryOption = { id: string; name: string; isActive: boolean };
+
+function SectionPanel({
+  index,
+  total,
+  title,
+  children,
+}: {
+  index: number;
+  total: number;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5 sm:p-6">
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="font-semibold text-[var(--oc-ink)]">{title}</h2>
+        <span className="font-plex-mono text-[11px] text-[var(--oc-muted3)]">
+          {String(index).padStart(2, "0")} / {String(total).padStart(2, "0")}
+        </span>
+      </div>
+      {children}
+    </section>
+  );
+}
 
 function newId(prefix: string) {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
@@ -80,6 +106,7 @@ export function TemplateEditor({
     FormData
   >(action, null);
 
+  const [dirty, setDirty] = useState(false);
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [type, setType] = useState<DiagnosticType>(initial?.type ?? "INTAKE");
@@ -99,6 +126,7 @@ export function TemplateEditor({
   const schemaJson = useMemo(() => JSON.stringify(schema), [schema]);
 
   function updateSection(idx: number, patch: Partial<TemplateSection>) {
+    setDirty(true);
     setSchema((s) => ({
       sections: s.sections.map((sec, i) =>
         i === idx ? { ...sec, ...patch } : sec,
@@ -106,6 +134,7 @@ export function TemplateEditor({
     }));
   }
   function addSection() {
+    setDirty(true);
     setSchema((s) => ({
       sections: [
         ...s.sections,
@@ -114,11 +143,13 @@ export function TemplateEditor({
     }));
   }
   function removeSection(idx: number) {
+    setDirty(true);
     setSchema((s) => ({
       sections: s.sections.filter((_, i) => i !== idx),
     }));
   }
   function moveSection(idx: number, dir: -1 | 1) {
+    setDirty(true);
     setSchema((s) => {
       const arr = [...s.sections];
       const j = idx + dir;
@@ -129,6 +160,7 @@ export function TemplateEditor({
   }
 
   function addItem(sIdx: number) {
+    setDirty(true);
     setSchema((s) => ({
       sections: s.sections.map((sec, i) =>
         i === sIdx
@@ -154,6 +186,7 @@ export function TemplateEditor({
     iIdx: number,
     patch: Partial<TemplateItem>,
   ) {
+    setDirty(true);
     setSchema((s) => ({
       sections: s.sections.map((sec, i) =>
         i === sIdx
@@ -180,6 +213,7 @@ export function TemplateEditor({
     }));
   }
   function removeItem(sIdx: number, iIdx: number) {
+    setDirty(true);
     setSchema((s) => ({
       sections: s.sections.map((sec, i) =>
         i === sIdx
@@ -189,6 +223,7 @@ export function TemplateEditor({
     }));
   }
   function moveItem(sIdx: number, iIdx: number, dir: -1 | 1) {
+    setDirty(true);
     setSchema((s) => ({
       sections: s.sections.map((sec, i) => {
         if (i !== sIdx) return sec;
@@ -202,17 +237,22 @@ export function TemplateEditor({
   }
 
   return (
-    <form action={formAction} className="flex flex-col gap-6">
+    <form
+      id={TEMPLATE_EDITOR_FORM_ID}
+      action={formAction}
+      onChange={() => setDirty(true)}
+      className="flex flex-col gap-6"
+      noValidate
+    >
       <FormError message={state?.message} />
       {fe.schema ? (
-        <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-sm text-red-300 light:text-red-600">
+        <div className="bg-red-500/10 border border-red-500/20 rounded-[10px] px-4 py-3 text-sm text-red-400 light:text-red-600">
           {fe.schema}
         </div>
       ) : null}
 
-      <section className="glass rounded-xl p-4 sm:p-5 border border-white/[0.08] flex flex-col gap-4">
-        <h2 className="font-semibold text-sm">Үндсэн мэдээлэл</h2>
-
+      <SectionPanel index={1} total={3} title="Үндсэн мэдээлэл">
+        <div className="flex flex-col gap-4">
         <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           <Field label="Хуудасны нэр" htmlFor="name" error={fe.name} className="max-w-xs">
             <input
@@ -222,7 +262,7 @@ export function TemplateEditor({
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className={`compact-input ${fe.name ? "border-red-500/50" : ""}`}
+              className={`auth-input ${fe.name ? "border-red-500/50" : ""}`}
               placeholder="Жишээ: Машин хүлээж авах ерөнхий үзлэг"
             />
           </Field>
@@ -243,7 +283,7 @@ export function TemplateEditor({
               required
               value={categoryId}
               onChange={(e) => setCategoryId(e.target.value)}
-              className={`compact-input ${fe.categoryId ? "border-red-500/50" : ""}`}
+              className={`auth-input ${fe.categoryId ? "border-red-500/50" : ""}`}
             >
               <option value="" className="bg-[var(--surface)]">
                 — Ангилал —
@@ -269,7 +309,7 @@ export function TemplateEditor({
               type="text"
               inputMode="decimal"
               defaultValue={initial?.price ?? ""}
-              className={`compact-input ${fe.price ? "border-red-500/50" : ""}`}
+              className={`auth-input ${fe.price ? "border-red-500/50" : ""}`}
               placeholder="25000"
             />
           </Field>
@@ -286,7 +326,7 @@ export function TemplateEditor({
               type="number"
               min={0}
               defaultValue={initial?.durationMin ?? ""}
-              className={`compact-input ${fe.durationMin ? "border-red-500/50" : ""}`}
+              className={`auth-input ${fe.durationMin ? "border-red-500/50" : ""}`}
               placeholder="30"
             />
           </Field>
@@ -299,7 +339,7 @@ export function TemplateEditor({
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={2}
-            className="compact-input resize-none"
+            className="auth-input resize-none"
             placeholder="Энэ загварыг хэзээ хэрэглэх вэ?"
           />
         </Field>
@@ -311,8 +351,8 @@ export function TemplateEditor({
                 key={tp}
                 className={`flex flex-col gap-1 p-3 rounded-lg border cursor-pointer transition-colors ${
                   type === tp
-                    ? "border-violet-500/40 bg-violet-500/10"
-                    : "border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.04]"
+                    ? "border-[var(--oc-accent)]/40 bg-[var(--oc-accent)]/10"
+                    : "border-[var(--oc-line)] bg-[var(--oc-panel2)] hover:border-[var(--oc-line2)]"
                 }`}
               >
                 <div className="flex items-center gap-2">
@@ -322,13 +362,13 @@ export function TemplateEditor({
                     value={tp}
                     checked={type === tp}
                     onChange={() => setType(tp)}
-                    className="accent-violet-500"
+                    className="accent-[var(--oc-accent)]"
                   />
-                  <span className="text-sm font-medium text-white/90">
+                  <span className="text-sm font-medium text-[var(--oc-ink2)]">
                     {DIAGNOSTIC_TYPE_LABEL[tp]}
                   </span>
                 </div>
-                <span className="text-xs text-white/40 pl-6">
+                <span className="text-xs text-[var(--oc-muted3)] pl-6">
                   {DIAGNOSTIC_TYPE_DESCRIPTION[tp]}
                 </span>
               </label>
@@ -336,32 +376,28 @@ export function TemplateEditor({
           </div>
         </Field>
 
-        <label className="flex items-center gap-2 text-sm text-white/70">
+        <label className="flex items-center gap-2 text-sm text-[var(--oc-ink2)]">
           <input
             type="checkbox"
             name="isActive"
             checked={isActive}
             onChange={(e) => setIsActive(e.target.checked)}
-            className="accent-violet-500"
+            className="accent-[var(--oc-accent)]"
           />
           Идэвхтэй (захиалга дээр сонгох боломжтой)
         </label>
-      </section>
+        </div>
+      </SectionPanel>
 
-      <section className="glass rounded-xl p-4 sm:p-5 border border-white/[0.08] flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-sm">Хуудасны бүтэц</h2>
-          <button
-            type="button"
-            onClick={addSection}
-            className="text-xs bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] px-3 py-1.5 rounded-lg transition-colors"
-          >
+      <SectionPanel index={2} total={3} title="Хуудасны бүтэц">
+        <div className="flex justify-end -mt-2 mb-3">
+          <Btn type="button" variant="ghost" size="sm" onClick={addSection}>
             + Хэсэг нэмэх
-          </button>
+          </Btn>
         </div>
 
         {schema.sections.length === 0 ? (
-          <p className="text-sm text-white/40 text-center py-6">
+          <p className="text-sm text-[var(--oc-muted3)] text-center py-6">
             Хэсэг алга. &laquo;Хэсэг нэмэх&raquo; товчоор эхлээрэй.
           </p>
         ) : (
@@ -369,7 +405,7 @@ export function TemplateEditor({
             {schema.sections.map((sec, sIdx) => (
               <div
                 key={sec.id}
-                className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 flex flex-col gap-3"
+                className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel2)] p-4 flex flex-col gap-3"
               >
                 <div className="flex items-center gap-2">
                   <input
@@ -378,15 +414,15 @@ export function TemplateEditor({
                     onChange={(e) =>
                       updateSection(sIdx, { title: e.target.value })
                     }
-                    className="flex-1 bg-transparent border-b border-white/[0.06] focus:border-violet-500/50 outline-none text-sm font-medium text-white/90 pb-1"
+                    className="flex-1 bg-transparent border-b border-[var(--oc-line)] focus:border-[var(--oc-accent)]/50 outline-none text-sm font-medium text-[var(--oc-ink2)] pb-1"
                     placeholder="Хэсгийн нэр"
                   />
-                  <div className="flex items-center gap-0.5 text-white/40">
+                  <div className="flex items-center gap-0.5 text-[var(--oc-muted3)]">
                     <button
                       type="button"
                       onClick={() => moveSection(sIdx, -1)}
                       disabled={sIdx === 0}
-                      className="p-1 hover:text-white/80 disabled:opacity-30 disabled:cursor-not-allowed"
+                      className="p-1 hover:text-[var(--oc-ink2)] disabled:opacity-30 disabled:cursor-not-allowed"
                       title="Дээш"
                     >
                       ↑
@@ -395,7 +431,7 @@ export function TemplateEditor({
                       type="button"
                       onClick={() => moveSection(sIdx, 1)}
                       disabled={sIdx === schema.sections.length - 1}
-                      className="p-1 hover:text-white/80 disabled:opacity-30 disabled:cursor-not-allowed"
+                      className="p-1 hover:text-[var(--oc-ink2)] disabled:opacity-30 disabled:cursor-not-allowed"
                       title="Доош"
                     >
                       ↓
@@ -403,7 +439,7 @@ export function TemplateEditor({
                     <button
                       type="button"
                       onClick={() => removeSection(sIdx)}
-                      className="p-1 hover:text-red-300"
+                      className="p-1 hover:text-red-400 light:hover:text-red-600"
                       title="Хэсгийг устгах"
                     >
                       ✕
@@ -411,7 +447,7 @@ export function TemplateEditor({
                   </div>
                 </div>
 
-                <div className="pl-3 border-l-2 border-white/[0.04] flex flex-col gap-2">
+                <div className="pl-3 border-l-2 border-[var(--oc-line)] flex flex-col gap-2">
                   <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-2 items-start">
                   {sec.items.map((item, iIdx) => {
                     // Энэ item-ийн өмнө орших, бүх хэсэгт байгаа check item-ууд
@@ -452,7 +488,7 @@ export function TemplateEditor({
                   <button
                     type="button"
                     onClick={() => addItem(sIdx)}
-                    className="self-start text-xs text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800 px-2 py-1 rounded-md hover:bg-violet-500/10"
+                    className="self-start text-xs text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] px-2 py-1 rounded-md hover:bg-[var(--oc-accent)]/10"
                   >
                     + Асуулт нэмэх
                   </button>
@@ -461,38 +497,35 @@ export function TemplateEditor({
             ))}
           </div>
         )}
-      </section>
+      </SectionPanel>
 
-      <section className="glass rounded-xl p-4 sm:p-5 border border-white/[0.08] flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-sm">Бөглөх урьдчилан харах</h2>
-          <button
+      <SectionPanel index={3} total={3} title="Бөглөх урьдчилан харах">
+        <div className="flex justify-end -mt-2 mb-3">
+          <Btn
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => setShowPreview((v) => !v)}
-            className="text-xs bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] px-3 py-1.5 rounded-lg transition-colors"
           >
             {showPreview ? "Нуух" : "Харах"}
-          </button>
+          </Btn>
         </div>
         {showPreview ? <TemplatePreview schema={schema} /> : null}
-      </section>
+      </SectionPanel>
 
       <input type="hidden" name="schema" value={schemaJson} />
 
-      <div className="flex gap-2 pt-2">
-        <Link
-          href="/dashboard/services/diagnostics"
-          className="bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] transition-all px-5 py-2 rounded-lg font-medium text-sm text-white/60 text-center"
-        >
+      {/* Sticky action bar — урт форм scroll хийхэд ч Хадгалах үргэлж харагдана */}
+      <div className="sticky bottom-0 z-10 flex items-center gap-3 pt-3 pb-3 -mb-1 border-t border-[var(--oc-line2)] bg-[var(--oc-carbon)]/95 backdrop-blur-md">
+        <span className="text-xs text-[var(--oc-muted3)] flex-1">
+          {dirty ? "Хадгалагдаагүй өөрчлөлт байна" : ""}
+        </span>
+        <BtnLink href="/dashboard/services/diagnostics" variant="ghost">
           ← Буцах
-        </Link>
-        <button
-          type="submit"
-          disabled={pending}
-          className="bg-violet-600 hover:bg-violet-500 disabled:opacity-60 disabled:cursor-not-allowed transition-all px-6 py-2 rounded-lg font-medium text-sm"
-        >
+        </BtnLink>
+        <Btn type="submit" disabled={pending}>
           {pending ? "..." : isEdit ? "Хадгалах" : "Үүсгэх"}
-        </button>
+        </Btn>
       </div>
     </form>
   );
@@ -550,21 +583,21 @@ function ItemRow({
   }
 
   return (
-    <div className="rounded-lg bg-white/[0.02] border border-white/[0.04] p-3 flex flex-col gap-2">
+    <div className="rounded-lg bg-[var(--oc-panel)] border border-[var(--oc-line)] p-3 flex flex-col gap-2">
       <div className="flex items-center gap-2">
         <input
           type="text"
           value={item.label}
           onChange={(e) => onChange({ label: e.target.value })}
-          className="flex-1 min-w-0 bg-transparent border-b border-white/[0.04] focus:border-violet-500/50 outline-none text-sm text-white/80 pb-1"
+          className="flex-1 min-w-0 bg-transparent border-b border-[var(--oc-line)] focus:border-[var(--oc-accent)]/50 outline-none text-sm text-[var(--oc-ink2)] pb-1"
           placeholder="Асуултын нэр"
         />
-        <div className="flex items-center gap-0.5 text-white/40 shrink-0">
+        <div className="flex items-center gap-0.5 text-[var(--oc-muted3)] shrink-0">
           <button
             type="button"
             onClick={() => onMove(-1)}
             disabled={first}
-            className="p-1 hover:text-white/80 disabled:opacity-30 disabled:cursor-not-allowed text-xs"
+            className="p-1 hover:text-[var(--oc-ink2)] disabled:opacity-30 disabled:cursor-not-allowed text-xs"
           >
             ↑
           </button>
@@ -572,14 +605,14 @@ function ItemRow({
             type="button"
             onClick={() => onMove(1)}
             disabled={last}
-            className="p-1 hover:text-white/80 disabled:opacity-30 disabled:cursor-not-allowed text-xs"
+            className="p-1 hover:text-[var(--oc-ink2)] disabled:opacity-30 disabled:cursor-not-allowed text-xs"
           >
             ↓
           </button>
           <button
             type="button"
             onClick={onRemove}
-            className="p-1 hover:text-red-300 light:hover:text-red-600 text-xs"
+            className="p-1 hover:text-red-400 light:hover:text-red-600 text-xs"
           >
             ✕
           </button>
@@ -590,7 +623,7 @@ function ItemRow({
         <select
           value={item.type}
           onChange={(e) => onChange({ type: e.target.value as ItemType })}
-          className="text-xs bg-white/[0.06] border border-white/[0.08] rounded-md px-2 py-1 text-white/70"
+          className="text-xs bg-[var(--oc-panel2)] border border-[var(--oc-line)] rounded-md px-2 py-1 text-[var(--oc-ink2)]"
         >
           {ITEM_TYPES.map((t) => (
             <option key={t} value={t} className="bg-[var(--surface)]">
@@ -608,7 +641,7 @@ function ItemRow({
             })
           }
           title="Байрлал бүрээр давтах (зүүн/баруун, 4 булан г.м.)"
-          className="text-xs bg-white/[0.06] border border-white/[0.08] rounded-md px-2 py-1 text-white/70"
+          className="text-xs bg-[var(--oc-panel2)] border border-[var(--oc-line)] rounded-md px-2 py-1 text-[var(--oc-ink2)]"
         >
           <option value="" className="bg-[var(--surface)]">
             Байрлалгүй
@@ -619,12 +652,12 @@ function ItemRow({
             </option>
           ))}
         </select>
-        <label className="flex items-center gap-1 text-xs text-white/50">
+        <label className="flex items-center gap-1 text-xs text-[var(--oc-muted2)]">
           <input
             type="checkbox"
             checked={item.required}
             onChange={(e) => onChange({ required: e.target.checked })}
-            className="accent-violet-500"
+            className="accent-[var(--oc-accent)]"
           />
           Заавал
         </label>
@@ -649,13 +682,13 @@ function ItemRow({
 
       {/* Conditional хамаарал — өмнөх check item байгаа үед л харуулна */}
       {priorCheckItems.length > 0 ? (
-        <div className="rounded-md border border-white/[0.04] bg-white/[0.02] p-2 flex flex-col gap-2">
-          <div className="flex items-center gap-2 text-[11px] text-white/40">
+        <div className="rounded-md border border-[var(--oc-line)] bg-[var(--oc-panel2)] p-2 flex flex-col gap-2">
+          <div className="flex items-center gap-2 text-[11px] text-[var(--oc-muted3)]">
             <span>Хамаарал:</span>
             <select
               value={item.showWhen?.itemId ?? ""}
               onChange={(e) => setShowWhenItem(e.target.value)}
-              className="text-xs bg-white/[0.04] border border-white/[0.08] rounded px-2 py-0.5 text-white/70"
+              className="text-xs bg-[var(--oc-panel)] border border-[var(--oc-line)] rounded px-2 py-0.5 text-[var(--oc-ink2)]"
             >
               <option value="" className="bg-[var(--surface)]">
                 — Хамаарал байхгүй —
@@ -667,7 +700,7 @@ function ItemRow({
               ))}
             </select>
             {dependency ? (
-              <span className="text-white/40">→ хариу нь:</span>
+              <span className="text-[var(--oc-muted3)]">→ хариу нь:</span>
             ) : null}
           </div>
 
@@ -680,8 +713,8 @@ function ItemRow({
                     key={opt}
                     className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] cursor-pointer border transition-colors ${
                       checked
-                        ? "bg-violet-500/15 border-violet-500/40 text-violet-200 light:text-violet-700"
-                        : "bg-white/[0.02] border-white/[0.06] text-white/55 hover:bg-white/[0.05]"
+                        ? "bg-[var(--oc-accent)]/15 border-[var(--oc-accent)]/40 text-[var(--oc-accent)]"
+                        : "bg-[var(--oc-panel)] border-[var(--oc-line)] text-[var(--oc-muted2)] hover:bg-white/[0.05]"
                     }`}
                   >
                     <input
@@ -690,7 +723,7 @@ function ItemRow({
                       onChange={(e) =>
                         toggleShowWhenValue(opt, e.target.checked)
                       }
-                      className="accent-violet-500 w-3 h-3"
+                      className="accent-[var(--oc-accent)] w-3 h-3"
                     />
                     {opt}
                   </label>

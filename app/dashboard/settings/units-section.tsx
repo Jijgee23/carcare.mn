@@ -8,6 +8,7 @@ import {
   updateUnitAction,
 } from "@/app/_actions/units";
 import { Field, FormError } from "@/app/_components/auth-shell";
+import { Btn, Chip, TagChip } from "@/app/_components/landing-ops-ui";
 import { SYSTEM_UNIT_NAMES } from "@/lib/units";
 
 export type UnitRow = {
@@ -27,27 +28,27 @@ export function UnitsSection({ units }: { units: UnitRow[] }) {
   return (
     <div className="flex flex-col gap-5">
       {units.length === 0 ? (
-        <p className="text-xs text-white/40">
+        <p className="text-xs text-[var(--oc-muted3)]">
           Одоогоор нэгж бүртгэгдээгүй байна. Доороос шинэ нэгж нэмнэ үү.
         </p>
       ) : (
-        <div className="rounded-xl border border-white/[0.06] overflow-hidden">
+        <div className="rounded-[10px] border border-[var(--oc-line)] overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-white/[0.06] bg-white/[0.02]">
-                <th className="text-left text-xs text-white/40 font-medium px-4 py-2.5">
+              <tr className="border-b border-[var(--oc-line)] bg-[var(--oc-panel2)]">
+                <th className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-4 py-2.5">
                   Нэр
                 </th>
-                <th className="text-left text-xs text-white/40 font-medium px-4 py-2.5 w-32">
+                <th className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-4 py-2.5 w-32">
                   Богино
                 </th>
-                <th className="text-left text-xs text-white/40 font-medium px-4 py-2.5 w-28">
+                <th className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-4 py-2.5 w-28">
                   Төлөв
                 </th>
                 <th className="px-4 py-2.5 w-40" />
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-[var(--oc-line)]">
               {units.map((u) =>
                 editingId === u.id ? (
                   <EditRow
@@ -76,43 +77,29 @@ export function UnitsSection({ units }: { units: UnitRow[] }) {
 function ViewRow({ unit, onEdit }: { unit: UnitRow; onEdit: () => void }) {
   const system = isSystemUnit(unit.name);
   return (
-    <tr className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors">
-      <td className="px-4 py-3 text-white/85">
+    <tr className="hover:bg-white/[0.02] transition-colors">
+      <td className="px-4 py-3 text-[var(--oc-ink)]">
         <div className="flex items-center gap-2">
           <span>{unit.name}</span>
-          {system ? (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/25 light:text-violet-700">
-              Систем
-            </span>
-          ) : null}
+          {system ? <TagChip>Систем</TagChip> : null}
         </div>
       </td>
-      <td className="px-4 py-3 text-white/50 font-mono text-xs">
+      <td className="px-4 py-3 text-[var(--oc-muted2)] font-plex-mono text-xs">
         {unit.code ?? "—"}
       </td>
       <td className="px-4 py-3">
-        {unit.isActive ? (
-          <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 light:text-emerald-700">
-            Идэвхтэй
-          </span>
-        ) : (
-          <span className="text-xs px-2 py-0.5 rounded-full bg-white/[0.05] text-white/40 border border-white/[0.08]">
-            Идэвхгүй
-          </span>
-        )}
+        <Chip tone={unit.isActive ? "ok" : "neutral"}>
+          {unit.isActive ? "Идэвхтэй" : "Идэвхгүй"}
+        </Chip>
       </td>
       <td className="px-4 py-3">
         <div className="flex items-center justify-end gap-1">
-          <button
-            type="button"
-            onClick={onEdit}
-            className="text-xs text-violet-400 hover:text-violet-300 light:text-violet-600 light:hover:text-violet-700 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-violet-500/10"
-          >
+          <Btn type="button" variant="ghost" size="sm" onClick={onEdit}>
             Засах
-          </button>
+          </Btn>
           {system ? (
             <span
-              className="text-xs text-white/25 px-2.5 py-1.5"
+              className="text-xs text-[var(--oc-muted4)] px-2.5 py-1.5"
               title="Системийн default — устгаж болохгүй"
             >
               —
@@ -120,12 +107,9 @@ function ViewRow({ unit, onEdit }: { unit: UnitRow; onEdit: () => void }) {
           ) : (
             <form action={deleteUnitAction}>
               <input type="hidden" name="id" value={unit.id} />
-              <button
-                type="submit"
-                className="text-xs text-red-400 hover:text-red-300 light:text-red-600 light:hover:text-red-700 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-red-500/10"
-              >
+              <Btn type="submit" variant="danger" size="sm">
                 Устгах
-              </button>
+              </Btn>
             </form>
           )}
         </div>
@@ -148,7 +132,7 @@ function EditRow({ unit, onClose }: { unit: UnitRow; onClose: () => void }) {
   const system = isSystemUnit(unit.name);
 
   return (
-    <tr className="border-b border-white/[0.04] last:border-0 bg-white/[0.02]">
+    <tr className="bg-white/[0.02]">
       <td colSpan={4} className="px-4 py-3">
         <form action={formAction} className="flex flex-col gap-2" noValidate>
           {state?.message && !state.ok ? (
@@ -169,10 +153,10 @@ function EditRow({ unit, onClose }: { unit: UnitRow; onClose: () => void }) {
               type="text"
               defaultValue={unit.code ?? ""}
               placeholder="Богино"
-              className={`compact-input ${fe.code ? "border-red-500/50" : ""}`}
+              className={`auth-input ${fe.code ? "border-red-500/50" : ""}`}
             />
             <label
-              className={`flex items-center gap-2 text-sm px-2 ${system ? "text-white/40" : "text-white/70"}`}
+              className={`flex items-center gap-2 text-sm px-2 ${system ? "text-[var(--oc-muted3)]" : "text-[var(--oc-ink2)]"}`}
               title={system ? "Системийн нэгжийг идэвхгүй болгож болохгүй" : undefined}
             >
               <input
@@ -180,7 +164,7 @@ function EditRow({ unit, onClose }: { unit: UnitRow; onClose: () => void }) {
                 name="isActive"
                 defaultChecked={unit.isActive}
                 disabled={system}
-                className="accent-violet-500"
+                className="accent-[var(--oc-accent)]"
               />
               Идэвхтэй
             </label>
@@ -188,20 +172,12 @@ function EditRow({ unit, onClose }: { unit: UnitRow; onClose: () => void }) {
           {fe.name ? <p className="text-red-400 text-xs light:text-red-600">{fe.name}</p> : null}
           {fe.code ? <p className="text-red-400 text-xs light:text-red-600">{fe.code}</p> : null}
           <div className="flex gap-2 justify-end">
-            <button
-              type="button"
-              onClick={onClose}
-              className="text-xs px-3 py-1.5 rounded-lg text-white/60 hover:text-white/90 hover:bg-white/[0.05] transition-colors"
-            >
+            <Btn type="button" variant="ghost" size="sm" onClick={onClose}>
               Болих
-            </button>
-            <button
-              type="submit"
-              disabled={pending}
-              className="text-xs px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-60 transition-colors font-medium"
-            >
+            </Btn>
+            <Btn type="submit" size="sm" disabled={pending}>
               {pending ? "Хадгалж..." : "Хадгалах"}
-            </button>
+            </Btn>
           </div>
         </form>
       </td>
@@ -223,13 +199,13 @@ function CreateForm() {
     <form
       key={formKey}
       action={formAction}
-      className="flex flex-col gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4"
+      className="flex flex-col gap-3 rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel2)] p-4"
       noValidate
     >
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-white/80">Шинэ нэгж нэмэх</h3>
+        <h3 className="text-sm font-medium text-[var(--oc-ink2)]">Шинэ нэгж нэмэх</h3>
         {state?.ok && state.message ? (
-          <span className="text-xs text-emerald-300 light:text-emerald-700">{state.message}</span>
+          <span className="text-xs text-[var(--oc-ok)]">{state.message}</span>
         ) : null}
       </div>
 
@@ -245,7 +221,7 @@ function CreateForm() {
             type="text"
             required
             placeholder="ширхэг, цаг, литр..."
-            className={`compact-input ${fe.name ? "border-red-500/50" : ""}`}
+            className={`auth-input ${fe.name ? "border-red-500/50" : ""}`}
           />
         </Field>
         <Field
@@ -259,26 +235,22 @@ function CreateForm() {
             name="code"
             type="text"
             placeholder="ш, ц, л"
-            className={`compact-input ${fe.code ? "border-red-500/50" : ""}`}
+            className={`auth-input ${fe.code ? "border-red-500/50" : ""}`}
           />
         </Field>
-        <label className="flex items-end gap-2 text-sm text-white/70 pb-2.5">
+        <label className="flex items-end gap-2 text-sm text-[var(--oc-ink2)] pb-2.5">
           <input
             type="checkbox"
             name="isActive"
             defaultChecked
-            className="accent-violet-500"
+            className="accent-[var(--oc-accent)]"
           />
           Идэвхтэй
         </label>
         <div className="flex items-end pb-0.5">
-          <button
-            type="submit"
-            disabled={pending}
-            className="w-full sm:w-auto bg-violet-600 hover:bg-violet-500 disabled:opacity-60 transition-colors px-4 py-2 rounded-lg text-sm font-medium"
-          >
+          <Btn type="submit" disabled={pending} size="sm" className="w-full sm:w-auto">
             {pending ? "Нэмж..." : "Нэмэх"}
-          </button>
+          </Btn>
         </div>
       </div>
     </form>

@@ -8,6 +8,7 @@ import {
   updateCategoryAction,
 } from "@/app/_actions/categories";
 import { Field, FormError } from "@/app/_components/auth-shell";
+import { Btn, Chip, PlusIcon, TagChip } from "@/app/_components/landing-ops-ui";
 
 export type BranchOption = { id: string; name: string };
 
@@ -34,30 +35,30 @@ export function CategoriesSection({
   return (
     <div className="flex flex-col gap-5">
       {categories.length === 0 ? (
-        <p className="text-xs text-white/40">
+        <p className="text-xs text-[var(--oc-muted3)]">
           Одоогоор ангилал бүртгэгдээгүй байна. Доороос шинэ ангилал нэмнэ үү.
         </p>
       ) : (
-        <div className="rounded-xl border border-white/[0.06] overflow-hidden overflow-x-auto">
+        <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden overflow-x-auto">
           <table className="w-full text-sm min-w-[640px]">
             <thead>
-              <tr className="border-b border-white/[0.06] bg-white/[0.02]">
-                <th className="text-left text-xs text-white/40 font-medium px-4 py-2.5">
+              <tr className="border-b border-[var(--oc-line)]">
+                <th className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-4 py-2.5">
                   Нэр
                 </th>
-                <th className="text-left text-xs text-white/40 font-medium px-4 py-2.5">
+                <th className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-4 py-2.5">
                   Салбар
                 </th>
-                <th className="text-left text-xs text-white/40 font-medium px-4 py-2.5 w-20">
+                <th className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-4 py-2.5 w-20">
                   Үйлчилгээ
                 </th>
-                <th className="text-left text-xs text-white/40 font-medium px-4 py-2.5 w-28">
+                <th className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-4 py-2.5 w-28">
                   Төлөв
                 </th>
                 <th className="px-4 py-2.5 w-40" />
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-[var(--oc-line)]">
               {categories.map((c) =>
                 editingId === c.id ? (
                   <EditRow
@@ -94,29 +95,29 @@ function BranchPicker({
 }) {
   if (branches.length === 0) {
     return (
-      <p className="text-xs text-white/30">
+      <p className="text-xs text-[var(--oc-muted4)]">
         Салбар бүртгэгдээгүй — ангилал бүх салбарт хамаарна.
       </p>
     );
   }
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-xs text-white/45">
+      <span className="text-xs text-[var(--oc-muted3)]">
         Санал болгох салбар{" "}
-        <span className="text-white/25">(хоосон бол бүх салбарт)</span>
+        <span className="text-[var(--oc-muted4)]">(хоосон бол бүх салбарт)</span>
       </span>
       <div className="flex flex-wrap gap-2">
         {branches.map((b) => (
           <label
             key={b.id}
-            className="inline-flex items-center gap-1.5 text-sm text-white/70 border border-white/[0.08] hover:border-white/[0.15] rounded-lg px-2.5 py-1.5 cursor-pointer transition-colors"
+            className="inline-flex items-center gap-1.5 text-sm text-[var(--oc-ink2)] border border-[var(--oc-line)] hover:border-[var(--oc-line2)] rounded-lg px-2.5 py-1.5 cursor-pointer transition-colors"
           >
             <input
               type="checkbox"
               name="branchIds"
               value={b.id}
               defaultChecked={selected.includes(b.id)}
-              className="accent-violet-500"
+              className="accent-[var(--oc-accent)]"
             />
             {b.name}
           </label>
@@ -136,51 +137,40 @@ function ViewRow({
   onEdit: () => void;
 }) {
   return (
-    <tr className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors">
-      <td className="px-4 py-3 text-white/85">
+    <tr className="hover:bg-white/[0.02] transition-colors">
+      <td className="px-4 py-3 text-[var(--oc-ink)]">
         {category.name}
         {category.description ? (
-          <span className="block text-xs text-white/40 mt-0.5">
+          <span className="block text-xs text-[var(--oc-muted3)] mt-0.5">
             {category.description}
           </span>
         ) : null}
       </td>
-      <td className="px-4 py-3 text-white/60 text-xs">
+      <td className="px-4 py-3 text-xs">
         {category.branchIds.length === 0 ? (
-          <span className="text-white/40">Бүх салбар</span>
+          <span className="text-[var(--oc-muted3)]">Бүх салбар</span>
         ) : (
           <span className="flex flex-wrap gap-1">
             {category.branchIds.map((id) => (
-              <span
-                key={id}
-                className="px-1.5 py-0.5 rounded-md bg-white/[0.05] border border-white/[0.08]"
-              >
-                {branchName(id)}
-              </span>
+              <TagChip key={id}>{branchName(id)}</TagChip>
             ))}
           </span>
         )}
       </td>
-      <td className="px-4 py-3 text-white/60 text-xs">
+      <td className="px-4 py-3 font-plex-mono text-xs text-[var(--oc-muted2)]">
         {category.servicesCount}
       </td>
       <td className="px-4 py-3">
-        {category.isActive ? (
-          <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 light:text-emerald-700">
-            Идэвхтэй
-          </span>
-        ) : (
-          <span className="text-xs px-2 py-0.5 rounded-full bg-white/[0.05] text-white/40 border border-white/[0.08]">
-            Идэвхгүй
-          </span>
-        )}
+        <Chip tone={category.isActive ? "ok" : "neutral"}>
+          {category.isActive ? "Идэвхтэй" : "Идэвхгүй"}
+        </Chip>
       </td>
       <td className="px-4 py-3">
         <div className="flex items-center justify-end gap-1">
           <button
             type="button"
             onClick={onEdit}
-            className="text-xs text-violet-400 hover:text-violet-300 light:text-violet-600 light:hover:text-violet-700 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-violet-500/10"
+            className="text-xs text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors px-2.5 py-1.5 rounded-lg hover:bg-[var(--oc-accent)]/10"
           >
             Засах
           </button>
@@ -225,7 +215,7 @@ function EditRow({
   const fe = state?.fieldErrors ?? {};
 
   return (
-    <tr className="border-b border-white/[0.04] last:border-0 bg-white/[0.02]">
+    <tr className="bg-[var(--oc-panel2)]">
       <td colSpan={5} className="px-4 py-3">
         <form action={formAction} className="flex flex-col gap-3" noValidate>
           {state?.message && !state.ok ? (
@@ -238,21 +228,21 @@ function EditRow({
               required
               defaultValue={category.name}
               placeholder="Нэр"
-              className={`compact-input ${fe.name ? "border-red-500/50" : ""}`}
+              className={`auth-input ${fe.name ? "border-red-500/50" : ""}`}
             />
             <input
               name="description"
               type="text"
               defaultValue={category.description ?? ""}
               placeholder="Тайлбар"
-              className={`compact-input ${fe.description ? "border-red-500/50" : ""}`}
+              className={`auth-input ${fe.description ? "border-red-500/50" : ""}`}
             />
-            <label className="flex items-center gap-2 text-sm text-white/70 px-2">
+            <label className="flex items-center gap-2 text-sm text-[var(--oc-ink2)] px-2">
               <input
                 type="checkbox"
                 name="isActive"
                 defaultChecked={category.isActive}
-                className="accent-violet-500"
+                className="accent-[var(--oc-accent)]"
               />
               Идэвхтэй
             </label>
@@ -266,17 +256,13 @@ function EditRow({
             <button
               type="button"
               onClick={onClose}
-              className="text-xs px-3 py-1.5 rounded-lg text-white/60 hover:text-white/90 hover:bg-white/[0.05] transition-colors"
+              className="text-xs px-3 py-1.5 rounded-lg text-[var(--oc-muted2)] hover:text-[var(--oc-ink2)] hover:bg-white/[0.05] transition-colors"
             >
               Болих
             </button>
-            <button
-              type="submit"
-              disabled={pending}
-              className="text-xs px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-60 transition-colors font-medium"
-            >
+            <Btn type="submit" disabled={pending} size="sm">
               {pending ? "Хадгалж..." : "Хадгалах"}
-            </button>
+            </Btn>
           </div>
         </form>
       </td>
@@ -297,13 +283,13 @@ function CreateForm({ branches }: { branches: BranchOption[] }) {
     <form
       key={formKey}
       action={formAction}
-      className="flex flex-col gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4"
+      className="flex flex-col gap-3 rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel2)] p-4"
       noValidate
     >
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-white/80">Шинэ ангилал</h3>
+        <h3 className="text-sm font-medium text-[var(--oc-ink2)]">Шинэ ангилал</h3>
         {state?.ok && state.message ? (
-          <span className="text-xs text-emerald-300 light:text-emerald-700">{state.message}</span>
+          <span className="text-xs text-[var(--oc-ok)]">{state.message}</span>
         ) : null}
       </div>
 
@@ -319,7 +305,7 @@ function CreateForm({ branches }: { branches: BranchOption[] }) {
             type="text"
             required
             placeholder="Хөдөлгүүр, Угаалга, Тоормос..."
-            className={`compact-input ${fe.name ? "border-red-500/50" : ""}`}
+            className={`auth-input ${fe.name ? "border-red-500/50" : ""}`}
           />
         </Field>
         <Field
@@ -333,26 +319,23 @@ function CreateForm({ branches }: { branches: BranchOption[] }) {
             name="description"
             type="text"
             placeholder="Энэ ангилалд хамаарах үйлчилгээний тайлбар"
-            className={`compact-input ${fe.description ? "border-red-500/50" : ""}`}
+            className={`auth-input ${fe.description ? "border-red-500/50" : ""}`}
           />
         </Field>
-        <label className="flex items-end gap-2 text-sm text-white/70 pb-2.5">
+        <label className="flex items-end gap-2 text-sm text-[var(--oc-ink2)] pb-2.5">
           <input
             type="checkbox"
             name="isActive"
             defaultChecked
-            className="accent-violet-500"
+            className="accent-[var(--oc-accent)]"
           />
           Идэвхтэй
         </label>
         <div className="flex items-end pb-0.5">
-          <button
-            type="submit"
-            disabled={pending}
-            className="w-full sm:w-auto bg-violet-600 hover:bg-violet-500 disabled:opacity-60 transition-colors px-4 py-2 rounded-lg text-sm font-medium"
-          >
+          <Btn type="submit" disabled={pending} size="sm" className="w-full sm:w-auto">
+            <PlusIcon />
             {pending ? "Нэмж..." : "Нэмэх"}
-          </button>
+          </Btn>
         </div>
       </div>
 

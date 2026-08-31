@@ -6,6 +6,7 @@ import {
   adjustServiceStockAction,
 } from "@/app/_actions/services";
 import { Field, FormError } from "@/app/_components/auth-shell";
+import { Btn } from "@/app/_components/landing-ops-ui";
 import { Select } from "@/app/_components/select";
 
 export function StockAdjustForm({
@@ -27,7 +28,7 @@ export function StockAdjustForm({
   return (
     <form action={formAction} className="flex flex-col gap-3.5" noValidate>
       {state?.ok && state.message ? (
-        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 text-sm text-emerald-300 light:text-emerald-700">
+        <div className="bg-[var(--oc-ok)]/10 border border-[var(--oc-ok)]/25 rounded-lg px-3 py-2 text-sm text-[var(--oc-ok)]">
           {state.message}
         </div>
       ) : null}
@@ -57,18 +58,14 @@ export function StockAdjustForm({
           type="text"
           inputMode="decimal"
           required
-          className={`compact-input ${fe.amount ? "border-red-500/50" : ""}`}
+          className={`auth-input ${fe.amount ? "border-red-500/50" : ""}`}
           placeholder="10"
         />
       </Field>
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="w-full bg-violet-600 hover:bg-violet-500 disabled:opacity-60 transition-colors py-2 rounded-lg text-sm font-medium"
-      >
+      <Btn type="submit" disabled={pending} className="w-full">
         {pending ? "Бүртгэж байна..." : "Үлдэгдэл өөрчлөх"}
-      </button>
+      </Btn>
     </form>
   );
 }

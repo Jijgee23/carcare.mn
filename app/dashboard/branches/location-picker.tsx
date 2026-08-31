@@ -195,9 +195,9 @@ export function LocationPicker({
     const Advanced = g.maps.marker?.AdvancedMarkerElement;
     if (Advanced) {
       const pin = new g.maps.marker.PinElement({
-        background: "#7c5cff",
-        borderColor: "#ffffff",
-        glyphColor: "#ffffff",
+        background: "#F5A524",
+        borderColor: "#14120C",
+        glyphColor: "#14120C",
       });
       const marker = new Advanced({
         map,
@@ -249,10 +249,10 @@ export function LocationPicker({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="relative h-72 w-full rounded-xl overflow-hidden border border-white/[0.08] bg-[var(--surface)]">
+      <div className="relative h-72 w-full rounded-[10px] overflow-hidden border border-[var(--oc-line)] bg-[var(--oc-panel)]">
         <div ref={containerRef} className="h-full w-full" />
         {mapError ? (
-          <div className="absolute inset-0 flex items-center justify-center text-sm text-white/50 bg-[var(--surface)]">
+          <div className="absolute inset-0 flex items-center justify-center text-sm text-[var(--oc-muted3)] bg-[var(--oc-panel)]">
             Газрын зураг ачаалж чадсангүй.
           </div>
         ) : null}
@@ -262,13 +262,13 @@ export function LocationPicker({
           type="button"
           onClick={pickMyLocation}
           disabled={geoLoading}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600/20 hover:bg-violet-600/30 disabled:opacity-50 border border-violet-500/30 text-violet-200 light:text-violet-700 transition-colors"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--oc-accent)] hover:bg-[var(--oc-accent-hi)] disabled:opacity-50 font-medium text-[var(--oc-on-accent)] transition-colors"
         >
           {geoLoading ? "Тогтоож байна..." : "📍 Миний байршлыг авах"}
         </button>
         {latitude != null && longitude != null ? (
           <>
-            <span className="text-white/40 font-mono">
+            <span className="font-plex-mono text-[var(--oc-muted3)]">
               {latitude.toFixed(6)}, {longitude.toFixed(6)}
             </span>
             <button
@@ -280,7 +280,7 @@ export function LocationPicker({
             </button>
           </>
         ) : (
-          <span className="text-white/40">
+          <span className="text-[var(--oc-muted3)]">
             Газрын зураг дээр товшиж байршлыг сонгоно уу
           </span>
         )}

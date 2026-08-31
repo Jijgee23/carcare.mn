@@ -1,4 +1,3 @@
-import { PageHeader } from "@/app/_components/page-header";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
@@ -76,18 +75,20 @@ export default async function SubscriptionPage() {
 
   return (
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
-      <PageHeader
-        title="Багц / Subscription"
-        description="Тенантынхаа багц, туршилтын статус, төлбөрийн түүх."
-      />
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">Багц / Subscription</h1>
+        <p className="text-sm text-[var(--oc-muted3)] mt-1">
+          Тенантынхаа багц, туршилтын статус, төлбөрийн түүх.
+        </p>
+      </div>
 
       <div className="grid gap-6">
         {isOwner ? (
-          <section className="glass rounded-xl p-4 sm:p-5 border border-white/[0.08]">
-            <h2 className="font-semibold mb-1">
+          <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5 sm:p-6">
+            <h2 className="font-semibold text-[var(--oc-ink)] mb-1">
               {pendingPayment ? "QPay төлбөр" : "Багц авах / сунгах"}
             </h2>
-            <p className="text-xs text-white/40 mb-5">
+            <p className="text-xs text-[var(--oc-muted3)] mb-5">
               {pendingPayment
                 ? "QR-аар төлсний дараа багц автоматаар идэвхжинэ."
                 : "Боломжтой багцыг сонгож QPay-ээр төлнө үү."}
@@ -119,18 +120,18 @@ export default async function SubscriptionPage() {
           </section>
         ) : null}
 
-        <section className="glass rounded-xl p-4 sm:p-5 border border-white/[0.08]">
-          <h2 className="font-semibold mb-4">Одоогийн төлөв</h2>
+        <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5 sm:p-6">
+          <h2 className="font-semibold text-[var(--oc-ink)] mb-4">Одоогийн төлөв</h2>
           {active ? (
             <div className="grid gap-4 sm:grid-cols-3">
               <div>
-                <div className="text-xs text-white/40">Багц</div>
-                <div className="mt-1 text-lg font-semibold text-white">
+                <div className="text-xs text-[var(--oc-muted3)]">Багц</div>
+                <div className="mt-1 text-lg font-semibold text-[var(--oc-ink)]">
                   {PLAN_LABEL[active.subscription.plan]}
                 </div>
               </div>
               <div>
-                <div className="text-xs text-white/40">Статус</div>
+                <div className="text-xs text-[var(--oc-muted3)]">Статус</div>
                 <div className="mt-1">
                   <span
                     className={`text-xs px-2.5 py-1 rounded-full ${SUBSCRIPTION_STATUS_BADGE[active.subscription.status]}`}
@@ -140,12 +141,12 @@ export default async function SubscriptionPage() {
                 </div>
               </div>
               <div>
-                <div className="text-xs text-white/40">Хугацаа</div>
-                <div className="mt-1 text-sm text-white/80">
+                <div className="text-xs text-[var(--oc-muted3)]">Хугацаа</div>
+                <div className="mt-1 text-sm text-[var(--oc-ink2)]">
                   {active.expiresAt ? (
                     <>
                       {fmtDate(active.expiresAt)}
-                      <div className="text-xs text-white/40">
+                      <div className="text-xs text-[var(--oc-muted3)]">
                         {formatDaysLeft(active.daysLeft)}
                       </div>
                     </>
@@ -156,31 +157,31 @@ export default async function SubscriptionPage() {
               </div>
             </div>
           ) : (
-            <p className="text-sm text-white/40">
+            <p className="text-sm text-[var(--oc-muted3)]">
               Идэвхтэй багц байхгүй. Багц авахын тулд carcare.mn-тэй холбоо
               барина уу.
             </p>
           )}
         </section>
 
-        <section className="glass rounded-xl overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
+        <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--oc-line)]">
             <div>
-              <h2 className="font-semibold">Түүх</h2>
-              <p className="text-xs text-white/40 mt-0.5">
+              <h2 className="font-semibold text-[var(--oc-ink)]">Түүх</h2>
+              <p className="text-xs text-[var(--oc-muted3)] mt-0.5">
                 Нийт {subscriptions.length} бичлэг
               </p>
             </div>
           </div>
           {subscriptions.length === 0 ? (
-            <div className="px-5 py-10 text-center text-sm text-white/40">
+            <div className="px-5 py-10 text-center text-sm text-[var(--oc-muted3)]">
               Subscription түүх алга.
             </div>
           ) : (
             <div className="overflow-auto">
               <table className="w-full min-w-[720px]">
                 <thead>
-                  <tr className="border-b border-white/[0.06]">
+                  <tr className="border-b border-[var(--oc-line)]">
                     {[
                       "Багц",
                       "Статус",
@@ -192,20 +193,20 @@ export default async function SubscriptionPage() {
                     ].map((h) => (
                       <th
                         key={h}
-                        className="text-left text-xs text-white/30 light:text-slate-500 font-medium px-5 py-3"
+                        className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-5 py-3"
                       >
                         {h}
                       </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-[var(--oc-line)]">
                   {subscriptions.map((s) => (
                     <tr
                       key={s.id}
-                      className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors"
+                      className="hover:bg-white/[0.02] transition-colors"
                     >
-                      <td className="px-5 py-3 text-sm text-white/85">
+                      <td className="px-5 py-3 text-sm text-[var(--oc-ink)]">
                         {PLAN_LABEL[s.plan]}
                       </td>
                       <td className="px-5 py-3">
@@ -215,19 +216,19 @@ export default async function SubscriptionPage() {
                           {SUBSCRIPTION_STATUS_LABEL[s.status]}
                         </span>
                       </td>
-                      <td className="px-5 py-3 text-xs text-white/60">
+                      <td className="px-5 py-3 font-plex-mono text-xs text-[var(--oc-muted2)]">
                         {fmtDate(s.startsAt)}
                       </td>
-                      <td className="px-5 py-3 text-xs text-white/60">
+                      <td className="px-5 py-3 font-plex-mono text-xs text-[var(--oc-muted2)]">
                         {fmtDate(s.endsAt)}
                       </td>
-                      <td className="px-5 py-3 text-xs text-white/80">
+                      <td className="px-5 py-3 font-plex-mono text-xs text-[var(--oc-ink2)]">
                         {fmtAmount(s.amount)}
                       </td>
-                      <td className="px-5 py-3 text-xs text-white/50 max-w-[260px]">
+                      <td className="px-5 py-3 text-xs text-[var(--oc-muted3)] max-w-[260px]">
                         {s.notes ?? "—"}
                       </td>
-                      <td className="px-5 py-3 text-xs text-white/40">
+                      <td className="px-5 py-3 text-xs text-[var(--oc-muted4)]">
                         {s.createdBy
                           ? `${s.createdBy.firstName} ${s.createdBy.lastName}`
                           : "Систем"}

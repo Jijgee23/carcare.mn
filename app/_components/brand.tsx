@@ -25,7 +25,7 @@ export function BrandMark({ size = "md" }: { size?: "sm" | "md" }) {
 export function BrandWordmark({ size = "md" }: { size?: "sm" | "md" }) {
   return (
     <span className={size === "sm" ? "font-bold" : "font-bold text-lg tracking-tight"}>
-      car<span className="text-violet-400">care</span>
+      car<span className="text-violet-400 brand-care-accent">care</span>
     </span>
   );
 }

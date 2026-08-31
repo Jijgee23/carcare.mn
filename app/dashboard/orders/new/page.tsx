@@ -1,9 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import {
-  EmptyState,
-  PageHeader,
-} from "@/app/_components/page-header";
+import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
 import { requireUser } from "@/lib/auth";
 import {
   ORDER_ASSIGNABLE_WHERE,
@@ -12,7 +9,7 @@ import {
 } from "@/lib/auth/roles";
 import { type DiagnosticType } from "@/lib/diagnostics";
 import { prisma } from "@/lib/prisma";
-import { OrderForm } from "../order-form";
+import { ORDER_FORM_ID, OrderForm } from "../order-form";
 
 export const metadata = {
   title: "Шинэ захиалга",
@@ -115,33 +112,56 @@ export default async function NewOrderPage({
   if (branches.length === 0) {
     return (
       <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
-        <PageHeader
-          title="Шинэ захиалга"
-          description="Эхлээд салбар үүсгэх шаардлагатай."
-        />
-        <EmptyState
-          title="Салбар бүртгэгдээгүй"
-          description="Захиалга үүсгэхийн тулд эхлээд салбараа бүртгэнэ үү."
-          cta={
-            <Link
-              href="/dashboard/branches/new"
-              className="inline-flex items-center gap-2 bg-violet-600 hover:bg-violet-500 transition-colors px-4 py-2.5 rounded-xl text-sm font-medium"
-            >
-              Салбар нэмэх
-            </Link>
-          }
-        />
+        <nav className="flex items-center gap-1.5 text-[13px] text-[var(--oc-muted3)] mb-3">
+          <Link href="/dashboard/orders" className="hover:text-[var(--oc-accent-hi)] transition-colors">
+            Захиалгууд
+          </Link>
+          <span>/</span>
+          <span className="text-[var(--oc-muted)]">Шинэ захиалга</span>
+        </nav>
+        <h1 className="text-2xl font-semibold text-[var(--oc-ink)] mb-6">Шинэ захиалга</h1>
+        <div className="rounded-[10px] border border-[var(--oc-accent)]/30 bg-[var(--oc-panel)] p-5 text-sm text-[var(--oc-ink2)]">
+          Захиалга үүсгэхийн тулд эхлээд{" "}
+          <Link
+            href="/dashboard/branches/new"
+            className="text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] underline"
+          >
+            салбараа бүртгэнэ үү
+          </Link>
+          .
+        </div>
       </div>
     );
   }
 
   return (
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
-      <PageHeader
-        title="Шинэ захиалга"
-        description="Үйлчилгээний захиалгын үндсэн мэдээллийг оруулна уу. Ажил, сэлбэгийн мөрийг дараа нь нэмнэ."
-      />
-      <div className="glass rounded-xl p-4 sm:p-5 border border-white/[0.08]">
+      <nav className="flex items-center gap-1.5 text-[13px] text-[var(--oc-muted3)] mb-3">
+        <Link href="/dashboard/orders" className="hover:text-[var(--oc-accent-hi)] transition-colors">
+          Захиалгууд
+        </Link>
+        <span>/</span>
+        <span className="text-[var(--oc-muted)]">Шинэ захиалга</span>
+      </nav>
+
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">Шинэ захиалга</h1>
+          <p className="text-sm text-[var(--oc-muted3)] mt-1">
+            Үйлчилгээний захиалгын үндсэн мэдээллийг оруулна уу. Ажил, сэлбэгийн мөрийг дараа нь нэмнэ.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <BtnLink href="/dashboard/orders" variant="ghost">
+            ← Буцах
+          </BtnLink>
+          <Btn type="submit" form={ORDER_FORM_ID}>
+            Захиалга үүсгэх
+          </Btn>
+        </div>
+      </div>
+
+      <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-4 sm:p-5">
         <OrderForm
           initial={initial}
           appointmentId={sp.appointmentId}

@@ -7,6 +7,7 @@ import {
   type TenantQPayActionState,
 } from "@/app/_actions/tenant-qpay";
 import { Field, FormError } from "@/app/_components/auth-shell";
+import { Btn } from "@/app/_components/landing-ops-ui";
 
 type Initial = {
   username: string;
@@ -38,7 +39,7 @@ export function TenantQPayForm({ initial }: { initial: Initial | null }) {
     <>
     <form action={formAction} className="flex flex-col gap-4" noValidate>
       {state?.ok && state.message ? (
-        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 text-sm text-emerald-300 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700">
+        <div className="bg-[var(--oc-ok)]/10 border border-[var(--oc-ok)]/25 rounded-lg px-3 py-2 text-sm text-[var(--oc-ok)]">
           {state.message}
         </div>
       ) : null}
@@ -60,7 +61,7 @@ export function TenantQPayForm({ initial }: { initial: Initial | null }) {
             required
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            className={`compact-input ${fe.username ? "border-red-500/50" : ""}`}
+            className={`auth-input ${fe.username ? "border-red-500/50" : ""}`}
             placeholder="QPay merchant username"
           />
         </Field>
@@ -85,13 +86,13 @@ export function TenantQPayForm({ initial }: { initial: Initial | null }) {
               autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className={`compact-input pr-14 ${fe.password ? "border-red-500/50" : ""}`}
+              className={`auth-input pr-14 ${fe.password ? "border-red-500/50" : ""}`}
               placeholder={initial?.hasPassword ? "••••••••" : "QPay password"}
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors text-xs"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--oc-muted3)] hover:text-[var(--oc-ink2)] transition-colors text-xs"
             >
               {showPassword ? "Нуух" : "Харах"}
             </button>
@@ -111,7 +112,7 @@ export function TenantQPayForm({ initial }: { initial: Initial | null }) {
             required
             value={invoiceCode}
             onChange={(e) => setInvoiceCode(e.target.value)}
-            className={`compact-input ${fe.invoiceCode ? "border-red-500/50" : ""}`}
+            className={`auth-input ${fe.invoiceCode ? "border-red-500/50" : ""}`}
             placeholder="QPay invoice code"
           />
         </Field>
@@ -129,24 +130,24 @@ export function TenantQPayForm({ initial }: { initial: Initial | null }) {
             type="url"
             value={callbackUrl}
             onChange={(e) => setCallbackUrl(e.target.value)}
-            className="compact-input"
+            className="auth-input"
             placeholder="https://your-domain.com/qpay-callback"
           />
         </Field>
       </div>
 
-      <label className="flex items-start gap-3 p-3 rounded-lg border border-white/[0.06] bg-white/[0.02] cursor-pointer hover:bg-white/[0.04] max-w-md">
+      <label className="flex items-start gap-3 p-3.5 rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel2)] cursor-pointer hover:border-[var(--oc-line2)] max-w-md">
         <input
           type="checkbox"
           name="enabled"
           checked={enabled}
           onChange={(e) => setEnabled(e.target.checked)}
           value="on"
-          className="mt-0.5 accent-violet-500"
+          className="mt-0.5 accent-[var(--oc-accent)]"
         />
         <div className="flex-1">
-          <div className="text-sm font-medium text-white/90">Идэвхтэй</div>
-          <div className="text-xs text-white/40 mt-0.5">
+          <div className="text-sm font-medium text-[var(--oc-ink2)]">Идэвхтэй</div>
+          <div className="text-xs text-[var(--oc-muted3)] mt-0.5">
             Захиалгад QPay QR үүсгэх боломжтой болно. Идэвхгүй болговол одоо
             байгаа QR-ууд хэвээр, шинээр үүсгэхгүй.
           </div>
@@ -154,24 +155,17 @@ export function TenantQPayForm({ initial }: { initial: Initial | null }) {
       </label>
       {!enabled ? <input type="hidden" name="enabled" value="off" /> : null}
 
-      <div className="flex gap-2 pt-3 border-t border-white/[0.05]">
-        <button
-          type="submit"
-          disabled={pending}
-          className="bg-violet-600 hover:bg-violet-500 disabled:opacity-60 disabled:cursor-not-allowed transition-all px-6 py-2 rounded-lg font-medium text-sm"
-        >
+      <div className="flex gap-2 pt-3 border-t border-[var(--oc-line2)]">
+        <Btn type="submit" disabled={pending}>
           {pending ? "..." : "Хадгалах"}
-        </button>
+        </Btn>
       </div>
     </form>
     {isConfigured ? (
       <form action={deleteTenantQPayAction} className="pt-2">
-        <button
-          type="submit"
-          className="bg-white/[0.04] hover:bg-red-500/20 border border-white/[0.08] hover:border-red-500/30 text-white/60 hover:text-red-300 light:hover:text-red-600 transition-all px-5 py-2 rounded-lg font-medium text-sm"
-        >
+        <Btn type="submit" variant="danger">
           Тохиргоог устгах
-        </button>
+        </Btn>
       </form>
     ) : null}
     </>

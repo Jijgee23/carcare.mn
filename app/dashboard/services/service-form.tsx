@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useActionState, useState } from "react";
 import {
   type ServiceActionState,
@@ -8,6 +7,7 @@ import {
   updateServiceAction,
 } from "@/app/_actions/services";
 import { Field, FormError } from "@/app/_components/auth-shell";
+import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
 import { Select } from "@/app/_components/select";
 import {
   SERVICE_KINDS,
@@ -46,6 +46,8 @@ export type UnitOption = {
   code: string | null;
   isActive: boolean;
 };
+
+export const SERVICE_FORM_ID = "service-form";
 
 const FIELD_MW = "max-w-xs";
 
@@ -115,16 +117,16 @@ export function ServiceForm({
   const hasAnyUnit = units.length > 0;
 
   return (
-    <form action={formAction} className="flex flex-col gap-5" noValidate>
+    <form id={SERVICE_FORM_ID} action={formAction} className="flex flex-col gap-5" noValidate>
       <FormError message={state?.message} />
 
       <Field label="Төрөл" htmlFor="type" error={fe.type}>
         {isEdit || fixedType ? (
           <>
             <input type="hidden" name="type" value={type} />
-            <div className="px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.06] text-sm text-white/70 max-w-lg">
+            <div className="px-3 py-2 rounded-lg bg-[var(--oc-panel2)] border border-[var(--oc-line)] text-sm text-[var(--oc-ink2)] max-w-lg">
               {SERVICE_KIND_LABEL[type]}
-              <span className="text-white/30 ml-2">
+              <span className="text-[var(--oc-muted3)] ml-2">
                 · {SERVICE_KIND_DESCRIPTION[type]}
               </span>
             </div>
@@ -136,8 +138,8 @@ export function ServiceForm({
                 key={k}
                 className={`flex flex-col gap-1 p-3 rounded-lg border cursor-pointer transition-colors ${
                   type === k
-                    ? "border-violet-500/40 bg-violet-500/10"
-                    : "border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.04]"
+                    ? "border-[var(--oc-accent)] bg-[var(--oc-accent)]/[0.08]"
+                    : "border-[var(--oc-line)] bg-[var(--oc-panel2)] hover:border-[var(--oc-line2)]"
                 }`}
               >
                 <div className="flex items-center gap-2">
@@ -147,13 +149,13 @@ export function ServiceForm({
                     value={k}
                     checked={type === k}
                     onChange={() => setType(k)}
-                    className="accent-violet-500"
+                    className="accent-[var(--oc-accent)]"
                   />
-                  <span className="text-sm font-medium text-white/90">
+                  <span className="text-sm font-medium text-[var(--oc-ink2)]">
                     {SERVICE_KIND_LABEL[k]}
                   </span>
                 </div>
-                <span className="text-xs text-white/40 pl-6">
+                <span className="text-xs text-[var(--oc-muted3)] pl-6">
                   {SERVICE_KIND_DESCRIPTION[k]}
                 </span>
               </label>
@@ -199,7 +201,7 @@ export function ServiceForm({
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className={`compact-input ${fe.name ? "border-red-500/50" : ""}`}
+            className={`auth-input ${fe.name ? "border-red-500/50" : ""}`}
             placeholder={
               isGoods
                 ? "Жишээ: 5W-30 моторын тос"
@@ -222,7 +224,7 @@ export function ServiceForm({
             type="text"
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            className={`compact-input uppercase ${fe.code ? "border-red-500/50" : ""}`}
+            className={`auth-input uppercase ${fe.code ? "border-red-500/50" : ""}`}
             placeholder={isGoods ? "OIL-5W30" : "LAB-OIL"}
           />
         </Field>
@@ -266,7 +268,7 @@ export function ServiceForm({
             required
             value={price}
             onChange={(e) => setPrice(e.target.value)}
-            className={`compact-input ${fe.price ? "border-red-500/50" : ""}`}
+            className={`auth-input ${fe.price ? "border-red-500/50" : ""}`}
             placeholder="45000"
           />
         </Field>
@@ -287,7 +289,7 @@ export function ServiceForm({
                 inputMode="decimal"
                 value={costPrice}
                 onChange={(e) => setCostPrice(e.target.value)}
-                className={`compact-input ${fe.costPrice ? "border-red-500/50" : ""}`}
+                className={`auth-input ${fe.costPrice ? "border-red-500/50" : ""}`}
                 placeholder="32000"
               />
             </Field>
@@ -306,7 +308,7 @@ export function ServiceForm({
                   inputMode="decimal"
                   value={stock}
                   onChange={(e) => setStock(e.target.value)}
-                  className={`compact-input ${fe.stock ? "border-red-500/50" : ""}`}
+                  className={`auth-input ${fe.stock ? "border-red-500/50" : ""}`}
                   placeholder="0"
                 />
               </Field>
@@ -330,7 +332,7 @@ export function ServiceForm({
                 inputMode="decimal"
                 value={durationValue}
                 onChange={(e) => setDurationValue(e.target.value)}
-                className={`compact-input ${fe.durationValue ? "border-red-500/50" : ""}`}
+                className={`auth-input ${fe.durationValue ? "border-red-500/50" : ""}`}
                 placeholder="1.5"
               />
             </Field>
@@ -364,35 +366,28 @@ export function ServiceForm({
           rows={2}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          className="compact-input resize-none"
+          className="auth-input resize-none"
         />
       </Field>
 
-      <label className="flex items-center gap-2 text-sm text-white/70">
+      <label className="flex items-center gap-2 text-sm text-[var(--oc-ink2)]">
         <input
           type="checkbox"
           name="isActive"
           checked={isActive}
           onChange={(e) => setIsActive(e.target.checked)}
-          className="accent-violet-500"
+          className="accent-[var(--oc-accent)]"
         />
         Идэвхтэй (захиалга дээр сонгох боломжтой)
       </label>
 
-      <div className="flex gap-2 pt-3 border-t border-white/[0.05]">
-        <Link
-          href={backHref}
-          className="bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] transition-all px-5 py-2 rounded-lg font-medium text-sm text-white/60 text-center"
-        >
+      <div className="flex gap-2 pt-3 border-t border-[var(--oc-line2)]">
+        <BtnLink href={backHref} variant="ghost">
           ← Буцах
-        </Link>
-        <button
-          type="submit"
-          disabled={pending}
-          className="bg-violet-600 hover:bg-violet-500 disabled:opacity-60 disabled:cursor-not-allowed transition-all px-6 py-2 rounded-lg font-medium text-sm"
-        >
+        </BtnLink>
+        <Btn type="submit" disabled={pending}>
           {pending ? "..." : isEdit ? "Хадгалах" : "Үүсгэх"}
-        </button>
+        </Btn>
       </div>
     </form>
   );

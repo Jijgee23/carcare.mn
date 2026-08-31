@@ -7,6 +7,7 @@ import {
   uploadTenantLogoAction,
 } from "@/app/_actions/tenant";
 import { Field, FormError } from "@/app/_components/auth-shell";
+import { Btn } from "@/app/_components/landing-ops-ui";
 
 export function LogoForm({
   currentLogoUrl,
@@ -32,7 +33,7 @@ export function LogoForm({
   return (
     <div className="flex flex-col gap-4">
       {state?.ok && state.message ? (
-        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-2.5 text-sm text-emerald-300 light:text-emerald-700">
+        <div className="bg-[var(--oc-ok)]/10 border border-[var(--oc-ok)]/25 rounded-lg px-4 py-2.5 text-sm text-[var(--oc-ok)]">
           {state.message}
         </div>
       ) : null}
@@ -41,7 +42,7 @@ export function LogoForm({
       />
 
       <div className="flex items-center gap-4 max-w-2xl">
-        <div className="w-16 h-16 shrink-0 rounded-lg overflow-hidden flex items-center justify-center bg-white/[0.04] border border-white/[0.08]">
+        <div className="w-16 h-16 shrink-0 rounded-lg overflow-hidden flex items-center justify-center bg-[var(--oc-panel2)] border border-[var(--oc-line)]">
           {display ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -50,7 +51,7 @@ export function LogoForm({
               className="w-full h-full object-contain"
             />
           ) : (
-            <span className="text-xs text-white/30">Алга</span>
+            <span className="text-xs text-[var(--oc-muted4)]">Алга</span>
           )}
         </div>
 
@@ -63,22 +64,18 @@ export function LogoForm({
                 type="file"
                 accept="image/png,image/jpeg,image/webp,image/svg+xml"
                 onChange={onChange}
-                className="block w-full text-xs text-white/60 file:mr-3 file:rounded-md file:border-0 file:bg-white/[0.08] file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-white/80 hover:file:bg-white/[0.12] file:cursor-pointer"
+                className="block w-full text-xs text-[var(--oc-muted2)] file:mr-3 file:rounded-md file:border-0 file:bg-[var(--oc-panel2)] file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-[var(--oc-ink2)] hover:file:bg-[var(--oc-line)] file:cursor-pointer"
               />
             </Field>
-            <button
-              type="submit"
-              disabled={pending}
-              className="self-start bg-violet-600 hover:bg-violet-500 disabled:opacity-60 transition-colors px-4 py-1.5 rounded-lg text-sm font-medium"
-            >
+            <Btn type="submit" disabled={pending} size="sm" className="self-start">
               {pending ? "Хадгалж..." : "Хадгалах"}
-            </button>
+            </Btn>
           </form>
           {currentLogoUrl ? <RemoveButton /> : null}
         </div>
       </div>
 
-      <p className="text-xs text-white/30">
+      <p className="text-xs text-[var(--oc-muted4)]">
         PNG, JPG, WEBP, SVG · хамгийн ихдээ 2MB
       </p>
     </div>
@@ -88,12 +85,9 @@ export function LogoForm({
 function RemoveButton() {
   return (
     <form action={removeTenantLogoAction}>
-      <button
-        type="submit"
-        className="bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] transition-colors px-4 py-1.5 rounded-lg text-sm font-medium text-white/60"
-      >
+      <Btn type="submit" variant="ghost" size="sm">
         Устгах
-      </button>
+      </Btn>
     </form>
   );
 }

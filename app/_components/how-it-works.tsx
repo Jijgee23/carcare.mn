@@ -1,52 +1,53 @@
-import { SectionHeading } from "./section-heading";
+import { Container, Eyebrow } from "./landing-ops-ui";
 
 const STEPS = [
   {
-    num: "01",
-    title: "Бүртгүүлэх",
+    kicker: "01 / Бүртгүүлэх",
+    title: "Салбараа үүсгэж тохируулна",
     desc: "Имэйлээрээ 2 минутын дотор салбараа үүсгэж тохируулна.",
+    active: true,
   },
   {
-    num: "02",
-    title: "Багаа урих",
+    kicker: "02 / Багаа урих",
+    title: "Үүрэгтэйгээр урина",
     desc: "Менежер, мастер, кассчдаа үүрэгтэйгээр урина — хандалт хязгаарлагдсан.",
+    active: false,
   },
   {
-    num: "03",
+    kicker: "03 / Ажиллагаа",
     title: "Удирдлагаа эхлүүлэх",
     desc: "Захиалга авч, машины түүх хөтлөж, тайлангаа шууд харна.",
+    active: false,
   },
 ];
 
 export function HowItWorks() {
   return (
-    <section id="how" className="scroll-mt-24 py-24 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto">
-        <SectionHeading
-          label="Хэрхэн ажилладаг"
-          title="3 алхамд үйлчилгээгээ онлайн болго"
-        />
-
-        <div className="grid md:grid-cols-3 gap-6">
+    <Container className="pt-24">
+      <div id="hows" className="scroll-mt-24">
+        <Eyebrow>Хэрхэн ажилладаг</Eyebrow>
+        <h2 className="mb-10 mt-4 text-3xl sm:text-4xl lg:text-[40px] font-semibold tracking-[-0.03em] text-[var(--oc-ink)]">
+          3 алхамд үйлчилгээгээ онлайн болго
+        </h2>
+        <div className="grid gap-6 md:grid-cols-3">
           {STEPS.map((step) => (
             <div
-              key={step.num}
-              className="glass card-hover rounded-2xl p-7 relative overflow-hidden"
+              key={step.kicker}
+              className={`border-t-2 pt-[22px] ${
+                step.active ? "border-[var(--oc-accent)]" : "border-[var(--oc-line)]"
+              }`}
             >
-              <div className="text-6xl font-black text-white/[0.04] absolute top-4 right-6 leading-none select-none">
-                {step.num}
+              <div className="font-plex-mono text-[13px] text-[var(--oc-muted3)]">
+                {step.kicker}
               </div>
-              <div className="text-violet-400 font-mono text-sm font-bold mb-4">
-                {step.num}
-              </div>
-              <h3 className="font-semibold text-lg mb-2">{step.title}</h3>
-              <p className="text-white/50 text-sm leading-relaxed">
+              <div className="mt-3 text-[19px] font-semibold text-[var(--oc-ink2)]">{step.title}</div>
+              <div className="mt-2.5 text-[14.5px] leading-relaxed text-[var(--oc-muted2)]">
                 {step.desc}
-              </p>
+              </div>
             </div>
           ))}
         </div>
       </div>
-    </section>
+    </Container>
   );
 }

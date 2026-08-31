@@ -6,6 +6,7 @@ import {
   changePasswordAction,
 } from "@/app/_actions/profile";
 import { Field, FormError } from "@/app/_components/auth-shell";
+import { Btn } from "@/app/_components/landing-ops-ui";
 
 const FIELD_MW = "max-w-xs";
 
@@ -32,7 +33,7 @@ export function PasswordForm() {
       noValidate
     >
       {state?.ok && state.message ? (
-        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 text-sm text-emerald-300 light:text-emerald-700">
+        <div className="bg-[var(--oc-ok)]/10 border border-[var(--oc-ok)]/25 rounded-lg px-3 py-2 text-sm text-[var(--oc-ok)]">
           {state.message}
         </div>
       ) : null}
@@ -53,7 +54,7 @@ export function PasswordForm() {
             type={show ? "text" : "password"}
             required
             autoComplete="current-password"
-            className={`compact-input ${fe.currentPassword ? "border-red-500/50" : ""}`}
+            className={`auth-input ${fe.currentPassword ? "border-red-500/50" : ""}`}
             placeholder="••••••••"
           />
         </Field>
@@ -71,7 +72,7 @@ export function PasswordForm() {
             required
             minLength={8}
             autoComplete="new-password"
-            className={`compact-input ${fe.newPassword ? "border-red-500/50" : ""}`}
+            className={`auth-input ${fe.newPassword ? "border-red-500/50" : ""}`}
             placeholder="••••••••"
           />
         </Field>
@@ -88,30 +89,26 @@ export function PasswordForm() {
             required
             minLength={8}
             autoComplete="new-password"
-            className={`compact-input ${fe.confirmPassword ? "border-red-500/50" : ""}`}
+            className={`auth-input ${fe.confirmPassword ? "border-red-500/50" : ""}`}
             placeholder="••••••••"
           />
         </Field>
       </div>
 
-      <label className="flex items-center gap-2 cursor-pointer text-xs text-white/50 hover:text-white/70 transition-colors">
+      <label className="flex items-center gap-2 cursor-pointer text-xs text-[var(--oc-muted3)] hover:text-[var(--oc-ink2)] transition-colors">
         <input
           type="checkbox"
           checked={show}
           onChange={(e) => setShow(e.target.checked)}
-          className="w-4 h-4 rounded accent-violet-500"
+          className="w-4 h-4 rounded accent-[var(--oc-accent)]"
         />
         Нууц үг харах
       </label>
 
       <div className="flex pt-1">
-        <button
-          type="submit"
-          disabled={pending}
-          className="bg-violet-600 hover:bg-violet-500 disabled:opacity-60 disabled:cursor-not-allowed transition-all px-6 py-2 rounded-lg font-medium text-sm"
-        >
+        <Btn type="submit" disabled={pending}>
           {pending ? "..." : "Нууц үг солих"}
-        </button>
+        </Btn>
       </div>
     </form>
   );

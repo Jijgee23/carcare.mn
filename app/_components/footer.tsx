@@ -9,25 +9,25 @@ export async function Footer() {
   const hasSocial = Boolean(facebookUrl || youtubeUrl);
 
   return (
-    <footer className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+    <footer className="mt-[88px] border-t border-[var(--oc-line2)] bg-[var(--oc-panel)]">
+      <div className="max-w-[1240px] mx-auto grid gap-10 px-4 sm:px-6 lg:px-8 py-12 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
         {/* Брэнд + сошиал */}
-        <div className="flex flex-col gap-3">
+        <div>
           <Link href="/">
             <Brand size="sm" />
           </Link>
-          <p className="text-xs text-white/40 max-w-xs">
+          <p className="mt-3.5 max-w-[300px] text-[13.5px] leading-relaxed text-[var(--oc-muted3)]">
             {CONTACT.org} — авто үйлчилгээний ухаалаг платформ.
           </p>
           {hasSocial ? (
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-4">
               {facebookUrl ? (
                 <a
                   href={facebookUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label="Facebook"
-                  className="w-8 h-8 rounded-lg border border-white/[0.08] bg-white/[0.04] flex items-center justify-center text-white/50 hover:text-white hover:bg-white/[0.08] transition-colors"
+                  className="w-8 h-8 rounded-lg border border-[var(--oc-line)] bg-[var(--oc-panel2)] flex items-center justify-center text-[var(--oc-muted2)] hover:text-[var(--oc-ink)] transition-colors"
                 >
                   <FacebookIcon />
                 </a>
@@ -38,7 +38,7 @@ export async function Footer() {
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label="YouTube"
-                  className="w-8 h-8 rounded-lg border border-white/[0.08] bg-white/[0.04] flex items-center justify-center text-white/50 hover:text-white hover:bg-white/[0.08] transition-colors"
+                  className="w-8 h-8 rounded-lg border border-[var(--oc-line)] bg-[var(--oc-panel2)] flex items-center justify-center text-[var(--oc-muted2)] hover:text-[var(--oc-ink)] transition-colors"
                 >
                   <YoutubeIcon />
                 </a>
@@ -48,64 +48,60 @@ export async function Footer() {
         </div>
 
         {/* Холбоос */}
-        <nav className="flex flex-col gap-2 text-sm text-white/50">
-          <span className="text-white/30 text-xs uppercase tracking-wider mb-1">
+        <nav className="flex flex-col gap-2.5 text-[13.5px]">
+          <span className="font-plex-mono text-[11.5px] uppercase tracking-[0.1em] text-[var(--oc-muted3)]">
             Холбоос
           </span>
-          <a
-            href="/page/landing#features"
-            className="hover:text-white/80 transition-colors"
-          >
+          <a href="#boloms" className="text-[var(--oc-muted)] hover:text-[var(--oc-accent-hi)] transition-colors">
             Боломжууд
           </a>
-          <a
-            href="/page/landing#pricing"
-            className="hover:text-white/80 transition-colors"
-          >
+          <a href="#price" className="text-[var(--oc-muted)] hover:text-[var(--oc-accent-hi)] transition-colors">
             Үнэ
           </a>
-          <Link href="/terms" className="hover:text-white/80 transition-colors">
+          <Link href="/terms" className="text-[var(--oc-muted)] hover:text-[var(--oc-accent-hi)] transition-colors">
             Үйлчилгээний нөхцөл
           </Link>
-          <Link href="/privacy" className="hover:text-white/80 transition-colors">
+          <Link href="/privacy" className="text-[var(--oc-muted)] hover:text-[var(--oc-accent-hi)] transition-colors">
             Нууцлалын бодлого
           </Link>
-          <Link href="/contact" className="hover:text-white/80 transition-colors">
+          <Link href="/contact" className="text-[var(--oc-muted)] hover:text-[var(--oc-accent-hi)] transition-colors">
             Холбоо барих
           </Link>
         </nav>
 
         {/* Холбоо барих */}
-        <div className="flex flex-col gap-1.5 text-sm text-white/50">
-          <span className="text-white/30 text-xs uppercase tracking-wider mb-1">
+        <div className="flex flex-col gap-1.5 text-[13.5px] lg:col-span-2">
+          <span className="font-plex-mono text-[11.5px] uppercase tracking-[0.1em] text-[var(--oc-muted3)]">
             Холбоо барих
           </span>
-          <div className="text-white/75 font-medium">{CONTACT.org}</div>
+          <div className="text-[var(--oc-ink2)] font-medium">{CONTACT.org}</div>
           <a
             href={`mailto:${CONTACT.email}`}
-            className="hover:text-white/80 transition-colors"
+            className="text-[var(--oc-muted)] hover:text-[var(--oc-accent-hi)] transition-colors"
           >
             {CONTACT.email}
           </a>
-          <div className="flex flex-wrap gap-x-3 gap-y-1 tabular-nums">
+          <div className="flex flex-wrap gap-x-3 gap-y-1 tabular-nums text-[var(--oc-muted)]">
             {CONTACT.phones.map((p) => (
               <a
                 key={p}
                 href={`tel:${p}`}
-                className="hover:text-white/80 transition-colors"
+                className="hover:text-[var(--oc-accent-hi)] transition-colors"
               >
                 {p}
               </a>
             ))}
           </div>
-          <div className="text-white/40 text-xs mt-0.5">{CONTACT.address}</div>
+          <div className="text-[var(--oc-muted3)] text-xs mt-0.5">{CONTACT.address}</div>
         </div>
       </div>
 
       <LogoMarquee />
 
-      <div className="max-w-7xl mx-auto mt-8 pt-6 border-t border-white/[0.04] text-xs text-white/25">
-        {CONTACT.copyright}
+      <div className="border-t border-[var(--oc-line2)]">
+        <div className="max-w-[1240px] mx-auto px-4 sm:px-6 lg:px-8 py-[18px] font-plex-mono text-[12px] text-[var(--oc-muted4)]">
+          {CONTACT.copyright}
+        </div>
       </div>
     </footer>
   );

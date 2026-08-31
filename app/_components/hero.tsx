@@ -1,71 +1,109 @@
-import Link from "next/link";
+import { ButtonGhost, ButtonPrimary, Container, StatusPill } from "./landing-ops-ui";
+
+type Job = {
+  car: string;
+  meta: string;
+  status: "Дууссан" | "Явцтай" | "Товлосон";
+  progress?: { step: string; percent: number };
+};
+
+const jobs: Job[] = [
+  {
+    car: "Toyota Prius 30",
+    meta: "1234 УБА · Тосны солилт",
+    status: "Дууссан",
+    progress: { step: "4/4 шат", percent: 100 },
+  },
+  {
+    car: "Hyundai Sonata",
+    meta: "5678 УНМ · Тормосны наклад",
+    status: "Явцтай",
+    progress: { step: "2/4 шат", percent: 52 },
+  },
+  { car: "Lexus RX 350", meta: "9012 УВД · Оношилгоо · 14:30", status: "Товлосон" },
+];
+
+const statusStyle: Record<Job["status"], string> = {
+  Дууссан: "bg-[var(--oc-ok)]/10 text-[var(--oc-ok)]",
+  Явцтай: "bg-[var(--oc-accent)]/15 text-[var(--oc-accent)]",
+  Товлосон: "bg-white/[0.06] text-[var(--oc-muted)]",
+};
+const progressColor: Record<string, string> = {
+  Дууссан: "bg-[var(--oc-ok)]",
+  Явцтай: "bg-[var(--oc-accent)]",
+};
 
 export function Hero() {
   return (
-    <section className="relative pt-24 pb-32 px-4 sm:px-6 lg:px-8 overflow-hidden hero-glow">
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-20 left-1/4 w-72 h-72 bg-violet-600/10 rounded-full blur-3xl" />
-        <div className="absolute top-40 right-1/4 w-96 h-96 bg-blue-600/8 rounded-full blur-3xl" />
-      </div>
-
-      <div className="relative max-w-4xl mx-auto text-center">
-        <div className="inline-flex items-center gap-2 glass rounded-full px-4 py-1.5 text-sm text-violet-300 mb-8">
-          <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-          100+ сервис төв carcare дээр ажиллаж байна
-        </div>
-
-        <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight leading-tight mb-6">
-          Сервисээ{" "}
-          <span className="gradient-text">ухаалгаар</span>
-          <br />
-          удирдаарай
-        </h1>
-
-        <p className="text-lg sm:text-xl text-white/50 max-w-2xl mx-auto mb-10 leading-relaxed">
-          carcare нь олон салбартай оношилгоо, засвар үйлчилгээний
-          байгууллагуудад зориулсан PaaS платформ. Захиалга, машины түүх, нөөц,
-          тайлан — нэг л дэлгэц дээр.
-        </p>
-
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-          <Link
-            href="/page/signup"
-            className="glow-btn w-full sm:w-auto bg-violet-600 hover:bg-violet-500 transition-all px-8 py-3.5 rounded-xl font-semibold text-base"
-          >
-            Үнэгүй эхлүүлэх →
-          </Link>
-          <a
-            href="#features"
-            className="w-full sm:w-auto glass hover:bg-white/[0.08] transition-all px-8 py-3.5 rounded-xl font-semibold text-base text-white/80"
-          >
-            Дэлгэрэнгүй
-          </a>
-        </div>
-
-        <div className="mt-16 relative float-anim">
-          <div className="glass rounded-2xl p-6 max-w-sm mx-auto border border-violet-500/20">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center font-bold text-sm">
-                TP
-              </div>
-              <div className="text-left">
-                <div className="font-semibold text-sm">Toyota Prius 30</div>
-                <div className="text-xs text-white/40">Тосны солилт</div>
-              </div>
-              <div className="ml-auto text-green-400 text-sm font-medium">
-                ✓ Дууссан
-              </div>
-            </div>
-            <div className="flex justify-between text-xs text-white/40 mb-2">
-              <span>Ажлын явц</span>
-              <span>Хүлээгдэж буй → Дууссан</span>
-            </div>
-            <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-              <div className="h-full w-full bg-gradient-to-r from-violet-500 to-blue-500 rounded-full" />
-            </div>
+    <section className="relative overflow-hidden bg-oc-grid">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(900px_520px_at_20%_0%,rgba(245,165,36,0.12),transparent_70%)]" />
+      <Container className="relative grid items-center gap-12 lg:gap-[72px] py-20 lg:py-24 lg:grid-cols-[1.05fr_0.95fr]">
+        <div>
+          <StatusPill>100+ сервис төв carcare дээр ажиллаж байна</StatusPill>
+          <h1 className="mt-7 text-4xl sm:text-5xl lg:text-[60px] font-semibold leading-[1.08] lg:leading-[1.04] tracking-[-0.03em] text-[var(--oc-ink)] text-balance">
+            Автосервисийн ажлыг <span className="text-[var(--oc-accent)]">нэг урсгал</span> болгоно.
+          </h1>
+          <p className="mt-6 max-w-[520px] text-lg leading-relaxed text-[var(--oc-muted)] text-pretty">
+            carcare нь засварын газруудад захиалга, ажлын хуваарь, нөөц, тайланг; жолоочид цаг
+            товлолт, засварын түүхийг нэг платформ дээр нэгтгэдэг.
+          </p>
+          <div className="mt-9 flex flex-col sm:flex-row gap-3">
+            <ButtonPrimary href="/page/signup">Үнэгүй эхлүүлэх</ButtonPrimary>
+            <ButtonGhost href="#hows">Хэрхэн ажилладаг</ButtonGhost>
+          </div>
+          <div className="mt-7 text-[13px] text-[var(--oc-muted3)]">
+            14 хоног үнэгүй · карт шаардахгүй · 1 хоногт нэвтрүүлнэ
           </div>
         </div>
-      </div>
+
+        <div className="overflow-hidden rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] shadow-[0_30px_60px_-30px_rgba(0,0,0,0.9)]">
+          <div className="flex items-center justify-between border-b border-[var(--oc-line)] px-5 py-3.5">
+            <div className="flex items-center gap-2.5">
+              <span className="h-2 w-2 rounded-full bg-[var(--oc-accent)]" />
+              <span className="text-[14px] font-semibold text-[var(--oc-ink2)]">Ажлын урсгал</span>
+            </div>
+            <span className="font-plex-mono text-[12px] text-[var(--oc-muted3)]">
+              live
+            </span>
+          </div>
+          <div className="flex flex-col gap-3 p-5">
+            {jobs.map((job) => (
+              <div
+                key={job.car}
+                className="rounded-lg border border-[var(--oc-line)] bg-[var(--oc-panel2)] px-[18px] py-4"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-[15px] font-semibold text-[var(--oc-ink2)]">{job.car}</div>
+                    <div className="mt-1 font-plex-mono text-[13px] text-[var(--oc-muted2)]">
+                      {job.meta}
+                    </div>
+                  </div>
+                  <span
+                    className={`rounded px-2.5 py-1 font-plex-mono text-[12px] ${statusStyle[job.status]}`}
+                  >
+                    {job.status}
+                  </span>
+                </div>
+                {job.progress ? (
+                  <>
+                    <div className="mt-4 flex items-center justify-between font-plex-mono text-[12px] text-[var(--oc-muted3)]">
+                      <span>Ажлын явц</span>
+                      <span>{job.progress.step}</span>
+                    </div>
+                    <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/[0.06]">
+                      <div
+                        className={`h-full ${progressColor[job.status]}`}
+                        style={{ width: `${job.progress.percent}%` }}
+                      />
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      </Container>
     </section>
   );
 }

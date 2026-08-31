@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { PageHeader } from "@/app/_components/page-header";
+import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
 import { requireUser } from "@/lib/auth";
 import { canEdit } from "@/lib/auth/roles";
 import {
@@ -17,7 +17,7 @@ import {
   type PaymentStatus,
 } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
-import { VehicleForm } from "../vehicle-form";
+import { VEHICLE_FORM_ID, VehicleForm } from "../vehicle-form";
 
 export const metadata = {
   title: "Машины дэлгэрэнгүй",
@@ -99,15 +99,35 @@ export default async function VehicleDetailPage({
 
   return (
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
-      <PageHeader
-        title={`${vehicle.make} ${vehicle.model}`}
-        description={vehicle.plate}
-      />
+      <nav className="flex items-center gap-1.5 text-[13px] text-[var(--oc-muted3)] mb-3">
+        <Link href="/dashboard/vehicles" className="hover:text-[var(--oc-accent-hi)] transition-colors">
+          Машинууд
+        </Link>
+        <span>/</span>
+        <span className="text-[var(--oc-muted)]">{vehicle.make} {vehicle.model}</span>
+      </nav>
+
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">
+            {vehicle.make} {vehicle.model}
+          </h1>
+          <p className="font-plex-mono text-sm text-[var(--oc-muted3)] mt-1">{vehicle.plate}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <BtnLink href="/dashboard/vehicles" variant="ghost">
+            ← Буцах
+          </BtnLink>
+          <Btn type="submit" form={VEHICLE_FORM_ID}>
+            Хадгалах
+          </Btn>
+        </div>
+      </div>
 
       <div className="flex flex-col gap-6">
         {/* Машины бүх мэдээлэл + HUR шинэчлэх (form дотор товчтой) */}
-        <div className="glass rounded-xl p-4 sm:p-5 border border-white/[0.08]">
-          <h2 className="font-semibold text-sm mb-4">Машины мэдээлэл</h2>
+        <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-4 sm:p-5">
+          <h2 className="font-semibold text-[var(--oc-ink)] text-sm mb-4">Машины мэдээлэл</h2>
           <VehicleForm
             initial={{
               id: vehicle.id,
@@ -134,15 +154,15 @@ export default async function VehicleDetailPage({
             орон зай үүсгэхгүй */}
         <div className="grid gap-6 lg:grid-cols-2 items-start">
           {/* Захиалгууд */}
-          <section className="glass rounded-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
-              <h2 className="font-semibold text-sm">Захиалгууд</h2>
+          <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--oc-line)]">
+              <h2 className="font-semibold text-[var(--oc-ink)] text-sm">Захиалгууд</h2>
               <div className="flex items-center gap-3">
-                <span className="text-xs text-white/40">{orders.length}</span>
+                <span className="font-plex-mono text-xs text-[var(--oc-muted3)]">{orders.length}</span>
                 {orders.length > 0 ? (
                   <Link
                     href={`/dashboard/orders?q=${encodeURIComponent(vehicle.plate)}`}
-                    className="text-xs text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800 transition-colors"
+                    className="text-xs text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors"
                   >
                     Бүгдийг харах →
                   </Link>
@@ -150,11 +170,11 @@ export default async function VehicleDetailPage({
               </div>
             </div>
             {orders.length === 0 ? (
-              <div className="px-5 py-8 text-center text-sm text-white/40">
+              <div className="px-5 py-8 text-center text-sm text-[var(--oc-muted3)]">
                 Энэ машинд захиалга байхгүй байна.
               </div>
             ) : (
-              <ul className="divide-y divide-white/[0.04]">
+              <ul className="divide-y divide-[var(--oc-line)]">
                 {orders.map((o) => {
                   const when = o.completedAt ?? o.scheduledAt ?? o.createdAt;
                   return (
@@ -165,7 +185,7 @@ export default async function VehicleDetailPage({
                       >
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-mono text-sm font-semibold text-white/80">
+                            <span className="font-plex-mono text-sm font-semibold text-[var(--oc-ink2)]">
                               №{o.number}
                             </span>
                             <span
@@ -174,16 +194,16 @@ export default async function VehicleDetailPage({
                               {ORDER_STATUS_LABEL[o.status as OrderStatus]}
                             </span>
                           </div>
-                          <div className="text-xs text-white/40 mt-1 tabular-nums">
+                          <div className="text-xs text-[var(--oc-muted3)] mt-1 tabular-nums">
                             {fmtDate(when)} · {o.branch.name} · {o._count.items}{" "}
                             мөр
                           </div>
                         </div>
                         <div className="text-right shrink-0">
-                          <div className="text-sm font-semibold text-white/90 tabular-nums">
+                          <div className="font-plex-mono text-sm font-semibold text-[var(--oc-ink)] tabular-nums">
                             {formatTugrik(o.totalAmount?.toString() ?? null)}
                           </div>
-                          <div className="text-xs text-white/40">
+                          <div className="text-xs text-[var(--oc-muted3)]">
                             {
                               PAYMENT_STATUS_LABEL[
                                 o.paymentStatus as PaymentStatus
@@ -200,19 +220,19 @@ export default async function VehicleDetailPage({
           </section>
 
           {/* Цаг захиалгын түүх */}
-          <section className="glass rounded-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
-              <h2 className="font-semibold text-sm">Цаг захиалгын түүх</h2>
-              <span className="text-xs text-white/40">
+          <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--oc-line)]">
+              <h2 className="font-semibold text-[var(--oc-ink)] text-sm">Цаг захиалгын түүх</h2>
+              <span className="font-plex-mono text-xs text-[var(--oc-muted3)]">
                 {appointments.length}
               </span>
             </div>
             {appointments.length === 0 ? (
-              <div className="px-5 py-8 text-center text-sm text-white/40">
+              <div className="px-5 py-8 text-center text-sm text-[var(--oc-muted3)]">
                 Цаг захиалга байхгүй байна.
               </div>
             ) : (
-              <ul className="divide-y divide-white/[0.04]">
+              <ul className="divide-y divide-[var(--oc-line)]">
                 {appointments.map((a) => (
                   <li
                     key={a.id}
@@ -220,7 +240,7 @@ export default async function VehicleDetailPage({
                   >
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm text-white/85 tabular-nums">
+                        <span className="font-plex-mono text-sm text-[var(--oc-ink2)] tabular-nums">
                           {a.requestedAt.toLocaleString("mn-MN", {
                             year: "numeric",
                             month: "2-digit",
@@ -236,7 +256,7 @@ export default async function VehicleDetailPage({
                           {APPOINTMENT_STATUS_LABEL[a.status as AppointmentStatus]}
                         </span>
                       </div>
-                      <div className="text-xs text-white/40 mt-1">
+                      <div className="text-xs text-[var(--oc-muted3)] mt-1">
                         {a.branch.name}
                         {a.category ? ` · ${a.category.name}` : ""}
                         {a.note ? ` · ${a.note}` : ""}
@@ -250,21 +270,21 @@ export default async function VehicleDetailPage({
         </div>
 
         {plateHistory.length > 0 ? (
-          <section className="glass rounded-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
-              <h2 className="font-semibold text-sm">Дугаарын түүх</h2>
-              <span className="text-xs text-white/40">{plateHistory.length}</span>
+          <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--oc-line)]">
+              <h2 className="font-semibold text-[var(--oc-ink)] text-sm">Дугаарын түүх</h2>
+              <span className="font-plex-mono text-xs text-[var(--oc-muted3)]">{plateHistory.length}</span>
             </div>
-            <ul className="divide-y divide-white/[0.04]">
+            <ul className="divide-y divide-[var(--oc-line)]">
               {plateHistory.map((h) => (
                 <li
                   key={h.id}
                   className="flex items-center justify-between gap-3 px-5 py-3.5"
                 >
-                  <span className="font-mono text-sm text-white/70">
+                  <span className="font-plex-mono text-sm text-[var(--oc-muted2)]">
                     {h.plate}
                   </span>
-                  <span className="text-xs text-white/40 tabular-nums">
+                  <span className="font-plex-mono text-xs text-[var(--oc-muted3)] tabular-nums">
                     {fmtDate(h.changedAt)}
                   </span>
                 </li>

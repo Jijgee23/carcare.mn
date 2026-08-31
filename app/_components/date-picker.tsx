@@ -260,7 +260,7 @@ export function DatePicker(props: DatePickerProps) {
           props.error
             ? "border-red-500/50"
             : open
-              ? "border-violet-500/60 shadow-[0_0_0_2px_rgba(108,71,255,0.15)]"
+              ? "dp-accent-border border-violet-500/60 shadow-[0_0_0_2px_rgba(108,71,255,0.15)]"
               : "border-white/10 hover:border-white/20"
         }`}
       >
@@ -376,15 +376,15 @@ export function DatePicker(props: DatePickerProps) {
                       disabled
                         ? "cursor-not-allowed text-white/15"
                         : active
-                          ? "bg-violet-600 font-semibold text-white"
+                          ? "dp-accent-active bg-violet-600 font-semibold text-white"
                           : inRange
-                            ? "bg-violet-500/15 text-white"
+                            ? "dp-accent-inrange bg-violet-500/15 text-white"
                             : inMonth
                               ? "text-white/85 hover:bg-white/10"
                               : "text-white/25 hover:bg-white/5"
                     } ${
                       isToday && !active
-                        ? "ring-1 ring-inset ring-violet-400/50"
+                        ? "dp-accent-ring ring-1 ring-inset ring-violet-400/50"
                         : ""
                     }`}
                   >
@@ -399,7 +399,7 @@ export function DatePicker(props: DatePickerProps) {
               <div className="mt-3 border-t border-white/[0.06] pt-3">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="text-xs text-white/40">Цаг</span>
-                  <span className="font-mono text-sm tabular-nums text-violet-300 light:text-violet-700">
+                  <span className="dp-accent-text font-mono text-sm tabular-nums text-violet-300 light:text-violet-700">
                     {datePart ? timePart || "09:00" : "--:--"}
                   </span>
                 </div>
@@ -424,14 +424,14 @@ export function DatePicker(props: DatePickerProps) {
                 <button
                   type="button"
                   onClick={() => pickDay(today)}
-                  className="rounded-lg px-2.5 py-1 text-xs text-violet-300 light:text-violet-700 transition-colors hover:bg-violet-500/10"
+                  className="dp-accent-text rounded-lg px-2.5 py-1 text-xs text-violet-300 light:text-violet-700 transition-colors hover:bg-violet-500/10"
                 >
                   Өнөөдөр
                 </button>
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
-                  className="rounded-lg bg-violet-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-violet-500"
+                  className="dp-accent-btn rounded-lg bg-violet-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-violet-500"
                 >
                   Болсон
                 </button>
@@ -531,7 +531,7 @@ function TimeColumn({
               onClick={() => onPick(it)}
               className={`block w-full rounded-md py-1.5 text-center text-sm tabular-nums transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                 active
-                  ? "bg-violet-600 font-semibold text-white"
+                  ? "dp-accent-active bg-violet-600 font-semibold text-white"
                   : "text-white/70 hover:bg-white/10"
               }`}
             >

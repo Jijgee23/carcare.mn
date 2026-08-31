@@ -1,4 +1,3 @@
-import { PageHeader } from "@/app/_components/page-header";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { TenantQPayForm } from "./qpay-form";
@@ -15,12 +14,14 @@ export default async function TenantQPayPage() {
 
   return (
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
-      <PageHeader
-        title="QPay тохиргоо"
-        description="Захиалгын төлбөрийг QPay-ээр авах merchant credentials."
-      />
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">QPay тохиргоо</h1>
+        <p className="text-sm text-[var(--oc-muted3)] mt-1">
+          Захиалгын төлбөрийг QPay-ээр авах merchant credentials.
+        </p>
+      </div>
 
-      <div className="glass rounded-xl p-4 sm:p-5 border border-white/[0.08] max-w-3xl">
+      <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5 sm:p-6 max-w-3xl">
         <TenantQPayForm
           initial={
             settings

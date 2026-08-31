@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useActionState, useState } from "react";
 import {
   type AppointmentActionState,
@@ -8,6 +7,7 @@ import {
 } from "@/app/_actions/appointments";
 import { Field, FormError } from "@/app/_components/auth-shell";
 import { BranchTimePicker } from "@/app/_components/branch-time-picker";
+import { Btn, BtnLink, SquareAddButton } from "@/app/_components/landing-ops-ui";
 import { Select } from "@/app/_components/select";
 import {
   type CreatedCustomer,
@@ -15,6 +15,8 @@ import {
 } from "@/app/dashboard/orders/inline-customer-form";
 import type { Weekday } from "@/lib/branches";
 import { customerLabel } from "@/lib/customers";
+
+export const APPOINTMENT_FORM_ID = "appointment-form";
 
 type Branch = { id: string; name: string; openWeekdays: Weekday[] };
 type Customer = { id: string; fullName: string; phone: string };
@@ -66,7 +68,12 @@ export function AppointmentForm({
   }
 
   return (
-    <form action={formAction} className="flex flex-col gap-5" noValidate>
+    <form
+      id={APPOINTMENT_FORM_ID}
+      action={formAction}
+      className="flex flex-col gap-5"
+      noValidate
+    >
       <FormError message={state?.message && !state.ok ? state.message : undefined} />
       <input type="hidden" name="requestedAt" value={selectedIso} />
 
@@ -126,14 +133,11 @@ export function AppointmentForm({
                   }))}
                 />
               </div>
-              <button
-                type="button"
+              <SquareAddButton
+                active={showCustomerForm}
                 onClick={() => setShowCustomerForm((v) => !v)}
-                className="shrink-0 px-2.5 rounded-lg border border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-violet-200 light:bg-violet-100 light:hover:bg-violet-200 light:border-violet-300 light:text-violet-700 text-xs font-medium transition-colors"
                 title="Шинэ үйлчлүүлэгч нэмэх"
-              >
-                {showCustomerForm ? "✕" : "+"}
-              </button>
+              />
             </div>
           </Field>
 
@@ -149,7 +153,7 @@ export function AppointmentForm({
               id="note"
               name="note"
               rows={2}
-              className="compact-input resize-y"
+              className="auth-input resize-y"
               placeholder="Гомдол, тусгай хүсэлт..."
             />
           </Field>
@@ -166,20 +170,13 @@ export function AppointmentForm({
         />
       </div>
 
-      <div className="flex gap-2 pt-3 border-t border-white/[0.05]">
-        <Link
-          href="/dashboard/appointments"
-          className="bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] transition-all px-5 py-2 rounded-lg font-medium text-sm text-white/60 text-center"
-        >
+      <div className="flex gap-2 pt-3 border-t border-[var(--oc-line2)]">
+        <BtnLink href="/dashboard/appointments" variant="ghost">
           ← Буцах
-        </Link>
-        <button
-          type="submit"
-          disabled={pending || !selectedIso}
-          className="bg-violet-600 hover:bg-violet-500 disabled:opacity-60 disabled:cursor-not-allowed transition-all px-6 py-2 rounded-lg font-medium text-sm"
-        >
+        </BtnLink>
+        <Btn type="submit" disabled={pending || !selectedIso}>
           {pending ? "..." : "Цаг бүртгэх"}
-        </button>
+        </Btn>
       </div>
     </form>
   );

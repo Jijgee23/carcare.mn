@@ -5,7 +5,9 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { signOutAction } from "@/app/_actions/auth";
+import { submitStaffFeedback } from "@/app/_actions/feedback";
 import { Brand, BrandMark } from "./brand";
+import { FeedbackButton } from "./feedback-button";
 import { StaffNotificationBell } from "./staff-notification-bell";
 import { ThemeToggle } from "./theme-toggle";
 import { useSidebarCollapse } from "./use-sidebar-collapse";
@@ -174,6 +176,15 @@ const secondaryItems: NavItem[] = [
     ),
   },
   {
+    href: "/dashboard/feedback",
+    label: "Санал хүсэлт",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      </svg>
+    ),
+  },
+  {
     href: "/dashboard/reports",
     label: "Тайлан",
     icon: (
@@ -252,18 +263,25 @@ function SidebarTenantRow({
 }) {
   if (collapsed) return null;
   return (
-    <div className="px-3 pt-3 pb-2 flex items-center gap-2 text-xs text-white/40 min-w-0">
+    <div className="px-3 pt-3 pb-2 flex items-center gap-2 text-xs text-[var(--oc-muted3)] min-w-0">
       {tenantLogoUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={tenantLogoUrl}
           alt=""
-          className="w-5 h-5 rounded object-contain bg-white/[0.04] border border-white/[0.06] shrink-0"
+          className="w-5 h-5 rounded object-contain bg-[var(--oc-panel2)] border border-[var(--oc-line)] shrink-0"
         />
       ) : null}
       <span className="truncate flex-1 min-w-0">{tenantName}</span>
       {showBell ? (
-        <StaffNotificationBell initialUnread={notificationUnread} align="left" />
+        <>
+          <FeedbackButton
+            submitAction={submitStaffFeedback}
+            compact
+            className="inline-flex items-center justify-center rounded-lg p-1.5 text-[var(--oc-muted3)] transition-colors hover:bg-white/[0.06] hover:text-[var(--oc-ink2)]"
+          />
+          <StaffNotificationBell initialUnread={notificationUnread} align="left" />
+        </>
       ) : null}
     </div>
   );
@@ -367,12 +385,12 @@ function SidebarNavList({
       )}
 
       {visibleSecondary.length > 0 && !collapsed ? (
-        <div className="pt-4 pb-2 px-3 text-[10px] text-white/30 uppercase tracking-wider">
+        <div className="pt-4 pb-2 px-3 font-plex-mono text-[10px] text-[var(--oc-muted3)] uppercase tracking-[0.1em]">
           Бусад
         </div>
       ) : null}
       {visibleSecondary.length > 0 && collapsed ? (
-        <div className="my-3 h-px bg-white/[0.06] light:bg-black/[0.06]" />
+        <div className="my-3 h-px bg-[var(--oc-line)]" />
       ) : null}
 
       {visibleSecondary.map((item) =>
@@ -474,16 +492,16 @@ function HoverFlyoutPortal({
 // үед харагдахгүй болсон тул орлуулна.
 function NavTooltip({ label }: { label: string }) {
   return (
-    <span className="whitespace-nowrap rounded-lg bg-[var(--popover)] border border-white/10 light:border-black/10 px-2.5 py-1.5 text-xs font-medium text-white/90 light:text-slate-800 shadow-xl block">
+    <span className="whitespace-nowrap rounded-lg bg-[var(--oc-panel2)] border border-[var(--oc-line)] px-2.5 py-1.5 text-xs font-medium text-[var(--oc-ink2)] shadow-xl block">
       {label}
     </span>
   );
 }
 
 const activePillClasses =
-  "bg-violet-600 text-white shadow-[0_10px_28px_-12px_rgba(124,58,237,0.75)]";
+  "bg-[var(--oc-accent)] text-[var(--oc-on-accent)] shadow-[0_10px_28px_-12px_rgba(245,165,36,0.55)]";
 const inactivePillClasses =
-  "text-white/50 hover:bg-white/[0.04] hover:text-white light:text-slate-500 light:hover:bg-black/[0.04] light:hover:text-slate-900";
+  "text-[var(--oc-muted)] hover:bg-white/[0.04] hover:text-[var(--oc-ink)]";
 
 // Хэрэглэгчийн footer — нэр, и-мэйл, гарах товч. Collapsed үед зөвхөн
 // avatar + icon товчнууд төвд эгнэнэ.
@@ -500,11 +518,11 @@ function SidebarUserFooter({
 }) {
   if (collapsed) {
     return (
-      <div className="p-3 border-t border-white/[0.06] flex flex-col items-center gap-2">
+      <div className="p-3 border-t border-[var(--oc-line2)] flex flex-col items-center gap-2">
         <Link
           href="/dashboard/profile"
           title={userName}
-          className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-xs font-bold shrink-0"
+          className="w-9 h-9 rounded-full border border-[var(--oc-line)] bg-[var(--oc-panel2)] flex items-center justify-center text-xs font-bold text-[var(--oc-ink2)] shrink-0"
         >
           {initials}
         </Link>
@@ -513,7 +531,7 @@ function SidebarUserFooter({
           <button
             type="submit"
             title="Гарах"
-            className="p-2 rounded-lg text-white/50 hover:text-white light:text-slate-500 light:hover:text-slate-900 hover:bg-white/[0.06] transition-colors"
+            className="p-2 rounded-lg text-[var(--oc-muted)] hover:text-[var(--oc-ink)] hover:bg-white/[0.06] transition-colors"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -527,21 +545,21 @@ function SidebarUserFooter({
   }
 
   return (
-    <div className="p-3 border-t border-white/[0.06] space-y-2">
+    <div className="p-3 border-t border-[var(--oc-line2)] space-y-2">
       <Link
         href="/dashboard/profile"
         className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-white/[0.04] transition-colors"
       >
-        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-xs font-bold shrink-0">
+        <div className="w-9 h-9 rounded-full border border-[var(--oc-line)] bg-[var(--oc-panel2)] flex items-center justify-center text-xs font-bold text-[var(--oc-ink2)] shrink-0">
           {initials}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-white/80 truncate">
+          <div className="text-sm font-medium text-[var(--oc-ink2)] truncate">
             {userName}
           </div>
-          <div className="text-xs text-white/30 truncate">{userEmail}</div>
+          <div className="text-xs text-[var(--oc-muted3)] truncate">{userEmail}</div>
         </div>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-white/25 shrink-0">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--oc-muted3)] shrink-0">
           <polyline points="9 18 15 12 9 6" />
         </svg>
       </Link>
@@ -549,7 +567,7 @@ function SidebarUserFooter({
       <form action={signOutAction}>
         <button
           type="submit"
-          className="w-full text-sm text-white/50 hover:text-white transition-colors px-3 py-2 rounded-xl hover:bg-white/[0.04] text-left"
+          className="w-full text-sm text-[var(--oc-muted)] hover:text-[var(--oc-ink)] transition-colors px-3 py-2 rounded-xl hover:bg-white/[0.04] text-left"
         >
           Гарах
         </button>
@@ -580,15 +598,15 @@ export function AdminSidebar({
   const { collapsed, toggle } = useSidebarCollapse();
 
   return (
-    <aside className="app-sidebar fixed top-0 left-0 h-screen bg-[var(--shell-surface)] border-r border-white/[0.06] flex-col z-40 hidden lg:flex">
-      <div className="relative h-16 border-b border-white/[0.06] flex items-center shrink-0">
+    <aside className="app-sidebar fixed top-0 left-0 h-screen bg-[var(--oc-panel)] border-r border-[var(--oc-line2)] flex-col z-40 hidden lg:flex">
+      <div className="relative h-16 border-b border-[var(--oc-line2)] flex items-center shrink-0">
         <Link
           href="/dashboard"
           className={`flex items-center gap-2.5 flex-1 min-w-0 overflow-hidden ${collapsed ? "justify-center px-2" : "px-5"}`}
         >
           {collapsed ? <BrandMark size="sm" /> : <Brand />}
           {!collapsed ? (
-            <div className="text-[10px] text-white/30 leading-none whitespace-nowrap">
+            <div className="font-plex-mono text-[10px] uppercase tracking-[0.1em] text-[var(--oc-muted3)] leading-none whitespace-nowrap">
               Админ
             </div>
           ) : null}
@@ -598,7 +616,7 @@ export function AdminSidebar({
           onClick={toggle}
           data-collapsed={collapsed}
           aria-label={collapsed ? "Цэс дэлгэх" : "Цэс хумих"}
-          className="sidebar-collapse-btn absolute top-1/2 -right-3 -translate-y-1/2 w-6 h-6 rounded-full border border-white/10 light:border-black/10 bg-[var(--shell-surface)] text-white/50 hover:text-white light:text-slate-500 light:hover:text-slate-900 flex items-center justify-center shadow-md z-10"
+          className="sidebar-collapse-btn absolute top-1/2 -right-3 -translate-y-1/2 w-6 h-6 rounded-full border border-[var(--oc-line)] bg-[var(--oc-panel)] text-[var(--oc-muted)] hover:text-[var(--oc-ink)] flex items-center justify-center shadow-md z-10"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="15 18 9 12 15 6" />
@@ -658,7 +676,7 @@ function NavLeafLink({
         } ${active ? activePillClasses : inactivePillClasses}`}
       >
         {item.icon ? (
-          <span className={`nav-icon shrink-0 ${active ? "" : "text-white/40 light:text-slate-500"}`}>
+          <span className={`nav-icon shrink-0 ${active ? "" : "text-[var(--oc-muted3)]"}`}>
             {item.icon}
           </span>
         ) : null}
@@ -714,15 +732,15 @@ function NavGroupItem({
           }`}
         >
           {item.icon ? (
-            <span className={`nav-icon ${parentActive ? "" : "text-white/40 light:text-slate-500"}`}>
+            <span className={`nav-icon ${parentActive ? "" : "text-[var(--oc-muted3)]"}`}>
               {item.icon}
             </span>
           ) : null}
         </Link>
 
         <HoverFlyoutPortal pos={pos} open={flyoutOpen} onEnter={onEnter} onLeave={onLeave}>
-          <div className="min-w-[11rem] overflow-hidden rounded-xl border border-white/10 bg-[var(--popover)] py-1.5 shadow-xl light:border-black/10">
-            <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-white/35 light:text-slate-400">
+          <div className="min-w-[11rem] overflow-hidden rounded-xl border border-[var(--oc-line)] bg-[var(--oc-panel2)] py-1.5 shadow-xl">
+            <div className="px-3 py-1.5 font-plex-mono text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--oc-muted3)]">
               {item.label}
             </div>
             {item.children.map((child) => {
@@ -734,8 +752,8 @@ function NavGroupItem({
                   onClick={onNavigate}
                   className={`block px-3 py-2 text-[13px] transition-colors ${
                     childActive
-                      ? "bg-violet-500/10 text-violet-200 light:bg-violet-100 light:text-violet-700"
-                      : "text-white/70 hover:bg-white/[0.06] hover:text-white light:text-slate-600 light:hover:bg-black/[0.04] light:hover:text-slate-900"
+                      ? "bg-[var(--oc-accent)]/10 text-[var(--oc-accent)]"
+                      : "text-[var(--oc-muted)] hover:bg-white/[0.06] hover:text-[var(--oc-ink)]"
                   }`}
                 >
                   {child.label}
@@ -759,7 +777,7 @@ function NavGroupItem({
         aria-expanded={open}
       >
         {item.icon ? (
-          <span className={`nav-icon ${parentActive ? "" : "text-white/40 light:text-slate-500"}`}>
+          <span className={`nav-icon ${parentActive ? "" : "text-[var(--oc-muted3)]"}`}>
             {item.icon}
           </span>
         ) : null}
@@ -775,14 +793,14 @@ function NavGroupItem({
           strokeLinejoin="round"
           className={`transition-transform duration-200 ${
             open ? "rotate-90" : ""
-          } ${parentActive ? "" : "text-white/30 light:text-slate-400"}`}
+          } ${parentActive ? "" : "text-[var(--oc-muted3)]"}`}
         >
           <polyline points="9 18 15 12 9 6" />
         </svg>
       </button>
 
       {open ? (
-        <div className="mt-0.5 ml-3 pl-3 border-l border-white/[0.06] space-y-0.5">
+        <div className="mt-0.5 ml-3 pl-3 border-l border-[var(--oc-line)] space-y-0.5">
           {item.children.map((child) => {
             const childActive = isLeafActive(pathname, child);
             return (
@@ -792,8 +810,8 @@ function NavGroupItem({
                 onClick={onNavigate}
                 className={`flex items-center px-3 py-1.5 rounded-lg text-[13px] transition-colors ${
                   childActive
-                    ? "bg-violet-500/10 text-violet-200 light:bg-violet-100 light:text-violet-700"
-                    : "text-white/45 hover:text-white light:text-slate-600 light:hover:text-slate-900"
+                    ? "bg-[var(--oc-accent)]/10 text-[var(--oc-accent)]"
+                    : "text-[var(--oc-muted3)] hover:text-[var(--oc-ink)]"
                 }`}
               >
                 {child.label}
@@ -850,7 +868,7 @@ export function MobileTopbar({
 
   return (
     <>
-      <header className="lg:hidden sticky top-0 z-30 glass border-b border-white/[0.06]">
+      <header className="lg:hidden sticky top-0 z-30 bg-[var(--oc-panel)]/95 backdrop-blur border-b border-[var(--oc-line2)]">
         <div className="px-4 py-3 flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 min-w-0">
             <button
@@ -858,7 +876,7 @@ export function MobileTopbar({
               onClick={() => setOpen(true)}
               aria-label="Цэс нээх"
               aria-expanded={open}
-              className="p-1.5 -ml-1 rounded-lg text-white/70 hover:text-white hover:bg-white/[0.06] transition-colors shrink-0"
+              className="p-1.5 -ml-1 rounded-lg text-[var(--oc-muted)] hover:text-[var(--oc-ink)] hover:bg-white/[0.06] transition-colors shrink-0"
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="3" y1="6" x2="21" y2="6" />
@@ -877,14 +895,19 @@ export function MobileTopbar({
               <img
                 src={tenantLogoUrl}
                 alt=""
-                className="w-5 h-5 rounded object-contain bg-white/[0.04] border border-white/[0.06] shrink-0"
+                className="w-5 h-5 rounded object-contain bg-[var(--oc-panel2)] border border-[var(--oc-line)] shrink-0"
               />
             ) : null}
-            <div className="text-xs text-white/40 leading-tight truncate max-w-[35vw]">
+            <div className="text-xs text-[var(--oc-muted3)] leading-tight truncate max-w-[35vw]">
               {tenantName}
             </div>
+            <FeedbackButton
+              submitAction={submitStaffFeedback}
+              compact
+              className="inline-flex items-center justify-center rounded-lg p-1.5 text-[var(--oc-muted)] transition-colors hover:bg-white/[0.06] hover:text-[var(--oc-ink)]"
+            />
             <StaffNotificationBell initialUnread={notificationUnread} />
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-xs font-bold shrink-0">
+            <div className="w-8 h-8 rounded-full border border-[var(--oc-line)] bg-[var(--oc-panel2)] flex items-center justify-center text-xs font-bold text-[var(--oc-ink2)] shrink-0">
               {initials}
             </div>
           </div>
@@ -906,24 +929,24 @@ export function MobileTopbar({
           role="dialog"
           aria-modal="true"
           aria-label="Үндсэн цэс"
-          className={`absolute top-0 left-0 h-full w-72 max-w-[85vw] bg-[var(--shell-surface)] border-r border-white/[0.06] flex flex-col shadow-2xl transition-transform duration-300 ease-out ${
+          className={`absolute top-0 left-0 h-full w-72 max-w-[85vw] bg-[var(--oc-panel)] border-r border-[var(--oc-line2)] flex flex-col shadow-2xl transition-transform duration-300 ease-out ${
             open ? "translate-x-0" : "-translate-x-full"
           }`}
         >
-          <div className="flex items-center justify-between gap-2 px-5 h-16 border-b border-white/[0.06]">
+          <div className="flex items-center justify-between gap-2 px-5 h-16 border-b border-[var(--oc-line2)]">
             <Link
               href="/dashboard"
               onClick={() => setOpen(false)}
               className="flex items-center gap-2.5"
             >
               <Brand />
-              <div className="text-[10px] text-white/30 leading-none">Админ</div>
+              <div className="font-plex-mono text-[10px] uppercase tracking-[0.1em] text-[var(--oc-muted3)] leading-none">Админ</div>
             </Link>
             <button
               type="button"
               onClick={() => setOpen(false)}
               aria-label="Цэс хаах"
-              className="p-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/[0.06] transition-colors"
+              className="p-1.5 rounded-lg text-[var(--oc-muted)] hover:text-[var(--oc-ink)] hover:bg-white/[0.06] transition-colors"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18" />

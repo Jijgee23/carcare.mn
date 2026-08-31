@@ -1,4 +1,4 @@
-import { PageHeader } from "@/app/_components/page-header";
+import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { branchScopeId } from "@/lib/auth/roles";
 import {
@@ -71,10 +71,21 @@ export default async function NewDiagnosticPage() {
 
   return (
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
-      <PageHeader
-        title="Шинэ оношилгоо"
-        description="Машин, үйлчлүүлэгч, загвараа сонгож оношилгоо бөглөнө үү"
-      />
+      <nav className="flex items-center gap-1.5 text-[13px] text-[var(--oc-muted3)] mb-3">
+        <Link href="/dashboard/diagnostics/reports" className="hover:text-[var(--oc-accent-hi)] transition-colors">
+          Оношилгооны тайлангууд
+        </Link>
+        <span>/</span>
+        <span className="text-[var(--oc-muted)]">Шинэ оношилгоо</span>
+      </nav>
+
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">Шинэ оношилгоо</h1>
+        <p className="text-sm text-[var(--oc-muted3)] mt-1">
+          Машин, үйлчлүүлэгч, загвараа сонгож оношилгоо бөглөнө үү
+        </p>
+      </div>
+
       <StandaloneDiagnosticForm
         branches={branches}
         customers={customers}

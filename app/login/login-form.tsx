@@ -16,7 +16,6 @@ export function AccountLoginForm() {
   const fe = state?.fieldErrors ?? {};
 
   const [phone, setPhone] = useState("");
-  const [name, setName] = useState("");
   const [code, setCode] = useState("");
 
   const lockedPhone = state?.phone ?? phone;
@@ -47,24 +46,11 @@ export function AccountLoginForm() {
               placeholder="99112233"
             />
           </Field>
-          <Field label="Нэр" htmlFor="name" hint="Анх удаа бол — заавал биш">
-            <input
-              id="name"
-              name="name"
-              type="text"
-              autoComplete="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="auth-input"
-              placeholder="Таны нэр"
-            />
-          </Field>
           <SubmitButton pending={pending}>Код авах →</SubmitButton>
         </>
       ) : (
         <>
           <input type="hidden" name="phone" value={lockedPhone} />
-          <input type="hidden" name="name" value={state?.name ?? name} />
           <Field label="Баталгаажуулах код" htmlFor="otpCode" error={fe.otpCode}>
             <input
               id="otpCode"

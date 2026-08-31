@@ -20,12 +20,19 @@ function withTenantContext(client: PrismaClient) {
             "Tenant context тохируулагдаагүй байна — requireUser()/requireApiUser()/setBypassContext() дуудсан эсэхээ шалгана уу.",
           );
         }
-        const [, result] = await client.$transaction([
-          ctx.mode === "bypass"
-            ? client.$executeRaw`SELECT set_config('app.bypass_rls', 'on', true)`
-            : client.$executeRaw`SELECT set_config('app.tenant_id', ${ctx.tenantId}, true)`,
-          query(args),
-        ]);
+        const [, result] = await client.$transaction(
+          [
+            ctx.mode === "bypass"
+              ? client.$executeRaw`SELECT set_config('app.bypass_rls', 'on', true)`
+              : client.$executeRaw`SELECT set_config('app.tenant_id', ${ctx.tenantId}, true)`,
+            query(args),
+          ],
+          // Анхдагч maxWait (2с) landing зэрэг олон компонент зэрэг prisma
+          // дуудсан хуудсанд (эсвэл Turbopack dev-ийн удаан анхны compile-ийн
+          // үед) хэт хатуу тул нэмэгдүүлсэн — бодит pool exhaustion биш, зөвхөн
+          // slot хүлээх хугацаа.
+          { maxWait: 10_000, timeout: 10_000 },
+        );
         return result;
       },
     },

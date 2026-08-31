@@ -7,6 +7,7 @@ import {
   createOrderQPayInvoiceAction,
   type OrderPaymentActionState,
 } from "@/app/_actions/order-payments";
+import { Btn } from "@/app/_components/landing-ops-ui";
 
 export type PendingOrderPayment = {
   id: string;
@@ -26,11 +27,11 @@ export function QPayWidget({
 }) {
   if (!qpayConfigured) {
     return (
-      <div className="text-xs text-white/40">
+      <div className="text-xs text-[var(--oc-muted3)]">
         QPay тохируулаагүй.{" "}
         <a
           href="/dashboard/settings/qpay"
-          className="text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800 underline"
+          className="text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] underline"
         >
           Тохируулах →
         </a>
@@ -53,13 +54,9 @@ function CreateButton({ orderId }: { orderId: string }) {
   return (
     <form action={formAction}>
       <input type="hidden" name="orderId" value={orderId} />
-      <button
-        type="submit"
-        disabled={formPending}
-        className="w-full text-sm font-medium px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-60 transition-colors"
-      >
+      <Btn type="submit" disabled={formPending} className="w-full">
         {formPending ? "Үүсгэж..." : "QPay QR үүсгэх"}
-      </button>
+      </Btn>
       {state && !state.ok && state.message ? (
         <p className="text-xs text-red-400 light:text-red-600 mt-2">{state.message}</p>
       ) : null}
@@ -112,9 +109,9 @@ function QRPanel({
 
   return (
     <div className="flex flex-col items-center gap-3">
-      <div className="text-center text-xs text-white/40">
+      <div className="text-center text-xs text-[var(--oc-muted3)]">
         Үлдэгдэл:{" "}
-        <span className="text-white/80 font-semibold">
+        <span className="font-plex-mono text-[var(--oc-ink2)] font-semibold">
           {Number.parseFloat(pending.amount).toLocaleString("mn-MN")}₮
         </span>
       </div>
@@ -133,37 +130,32 @@ function QRPanel({
           />
         </div>
       ) : (
-        <div className="text-xs text-white/40">QR үүсэхэд хүлээнэ үү...</div>
+        <div className="text-xs text-[var(--oc-muted3)]">QR үүсэхэд хүлээнэ үү...</div>
       )}
 
       {pending.qrText ? (
         <a
           href={pending.qrText}
-          className="text-[11px] text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
+          className="text-[11px] text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]"
         >
           Банкны апп нээх →
         </a>
       ) : null}
 
       {msg ? (
-        <p className="text-[11px] text-white/60 text-center max-w-[16rem]">
+        <p className="text-[11px] text-[var(--oc-muted2)] text-center max-w-[16rem]">
           {msg}
         </p>
       ) : null}
 
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={check}
-          disabled={checking || paid}
-          className="text-xs font-medium px-3 py-1.5 rounded-md bg-violet-600 hover:bg-violet-500 disabled:opacity-60 transition-colors"
-        >
+        <Btn type="button" onClick={check} disabled={checking || paid} size="sm">
           {checking ? "Шалгаж..." : "Шалгах"}
-        </button>
+        </Btn>
         <button
           type="button"
           onClick={cancel}
-          className="text-xs text-white/50 hover:text-white/80 underline underline-offset-2"
+          className="text-xs text-[var(--oc-muted3)] hover:text-[var(--oc-ink2)] underline underline-offset-2"
         >
           Цуцлах
         </button>

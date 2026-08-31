@@ -6,8 +6,9 @@ import {
   markAppointmentNoShow,
   rejectAppointment,
 } from "@/app/_actions/appointments";
+import { AddLinkButton, Btn, BtnLink } from "@/app/_components/landing-ops-ui";
 import { FilterSelect, ResetFilters, SearchBox } from "@/app/_components/list-filters";
-import { PageHeader, PrimaryLinkButton } from "@/app/_components/page-header";
+import { EmptyState } from "@/app/_components/page-header";
 import { Pagination } from "@/app/_components/pagination";
 import {
   APPOINTMENT_STATUSES,
@@ -113,25 +114,22 @@ export default async function AppointmentsPage({
 
   return (
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
-      <PageHeader
-        title="Цаг захиалга"
-        description="Онлайн болон утсаар орж ирсэн цагийн хүсэлтүүд."
-        actions={
-          <div className="flex items-center gap-2">
-            <Link
-              href="/dashboard/appointments/calendar"
-              className="bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] transition-all px-4 py-2 rounded-lg text-sm text-white/70"
-            >
-              Календарь
-            </Link>
-            {canAdd ? (
-              <PrimaryLinkButton href="/dashboard/appointments/new">
-                Цаг бүртгэх
-              </PrimaryLinkButton>
-            ) : null}
-          </div>
-        }
-      />
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">Цаг захиалга</h1>
+          <p className="text-sm text-[var(--oc-muted3)] mt-1">
+            Онлайн болон утсаар орж ирсэн цагийн хүсэлтүүд.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <BtnLink href="/dashboard/appointments/calendar" variant="ghost">
+            Календарь
+          </BtnLink>
+          {canAdd ? (
+            <AddLinkButton href="/dashboard/appointments/new">Цаг бүртгэх</AddLinkButton>
+          ) : null}
+        </div>
+      </div>
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <SearchBox placeholder="Нэр, утас, тэмдэглэл..." />
@@ -151,146 +149,149 @@ export default async function AppointmentsPage({
       </div>
 
       {appointments.length === 0 ? (
-        <div className="glass rounded-2xl p-10 border border-white/[0.08] text-center text-sm text-white/40">
-          Цаг захиалгын хүсэлт алга.
-        </div>
+        <EmptyState
+          title="Цаг захиалгын хүсэлт алга"
+          description="Одоогоор цаг захиалгын хүсэлт ирээгүй байна."
+        />
       ) : (
-        <div className="glass rounded-2xl overflow-x-auto border border-white/[0.08]">
-          <table className="w-full min-w-[760px]">
-            <thead>
-              <tr className="border-b border-white/[0.06]">
-                {["Үйлчлүүлэгч", "Салбар", "Хүссэн цаг", "Тэмдэглэл", "Төлөв", ""].map(
-                  (h, i) => (
-                    <th
-                      key={i}
-                      className="text-left text-xs text-white/30 font-medium px-5 py-3"
-                    >
-                      {h}
-                    </th>
-                  ),
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {appointments.map((a) => {
-                const orderHref = `/dashboard/orders/new?${new URLSearchParams({
-                  customerId: a.customerId ?? "",
-                  vehicleId: a.vehicleId ?? "",
-                  branchId: a.branchId,
-                  scheduledAt: a.requestedAt.toISOString(),
-                  note: a.note ?? "",
-                  appointmentId: a.id,
-                }).toString()}`;
-                // Онлайн бол Account-аас, утсаар бүртгэсэн бол Customer-аас.
-                // Нэргүй бол placeholder биш — утсаар нь харуулна (customerLabel).
-                const apptPhone = a.account?.phone ?? a.customer?.phone ?? "";
-                const displayName = customerLabel({
-                  fullName: a.account?.name ?? a.customer?.fullName,
-                  phone: apptPhone,
-                });
-                // displayName өөрөө утас болсон бол доор давхардуулахгүй.
-                const phoneLine =
-                  apptPhone && displayName !== formatPhone(apptPhone)
-                    ? formatPhone(apptPhone)
-                    : null;
-                return (
-                  <tr
-                    key={a.id}
-                    className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.03] transition-colors"
-                  >
-                    <td className="px-5 py-4">
-                      <div className="text-sm font-medium text-white/85">
-                        {displayName}
-                      </div>
-                      {phoneLine ? (
-                        <div className="text-xs text-white/40 tabular-nums">
-                          {phoneLine}
-                        </div>
-                      ) : null}
-                    </td>
-                    <td className="px-5 py-4 text-sm text-white/60">
-                      {a.branch.name}
-                      {a.category ? (
-                        <span className="block text-xs text-violet-300/80 light:text-violet-700 mt-0.5">
-                          {a.category.name}
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="px-5 py-4 text-sm text-white/70 tabular-nums whitespace-nowrap">
-                      {formatDateTime(a.requestedAt)}
-                    </td>
-                    <td className="px-5 py-4 text-sm text-white/50 max-w-[220px] truncate">
-                      {a.note || "—"}
-                    </td>
-                    <td className="px-5 py-4">
-                      <span
-                        className={`text-xs px-2.5 py-1 rounded-full ${APPOINTMENT_STATUS_BADGE[a.status]}`}
+        <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden flex-1 min-h-0 flex flex-col">
+          <div className="overflow-auto flex-1 min-h-0">
+            <table className="w-full min-w-[760px]">
+              <thead>
+                <tr className="border-b border-[var(--oc-line)]">
+                  {["Үйлчлүүлэгч", "Салбар", "Хүссэн цаг", "Тэмдэглэл", "Төлөв", "Үйлдэл"].map(
+                    (h) => (
+                      <th
+                        key={h}
+                        className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-5 py-3"
                       >
-                        {APPOINTMENT_STATUS_LABEL[a.status]}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="flex items-center justify-end gap-2">
-                        {a.status === "CONFIRMED" && a.serviceOrder ? (
-                          <Link
-                            href={`/dashboard/orders/${a.serviceOrder.id}`}
-                            className="text-xs px-3 py-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] hover:bg-white/[0.08] text-white/70 transition-colors whitespace-nowrap"
-                          >
-                            №{a.serviceOrder.number} харах
-                          </Link>
+                        {h}
+                      </th>
+                    ),
+                  )}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--oc-line)]">
+                {appointments.map((a) => {
+                  const orderHref = `/dashboard/orders/new?${new URLSearchParams({
+                    customerId: a.customerId ?? "",
+                    vehicleId: a.vehicleId ?? "",
+                    branchId: a.branchId,
+                    scheduledAt: a.requestedAt.toISOString(),
+                    note: a.note ?? "",
+                    appointmentId: a.id,
+                  }).toString()}`;
+                  // Онлайн бол Account-аас, утсаар бүртгэсэн бол Customer-аас.
+                  // Нэргүй бол placeholder биш — утсаар нь харуулна (customerLabel).
+                  const apptPhone = a.account?.phone ?? a.customer?.phone ?? "";
+                  const displayName = customerLabel({
+                    fullName: a.account?.name ?? a.customer?.fullName,
+                    phone: apptPhone,
+                  });
+                  // displayName өөрөө утас болсон бол доор давхардуулахгүй.
+                  const phoneLine =
+                    apptPhone && displayName !== formatPhone(apptPhone)
+                      ? formatPhone(apptPhone)
+                      : null;
+                  return (
+                    <tr
+                      key={a.id}
+                      className="hover:bg-white/[0.02] transition-colors"
+                    >
+                      <td className="px-5 py-4">
+                        <div className="text-sm font-medium text-[var(--oc-ink)]">
+                          {displayName}
+                        </div>
+                        {phoneLine ? (
+                          <div className="font-plex-mono text-xs text-[var(--oc-muted3)]">
+                            {phoneLine}
+                          </div>
                         ) : null}
-
-                        {canRespond && a.status === "PENDING" ? (
-                          <>
-                            <form action={confirmAppointment}>
-                              <input type="hidden" name="id" value={a.id} />
-                              <button
-                                type="submit"
-                                className="text-xs px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 light:bg-emerald-100 light:hover:bg-emerald-200 light:border-emerald-300 light:text-emerald-700 font-medium transition-colors"
-                              >
-                                Батлах
-                              </button>
-                            </form>
-                            <form action={rejectAppointment}>
-                              <input type="hidden" name="id" value={a.id} />
-                              <button
-                                type="submit"
-                                className="text-xs px-3 py-1.5 rounded-lg border border-red-500/25 bg-red-500/10 hover:bg-red-500/20 text-red-300 light:text-red-700 font-medium transition-colors"
-                              >
-                                Татгалзах
-                              </button>
-                            </form>
-                          </>
+                      </td>
+                      <td className="px-5 py-4 text-sm text-[var(--oc-muted2)]">
+                        {a.branch.name}
+                        {a.category ? (
+                          <span className="block text-xs text-[var(--oc-muted3)] mt-0.5">
+                            {a.category.name}
+                          </span>
                         ) : null}
-
-                        {canRespond &&
-                        a.status === "CONFIRMED" &&
-                        !a.serviceOrder ? (
-                          <>
-                            <Link
-                              href={orderHref}
-                              className="text-xs px-3 py-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-violet-200 light:bg-violet-100 light:hover:bg-violet-200 light:border-violet-300 light:text-violet-700 font-medium transition-colors whitespace-nowrap"
+                      </td>
+                      <td className="px-5 py-4 font-plex-mono text-sm text-[var(--oc-muted2)] whitespace-nowrap">
+                        {formatDateTime(a.requestedAt)}
+                      </td>
+                      <td className="px-5 py-4 text-sm text-[var(--oc-muted3)] max-w-[220px] truncate">
+                        {a.note || "—"}
+                      </td>
+                      <td className="px-5 py-4">
+                        <span
+                          className={`font-plex-mono text-[11px] px-2.5 py-1 rounded-full ${APPOINTMENT_STATUS_BADGE[a.status]}`}
+                        >
+                          {APPOINTMENT_STATUS_LABEL[a.status]}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center justify-end gap-2">
+                          {a.status === "CONFIRMED" && a.serviceOrder ? (
+                            <BtnLink
+                              href={`/dashboard/orders/${a.serviceOrder.id}`}
+                              variant="ghost"
+                              size="sm"
+                              className="whitespace-nowrap"
                             >
-                              Захиалга үүсгэх →
-                            </Link>
-                            <form action={markAppointmentNoShow}>
-                              <input type="hidden" name="id" value={a.id} />
-                              <button
-                                type="submit"
-                                className="text-xs px-3 py-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] hover:bg-white/[0.08] text-white/50 transition-colors"
+                              №{a.serviceOrder.number} харах
+                            </BtnLink>
+                          ) : null}
+
+                          {canRespond && a.status === "PENDING" ? (
+                            <>
+                              <form action={confirmAppointment}>
+                                <input type="hidden" name="id" value={a.id} />
+                                <button
+                                  type="submit"
+                                  className="text-xs px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 light:bg-emerald-100 light:hover:bg-emerald-200 light:border-emerald-300 light:text-emerald-700 font-medium transition-colors"
+                                >
+                                  Батлах
+                                </button>
+                              </form>
+                              <form action={rejectAppointment}>
+                                <input type="hidden" name="id" value={a.id} />
+                                <button
+                                  type="submit"
+                                  className="text-xs px-3 py-1.5 rounded-lg border border-red-500/25 bg-red-500/10 hover:bg-red-500/20 text-red-400 light:text-red-700 font-medium transition-colors"
+                                >
+                                  Татгалзах
+                                </button>
+                              </form>
+                            </>
+                          ) : null}
+
+                          {canRespond &&
+                          a.status === "CONFIRMED" &&
+                          !a.serviceOrder ? (
+                            <>
+                              <BtnLink
+                                href={orderHref}
+                                size="sm"
+                                className="whitespace-nowrap"
                               >
-                                Ирээгүй
-                              </button>
-                            </form>
-                          </>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                                Захиалга үүсгэх →
+                              </BtnLink>
+                              <form action={markAppointmentNoShow}>
+                                <input type="hidden" name="id" value={a.id} />
+                                <Btn type="submit" variant="ghost" size="sm">
+                                  Ирээгүй
+                                </Btn>
+                              </form>
+                            </>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
 import {
   type OrderActionState,
@@ -9,6 +8,7 @@ import {
 } from "@/app/_actions/orders";
 import { Field, FormError } from "@/app/_components/auth-shell";
 import { DatePicker } from "@/app/_components/date-picker";
+import { Btn, BtnLink, SquareAddButton } from "@/app/_components/landing-ops-ui";
 import { Select } from "@/app/_components/select";
 import { customerLabel } from "@/lib/customers";
 import {
@@ -54,6 +54,8 @@ type Tech = {
   assignableBranchIds: string[];
 };
 type DiagTemplate = { id: string; name: string; type: DiagnosticType };
+
+export const ORDER_FORM_ID = "order-form";
 
 const FIELD_MW = "max-w-xs";
 
@@ -194,12 +196,12 @@ export function OrderForm({
   }
 
   return (
-    <form action={formAction} className="flex flex-col gap-4" noValidate>
+    <form id={ORDER_FORM_ID} action={formAction} className="flex flex-col gap-4" noValidate>
       {appointmentId && !isEdit ? (
         <input type="hidden" name="appointmentId" value={appointmentId} />
       ) : null}
       {state?.ok ? (
-        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 text-sm text-emerald-300 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700">
+        <div className="bg-[var(--oc-ok)]/10 border border-[var(--oc-ok)]/25 rounded-lg px-3 py-2 text-sm text-[var(--oc-ok)]">
           {state.message ?? "Хадгалагдлаа."}
         </div>
       ) : null}
@@ -258,15 +260,12 @@ export function OrderForm({
                 }))}
               />
             </div>
-            <button
-              type="button"
+            <SquareAddButton
+              active={showCustomerForm}
               onClick={() => setShowCustomerForm((v) => !v)}
               data-stop-row-click
-              className="shrink-0 px-2.5 rounded-lg border border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-violet-200 light:bg-violet-100 light:hover:bg-violet-200 light:border-violet-300 light:text-violet-700 text-xs font-medium transition-colors"
               title="Шинэ үйлчлүүлэгч нэмэх"
-            >
-              {showCustomerForm ? "✕" : "+"}
-            </button>
+            />
           </div>
         </Field>
 
@@ -308,20 +307,17 @@ export function OrderForm({
                 })}
               />
             </div>
-            <button
-              type="button"
+            <SquareAddButton
+              active={showVehicleForm}
               disabled={!customerId}
               onClick={() => setShowVehicleForm((v) => !v)}
               data-stop-row-click
-              className="shrink-0 px-2.5 rounded-lg border border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-violet-200 light:bg-violet-100 light:hover:bg-violet-200 light:border-violet-300 light:text-violet-700 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               title={
                 customerId
                   ? "Шинэ машин нэмэх"
                   : "Эхлээд үйлчлүүлэгчээ сонгоно уу"
               }
-            >
-              {showVehicleForm ? "✕" : "+"}
-            </button>
+            />
           </div>
         </Field>
 
@@ -372,7 +368,7 @@ export function OrderForm({
           name="notes"
           rows={2}
           defaultValue={initial?.notes ?? ""}
-          className="compact-input resize-y"
+          className="auth-input resize-y"
           placeholder="Гомдол, тусгай хүсэлт..."
         />
       </Field>
@@ -387,8 +383,8 @@ export function OrderForm({
               value={id}
             />
           ))}
-          <div className="text-sm font-medium text-white/80">Оношилгоо</div>
-          <p className="text-xs text-white/40 -mt-1">
+          <div className="text-sm font-medium text-[var(--oc-ink2)]">Оношилгоо</div>
+          <p className="text-xs text-[var(--oc-muted3)] -mt-1">
             Хийх оношилгоог товлоно (бөглөхгүй). Захиалга эхэлсний дараа бөглөнө.
           </p>
           <div className="flex flex-col gap-3 mt-1">
@@ -412,8 +408,8 @@ export function OrderForm({
                           onClick={() => toggleDiagnostic(t.id)}
                           className={`text-sm px-3 py-1.5 rounded-lg border transition-colors ${
                             on
-                              ? "bg-violet-600/30 text-violet-200 border-violet-500/40 light:bg-violet-100 light:text-violet-700 light:border-violet-300"
-                              : "bg-white/[0.04] text-white/60 border-white/10 hover:border-white/20"
+                              ? "bg-[var(--oc-accent)]/15 text-[var(--oc-accent)] border-[var(--oc-accent)]/40"
+                              : "bg-[var(--oc-panel2)] text-[var(--oc-muted2)] border-[var(--oc-line)] hover:border-[var(--oc-line2)]"
                           }`}
                         >
                           {on ? "✓ " : "+ "}
@@ -429,20 +425,13 @@ export function OrderForm({
         </div>
       ) : null}
 
-      <div className="flex gap-2 pt-3 border-t border-white/[0.05]">
-        <Link
-          href={backHref}
-          className="bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] transition-all px-5 py-2 rounded-lg font-medium text-sm text-white/60 text-center"
-        >
+      <div className="flex gap-2 pt-3 border-t border-[var(--oc-line2)]">
+        <BtnLink href={backHref} variant="ghost">
           ← Буцах
-        </Link>
-        <button
-          type="submit"
-          disabled={pending}
-          className="bg-violet-600 hover:bg-violet-500 disabled:opacity-60 disabled:cursor-not-allowed transition-all px-6 py-2 rounded-lg font-medium text-sm"
-        >
+        </BtnLink>
+        <Btn type="submit" disabled={pending}>
           {pending ? "..." : isEdit ? "Хадгалах" : "Захиалга үүсгэх"}
-        </button>
+        </Btn>
       </div>
     </form>
   );

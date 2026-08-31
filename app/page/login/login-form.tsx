@@ -10,7 +10,7 @@ import {
   checkLoginEmailAction,
   signInAction,
 } from "@/app/_actions/auth";
-import { Field, FormError, SubmitButton } from "@/app/_components/auth-shell";
+import { Field, FormError, SubmitButton } from "@/app/_components/landing-ops-ui";
 
 /**
  * Нэвтрэх — имэйлээр эхэлсэн (progressive) урсгал:
@@ -74,14 +74,14 @@ function EmailStep({
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           className={`auth-input ${fe.email ? "border-red-500/50" : ""}`}
-          placeholder="you@gmail.com"
+          placeholder="menejer@servis.mn"
         />
       </Field>
 
       <SubmitButton pending={pending}>Үргэлжлүүлэх →</SubmitButton>
 
       {/* Progressive урсгалыг тайлбарлана — нууц үг дараагийн шатанд асуугдана */}
-      <p className="text-center text-xs text-white/40">
+      <p className="text-center text-xs text-[var(--oc-muted3)]">
         Дараагийн алхамд нууц үгээ оруулж нэвтэрнэ. Анх удаагийн нэвтрэлт бол
         утсанд тань баталгаажуулах код ирнэ.
       </p>
@@ -105,7 +105,7 @@ function PasswordStep({ email }: { email: string }) {
       <input type="hidden" name="email" value={email} />
       <FormError message={state?.message} />
 
-      <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-2.5 text-sm text-white/70">
+      <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] px-4 py-2.5 text-sm text-[var(--oc-muted2)]">
         {email}
       </div>
 
@@ -126,7 +126,7 @@ function PasswordStep({ email }: { email: string }) {
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors text-xs"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--oc-muted3)] hover:text-[var(--oc-muted)] transition-colors text-xs"
           >
             {showPassword ? "Нуух" : "Харах"}
           </button>
@@ -138,13 +138,13 @@ function PasswordStep({ email }: { email: string }) {
       <div className="flex items-center justify-between gap-3">
         <a
           href="/page/login"
-          className="text-xs text-white/40 hover:text-white/70 transition-colors"
+          className="text-xs text-[var(--oc-muted3)] hover:text-[var(--oc-accent-hi)] transition-colors"
         >
           ← Өөр имэйл
         </a>
         <Link
           href="/page/forgot"
-          className="text-xs text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
+          className="text-xs text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors"
         >
           Нууц үг мартсан уу?
         </Link>
@@ -178,7 +178,7 @@ function ActivateStep({
     <form action={formAction} className="flex flex-col gap-5" noValidate>
       <input type="hidden" name="email" value={email} />
 
-      <div className="bg-violet-500/10 border border-violet-500/25 rounded-xl px-4 py-3 text-sm text-violet-200 light:bg-violet-100 light:border-violet-300 light:text-violet-700">
+      <div className="bg-[var(--oc-accent)]/10 border border-[var(--oc-accent)]/25 rounded-[10px] px-4 py-3 text-sm text-[var(--oc-ink2)]">
         Анх удаа нэвтрэх тул нууц үгээ үүсгэнэ үү.{" "}
         {notice ?? `Утас ${maskedPhone} руу 6 оронтой код илгээлээ.`}
       </div>
@@ -203,7 +203,7 @@ function ActivateStep({
           autoFocus
           value={code}
           onChange={(e) => setCode(e.target.value.replace(/\D+/g, ""))}
-          className={`auth-input tracking-[0.5em] text-center font-mono ${fe.code ? "border-red-500/50" : ""}`}
+          className={`auth-input font-plex-mono tracking-[0.5em] text-center ${fe.code ? "border-red-500/50" : ""}`}
           placeholder="••••••"
         />
       </Field>
@@ -225,7 +225,7 @@ function ActivateStep({
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors text-xs"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--oc-muted3)] hover:text-[var(--oc-muted)] transition-colors text-xs"
           >
             {showPassword ? "Нуух" : "Харах"}
           </button>
@@ -255,7 +255,7 @@ function ActivateStep({
 
       <a
         href="/page/login"
-        className="text-center text-xs text-white/40 hover:text-white/70 transition-colors"
+        className="text-center text-xs text-[var(--oc-muted3)] hover:text-[var(--oc-accent-hi)] transition-colors"
       >
         ← Өөр имэйл
       </a>
@@ -268,18 +268,18 @@ function ActivateStep({
 function NotRegistered({ message }: { message?: string }) {
   return (
     <div className="flex flex-col gap-4 text-center">
-      <div className="bg-amber-500/10 border border-amber-500/25 rounded-xl px-4 py-3 text-sm text-amber-200">
+      <div className="bg-[var(--oc-accent)]/10 border border-[var(--oc-accent)]/25 rounded-[10px] px-4 py-3 text-sm text-[var(--oc-ink2)]">
         {message ?? "Энэ имэйл бүртгэлгүй байна."}
       </div>
       <Link
         href="/page/signup"
-        className="text-sm font-medium text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
+        className="text-sm font-medium text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors"
       >
         Байгууллага бүртгүүлэх →
       </Link>
       <a
         href="/page/login"
-        className="text-xs text-white/40 hover:text-white/70 transition-colors"
+        className="text-xs text-[var(--oc-muted3)] hover:text-[var(--oc-accent-hi)] transition-colors"
       >
         ← Өөр имэйл оруулах
       </a>

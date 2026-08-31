@@ -7,11 +7,8 @@ import {
   ResetFilters,
   SearchBox,
 } from "@/app/_components/list-filters";
-import {
-  EmptyState,
-  PageHeader,
-  PrimaryLinkButton,
-} from "@/app/_components/page-header";
+import { EmptyState } from "@/app/_components/page-header";
+import { AddLinkButton, StatCell, StatGrid } from "@/app/_components/landing-ops-ui";
 import { Pagination } from "@/app/_components/pagination";
 import { CarIcon } from "@/app/_components/landing-icons";
 import {
@@ -69,29 +66,37 @@ export default async function VehiclesPage({
   else if (postpaid === "no") where.isPostpaid = false;
 
   const { page, pageSize, skip, take } = getPageInfo(pageParam);
-  const [links, total] = await Promise.all([
-    prisma.tenantVehicle.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip,
-      take,
-      select: {
-        isPostpaid: true,
-        customer: { select: { id: true, fullName: true, phone: true } },
-        vehicle: {
-          select: {
-            id: true,
-            plate: true,
-            make: true,
-            model: true,
-            year: true,
-            mileage: true,
+  const [links, total, totalVehicles, assignedVehicles, postpaidVehicles] =
+    await Promise.all([
+      prisma.tenantVehicle.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take,
+        select: {
+          isPostpaid: true,
+          customer: { select: { id: true, fullName: true, phone: true } },
+          vehicle: {
+            select: {
+              id: true,
+              plate: true,
+              make: true,
+              model: true,
+              year: true,
+              mileage: true,
+            },
           },
         },
-      },
-    }),
-    prisma.tenantVehicle.count({ where }),
-  ]);
+      }),
+      prisma.tenantVehicle.count({ where }),
+      prisma.tenantVehicle.count({ where: { tenantId: user.tenantId } }),
+      prisma.tenantVehicle.count({
+        where: { tenantId: user.tenantId, customerId: { not: null } },
+      }),
+      prisma.tenantVehicle.count({
+        where: { tenantId: user.tenantId, isPostpaid: true },
+      }),
+    ]);
   const meta = buildMeta(total, page, pageSize);
 
   // Захиалгын тоог ЭНЭ tenant-аар хязгаарлаж тоолно (global vehicle нийт
@@ -122,17 +127,23 @@ export default async function VehiclesPage({
 
   return (
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
-      <PageHeader
-        title="Машинууд"
-        description="Үйлчлүүлэгчдийн машин, бүртгэлийн мэдээлэл"
-        actions={
-          canAdd ? (
-            <PrimaryLinkButton href="/dashboard/vehicles/new">
-              Машин нэмэх
-            </PrimaryLinkButton>
-          ) : null
-        }
-      />
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">Машинууд</h1>
+          <p className="text-sm text-[var(--oc-muted3)] mt-1">
+            Үйлчлүүлэгчдийн машин, бүртгэлийн мэдээлэл · {totalVehicles} машин
+          </p>
+        </div>
+        {canAdd ? (
+          <AddLinkButton href="/dashboard/vehicles/new">Машин нэмэх</AddLinkButton>
+        ) : null}
+      </div>
+
+      <StatGrid cols={3}>
+        <StatCell label="Нийт машин" value={totalVehicles} />
+        <StatCell label="Эзэмшигчтэй" value={assignedVehicles} tone="ok" />
+        <StatCell label="Дараа төлбөрт" value={postpaidVehicles} tone="accent" />
+      </StatGrid>
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <SearchBox placeholder="Дугаар, марк, эзэмшигчээр хайх" />
@@ -165,18 +176,16 @@ export default async function VehiclesPage({
           }
           cta={
             canAdd ? (
-              <PrimaryLinkButton href="/dashboard/vehicles/new">
-                Эхний машин нэмэх
-              </PrimaryLinkButton>
+              <AddLinkButton href="/dashboard/vehicles/new">Эхний машин нэмэх</AddLinkButton>
             ) : null
           }
         />
       ) : (
-        <div className="glass rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
+        <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden flex-1 min-h-0 flex flex-col">
           <div className="overflow-auto flex-1 min-h-0">
             <table className="w-full min-w-[720px]">
               <thead>
-                <tr className="border-b border-white/[0.06]">
+                <tr className="border-b border-[var(--oc-line)]">
                   {[
                     "Машин",
                     "Дугаар",
@@ -187,70 +196,70 @@ export default async function VehiclesPage({
                   ].map((h) => (
                     <th
                       key={h}
-                      className="text-left text-xs text-white/30 light:text-slate-500 font-medium px-5 py-2.5"
+                      className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-5 py-3"
                     >
                       {h}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-[var(--oc-line)]">
                 {vehicles.map((v) => (
                   <ClickableRow
                     key={v.id}
                     href={`/dashboard/vehicles/${v.id}`}
                   >
-                    <td className="px-5 py-2.5">
+                    <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-500/30 to-blue-500/30 flex items-center justify-center text-violet-200 light:text-violet-700 shrink-0">
+                        <div className="w-9 h-9 rounded-lg border border-[var(--oc-line)] bg-[var(--oc-panel2)] flex items-center justify-center text-[var(--oc-ink2)] shrink-0">
                           <CarIcon />
                         </div>
                         <div>
-                          <div className="text-sm font-medium text-white/90">
+                          <div className="text-sm font-medium text-[var(--oc-ink)]">
                             {v.make} {v.model}
                           </div>
-                          <div className="text-xs text-white/30">
+                          <div className="text-xs text-[var(--oc-muted3)]">
                             {v.year ? `${v.year} он` : "—"}
                           </div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-5 py-2.5">
-                      <span className="text-sm font-mono font-medium text-white/80">
+                    <td className="px-5 py-4">
+                      <span className="font-plex-mono text-sm font-medium text-[var(--oc-ink2)]">
                         {v.plate}
                       </span>
                       {v.isPostpaid ? (
                         <span
-                          className={`ml-2 inline-block align-middle text-[10px] px-1.5 py-0.5 rounded-full ${POSTPAID_BADGE}`}
+                          className={`ml-2 inline-block align-middle font-plex-mono text-[10px] px-1.5 py-0.5 rounded-full ${POSTPAID_BADGE}`}
                         >
                           {POSTPAID_LABEL}
                         </span>
                       ) : null}
                     </td>
-                    <td className="px-5 py-2.5 text-sm">
+                    <td className="px-5 py-4 text-sm">
                       {v.customer ? (
                         <Link
                           href={`/dashboard/customers/${v.customer.id}`}
-                          className="text-white/70 hover:text-violet-300 light:hover:text-violet-700 transition-colors"
+                          className="text-[var(--oc-muted2)] hover:text-[var(--oc-accent)] transition-colors"
                         >
                           {customerLabel(v.customer)}
-                          <span className="text-white/30 text-xs ml-1">
+                          <span className="text-[var(--oc-muted3)] text-xs ml-1">
                             · {v.customer.phone}
                           </span>
                         </Link>
                       ) : (
-                        <span className="text-white/30">—</span>
+                        <span className="text-[var(--oc-muted4)]">—</span>
                       )}
                     </td>
-                    <td className="px-5 py-2.5 text-sm text-white/50">
+                    <td className="px-5 py-4 font-plex-mono text-sm text-[var(--oc-muted2)]">
                       {v.mileage != null
                         ? `${v.mileage.toLocaleString("mn-MN")} км`
                         : "—"}
                     </td>
-                    <td className="px-5 py-2.5 text-sm text-white/60">
+                    <td className="px-5 py-4 font-plex-mono text-sm text-[var(--oc-ink2)]">
                       {v._count.serviceOrders}
                     </td>
-                    <td className="px-5 py-2.5">
+                    <td className="px-5 py-4">
                       {canRemove ? (
                         <RowActionsMenu>
                           <RowMenuFormItem
@@ -268,6 +277,11 @@ export default async function VehiclesPage({
                 ))}
               </tbody>
             </table>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 border-t border-[var(--oc-line)] font-plex-mono text-xs text-[var(--oc-muted3)]">
+            <span>
+              {vehicles.length} / {total} харагдаж байна
+            </span>
           </div>
           <Pagination
             page={meta.page}

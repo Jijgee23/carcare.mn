@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Prisma } from "@/app/generated/prisma/client";
+import { Chip } from "@/app/_components/landing-ops-ui";
 import { FilterSelect, ResetFilters } from "@/app/_components/list-filters";
-import { EmptyState, PageHeader } from "@/app/_components/page-header";
+import { EmptyState } from "@/app/_components/page-header";
 import { Pagination } from "@/app/_components/pagination";
 import { requireUser } from "@/lib/auth";
 import {
@@ -55,10 +56,12 @@ export default async function StaffNotificationsPage({
 
   return (
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
-      <PageHeader
-        title="Мэдэгдэл"
-        description="Танд ирсэн мэдэгдлүүдийн түүх."
-      />
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">Мэдэгдэл</h1>
+        <p className="text-sm text-[var(--oc-muted3)] mt-1">
+          Танд ирсэн мэдэгдлүүдийн түүх.
+        </p>
+      </div>
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <FilterSelect
@@ -75,8 +78,8 @@ export default async function StaffNotificationsPage({
           description="Танд одоогоор мэдэгдэл ирээгүй байна."
         />
       ) : (
-        <div className="glass rounded-xl overflow-hidden flex-1 min-h-0 flex flex-col">
-          <div className="px-5 py-3 border-b border-white/[0.06] text-xs text-white/40">
+        <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden flex-1 min-h-0 flex flex-col">
+          <div className="px-5 py-3 border-b border-[var(--oc-line)] font-plex-mono text-xs text-[var(--oc-muted3)]">
             Нийт {total.toLocaleString("mn-MN")} мэдэгдэл · {page}/{totalPages}{" "}
             хуудас
           </div>
@@ -84,53 +87,51 @@ export default async function StaffNotificationsPage({
           <div className="overflow-auto flex-1 min-h-0">
             <table className="w-full min-w-[720px]">
               <thead>
-                <tr className="border-b border-white/[0.06]">
+                <tr className="border-b border-[var(--oc-line)]">
                   {["Огноо", "Төрөл", "Мэдэгдэл", "Төлөв"].map((h) => (
                     <th
                       key={h}
-                      className="text-left text-xs text-white/30 light:text-slate-500 font-medium px-5 py-3"
+                      className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-5 py-3"
                     >
                       {h}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-[var(--oc-line)]">
                 {rows.map((n) => {
                   const href = notificationHref(n.type, n.data);
                   return (
                     <tr
                       key={n.id}
-                      className={`border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors ${
-                        n.readAt ? "" : "bg-violet-500/[0.04]"
+                      className={`hover:bg-white/[0.02] transition-colors ${
+                        n.readAt ? "" : "bg-[var(--oc-accent)]/[0.04]"
                       }`}
                     >
-                      <td className="px-5 py-3 text-xs text-white/60 whitespace-nowrap">
+                      <td className="px-5 py-3 font-plex-mono text-xs text-[var(--oc-muted2)] whitespace-nowrap">
                         {fmtDate(n.createdAt)}
                       </td>
                       <td className="px-5 py-3">
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/30 light:text-violet-700 whitespace-nowrap">
+                        <Chip tone="accent" bordered>
                           {NOTIFICATION_TYPE_LABEL[
                             n.type as keyof typeof NOTIFICATION_TYPE_LABEL
                           ] ?? n.type}
-                        </span>
+                        </Chip>
                       </td>
                       <td className="px-5 py-3 text-sm">
                         <Link
                           href={href}
-                          className="text-white/85 hover:text-violet-200 light:hover:text-violet-700 font-medium transition-colors"
+                          className="text-[var(--oc-ink)] hover:text-[var(--oc-accent-hi)] font-medium transition-colors"
                         >
                           {n.title}
                         </Link>
-                        <div className="text-xs text-white/40">{n.body}</div>
+                        <div className="text-xs text-[var(--oc-muted3)]">{n.body}</div>
                       </td>
                       <td className="px-5 py-3">
                         {n.readAt ? (
-                          <span className="text-xs text-white/30">Уншсан</span>
+                          <span className="text-xs text-[var(--oc-muted4)]">Уншсан</span>
                         ) : (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-200 light:bg-violet-100 light:text-violet-700">
-                            Шинэ
-                          </span>
+                          <Chip tone="accent">Шинэ</Chip>
                         )}
                       </td>
                     </tr>

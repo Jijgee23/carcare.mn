@@ -1,5 +1,6 @@
-import Link from "next/link";
-import { EmptyState, PageHeader, PrimaryLinkButton } from "@/app/_components/page-header";
+import { ClickableRow } from "@/app/_components/clickable-row";
+import { AddLinkButton } from "@/app/_components/landing-ops-ui";
+import { EmptyState } from "@/app/_components/page-header";
 import { Pagination } from "@/app/_components/pagination";
 import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { requireUser } from "@/lib/auth";
@@ -51,32 +52,30 @@ export default async function ReportsListPage({
 
   return (
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
-      <PageHeader
-        title="Оношилгооны тайлангууд"
-        description="Бөглөгдсөн оношилгооны тайлангуудын жагсаалт"
-        actions={
-          <PrimaryLinkButton href="/dashboard/diagnostics/new">
-            Шинэ тайлан
-          </PrimaryLinkButton>
-        }
-      />
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">Оношилгооны тайлангууд</h1>
+          <p className="text-sm text-[var(--oc-muted3)] mt-1">
+            Бөглөгдсөн оношилгооны тайлангуудын жагсаалт · {total} тайлан
+          </p>
+        </div>
+        <AddLinkButton href="/dashboard/diagnostics/new">Шинэ тайлан</AddLinkButton>
+      </div>
 
       {reports.length === 0 ? (
         <EmptyState
           title="Тайлан алга байна"
           description="Шинэ оношилгоо хийж эхлээрэй. Машин, үйлчлүүлэгчээ сонгож, загвараа бөглөнө."
           cta={
-            <PrimaryLinkButton href="/dashboard/diagnostics/new">
-              Эхний тайлан үүсгэх
-            </PrimaryLinkButton>
+            <AddLinkButton href="/dashboard/diagnostics/new">Эхний тайлан үүсгэх</AddLinkButton>
           }
         />
       ) : (
-        <div className="glass rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
+        <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden flex-1 min-h-0 flex flex-col">
           <div className="overflow-auto flex-1 min-h-0">
             <table className="w-full min-w-[800px]">
               <thead>
-                <tr className="border-b border-white/[0.06]">
+                <tr className="border-b border-[var(--oc-line)]">
                   {[
                     "Огноо",
                     "Загвар",
@@ -85,26 +84,22 @@ export default async function ReportsListPage({
                     "Салбар",
                     "Бөглөсөн",
                     "Захиалга",
-                    "",
                   ].map((h) => (
                     <th
                       key={h}
-                      className="text-left text-xs text-white/30 font-medium px-5 py-3"
+                      className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-5 py-3"
                     >
                       {h}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-[var(--oc-line)]">
                 {reports.map((r) => {
                   const tp = r.template.type as DiagnosticType;
                   return (
-                    <tr
-                      key={r.id}
-                      className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors"
-                    >
-                      <td className="px-5 py-3 text-xs text-white/50">
+                    <ClickableRow key={r.id} href={`/dashboard/diagnostics/reports/${r.id}`}>
+                      <td className="px-5 py-3 font-plex-mono text-xs text-[var(--oc-muted3)] whitespace-nowrap">
                         {r.createdAt.toLocaleString("mn-MN", {
                           year: "numeric",
                           month: "short",
@@ -121,42 +116,34 @@ export default async function ReportsListPage({
                           >
                             {DIAGNOSTIC_TYPE_LABEL[tp]}
                           </span>
-                          <span className="text-sm text-white/90">
+                          <span className="text-sm text-[var(--oc-ink)]">
                             {r.template.name}
                           </span>
                         </div>
                       </td>
-                      <td className="px-5 py-3 text-sm text-white/70">
+                      <td className="px-5 py-3 text-sm text-[var(--oc-muted2)]">
                         {customerLabel(r.customer)}
                       </td>
                       <td className="px-5 py-3 text-sm">
-                        <div className="text-white/70">
+                        <div className="text-[var(--oc-muted2)]">
                           {r.vehicle.make} {r.vehicle.model}
                         </div>
-                        <div className="font-mono text-xs text-white/40">
+                        <div className="font-plex-mono text-xs text-[var(--oc-muted3)]">
                           {r.vehicle.plate}
                         </div>
                       </td>
-                      <td className="px-5 py-3 text-sm text-white/60">
+                      <td className="px-5 py-3 text-sm text-[var(--oc-muted2)]">
                         {r.branch.name}
                       </td>
-                      <td className="px-5 py-3 text-sm text-white/60">
+                      <td className="px-5 py-3 text-sm text-[var(--oc-muted2)]">
                         {r.filledBy
                           ? `${r.filledBy.lastName} ${r.filledBy.firstName}`
                           : "—"}
                       </td>
-                      <td className="px-5 py-3 text-sm text-white/60">
+                      <td className="px-5 py-3 font-plex-mono text-sm text-[var(--oc-muted2)]">
                         {r.order ? `#${r.order.number}` : "—"}
                       </td>
-                      <td className="px-5 py-3">
-                        <Link
-                          href={`/dashboard/diagnostics/reports/${r.id}`}
-                          className="text-xs text-violet-400 hover:text-violet-300 light:text-violet-700 light:hover:text-violet-800 px-2.5 py-1.5 rounded-lg hover:bg-violet-500/10"
-                        >
-                          Үзэх
-                        </Link>
-                      </td>
-                    </tr>
+                    </ClickableRow>
                   );
                 })}
               </tbody>

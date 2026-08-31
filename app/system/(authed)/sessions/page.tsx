@@ -8,6 +8,7 @@ import {
   deviceLabel,
   sessionStatus,
 } from "@/lib/auth/user-session";
+import { requireSuperAdmin } from "@/lib/auth/system";
 import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { formatPhone } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
@@ -51,6 +52,7 @@ export default async function SystemSessionsPage({
 }: {
   searchParams: Promise<Search>;
 }) {
+  await requireSuperAdmin();
   const sp = await searchParams;
   const tab = sp.tab === "customer" ? "customer" : "staff";
   const q = sp.q ?? "";
@@ -114,6 +116,7 @@ async function StaffTab({
   skip: number;
   take: number;
 }) {
+  await requireSuperAdmin();
   const userWhere: Prisma.UserWhereInput = {};
   if (tenantId) userWhere.tenantId = tenantId;
   if (q) {
@@ -247,6 +250,7 @@ async function CustomerTab({
   skip: number;
   take: number;
 }) {
+  await requireSuperAdmin();
   const where: Prisma.AccountWhereInput = {};
   if (q) {
     where.OR = [

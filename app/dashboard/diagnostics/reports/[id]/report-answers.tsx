@@ -66,7 +66,7 @@ export function ReportAnswers({
     <div className="flex flex-col gap-5">
       {filterOptions.length > 1 ? (
         <div className="no-print flex items-center gap-1.5 flex-wrap">
-          <span className="text-xs text-white/40 mr-1">Хариултаар:</span>
+          <span className="text-xs text-[var(--oc-muted3)] mr-1">Хариултаар:</span>
           <FilterChip
             label="Бүгд"
             active={filter === null}
@@ -92,28 +92,28 @@ export function ReportAnswers({
         return (
           <section
             key={section.id}
-            className="glass rounded-2xl border border-white/[0.08] overflow-hidden"
+            className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden"
           >
-            <div className="px-5 py-3 border-b border-white/[0.06]">
-              <h2 className="font-semibold text-sm">{section.title}</h2>
+            <div className="px-5 py-3 border-b border-[var(--oc-line)]">
+              <h2 className="font-semibold text-[var(--oc-ink)] text-sm">{section.title}</h2>
             </div>
             <div className="p-3 grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-2 items-start">
               {items.map(({ item, positions }) => (
                 <div
                   key={item.id}
-                  className={`rounded-lg bg-white/[0.02] border border-white/[0.04] px-3 py-2.5 flex flex-col gap-1.5 ${
+                  className={`rounded-lg bg-[var(--oc-panel2)] border border-[var(--oc-line)] px-3 py-2.5 flex flex-col gap-1.5 ${
                     positions ? "md:col-span-2 2xl:col-span-3" : ""
                   }`}
                 >
-                  <div className="text-xs text-white/40">{item.label}</div>
+                  <div className="text-xs text-[var(--oc-muted3)]">{item.label}</div>
                   {positions ? (
                     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                       {positions.map((pos) => (
                         <div
                           key={pos.code}
-                          className="flex flex-col gap-1 rounded-md border border-white/[0.04] bg-white/[0.02] p-2"
+                          className="flex flex-col gap-1 rounded-md border border-[var(--oc-line)] bg-[var(--oc-panel)] p-2"
                         >
-                          <div className="text-[11px] text-white/50">
+                          <div className="text-[11px] text-[var(--oc-muted3)]">
                             {pos.label}
                           </div>
                           <EntryView
@@ -137,7 +137,7 @@ export function ReportAnswers({
       schema.sections.every((s) =>
         s.items.every((it) => visibleFields(it, data, filter) === null),
       ) ? (
-        <div className="glass rounded-2xl p-8 border border-white/[0.08] text-center text-sm text-white/40">
+        <div className="rounded-[10px] bg-[var(--oc-panel)] p-8 border border-[var(--oc-line)] text-center text-sm text-[var(--oc-muted3)]">
           &laquo;{filter}&raquo; хариултай асуулт алга.
         </div>
       ) : null}
@@ -194,8 +194,8 @@ function FilterChip({
       className={`px-2.5 py-1 rounded-lg border text-xs transition-colors ${
         active
           ? (tone ??
-            "bg-violet-500/15 border-violet-500/40 text-violet-200 light:text-violet-700")
-          : "bg-white/[0.03] border-white/[0.06] text-white/55 hover:bg-white/[0.07]"
+            "bg-[var(--oc-accent)]/15 border-[var(--oc-accent)]/40 text-[var(--oc-accent)]")
+          : "bg-[var(--oc-panel2)] border-[var(--oc-line)] text-[var(--oc-muted2)] hover:bg-white/[0.06]"
       }`}
     >
       {label}
@@ -213,7 +213,7 @@ function EntryView({
 }) {
   return (
     <>
-      <div className="text-sm text-white/90">
+      <div className="text-sm text-[var(--oc-ink)]">
         {renderValue(item.type, entry.value)}
       </div>
       {entry.photos && entry.photos.length > 0 ? (
@@ -224,7 +224,7 @@ function EntryView({
               key={idx}
               src={p}
               alt=""
-              className="w-24 h-24 object-cover rounded-lg border border-white/[0.06]"
+              className="w-24 h-24 object-cover rounded-lg border border-[var(--oc-line)]"
             />
           ))}
         </div>
@@ -234,11 +234,11 @@ function EntryView({
         <img
           src={entry.value}
           alt="Гарын үсэг"
-          className="w-48 h-24 object-contain rounded-lg border border-white/[0.06] bg-white/[0.04]"
+          className="w-48 h-24 object-contain rounded-lg border border-[var(--oc-line)] bg-[var(--oc-panel2)]"
         />
       ) : null}
       {entry.note ? (
-        <div className="text-xs text-white/50 italic">
+        <div className="text-xs text-[var(--oc-muted3)] italic">
           Тэмдэглэл: {entry.note}
         </div>
       ) : null}
@@ -251,7 +251,7 @@ function renderValue(
   value: string | number | boolean | undefined,
 ): React.ReactNode {
   if (value === undefined || value === "" || value === null)
-    return <span className="text-white/30">—</span>;
+    return <span className="text-[var(--oc-muted4)]">—</span>;
   if (type === "signature") return null;
   if (typeof value === "boolean") return value ? "Тийм" : "Үгүй";
   if (type === "check" && typeof value === "string") {

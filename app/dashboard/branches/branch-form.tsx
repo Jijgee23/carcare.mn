@@ -1,7 +1,6 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import Link from "next/link";
 import { useActionState, useState } from "react";
 import {
   type BranchActionState,
@@ -9,6 +8,7 @@ import {
   updateBranchAction,
 } from "@/app/_actions/branches";
 import { Field, FormError } from "@/app/_components/auth-shell";
+import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
 import { Select } from "@/app/_components/select";
 import { DEFAULT_OPEN_DAYS, WEEK_DAYS, type Weekday } from "@/lib/branches";
 import {
@@ -24,18 +24,20 @@ const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
   return { value: v, label: v };
 });
 
-// Leaflet нь window-д шууд хандах учир SSR хийгдэхгүйгээр lazy load
+// Leaflet/Google Maps нь window-д шууд хандах учир SSR хийгдэхгүйгээр lazy load
 const LocationPicker = dynamic(
   () => import("./location-picker").then((m) => m.LocationPicker),
   {
     ssr: false,
     loading: () => (
-      <div className="h-72 w-full rounded-xl border border-white/[0.08] bg-white/[0.02] flex items-center justify-center text-sm text-white/40">
+      <div className="h-72 w-full rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] flex items-center justify-center text-sm text-[var(--oc-muted3)]">
         Газрын зураг ачаалж байна...
       </div>
     ),
   },
 );
+
+export const BRANCH_FORM_ID = "branch-form";
 
 type Initial = {
   id?: string;
@@ -54,6 +56,30 @@ type Initial = {
   openDays: Weekday[];
   isPrimary: boolean;
 };
+
+function SectionPanel({
+  index,
+  total,
+  title,
+  children,
+}: {
+  index: number;
+  total: number;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5 sm:p-6">
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="font-semibold text-[var(--oc-ink)]">{title}</h2>
+        <span className="font-plex-mono text-[11px] text-[var(--oc-muted3)]">
+          {String(index).padStart(2, "0")} / {String(total).padStart(2, "0")}
+        </span>
+      </div>
+      {children}
+    </section>
+  );
+}
 
 export function BranchForm({
   initial,
@@ -83,6 +109,7 @@ export function BranchForm({
   const [days, setDays] = useState<Set<Weekday>>(new Set(initialDays));
   const [lat, setLat] = useState<number | null>(initial?.latitude ?? null);
   const [lng, setLng] = useState<number | null>(initial?.longitude ?? null);
+  const [dirty, setDirty] = useState(false);
 
   // Controlled — action амжилтгүй болсон үед утгууд цэвэрлэгдэхгүй
   const [name, setName] = useState(initial?.name ?? "");
@@ -105,6 +132,7 @@ export function BranchForm({
   const [isPrimary, setIsPrimary] = useState(initial?.isPrimary ?? false);
 
   function onMapPick(coords: { lat: number; lng: number } | null) {
+    setDirty(true);
     if (!coords) {
       setLat(null);
       setLng(null);
@@ -129,6 +157,7 @@ export function BranchForm({
   }
 
   function toggleDay(value: Weekday) {
+    setDirty(true);
     setDays((prev) => {
       const next = new Set(prev);
       if (next.has(value)) next.delete(value);
@@ -137,20 +166,19 @@ export function BranchForm({
     });
   }
 
-  // Full-width хуудсанд талбарууд хэт сунахгүйн тулд хязгаартай.
-  const FIELD_MW = "max-w-xs";
-
   return (
-    <form action={formAction} className="flex flex-col gap-5" noValidate>
+    <form
+      id={BRANCH_FORM_ID}
+      action={formAction}
+      onChange={() => setDirty(true)}
+      className="flex flex-col gap-5"
+      noValidate
+    >
       <FormError message={state?.message} />
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-xs font-medium text-white/50 uppercase tracking-wider">
-          Үндсэн мэдээлэл
-        </h2>
-
-        <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          <Field label="Салбарын нэр" htmlFor="name" error={fe.name} className={FIELD_MW}>
+      <SectionPanel index={1} total={3} title="Үндсэн мэдээлэл">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Салбарын нэр" htmlFor="name" error={fe.name}>
             <input
               id="name"
               name="name"
@@ -158,12 +186,12 @@ export function BranchForm({
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className={`compact-input ${fe.name ? "border-red-500/50" : ""}`}
+              className={`auth-input ${fe.name ? "border-red-500/50" : ""}`}
               placeholder="Жишээ: Зүүн салбар"
             />
           </Field>
 
-          <Field label="Утас" htmlFor="phone" error={fe.phone} className={FIELD_MW}>
+          <Field label="Утас" htmlFor="phone" error={fe.phone}>
             <input
               id="phone"
               name="phone"
@@ -171,51 +199,41 @@ export function BranchForm({
               inputMode="numeric"
               maxLength={8}
               pattern="[0-9]{8}"
-              value={phone}
+              value={phone ?? ""}
               onChange={(e) => setPhone(e.target.value.replace(/\D+/g, ""))}
-              className="compact-input"
+              className="auth-input"
               placeholder="99000000"
             />
           </Field>
         </div>
 
-        <label className="flex items-start gap-3 p-3 rounded-lg border border-white/[0.06] bg-white/[0.02] cursor-pointer hover:bg-white/[0.04] max-w-md">
+        <label className="mt-4 flex items-start gap-3 p-3.5 rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel2)] cursor-pointer hover:border-[var(--oc-line2)]">
           <input
             type="checkbox"
             name="isPrimary"
             checked={isPrimary}
             onChange={(e) => setIsPrimary(e.target.checked)}
-            className="mt-0.5 accent-violet-500"
+            className="mt-0.5 accent-[var(--oc-accent)]"
           />
           <div className="flex-1">
-            <div className="text-sm font-medium text-white/90">
+            <div className="text-sm font-medium text-[var(--oc-ink2)]">
               Үндсэн салбар
             </div>
-            <div className="text-xs text-white/40 mt-0.5">
-              Анхдагчаар сонгогддог салбар.
+            <div className="text-xs text-[var(--oc-muted3)] mt-0.5">
+              Захиалга анхдагчаар энэ салбарт хуваарилагдана.
             </div>
           </div>
         </label>
-      </section>
+      </SectionPanel>
 
-      <section className="flex flex-col gap-3 pt-3 border-t border-white/[0.04]">
-        <h2 className="text-xs font-medium text-white/50 uppercase tracking-wider">
-          Хаяг
-        </h2>
-
-        <div className="relative z-30 grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          <AddressSelect
-            data={addressData}
-            value={addr}
-            onChange={setAddr}
-            fieldClassName={FIELD_MW}
-          />
+      <SectionPanel index={2} total={3} title="Хаяг ба байршил">
+        <div className="relative z-30 grid gap-4 sm:grid-cols-2">
+          <AddressSelect data={addressData} value={addr} onChange={(v) => { setDirty(true); setAddr(v); }} />
           <Field
             label="Дэлгэрэнгүй хаяг"
             htmlFor="address"
             hint="Гудамж, тоот"
             error={fe.address}
-            className={FIELD_MW}
           >
             <input
               id="address"
@@ -223,16 +241,21 @@ export function BranchForm({
               type="text"
               value={address}
               onChange={(e) => setAddress(e.target.value)}
-              className="compact-input"
+              className="auth-input"
               placeholder="Энхтайвны өргөн 25, AAA байр"
             />
           </Field>
         </div>
 
-        <div className="flex flex-col gap-2 max-w-3xl">
-          <label className="text-sm font-medium text-white/70">
-            Газрын зураг дээрх байршил
-          </label>
+        <div className="flex flex-col gap-2 mt-4">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium text-[var(--oc-ink2)]">
+              Газрын зураг дээрх байршил
+            </label>
+            <span className="text-xs text-[var(--oc-muted3)]">
+              Зураг дээр дарж тэмдэглэнэ
+            </span>
+          </div>
           <LocationPicker
             latitude={lat}
             longitude={lng}
@@ -247,8 +270,8 @@ export function BranchForm({
           />
         </div>
 
-        <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          <Field label="Latitude" htmlFor="latitude" error={fe.latitude} className={FIELD_MW}>
+        <div className="grid gap-4 sm:grid-cols-2 mt-4">
+          <Field label="Latitude" htmlFor="latitude" error={fe.latitude}>
             <input
               id="latitude"
               name="latitude"
@@ -256,11 +279,11 @@ export function BranchForm({
               inputMode="decimal"
               value={lat ?? ""}
               onChange={(e) => onLatChange(e.target.value)}
-              className={`compact-input ${fe.latitude ? "border-red-500/50" : ""}`}
+              className={`auth-input font-plex-mono ${fe.latitude ? "border-red-500/50" : ""}`}
               placeholder="47.918873"
             />
           </Field>
-          <Field label="Longitude" htmlFor="longitude" error={fe.longitude} className={FIELD_MW}>
+          <Field label="Longitude" htmlFor="longitude" error={fe.longitude}>
             <input
               id="longitude"
               name="longitude"
@@ -268,48 +291,32 @@ export function BranchForm({
               inputMode="decimal"
               value={lng ?? ""}
               onChange={(e) => onLngChange(e.target.value)}
-              className={`compact-input ${fe.longitude ? "border-red-500/50" : ""}`}
+              className={`auth-input font-plex-mono ${fe.longitude ? "border-red-500/50" : ""}`}
               placeholder="106.917698"
             />
           </Field>
         </div>
-      </section>
+      </SectionPanel>
 
-      <section className="flex flex-col gap-3 pt-3 border-t border-white/[0.04]">
-        <h2 className="text-xs font-medium text-white/50 uppercase tracking-wider">
-          Ажиллах хуваарь
-        </h2>
-
-        <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          <Field
-            label="Эхлэх цаг"
-            htmlFor="openTime"
-            hint="30 мин алхам"
-            error={fe.openTime}
-            className={FIELD_MW}
-          >
+      <SectionPanel index={3} total={3} title="Ажиллах хуваарь">
+        <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+          <Field label="Эхлэх цаг" htmlFor="openTime" error={fe.openTime}>
             <Select
               id="openTime"
               name="openTime"
               value={openTime}
-              onChange={setOpenTime}
+              onChange={(v) => { setDirty(true); setOpenTime(v); }}
               error={fe.openTime}
               placeholder="—"
               options={TIME_OPTIONS}
             />
           </Field>
-          <Field
-            label="Дуусах цаг"
-            htmlFor="closeTime"
-            hint="30 мин алхам"
-            error={fe.closeTime}
-            className={FIELD_MW}
-          >
+          <Field label="Дуусах цаг" htmlFor="closeTime" error={fe.closeTime}>
             <Select
               id="closeTime"
               name="closeTime"
               value={closeTime}
-              onChange={setCloseTime}
+              onChange={(v) => { setDirty(true); setCloseTime(v); }}
               error={fe.closeTime}
               placeholder="—"
               options={TIME_OPTIONS}
@@ -318,9 +325,8 @@ export function BranchForm({
           <Field
             label="Цагийн алхам"
             htmlFor="slotMinutes"
-            hint="минут (default 30)"
+            hint="минут"
             error={fe.slotMinutes}
-            className={FIELD_MW}
           >
             <input
               id="slotMinutes"
@@ -330,16 +336,15 @@ export function BranchForm({
               max={480}
               value={slotMinutes}
               onChange={(e) => setSlotMinutes(e.target.value)}
-              className={`compact-input ${fe.slotMinutes ? "border-red-500/50" : ""}`}
+              className={`auth-input font-plex-mono ${fe.slotMinutes ? "border-red-500/50" : ""}`}
               placeholder="30"
             />
           </Field>
           <Field
             label="Зэрэг авах тоо"
             htmlFor="slotCapacity"
-            hint="нэг цагт (default 1)"
+            hint="талбай"
             error={fe.slotCapacity}
-            className={FIELD_MW}
           >
             <input
               id="slotCapacity"
@@ -349,14 +354,14 @@ export function BranchForm({
               max={100}
               value={slotCapacity}
               onChange={(e) => setSlotCapacity(e.target.value)}
-              className={`compact-input ${fe.slotCapacity ? "border-red-500/50" : ""}`}
+              className={`auth-input font-plex-mono ${fe.slotCapacity ? "border-red-500/50" : ""}`}
               placeholder="1"
             />
           </Field>
         </div>
 
-        <div>
-          <label className="text-sm font-medium text-white/70 mb-2 block">
+        <div className="mt-4">
+          <label className="text-sm font-medium text-[var(--oc-ink2)] mb-2 block">
             Ажиллах өдрүүд
           </label>
           <div className="flex flex-wrap gap-2">
@@ -365,10 +370,10 @@ export function BranchForm({
               return (
                 <label
                   key={d.value}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border cursor-pointer transition-colors text-sm ${
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border cursor-pointer transition-colors text-sm font-medium ${
                     active
-                      ? "bg-violet-600/20 text-violet-200 border-violet-500/30 light:bg-violet-100 light:border-violet-300 light:text-violet-700"
-                      : "bg-white/[0.03] text-white/50 border-white/[0.06] hover:bg-white/[0.06]"
+                      ? "bg-[var(--oc-accent)] text-[var(--oc-on-accent)] border-[var(--oc-accent)]"
+                      : "bg-[var(--oc-panel2)] text-[var(--oc-muted)] border-[var(--oc-line)] hover:border-[var(--oc-line2)]"
                   }`}
                 >
                   <input
@@ -379,32 +384,29 @@ export function BranchForm({
                     onChange={() => toggleDay(d.value)}
                     className="sr-only"
                   />
-                  {d.long}
+                  {d.short}
                 </label>
               );
             })}
           </div>
-          <p className="text-xs text-white/50 mt-2">
-            Юу ч сонгохгүй бол анхдагч Даваа–Баасан ашиглагдана.
+          <p className="text-xs text-[var(--oc-muted3)] mt-2">
+            Сонгосон өдрүүдэд онлайн цаг захиалга нээгдэнэ. Юу ч сонгохгүй бол
+            анхдагч Даваа–Баасан ашиглагдана.
           </p>
         </div>
-      </section>
+      </SectionPanel>
 
       {/* Sticky action bar — урт форм scroll хийхэд ч Хадгалах үргэлж харагдана */}
-      <div className="sticky bottom-0 z-10 flex gap-2 pt-3 pb-3 -mb-1 border-t border-white/[0.05] bg-[var(--bg-secondary)]/90 backdrop-blur-md">
-        <Link
-          href="/dashboard/branches"
-          className="bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] transition-all px-5 py-2 rounded-lg font-medium text-sm text-white/60 text-center"
-        >
-          ← Буцах
-        </Link>
-        <button
-          type="submit"
-          disabled={pending}
-          className="bg-violet-600 hover:bg-violet-500 disabled:opacity-60 disabled:cursor-not-allowed transition-all px-6 py-2 rounded-lg font-medium text-sm"
-        >
+      <div className="sticky bottom-0 z-10 flex items-center gap-3 pt-3 pb-3 -mb-1 border-t border-[var(--oc-line2)] bg-[var(--oc-carbon)]/95 backdrop-blur-md">
+        <span className="text-xs text-[var(--oc-muted3)] flex-1">
+          {dirty ? "Хадгалагдаагүй өөрчлөлт байна" : ""}
+        </span>
+        <BtnLink href="/dashboard/branches" variant="ghost">
+          Болих
+        </BtnLink>
+        <Btn type="submit" disabled={pending}>
           {pending ? "..." : isEdit ? "Хадгалах" : "Үүсгэх"}
-        </button>
+        </Btn>
       </div>
     </form>
   );

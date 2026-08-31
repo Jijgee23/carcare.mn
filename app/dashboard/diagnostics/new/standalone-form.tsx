@@ -13,7 +13,8 @@ import {
   createReportAction,
   type ReportActionState,
 } from "@/app/_actions/diagnostic-reports";
-import { Field, FormError, SubmitButton } from "@/app/_components/auth-shell";
+import { Field, FormError } from "@/app/_components/auth-shell";
+import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
 import { customerLabel } from "@/lib/customers";
 import {
   CHECK_TONE_ACCENT,
@@ -113,8 +114,8 @@ export function StandaloneDiagnosticForm({
       <input type="hidden" name="vehicleId" value={vehicleId} />
       <input type="hidden" name="templateId" value={templateId} />
 
-      <section className="glass rounded-2xl p-6 border border-white/[0.08] flex flex-col gap-5">
-        <h2 className="font-semibold">Үндсэн мэдээлэл</h2>
+      <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5 sm:p-6 flex flex-col gap-5">
+        <h2 className="font-semibold text-[var(--oc-ink)]">Үндсэн мэдээлэл</h2>
 
         <Field label="Салбар" htmlFor="branch-select">
           <select
@@ -152,11 +153,11 @@ export function StandaloneDiagnosticForm({
             ))}
           </select>
           {customers.length === 0 ? (
-            <p className="text-xs text-white/40 mt-1">
+            <p className="text-xs text-[var(--oc-muted3)] mt-1">
               Үйлчлүүлэгч алга.{" "}
               <Link
                 href="/dashboard/customers/new"
-                className="text-violet-300 light:text-violet-700"
+                className="text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]"
               >
                 Шинэ нэмэх →
               </Link>
@@ -185,11 +186,11 @@ export function StandaloneDiagnosticForm({
             ))}
           </select>
           {customerId && filteredVehicles.length === 0 ? (
-            <p className="text-xs text-white/40 mt-1">
+            <p className="text-xs text-[var(--oc-muted3)] mt-1">
               Энэ үйлчлүүлэгчид машин алга.{" "}
               <Link
                 href="/dashboard/vehicles/new"
-                className="text-violet-300 light:text-violet-700"
+                className="text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]"
               >
                 Шинэ нэмэх →
               </Link>
@@ -213,11 +214,11 @@ export function StandaloneDiagnosticForm({
             ))}
           </select>
           {templates.length === 0 ? (
-            <p className="text-xs text-white/40 mt-1">
+            <p className="text-xs text-[var(--oc-muted3)] mt-1">
               Идэвхтэй загвар алга.{" "}
               <Link
                 href="/dashboard/services/diagnostics/new"
-                className="text-violet-300 light:text-violet-700"
+                className="text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]"
               >
                 Шинэ үүсгэх →
               </Link>
@@ -252,9 +253,9 @@ export function StandaloneDiagnosticForm({
           {template.schema.sections.map((section) => (
             <section
               key={section.id}
-              className="glass rounded-2xl p-5 sm:p-6 border border-white/[0.08] flex flex-col gap-4"
+              className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5 sm:p-6 flex flex-col gap-4"
             >
-              <h2 className="font-semibold">{section.title}</h2>
+              <h2 className="font-semibold text-[var(--oc-ink)]">{section.title}</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4 items-start">
                 {section.items.map((item) => {
                   const positioned = Boolean(itemPositions(item));
@@ -271,7 +272,7 @@ export function StandaloneDiagnosticForm({
             </section>
           ))}
 
-          <section className="glass rounded-2xl p-5 sm:p-6 border border-white/[0.08]">
+          <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5 sm:p-6">
             <Field
               label="Үйлчлүүлэгчийн гарын үсэг (зураг)"
               htmlFor="signature"
@@ -281,29 +282,24 @@ export function StandaloneDiagnosticForm({
                 name="signature"
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
-                className="block w-full text-sm text-white/60 file:mr-3 file:rounded-lg file:border-0 file:bg-white/[0.08] file:px-3 file:py-2 file:text-sm file:font-medium file:text-white/80 hover:file:bg-white/[0.12] file:cursor-pointer"
+                className="block w-full text-sm text-[var(--oc-muted2)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--oc-panel2)] file:px-3 file:py-2 file:text-sm file:font-medium file:text-[var(--oc-ink2)] hover:file:bg-[var(--oc-line)] file:cursor-pointer"
               />
             </Field>
           </section>
         </>
       ) : (
-        <div className="glass rounded-2xl p-10 text-center text-sm text-white/40 border border-white/[0.06]">
+        <div className="rounded-[10px] bg-[var(--oc-panel)] p-10 text-center text-sm text-[var(--oc-muted3)] border border-[var(--oc-line)]">
           Загвар сонгосны дараа асуултууд харагдана.
         </div>
       )}
 
       <div className="flex gap-3">
-        <Link
-          href="/dashboard/diagnostics/reports"
-          className="flex-1 glass hover:bg-white/[0.08] transition-all py-3 rounded-xl font-semibold text-sm text-white/60 text-center"
-        >
+        <BtnLink href="/dashboard/diagnostics/reports" variant="ghost" className="flex-1">
           ← Цуцлах
-        </Link>
-        <div className="flex-1">
-          <SubmitButton pending={pending || !ready}>
-            Тайлан хадгалах
-          </SubmitButton>
-        </div>
+        </BtnLink>
+        <Btn type="submit" disabled={pending || !ready} className="flex-1">
+          Тайлан хадгалах
+        </Btn>
       </div>
     </form>
   );
@@ -314,7 +310,7 @@ function ItemControl({ item }: { item: TemplateItem }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2 text-sm font-medium text-white/80">
+      <div className="flex items-center gap-2 text-sm font-medium text-[var(--oc-ink2)]">
         <span>{item.label}</span>
         {item.required ? (
           <span className="text-red-400 text-xs light:text-red-600">*</span>
@@ -328,7 +324,7 @@ function ItemControl({ item }: { item: TemplateItem }) {
               key={pos.code}
               className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 flex flex-col gap-2"
             >
-              <div className="text-xs font-medium text-white/55">
+              <div className="text-xs font-medium text-[var(--oc-muted3)]">
                 {pos.label}
               </div>
               <FieldInputs item={item} fieldId={positionedKey(item.id, pos.code)} />
@@ -362,7 +358,7 @@ function FieldInputs({
             return (
               <label
                 key={opt}
-                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06] cursor-pointer hover:bg-white/[0.08] text-sm text-white/70 transition-colors ${CHECK_TONE_CHIP[tone]}`}
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--oc-panel2)] border border-[var(--oc-line)] cursor-pointer hover:bg-white/[0.06] text-sm text-[var(--oc-muted2)] transition-colors ${CHECK_TONE_CHIP[tone]}`}
               >
                 <input
                   type="radio"
@@ -407,11 +403,11 @@ function FieldInputs({
           multiple
           required={item.required}
           onChange={(e) => setPhotoCount(e.target.files?.length ?? 0)}
-          className="block w-full text-sm text-white/60 file:mr-3 file:rounded-lg file:border-0 file:bg-white/[0.08] file:px-3 file:py-2 file:text-sm file:font-medium file:text-white/80 hover:file:bg-white/[0.12] file:cursor-pointer"
+          className="block w-full text-sm text-[var(--oc-muted2)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--oc-panel2)] file:px-3 file:py-2 file:text-sm file:font-medium file:text-[var(--oc-ink2)] hover:file:bg-[var(--oc-line)] file:cursor-pointer"
         />
       ) : null}
       {item.type === "photo" && photoCount > 0 ? (
-        <p className="text-xs text-white/40">{photoCount} зураг сонгогдсон</p>
+        <p className="text-xs text-[var(--oc-muted3)]">{photoCount} зураг сонгогдсон</p>
       ) : null}
 
       {item.type === "signature" ? (
@@ -420,7 +416,7 @@ function FieldInputs({
           type="file"
           accept="image/png,image/jpeg,image/webp"
           required={item.required}
-          className="block w-full text-sm text-white/60 file:mr-3 file:rounded-lg file:border-0 file:bg-white/[0.08] file:px-3 file:py-2 file:text-sm file:font-medium file:text-white/80 hover:file:bg-white/[0.12] file:cursor-pointer"
+          className="block w-full text-sm text-[var(--oc-muted2)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--oc-panel2)] file:px-3 file:py-2 file:text-sm file:font-medium file:text-[var(--oc-ink2)] hover:file:bg-[var(--oc-line)] file:cursor-pointer"
         />
       ) : null}
 

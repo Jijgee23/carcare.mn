@@ -1,6 +1,20 @@
 import Link from "next/link";
-import { AuthShell } from "@/app/_components/auth-shell";
+import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import { TenantAuthShell } from "@/app/_components/tenant-auth-shell";
 import { LoginForm } from "./login-form";
+
+// Ops Console дизайны фонт — зөвхөн энэ хуудсанд scoped (root layout-ийн
+// Geist-г хөндөхгүй), landing/page.tsx-тэй ижил механизм.
+const plexSans = IBM_Plex_Sans({
+  subsets: ["latin", "cyrillic"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-plex-sans",
+});
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin", "cyrillic"],
+  weight: ["400", "500", "600"],
+  variable: "--font-plex-mono",
+});
 
 export const metadata = {
   title: "Нэвтрэх",
@@ -8,22 +22,28 @@ export const metadata = {
 
 export default function LoginPage() {
   return (
-    <AuthShell
-      title="Нэвтрэх"
-      subtitle="Бүртгэлтэй имэйлээ оруулна уу."
-      footer={
-        <>
-          Шинэ байгууллага уу?{" "}
-          <Link
-            href="/page/signup"
-            className="font-medium text-brand-700 underline-offset-4 hover:underline"
-          >
-            Бүртгүүлэх
-          </Link>
-        </>
-      }
-    >
-      <LoginForm />
-    </AuthShell>
+    <div className={`${plexSans.variable} ${plexMono.variable}`}>
+      <TenantAuthShell
+        title="Ажлын консолд нэвтрэх"
+        subtitle="Байгууллагын имэйл хаягаа оруулна уу. Дараагийн алхамд нууц үг эсвэл нэг удаагийн кодоор баталгаажуулна."
+        notice={
+          <>
+            <span className="font-plex-mono text-[11px] uppercase tracking-[0.1em] text-[var(--oc-muted3)] block mb-2">
+              Шинэ байгууллага
+            </span>
+            Засварын газраа системд холбохыг хүсвэл{" "}
+            <Link
+              href="/page/signup"
+              className="font-semibold text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors"
+            >
+              бүртгүүлэх хүсэлт
+            </Link>{" "}
+            илгээнэ үү — 1 хоногт нээгдэнэ.
+          </>
+        }
+      >
+        <LoginForm />
+      </TenantAuthShell>
+    </div>
   );
 }

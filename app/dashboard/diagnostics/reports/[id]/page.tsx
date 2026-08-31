@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { deleteReportAction } from "@/app/_actions/diagnostic-reports";
-import { PageHeader } from "@/app/_components/page-header";
+import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
 import { AdvancedPDFButton } from "./pdf-generator";
 import { requireUser } from "@/lib/auth";
 import { branchScopeId } from "@/lib/auth/roles";
@@ -59,61 +59,71 @@ export default async function ReportDetailPage({
 
   return (
     <div id="print-root" className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
-      <PageHeader
-        title={report.template.name}
-        description={`v${report.templateVersion} · ${report.createdAt.toLocaleString("mn-MN", { hour12: false })}`}
-        actions={
-          <div className="flex items-center gap-2">
-            <span
-              className={`text-xs px-2.5 py-1 rounded-full ${DIAGNOSTIC_TYPE_BADGE[tp]}`}
-            >
-              {DIAGNOSTIC_TYPE_LABEL[tp]}
-            </span>
-            <AdvancedPDFButton
-              report={{
-                reportId: report.id,
-                templateName: report.template.name,
-                templateVersion: report.templateVersion,
-                createdAt: report.createdAt,
-                customerName: customerLabel(report.customer),
-                customerPhone: report.customer.phone,
-                vehicleMake: report.vehicle.make,
-                vehicleModel: report.vehicle.model,
-                vehiclePlate: report.vehicle.plate,
-                vehicleYear: report.vehicle.year ?? undefined,
-                branchName: report.branch.name,
-                filledByName: report.filledBy
-                  ? `${report.filledBy.lastName} ${report.filledBy.firstName}`
-                  : undefined,
-                mileageAtReport: report.mileageAtReport ?? undefined,
-                notes: report.notes ?? undefined,
-                signatureUrl: report.signatureUrl ?? undefined,
-                sections: schema.sections,
-                data,
-              }}
-            />
-          </div>
-        }
-      />
+      <nav className="no-print flex items-center gap-1.5 text-[13px] text-[var(--oc-muted3)] mb-3">
+        <Link href="/dashboard/diagnostics/reports" className="hover:text-[var(--oc-accent-hi)] transition-colors">
+          Оношилгооны тайлангууд
+        </Link>
+        <span>/</span>
+        <span className="text-[var(--oc-muted)]">{report.template.name}</span>
+      </nav>
 
-      <div className="glass rounded-2xl p-5 mb-6 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">{report.template.name}</h1>
+          <p className="text-sm text-[var(--oc-muted3)] mt-1">
+            v{report.templateVersion} · {report.createdAt.toLocaleString("mn-MN", { hour12: false })}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span
+            className={`text-xs px-2.5 py-1 rounded-full ${DIAGNOSTIC_TYPE_BADGE[tp]}`}
+          >
+            {DIAGNOSTIC_TYPE_LABEL[tp]}
+          </span>
+          <AdvancedPDFButton
+            report={{
+              reportId: report.id,
+              templateName: report.template.name,
+              templateVersion: report.templateVersion,
+              createdAt: report.createdAt,
+              customerName: customerLabel(report.customer),
+              customerPhone: report.customer.phone,
+              vehicleMake: report.vehicle.make,
+              vehicleModel: report.vehicle.model,
+              vehiclePlate: report.vehicle.plate,
+              vehicleYear: report.vehicle.year ?? undefined,
+              branchName: report.branch.name,
+              filledByName: report.filledBy
+                ? `${report.filledBy.lastName} ${report.filledBy.firstName}`
+                : undefined,
+              mileageAtReport: report.mileageAtReport ?? undefined,
+              notes: report.notes ?? undefined,
+              signatureUrl: report.signatureUrl ?? undefined,
+              sections: schema.sections,
+              data,
+            }}
+          />
+        </div>
+      </div>
+
+      <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5 mb-6 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
         <Row label="Үйлчлүүлэгч">
           <Link
             href={`/dashboard/customers/${report.customer.id}`}
-            className="text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
+            className="text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]"
           >
             {customerLabel(report.customer)}
           </Link>
-          <div className="text-xs text-white/40">{report.customer.phone}</div>
+          <div className="text-xs text-[var(--oc-muted3)]">{report.customer.phone}</div>
         </Row>
         <Row label="Машин">
           <Link
             href={`/dashboard/vehicles/${report.vehicle.id}`}
-            className="text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
+            className="text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]"
           >
             {report.vehicle.make} {report.vehicle.model}
           </Link>
-          <div className="font-mono text-xs text-white/40">
+          <div className="font-plex-mono text-xs text-[var(--oc-muted3)]">
             {report.vehicle.plate}
             {report.vehicle.year ? ` · ${report.vehicle.year}` : ""}
           </div>
@@ -128,7 +138,7 @@ export default async function ReportDetailPage({
           <Row label="Захиалга">
             <Link
               href={`/dashboard/orders/${report.order.id}`}
-              className="text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
+              className="text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]"
             >
               #{report.order.number}
             </Link>
@@ -141,8 +151,8 @@ export default async function ReportDetailPage({
         ) : null}
         {report.notes ? (
           <div className="sm:col-span-2">
-            <dt className="text-xs text-white/40">Тэмдэглэл</dt>
-            <dd className="text-white/80 whitespace-pre-wrap">
+            <dt className="text-xs text-[var(--oc-muted3)]">Тэмдэглэл</dt>
+            <dd className="text-[var(--oc-ink2)] whitespace-pre-wrap">
               {report.notes}
             </dd>
           </div>
@@ -153,35 +163,29 @@ export default async function ReportDetailPage({
         <ReportAnswers schema={schema} data={data} />
 
         {report.signatureUrl ? (
-          <section className="glass rounded-2xl p-5 border border-white/[0.08]">
-            <h2 className="font-semibold text-sm mb-3">
+          <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5">
+            <h2 className="font-semibold text-[var(--oc-ink)] text-sm mb-3">
               Үйлчлүүлэгчийн гарын үсэг
             </h2>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={report.signatureUrl}
               alt="Гарын үсэг"
-              className="w-64 h-32 object-contain rounded-lg border border-white/[0.06] bg-white/[0.04]"
+              className="w-64 h-32 object-contain rounded-lg border border-[var(--oc-line)] bg-[var(--oc-panel2)]"
             />
           </section>
         ) : null}
       </div>
 
       <div className="no-print flex items-center justify-between mt-6">
-        <Link
-          href="/dashboard/diagnostics/reports"
-          className="text-sm text-white/50 hover:text-white/80"
-        >
+        <BtnLink href="/dashboard/diagnostics/reports" variant="ghost" size="sm">
           ← Жагсаалт руу буцах
-        </Link>
+        </BtnLink>
         <form action={deleteReportAction}>
           <input type="hidden" name="id" value={report.id} />
-          <button
-            type="submit"
-            className="text-xs text-red-400 hover:text-red-300 light:text-red-600 light:hover:text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-500/10"
-          >
+          <Btn type="submit" variant="danger" size="sm">
             Тайланг устгах
-          </button>
+          </Btn>
         </form>
       </div>
     </div>
@@ -191,8 +195,8 @@ export default async function ReportDetailPage({
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <dt className="text-xs text-white/40">{label}</dt>
-      <dd className="text-white/80">{children}</dd>
+      <dt className="text-xs text-[var(--oc-muted3)]">{label}</dt>
+      <dd className="text-[var(--oc-ink2)]">{children}</dd>
     </div>
   );
 }

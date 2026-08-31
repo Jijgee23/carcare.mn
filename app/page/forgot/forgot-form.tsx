@@ -11,7 +11,7 @@ import {
   Field,
   FormError,
   SubmitButton,
-} from "@/app/_components/auth-shell";
+} from "@/app/_components/landing-ops-ui";
 
 export function ForgotPasswordForm() {
   const [requestState, requestAction, requestPending] = useActionState<
@@ -33,12 +33,12 @@ export function ForgotPasswordForm() {
   if (finished) {
     return (
       <div className="flex flex-col gap-4 text-center">
-        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-3 text-sm text-emerald-300 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700">
+        <div className="bg-[var(--oc-ok)]/10 border border-[var(--oc-ok)]/25 rounded-[10px] px-4 py-3 text-sm text-[var(--oc-ink2)]">
           {resetState?.message ?? "Нууц үг шинэчлэгдлээ."}
         </div>
         <Link
           href="/page/login"
-          className="text-sm font-medium text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
+          className="text-sm font-medium text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors"
         >
           Нэвтрэх хуудас руу буцах →
         </Link>
@@ -123,7 +123,7 @@ function VerifyStep({
     <form action={formAction} className="flex flex-col gap-5" noValidate>
       <input type="hidden" name="email" value={email} />
 
-      <div className="bg-violet-500/10 border border-violet-500/25 rounded-xl px-4 py-3 text-sm text-violet-200 light:bg-violet-100 light:border-violet-300 light:text-violet-700">
+      <div className="bg-[var(--oc-accent)]/10 border border-[var(--oc-accent)]/25 rounded-[10px] px-4 py-3 text-sm text-[var(--oc-ink2)]">
         {requestSuccessMessage ??
           `Утас ${maskedPhone} руу 6 оронтой код илгээлээ.`}
       </div>
@@ -150,7 +150,7 @@ function VerifyStep({
           autoFocus
           value={code}
           onChange={(e) => setCode(e.target.value.replace(/\D+/g, ""))}
-          className={`auth-input tracking-[0.5em] text-center font-mono ${fe.code ? "border-red-500/50" : ""}`}
+          className={`auth-input font-plex-mono tracking-[0.5em] text-center ${fe.code ? "border-red-500/50" : ""}`}
           placeholder="••••••"
         />
       </Field>
@@ -177,7 +177,7 @@ function VerifyStep({
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors text-xs"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--oc-muted3)] hover:text-[var(--oc-muted)] transition-colors text-xs"
           >
             {showPassword ? "Нуух" : "Харах"}
           </button>

@@ -1,0 +1,98 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;700;900&amp;family=Space+Mono:wght@400;700&amp;display=swap" rel="stylesheet">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    a { color: #141414; }
+    a:hover { color: #7c5cff; }
+  </style>
+</helmet>
+
+<div style="width:810px;height:1440px;background:#faf8f4;position:relative;overflow:hidden;padding:40px;display:flex;flex-direction:column;font-family:'Space Mono','Courier New',monospace;">
+
+  <div style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:16px;border-bottom:1px solid #141414;">
+    <span style="font-size:12px;letter-spacing:0.28em;text-transform:uppercase;color:#141414;">Audiovisual Experience</span>
+    <span style="font-size:12px;letter-spacing:0.18em;color:#141414;">N&#176;01</span>
+  </div>
+
+  <div style="position:relative;z-index:2;padding:26px 0 0;">
+    <h1 style="margin:0;font-family:'Unbounded',sans-serif;font-weight:900;font-size:92px;line-height:0.9;letter-spacing:-0.02em;color:#141414;">
+      SYNTH<br>
+      <span style="-webkit-text-stroke:2px #141414;color:transparent;">WAVE</span>
+    </h1>
+    <p style="margin:14px 0 0;font-size:13px;letter-spacing:0.03em;line-height:1.5;color:#4a4a4a;max-width:460px;">
+      A synthetic wave of sound, light, and liquid motion.
+    </p>
+  </div>
+
+  <div style="flex:1;position:relative;z-index:1;margin-top:-30px;border:1px solid #141414;border-radius:4px;overflow:hidden;background:linear-gradient(155deg,#ffe4c9 0%,#f6bcd6 26%,#cbaaff 52%,#ff8f5c 78%,#ffcf9e 100%);">
+    <svg viewBox="0 0 500 700" preserveAspectRatio="xMidYMid slice" style="position:absolute;inset:0;width:100%;height:100%;display:block;">
+      <defs>
+        <linearGradient id="chromeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#ffe3c4"/>
+          <stop offset="28%" stop-color="#ffab8e"/>
+          <stop offset="55%" stop-color="#c6a4ff"/>
+          <stop offset="80%" stop-color="#ff5f36"/>
+          <stop offset="100%" stop-color="#ffc48a"/>
+        </linearGradient>
+        <radialGradient id="specGrad" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+          <stop offset="60%" stop-color="#ffffff" stop-opacity="0.22"/>
+          <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="shadowGrad" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#0a0714" stop-opacity="0.6"/>
+          <stop offset="100%" stop-color="#0a0714" stop-opacity="0"/>
+        </radialGradient>
+        <filter id="softBlur" x="-60%" y="-60%" width="220%" height="220%">
+          <feGaussianBlur stdDeviation="16"/>
+        </filter>
+        <filter id="grainFilter" x="0" y="0" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" stitchTiles="stitch" result="noise"/>
+          <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.06 0"/>
+        </filter>
+      </defs>
+
+      <ellipse cx="250" cy="640" rx="190" ry="50" fill="#000000" opacity="0.16" filter="url(#softBlur)"/>
+
+      <path d="M170,90 C260,40 370,70 410,160 C450,250 430,340 440,430 C450,530 400,610 320,650 C240,690 140,660 100,580 C60,500 70,410 50,330 C30,250 60,150 170,90 Z" fill="url(#chromeGrad)"/>
+
+      <ellipse cx="360" cy="480" rx="120" ry="160" fill="url(#shadowGrad)" style="mix-blend-mode:multiply" filter="url(#softBlur)"/>
+
+      <ellipse cx="175" cy="180" rx="95" ry="80" fill="url(#specGrad)" style="mix-blend-mode:screen" filter="url(#softBlur)"/>
+
+      <path d="M150,110 C210,70 300,75 360,120" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.55" filter="url(#softBlur)"/>
+
+      <circle cx="410" cy="560" r="34" fill="url(#chromeGrad)"/>
+      <ellipse cx="398" cy="548" rx="12" ry="9" fill="#ffffff" opacity="0.7" style="mix-blend-mode:screen"/>
+
+      <circle cx="90" cy="230" r="20" fill="url(#chromeGrad)"/>
+      <ellipse cx="84" cy="224" rx="7" ry="5" fill="#ffffff" opacity="0.7" style="mix-blend-mode:screen"/>
+
+      <rect x="0" y="0" width="500" height="700" filter="url(#grainFilter)" style="mix-blend-mode:overlay"/>
+    </svg>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;padding-top:20px;margin-top:20px;border-top:1px solid #141414;">
+    <div style="display:flex;gap:26px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#141414;">
+      <span>[DATE]</span>
+      <span>[VENUE]</span>
+      <span>[CITY]</span>
+    </div>
+    <span style="font-size:12px;letter-spacing:0.08em;color:#141414;">RSVP &#8594; [LINK]</span>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

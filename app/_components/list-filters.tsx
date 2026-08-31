@@ -204,9 +204,9 @@ export function FilterSelect({
           gap: "0.5rem",
           padding: "0.375rem 0.75rem",
           borderRadius: "0.5rem",
-          border: `1px solid ${hasValue ? "rgba(139, 107, 255, 0.45)" : "var(--input-border)"}`,
+          border: `1px solid ${hasValue ? "var(--filter-active-border, rgba(139, 107, 255, 0.45))" : "var(--input-border)"}`,
           background: hasValue
-            ? "rgba(108, 71, 255, 0.18)"
+            ? "var(--filter-active-bg, rgba(108, 71, 255, 0.18))"
             : "var(--input-bg)",
           color: hasValue ? "var(--accent-strong)" : "var(--input-fg)",
           fontSize: "0.875rem",
@@ -360,7 +360,7 @@ function DropdownOption({
         textAlign: "left",
         fontSize: "0.875rem",
         background: active
-          ? "rgba(139, 107, 255, 0.18)"
+          ? "var(--select-option-active-bg, rgba(139, 107, 255, 0.18))"
           : hover
             ? "var(--hover-bg)"
             : "transparent",

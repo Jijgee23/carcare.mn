@@ -1,8 +1,12 @@
 # Ubuntu server дээр deploy хийх
 
 Vercel биш, өөрийн Ubuntu (22.04/24.04) server дээр байршуулах заавар.
-Бүтэц: **Node (next start)** ← **Nginx (reverse proxy + HTTPS)** ← интернет.
-Cron-ийг **systemd timer / crontab**-аар (vercel.json энд ажиллахгүй).
+Бүтэц: **Node (next start, PM2-оор)** ← **Nginx (reverse proxy + HTTPS)** ← интернет.
+Cron-ийг **crontab**-аар (vercel.json энд ажиллахгүй).
+
+> Энэ заавар нь **прод серверийн бодит тохиргоотой таарсан**: апп `ubuntu`
+> хэрэглэгчийн дор `/home/ubuntu/carcare.mn`-д, PM2-оор `carcare` нэртэй,
+> порт **3020**-д ажиллаж байна.
 
 ---
 
@@ -10,11 +14,13 @@ Cron-ийг **systemd timer / crontab**-аар (vercel.json энд ажилла�
 
 ```bash
 sudo apt update && sudo apt -y upgrade
-# Node 20 LTS
+# Node 20 LTS (прод дээр v22, nvm-ээр)
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt install -y nodejs git nginx
 # PostgreSQL (ижил серверт ажиллуулах бол; managed DB бол алгасна)
 sudo apt install -y postgresql
+# PM2 (процесс менежер)
+sudo npm install -g pm2
 ```
 
 PostgreSQL DB + хэрэглэгч:
@@ -28,15 +34,14 @@ sudo -u postgres psql -c "CREATE DATABASE \"carcare.mn\" OWNER carcare;"
 ## 2. Код + env
 
 ```bash
-sudo mkdir -p /var/www && cd /var/www
-sudo git clone <repo-url> carcare && cd carcare
-sudo chown -R $USER:$USER /var/www/carcare
+mkdir -p /home/ubuntu/carcare.mn
+git clone <repo-url> /home/ubuntu/carcare.mn
+cd /home/ubuntu/carcare.mn
 ```
 
 `.env` (repo root, gitignore-д орсон). Заавал тохируулах:
 ```ini
 NODE_ENV=production
-PORT=3000
 DATABASE_URL="postgresql://carcare:ХҮЧТЭЙ_НУУЦ@localhost:5432/carcare.mn?schema=public"
 SESSION_SECRET="32+ тэмдэгт санамсаргүй"
 CRON_SECRET="санамсаргүй секрет"
@@ -47,8 +52,9 @@ HUR_URL="https://hur.api.macs.mn/"
 HUR_USERNAME="..." 
 HUR_PASSWORD="..."
 HUR_CODE="..."
+UPLOAD_DIR=/var/www/carcare-uploads
 # Firebase admin (push) — JSON файлыг серверт тавиад замыг заана (git-д орохгүй):
-FIREBASE_SERVICE_ACCOUNT_FILE="/var/www/carcare/secrets/firebase-adminsdk.json"
+FIREBASE_SERVICE_ACCOUNT_FILE="/home/ubuntu/carcare.mn/secrets/firebase-adminsdk.json"
 # Firebase web (push авах) — NEXT_PUBLIC_* нь BUILD үед шигтгэгддэг тул build-ээс өмнө байх ёстой:
 NEXT_PUBLIC_FIREBASE_API_KEY="..."
 NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="carcare-bf796.firebaseapp.com"
@@ -60,13 +66,20 @@ NEXT_PUBLIC_FIREBASE_VAPID_KEY="..."
 
 > ⚠️ `NEXT_PUBLIC_*` нь `npm run build` үед код руу шигтгэгддэг. Утгаа өөрчилбөл
 > **дахин build** хийнэ.
+>
+> ⚠️ **`PORT`-г `.env`-д бичсэнээр хангалтгүй.** Next.js-ийн CLI (`next start`)
+> HTTP server-ээ асаахдаа `.env` файлыг **уншихаас өмнө** порт сонголтоо
+> тодорхойлдог тул `.env`-ийн `PORT=...` утга үл хэрэгсэгдэнэ (зөвхөн
+> жинхэнэ process/shell env variable, эсвэл `-p` флаг л ажиллана). Тиймээс
+> порт тохиргоог доор `ecosystem.config.js`-ийн `env`-ээр өгнө, `.env`-д
+> `PORT` бичихгүй.
 
 Firebase admin JSON-г серверт хуулна (git-д биш):
 ```bash
-mkdir -p /var/www/carcare/secrets
+mkdir -p /home/ubuntu/carcare.mn/secrets
 # scp-ээр локалоосоо хуулна:
-# scp carcare-bf796-firebase-adminsdk-...json user@server:/var/www/carcare/secrets/firebase-adminsdk.json
-chmod 600 /var/www/carcare/secrets/firebase-adminsdk.json
+# scp carcare-bf796-firebase-adminsdk-...json ubuntu@server:/home/ubuntu/carcare.mn/secrets/firebase-adminsdk.json
+chmod 600 /home/ubuntu/carcare.mn/secrets/firebase-adminsdk.json
 ```
 
 ---
@@ -74,7 +87,7 @@ chmod 600 /var/www/carcare/secrets/firebase-adminsdk.json
 ## 3. Build + migration
 
 ```bash
-cd /var/www/carcare
+cd /home/ubuntu/carcare.mn
 npm ci
 npx prisma migrate deploy      # бүх migration-ийг прод DB-д хэрэглэнэ
 npm run build                  # next build (NEXT_PUBLIC_* шигтгэгдэнэ)
@@ -82,50 +95,50 @@ npm run build                  # next build (NEXT_PUBLIC_* шигтгэгдэн�
 
 Upload (лого, diagnostics зураг) хадгалах хавтас — **persistent, project-ийн гадна**:
 ```bash
-mkdir -p /var/lib/carcare-uploads
-chown ubuntu:ubuntu /var/lib/carcare-uploads
+sudo mkdir -p /var/www/carcare-uploads
+sudo chown ubuntu:ubuntu /var/www/carcare-uploads
 ```
-`.env`-д зааж өг:
-```
-UPLOAD_DIR=/var/lib/carcare-uploads
-```
+`.env`-д (дээр section 2-т нэмсэн) `UPLOAD_DIR=/var/www/carcare-uploads` байх ёстой.
 > `lib/storage.ts` бичих үедээ `UPLOAD_DIR`-г хэрэглэнэ (тохируулаагүй бол dev-ийн
-> адил `public/uploads`). **`public/uploads`-г `/var/lib/carcare-uploads`-руу
+> адил `public/uploads`). **`public/uploads`-г `/var/www/carcare-uploads`-руу
 > symlink хийж болохгүй** — Turbopack build нь project root-оос гадагш чиглэсэн
 > symlink-г зөвшөөрдөггүй бөгөөд `next build` panic-аар унана
 > (`Symlink ... is invalid, it points out of the filesystem root`).
-> Nginx `location /uploads/`-аар статик файлуудыг шууд `alias /var/lib/carcare-uploads/`-аас
+> Nginx `location /uploads/`-аар статик файлуудыг шууд `alias /var/www/carcare-uploads/`-аас
 > түгээнэ (доор харна уу).
 
 ---
 
-## 4. systemd service (процесс барих, дахин асаах)
+## 4. PM2 (процесс барих, дахин асаах)
 
-`/etc/systemd/system/carcare.service`:
-```ini
-[Unit]
-Description=carcare.mn (Next.js)
-After=network.target postgresql.service
-
-[Service]
-Type=simple
-User=www-data
-WorkingDirectory=/var/www/carcare
-EnvironmentFile=/var/www/carcare/.env
-ExecStart=/usr/bin/npm run start
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
+`/home/ubuntu/carcare.mn/ecosystem.config.js`:
+```js
+module.exports = {
+  apps: [
+    {
+      name: "carcare",
+      script: "npm",
+      args: "run start",
+      cwd: "/home/ubuntu/carcare.mn",
+      env: {
+        NODE_ENV: "production",
+        PORT: 3020,
+      },
+    },
+  ],
+};
 ```
 ```bash
-sudo chown -R www-data:www-data /var/www/carcare
-sudo systemctl daemon-reload
-sudo systemctl enable --now carcare
-sudo systemctl status carcare      # ажиллаж буйг шалга
+cd /home/ubuntu/carcare.mn
+pm2 start ecosystem.config.js
+pm2 save                            # одоогийн процесс жагсаалтыг хадгална
+pm2 startup systemd -u ubuntu --hp /home/ubuntu   # энэ команд өгөх sudo мөрийг ажиллуулна — reboot-той хамт асахын тулд
+pm2 status                          # ажиллаж буйг шалга
+pm2 logs carcare                    # лог харах
 ```
-(`npm run start` = `next start`, `.env`-ийн `PORT=3000`-аар сонсоно.)
+(`ecosystem.config.js`-ийн `env.PORT` нь `.env`-ийн бусад утгаас ялгаатай —
+`DATABASE_URL`, `SESSION_SECRET` гэх мэт бусад бүх утга `.env`-ээс runtime-д
+уншигдана, зөвхөн `PORT` л энд заавал байх ёстой.)
 
 ---
 
@@ -138,11 +151,11 @@ server {
     client_max_body_size 5m;             # 4mb upload-д зориулж
 
     location /uploads/ {
-        alias /var/lib/carcare-uploads/;   # UPLOAD_DIR-тэй адил зам
+        alias /var/www/carcare-uploads/;   # UPLOAD_DIR-тэй адил зам
     }
 
     location / {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:3020;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -167,7 +180,7 @@ sudo certbot --nginx -d carcare.mn -d www.carcare.mn
 
 ## 6. Cron (systemcron — vercel.json энд ажиллахгүй)
 
-`sudo crontab -e`:
+`crontab -e` (`ubuntu` хэрэглэгчээр, sudo хэрэггүй):
 ```cron
 # Захиалгын сануулга — цаг тутам
 0 * * * * curl -fsS -H "Authorization: Bearer ШИНИЙ_CRON_SECRET" https://carcare.mn/api/cron/appointment-reminders > /dev/null 2>&1
@@ -185,29 +198,29 @@ sudo certbot --nginx -d carcare.mn -d www.carcare.mn
 ## 7. Шинэчлэх (re-deploy)
 
 ```bash
-cd /var/www/carcare
+cd /home/ubuntu/carcare.mn
 git pull
 npm ci
 npx prisma migrate deploy
 npm run build
-sudo systemctl restart carcare
+pm2 restart carcare
 ```
 
 ---
 
 ## Шалгах жагсаалт
-- [ ] `.env` бүх шаардлагатай утгатай (дээрх)
+- [ ] `.env` бүх шаардлагатай утгатай (дээрх), `PORT` **биш** (`ecosystem.config.js`-д)
 - [ ] `prisma migrate deploy` амжилттай
-- [ ] `systemctl status carcare` → active (running)
+- [ ] `pm2 status` → `carcare` online, `pm2 save` хийгдсэн, `pm2 startup` тохирсон
 - [ ] HTTPS (certbot) тохирсон — web push, secure cookie ажиллана
 - [ ] crontab 4 мөр нэмсэн, CRON_SECRET таарсан
-- [ ] `UPLOAD_DIR` зам үүсгэгдсэн, бичигдэх эрхтэй + persistent (`public/uploads`-руу symlink БИШ)
+- [ ] `UPLOAD_DIR=/var/www/carcare-uploads` зам үүсгэгдсэн, `ubuntu` хэрэглэгч бичиж чадна, persistent (`public/uploads`-руу symlink БИШ)
 - [ ] Firebase JSON серверт (git-д биш), `FIREBASE_SERVICE_ACCOUNT_FILE` зөв зам
 - [ ] PostgreSQL backup (pg_dump cron) тохируулсан
 
 ## Ubuntu дээр өөрчлөгдөх зүйл (Vercel-тэй харьцуулахад)
 - ✅ **Лого upload ажиллана** (persistent диск) — Vercel дээр ажиллахгүй байсан.
 - ⚙️ Cron нь **vercel.json биш crontab**-аар.
-- ⚙️ Process/SSL/proxy-г өөрөө барина (systemd + Nginx + certbot).
+- ⚙️ Process/SSL/proxy-г өөрөө барина (PM2 + Nginx + certbot).
 - ⚠️ `lib/sms.ts`-д hardcoded API key fallback — env-ээр дарж бичих/устгахыг зөвлөж байна.
 - ℹ️ Нэг серверийн in-memory rate-limit зүгээр ажиллана (Vercel-ийн олон instance асуудал энд байхгүй).

@@ -6,6 +6,7 @@ import {
   updateTenantAction,
 } from "@/app/_actions/tenant";
 import { Field, FormError } from "@/app/_components/auth-shell";
+import { Btn } from "@/app/_components/landing-ops-ui";
 
 type Initial = {
   name: string;
@@ -29,7 +30,7 @@ export function TenantForm({ initial }: { initial: Initial }) {
   return (
     <form action={formAction} className="flex flex-col gap-4" noValidate>
       {state?.ok && state.message ? (
-        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 text-sm text-emerald-300 light:text-emerald-700">
+        <div className="bg-[var(--oc-ok)]/10 border border-[var(--oc-ok)]/25 rounded-lg px-3 py-2 text-sm text-[var(--oc-ok)]">
           {state.message}
         </div>
       ) : null}
@@ -45,7 +46,7 @@ export function TenantForm({ initial }: { initial: Initial }) {
             type="text"
             required
             defaultValue={initial.name}
-            className={`compact-input ${fe.name ? "border-red-500/50" : ""}`}
+            className={`auth-input ${fe.name ? "border-red-500/50" : ""}`}
           />
         </Field>
         <Field
@@ -64,7 +65,7 @@ export function TenantForm({ initial }: { initial: Initial }) {
             maxLength={7}
             required
             defaultValue={initial.registerNumber}
-            className={`compact-input ${fe.registerNumber ? "border-red-500/50" : ""}`}
+            className={`auth-input font-plex-mono ${fe.registerNumber ? "border-red-500/50" : ""}`}
           />
         </Field>
         <Field label="Имэйл" htmlFor="email" error={fe.email} className={FIELD_MW}>
@@ -74,7 +75,7 @@ export function TenantForm({ initial }: { initial: Initial }) {
             type="email"
             required
             defaultValue={initial.email}
-            className={`compact-input ${fe.email ? "border-red-500/50" : ""}`}
+            className={`auth-input ${fe.email ? "border-red-500/50" : ""}`}
           />
         </Field>
         <Field label="Утас 1" htmlFor="phone1" error={fe.phone1} className={FIELD_MW}>
@@ -87,7 +88,7 @@ export function TenantForm({ initial }: { initial: Initial }) {
             pattern="[0-9]{8}"
             required
             defaultValue={initial.phone1}
-            className={`compact-input ${fe.phone1 ? "border-red-500/50" : ""}`}
+            className={`auth-input font-plex-mono ${fe.phone1 ? "border-red-500/50" : ""}`}
           />
         </Field>
         <Field
@@ -105,23 +106,23 @@ export function TenantForm({ initial }: { initial: Initial }) {
             maxLength={8}
             pattern="[0-9]{8}"
             defaultValue={initial.phone2 ?? ""}
-            className="compact-input"
+            className="auth-input font-plex-mono"
           />
         </Field>
       </div>
 
-      <label className="flex items-start gap-3 p-3 rounded-lg border border-white/[0.06] bg-white/[0.02] cursor-pointer hover:bg-white/[0.04] max-w-md">
+      <label className="flex items-start gap-3 p-3.5 rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel2)] cursor-pointer hover:border-[var(--oc-line2)] max-w-md">
         <input
           type="checkbox"
           name="acceptsOnlineBooking"
           defaultChecked={initial.acceptsOnlineBooking}
-          className="mt-0.5 h-4 w-4 accent-violet-500"
+          className="mt-0.5 h-4 w-4 accent-[var(--oc-accent)]"
         />
         <span className="flex flex-col gap-0.5">
-          <span className="text-sm font-medium text-white/80">
+          <span className="text-sm font-medium text-[var(--oc-ink2)]">
             Онлайн цаг захиалга хүлээн авах
           </span>
-          <span className="text-xs text-white/40">
+          <span className="text-xs text-[var(--oc-muted3)]">
             Идэвхжүүлбэл байгууллага хэрэглэгчийн вэб дэх каталог
             (/discover)-т харагдаж, үйлчлүүлэгчид онлайнаар цаг захиална.
           </span>
@@ -129,13 +130,9 @@ export function TenantForm({ initial }: { initial: Initial }) {
       </label>
 
       <div className="flex pt-2">
-        <button
-          type="submit"
-          disabled={pending}
-          className="bg-violet-600 hover:bg-violet-500 disabled:opacity-60 disabled:cursor-not-allowed transition-all px-6 py-2 rounded-lg font-medium text-sm"
-        >
+        <Btn type="submit" disabled={pending}>
           {pending ? "..." : "Хадгалах"}
-        </button>
+        </Btn>
       </div>
     </form>
   );

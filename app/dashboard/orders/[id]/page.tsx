@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { deleteOrderAction } from "@/app/_actions/orders";
-import { PageHeader } from "@/app/_components/page-header";
+import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
 import { requireUser } from "@/lib/auth";
 import {
   ORDER_ASSIGNABLE_WHERE,
@@ -199,57 +199,66 @@ export default async function OrderDetailPage({
 
   return (
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
-      <PageHeader
-        title={`Захиалга #${order.number}`}
-        description={`${customerLabel(order.customer)} · ${order.vehicle.plate}`}
-        actions={
-          <div className="flex items-center gap-2">
-            {order.isPostpaid ? (
-              <span
-                className={`text-xs px-3 py-1.5 rounded-full ${POSTPAID_BADGE}`}
-              >
-                {POSTPAID_LABEL}
-              </span>
-            ) : null}
+      <nav className="flex items-center gap-1.5 text-[13px] text-[var(--oc-muted3)] mb-3">
+        <Link href="/dashboard/orders" className="hover:text-[var(--oc-accent-hi)] transition-colors">
+          Захиалгууд
+        </Link>
+        <span>/</span>
+        <span className="text-[var(--oc-muted)]">#{order.number}</span>
+      </nav>
+
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">
+            Захиалга #{order.number}
+          </h1>
+          <p className="text-sm text-[var(--oc-muted3)] mt-1">
+            {customerLabel(order.customer)} · {order.vehicle.plate}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {order.isPostpaid ? (
             <span
-              className={`text-xs px-3 py-1.5 rounded-full ${PAYMENT_STATUS_BADGE[paymentStatus]}`}
+              className={`font-plex-mono text-[11px] px-3 py-1.5 rounded-full ${POSTPAID_BADGE}`}
             >
-              {PAYMENT_STATUS_LABEL[paymentStatus]}
+              {POSTPAID_LABEL}
             </span>
-            <span
-              className={`text-xs px-3 py-1.5 rounded-full ${ORDER_STATUS_BADGE[status]}`}
-            >
-              {ORDER_STATUS_LABEL[status]}
-            </span>
-          </div>
-        }
-      />
+          ) : null}
+          <span
+            className={`font-plex-mono text-[11px] px-3 py-1.5 rounded-full ${PAYMENT_STATUS_BADGE[paymentStatus]}`}
+          >
+            {PAYMENT_STATUS_LABEL[paymentStatus]}
+          </span>
+          <span
+            className={`font-plex-mono text-[11px] px-3 py-1.5 rounded-full ${ORDER_STATUS_BADGE[status]}`}
+          >
+            {ORDER_STATUS_LABEL[status]}
+          </span>
+        </div>
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 flex flex-col gap-6">
-          <section className="glass rounded-xl relative z-10">
-            <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-white/[0.06]">
+          <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] relative z-10">
+            <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-[var(--oc-line)]">
               <div>
-                <h2 className="font-semibold">Үйлчилгээ</h2>
-                <p className="text-xs text-white/40 mt-0.5">
+                <h2 className="font-semibold text-[var(--oc-ink)]">Үйлчилгээ</h2>
+                <p className="text-xs text-[var(--oc-muted3)] mt-0.5">
                   {order.items.length} үйлчилгээ · {reports.length}/
                   {plannedDiagnostics.length + reports.length} оношилгоо · нийт{" "}
-                  <strong className="text-white">
+                  <strong className="font-plex-mono text-[var(--oc-ink)]">
                     {formatTugrik(order.totalAmount?.toString() ?? "0")}
                   </strong>
                 </p>
               </div>
               {diagnosticsFillable && activeTemplateCount > 0 ? (
-                <Link
-                  href={`/dashboard/orders/${order.id}/diagnostics/new`}
-                  className="shrink-0 text-xs bg-violet-600 hover:bg-violet-500 transition-colors px-3 py-1.5 rounded-lg font-medium"
-                >
+                <BtnLink href={`/dashboard/orders/${order.id}/diagnostics/new`} size="sm" className="shrink-0">
                   + Шинэ оношилгоо
-                </Link>
+                </BtnLink>
               ) : activeTemplateCount === 0 && canEditOrder ? (
                 <Link
                   href="/dashboard/services/diagnostics/new"
-                  className="shrink-0 text-xs text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
+                  className="shrink-0 text-xs text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]"
                 >
                   Загвар үүсгэх →
                 </Link>
@@ -257,7 +266,7 @@ export default async function OrderDetailPage({
             </div>
 
             {order.items.length === 0 ? (
-              <div className="px-5 py-10 text-center text-sm text-white/40">
+              <div className="px-5 py-10 text-center text-sm text-[var(--oc-muted3)]">
                 Үйлчилгээ нэмэгдээгүй байна. Доороос нэмнэ үү.
               </div>
             ) : (
@@ -276,11 +285,11 @@ export default async function OrderDetailPage({
 
             {/* Оношилгооны хуудас — товлосон (Бөглөх) ба бөглөгдсөн тайлан */}
             {plannedDiagnostics.length > 0 || reports.length > 0 ? (
-              <div className="border-t border-white/[0.06]">
-                <div className="px-5 py-2 text-[11px] font-medium uppercase tracking-wide text-white/35 bg-white/[0.02]">
+              <div className="border-t border-[var(--oc-line)]">
+                <div className="px-5 py-2 font-plex-mono text-[10.5px] font-medium uppercase tracking-[0.08em] text-[var(--oc-muted3)] bg-[var(--oc-panel2)]">
                   Оношилгооны хуудас
                 </div>
-                <div className="divide-y divide-white/[0.04]">
+                <div className="divide-y divide-[var(--oc-line)]">
                   {plannedDiagnostics.map((p) => {
                     const tp = p.template.type as DiagnosticType;
                     return (
@@ -295,23 +304,24 @@ export default async function OrderDetailPage({
                             {DIAGNOSTIC_TYPE_LABEL[tp]}
                           </span>
                           <div>
-                            <div className="text-sm text-white/90">
+                            <div className="text-sm text-[var(--oc-ink)]">
                               {p.template.name}
                             </div>
-                            <div className="text-xs text-amber-300/70 light:text-amber-700">
+                            <div className="text-xs text-amber-400/80 light:text-amber-700">
                               Бөглөгдөөгүй
                             </div>
                           </div>
                         </div>
                         {diagnosticsFillable ? (
-                          <Link
+                          <BtnLink
                             href={`/dashboard/orders/${order.id}/diagnostics/new?templateId=${p.template.id}`}
-                            className="shrink-0 text-xs bg-violet-600 hover:bg-violet-500 transition-colors px-3 py-1.5 rounded-lg font-medium"
+                            size="sm"
+                            className="shrink-0"
                           >
                             Бөглөх
-                          </Link>
+                          </BtnLink>
                         ) : (
-                          <span className="shrink-0 text-[11px] text-white/30">
+                          <span className="shrink-0 text-[11px] text-[var(--oc-muted4)]">
                             {status === "SCHEDULED"
                               ? "Захиалга эхэлсний дараа"
                               : "—"}
@@ -335,10 +345,10 @@ export default async function OrderDetailPage({
                             {DIAGNOSTIC_TYPE_LABEL[tp]}
                           </span>
                           <div>
-                            <div className="text-sm text-white/90">
+                            <div className="text-sm text-[var(--oc-ink)]">
                               {r.template.name}
                             </div>
-                            <div className="text-xs text-white/40">
+                            <div className="text-xs text-[var(--oc-muted3)]">
                               {r.filledBy
                                 ? `${r.filledBy.lastName} ${r.filledBy.firstName}`
                                 : "—"}{" "}
@@ -346,7 +356,7 @@ export default async function OrderDetailPage({
                             </div>
                           </div>
                         </div>
-                        <span className="shrink-0 text-xs text-violet-300 light:text-violet-700">
+                        <span className="shrink-0 text-xs text-[var(--oc-accent)]">
                           Үзэх →
                         </span>
                       </Link>
@@ -357,7 +367,7 @@ export default async function OrderDetailPage({
             ) : null}
 
             {isEditable && canEditOrder ? (
-              <div className="px-5 py-4 border-t border-white/[0.06] bg-white/[0.02]">
+              <div className="px-5 py-4 border-t border-[var(--oc-line)] bg-[var(--oc-panel2)]">
                 <AddItemForm
                   orderId={order.id}
                   services={services.map((s) => ({
@@ -383,8 +393,8 @@ export default async function OrderDetailPage({
           </section>
 
           {isEditable && canEditOrder ? (
-            <section className="glass rounded-xl p-4 sm:p-5 border border-white/[0.08]">
-              <h2 className="font-semibold mb-5">Захиалгын мэдээлэл</h2>
+            <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-4 sm:p-5">
+              <h2 className="font-semibold text-[var(--oc-ink)] mb-5">Захиалгын мэдээлэл</h2>
               <OrderForm
                 initial={{
                   id: order.id,
@@ -418,8 +428,8 @@ export default async function OrderDetailPage({
           {/* Эцсийн төлөвт карт харуулахгүй — статус нь дээд badge-д аль
               хэдийн байгаа тул давхардана */}
           {allowedTransitions.length > 0 ? (
-            <div className="glass rounded-xl p-5">
-              <h2 className="font-semibold mb-4 text-sm">Статус</h2>
+            <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5">
+              <h2 className="font-semibold text-[var(--oc-ink)] mb-4 text-sm">Статус</h2>
               <StatusControls
                 orderId={order.id}
                 transitions={allowedTransitions}
@@ -428,25 +438,25 @@ export default async function OrderDetailPage({
             </div>
           ) : null}
 
-          <div className="glass rounded-xl p-5">
+          <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="font-semibold text-sm">Төлбөр</h2>
+              <h2 className="font-semibold text-[var(--oc-ink)] text-sm">Төлбөр</h2>
               <span
-                className={`text-xs px-2.5 py-1 rounded-full ${PAYMENT_STATUS_BADGE[paymentStatus]}`}
+                className={`font-plex-mono text-[11px] px-2.5 py-1 rounded-full ${PAYMENT_STATUS_BADGE[paymentStatus]}`}
               >
                 {PAYMENT_STATUS_LABEL[paymentStatus]}
               </span>
             </div>
             <dl className="space-y-2 text-sm mb-4">
               <div className="flex items-center justify-between">
-                <dt className="text-white/40 text-xs">Нийт дүн</dt>
-                <dd className="text-white/80">
+                <dt className="text-[var(--oc-muted3)] text-xs">Нийт дүн</dt>
+                <dd className="font-plex-mono text-[var(--oc-ink2)]">
                   {formatTugrik(order.totalAmount?.toString() ?? "0")}
                 </dd>
               </div>
               <div className="flex items-center justify-between">
-                <dt className="text-white/40 text-xs">Төлсөн</dt>
-                <dd className="text-white/80">
+                <dt className="text-[var(--oc-muted3)] text-xs">Төлсөн</dt>
+                <dd className="font-plex-mono text-[var(--oc-ink2)]">
                   {order.paidAmount
                     ? formatTugrik(order.paidAmount.toString())
                     : "—"}
@@ -454,15 +464,15 @@ export default async function OrderDetailPage({
               </div>
               {order.paidAt ? (
                 <div className="flex items-center justify-between">
-                  <dt className="text-white/40 text-xs">Төлсөн огноо</dt>
-                  <dd className="text-white/80 text-xs">
+                  <dt className="text-[var(--oc-muted3)] text-xs">Төлсөн огноо</dt>
+                  <dd className="font-plex-mono text-[var(--oc-ink2)] text-xs">
                     {order.paidAt.toLocaleString("mn-MN", { hour12: false })}
                   </dd>
                 </div>
               ) : null}
             </dl>
             {order.isPostpaid ? (
-              <p className="text-xs text-sky-300/80 light:text-sky-700 mb-4 -mt-1">
+              <p className="text-xs text-sky-400/90 light:text-sky-700 mb-4 -mt-1">
                 Дараа төлбөрт захиалга — төлбөрийг гэрээгээр нэгтгэн төлнө.
               </p>
             ) : null}
@@ -476,8 +486,8 @@ export default async function OrderDetailPage({
               />
             ) : null}
             {canEditPayments && paymentStatus !== "PAID" ? (
-              <div className="mt-4 pt-4 border-t border-white/[0.06]">
-                <div className="text-xs text-white/50 uppercase tracking-wider mb-2">
+              <div className="mt-4 pt-4 border-t border-[var(--oc-line)]">
+                <div className="font-plex-mono text-[10.5px] text-[var(--oc-muted3)] uppercase tracking-[0.1em] mb-2">
                   QPay
                 </div>
                 <QPayWidget
@@ -498,28 +508,28 @@ export default async function OrderDetailPage({
             ) : null}
           </div>
 
-          <div className="glass rounded-xl p-5 text-sm">
-            <h2 className="font-semibold mb-4 text-sm">Дэлгэрэнгүй</h2>
+          <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5 text-sm">
+            <h2 className="font-semibold text-[var(--oc-ink)] mb-4 text-sm">Дэлгэрэнгүй</h2>
             <dl className="space-y-3">
               <Row label="Үйлчлүүлэгч">
                 <Link
                   href={`/dashboard/customers/${order.customer.id}`}
-                  className="text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
+                  className="text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]"
                 >
                   {customerLabel(order.customer)}
                 </Link>
-                <div className="text-xs text-white/40">
+                <div className="text-xs text-[var(--oc-muted3)]">
                   {order.customer.phone}
                 </div>
               </Row>
               <Row label="Машин">
                 <Link
                   href={`/dashboard/vehicles/${order.vehicle.id}`}
-                  className="text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
+                  className="text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]"
                 >
                   {order.vehicle.make} {order.vehicle.model}
                 </Link>
-                <div className="text-xs text-white/40 font-mono">
+                <div className="font-plex-mono text-xs text-[var(--oc-muted3)]">
                   {order.vehicle.plate}
                   {order.vehicle.year ? ` · ${order.vehicle.year}` : ""}
                 </div>
@@ -553,9 +563,9 @@ export default async function OrderDetailPage({
                 </Row>
               ) : null}
               {order.notes ? (
-                <div className="pt-2 border-t border-white/[0.04]">
-                  <div className="text-white/40 text-xs mb-1">Тэмдэглэл</div>
-                  <p className="text-sm text-white/80 leading-relaxed whitespace-pre-wrap">
+                <div className="pt-2 border-t border-[var(--oc-line)]">
+                  <div className="text-[var(--oc-muted3)] text-xs mb-1">Тэмдэглэл</div>
+                  <p className="text-sm text-[var(--oc-ink2)] leading-relaxed whitespace-pre-wrap">
                     {order.notes}
                   </p>
                 </div>
@@ -566,21 +576,18 @@ export default async function OrderDetailPage({
           {canDeleteOrder ? (
             <form
               action={deleteOrderAction}
-              className="glass rounded-xl p-5 border border-red-500/20"
+              className="rounded-[10px] border border-red-500/25 bg-[var(--oc-panel)] p-5"
             >
-              <h2 className="font-semibold mb-2 text-sm text-red-300 light:text-red-700">
+              <h2 className="font-semibold mb-2 text-sm text-red-400 light:text-red-600">
                 Аюултай бүс
               </h2>
-              <p className="text-xs text-white/40 mb-4">
+              <p className="text-xs text-[var(--oc-muted3)] mb-4">
                 Захиалгыг устгасны дараа сэргээх боломжгүй.
               </p>
               <input type="hidden" name="id" value={order.id} />
-              <button
-                type="submit"
-                className="w-full text-sm font-medium bg-red-500/15 hover:bg-red-500/25 text-red-300 light:text-red-700 border border-red-500/30 px-4 py-2 rounded-xl transition-colors"
-              >
+              <Btn type="submit" variant="danger" className="w-full">
                 Захиалгыг устгах
-              </button>
+              </Btn>
             </form>
           ) : null}
         </aside>
@@ -598,8 +605,8 @@ function Row({
 }) {
   return (
     <div>
-      <dt className="text-xs text-white/40">{label}</dt>
-      <dd className="mt-0.5 text-white/80">{children}</dd>
+      <dt className="text-xs text-[var(--oc-muted3)]">{label}</dt>
+      <dd className="mt-0.5 text-[var(--oc-ink2)]">{children}</dd>
     </div>
   );
 }

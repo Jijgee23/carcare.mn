@@ -2,7 +2,7 @@ import Link from "next/link";
 import { formatTugrik } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
 import { setBypassContext } from "@/lib/tenant-context";
-import { SectionHeading } from "./section-heading";
+import { Container, Eyebrow } from "./landing-ops-ui";
 
 type PlanKey = "FREE" | "BUSINESS" | "ENTERPRISE";
 
@@ -137,58 +137,54 @@ export async function Pricing() {
   });
 
   return (
-    <section
-      id="pricing"
-      className="scroll-mt-24 py-24 px-4 sm:px-6 lg:px-8 bg-[var(--surface)]"
-    >
-      <div className="max-w-7xl mx-auto">
-        <SectionHeading
-          label="Үнэ"
-          title="Жижиг сервисээс эхлээд сүлжээ хүртэл"
-          subtitle="Хэдхэн машинаар эхэлж, бизнесийнхээ хэмжээгээр өс. Үнэ ил тод, нуугдмал төлбөргүй."
-        />
-
-        <div className="grid gap-5 lg:grid-cols-3 items-stretch max-w-6xl mx-auto">
+    <Container className="pt-24">
+      <div id="price" className="scroll-mt-24">
+        <Eyebrow>Үнэ</Eyebrow>
+        <h2 className="mb-2 mt-4 text-3xl sm:text-4xl lg:text-[40px] font-semibold tracking-[-0.03em] text-[var(--oc-ink)]">
+          Жижиг сервисээс эхлээд сүлжээ хүртэл
+        </h2>
+        <p className="mb-10 text-[15.5px] text-[var(--oc-muted2)]">
+          Хэдхэн машинаар эхэлж, бизнесийнхээ хэмжээгээр өс. Үнэ ил тод, нуугдмал төлбөргүй.
+        </p>
+        <div className="grid items-start gap-6 lg:grid-cols-3">
           {plans.map((p) => (
             <div
               key={p.key}
-              className={`relative rounded-2xl p-7 flex flex-col ${
+              className={
                 p.highlighted
-                  ? "glass border border-violet-500/40 shadow-[0_8px_60px_rgba(108,71,255,0.15)]"
-                  : "glass card-hover"
-              }`}
+                  ? "rounded-[10px] border border-[var(--oc-accent)] bg-[var(--oc-panel2)] px-8 py-[30px] shadow-[0_24px_60px_-30px_rgba(245,165,36,0.35)]"
+                  : "rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] px-8 py-[30px]"
+              }
             >
-              {p.highlighted ? (
-                <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-violet-600 px-3 py-1 rounded-full text-xs font-semibold">
-                  Алдартай
-                </span>
-              ) : null}
-
-              <h3 className="font-semibold text-lg">{p.name}</h3>
-              <p className="mt-1 text-sm text-white/50">{p.desc}</p>
-
-              <div className="mt-5 flex items-baseline gap-1.5">
-                <span className="text-3xl font-bold tracking-tight">
-                  {p.price}
-                </span>
-                <span className="text-sm text-white/40">{p.period}</span>
+              <div className="flex items-center justify-between">
+                <div className="text-[18px] font-semibold text-[var(--oc-ink2)]">{p.name}</div>
+                {p.highlighted ? (
+                  <span className="rounded bg-[var(--oc-accent)] px-2.5 py-1 font-plex-mono text-[11.5px] tracking-[0.06em] text-[var(--oc-on-accent)]">
+                    ХАМГИЙН ТОХИРОМЖТОЙ
+                  </span>
+                ) : null}
+              </div>
+              <div className="mt-1.5 text-[14px] text-[var(--oc-muted2)]">{p.desc}</div>
+              <div className="mt-[22px] font-plex-mono text-[32px] font-semibold text-[var(--oc-ink)]">
+                {p.price}
+                <span className="text-[15px] font-normal text-[var(--oc-muted3)]"> {p.period}</span>
               </div>
 
               <Link
                 href={p.href}
-                className={`mt-6 inline-flex h-11 items-center justify-center rounded-xl px-5 text-sm font-semibold transition-all ${
+                className={
                   p.highlighted
-                    ? "bg-violet-600 hover:bg-violet-500"
-                    : "glass hover:bg-white/[0.08] text-white/80"
-                }`}
+                    ? "mt-[26px] block rounded-lg bg-[var(--oc-accent)] py-3 text-center text-[14.5px] font-semibold text-[var(--oc-on-accent)] hover:bg-[var(--oc-accent-hi)]"
+                    : "mt-[26px] block rounded-lg border border-[var(--oc-line)] py-3 text-center text-[14.5px] font-semibold text-[var(--oc-ink2)] hover:border-[var(--oc-muted4)] hover:bg-[var(--oc-panel2)]"
+                }
               >
                 {p.cta}
               </Link>
 
-              <ul className="mt-6 space-y-2.5 text-sm">
+              <ul className="mt-[22px] flex flex-col gap-2.5 text-[14.5px]">
                 {p.features.map((f) => (
-                  <li key={f} className="flex items-start gap-2 text-white/70">
-                    <span className="mt-0.5 text-violet-400">✓</span>
+                  <li key={f} className="flex items-start gap-2 text-[var(--oc-muted)]">
+                    <span className="mt-0.5 text-[var(--oc-accent)]">✓</span>
                     <span>{f}</span>
                   </li>
                 ))}
@@ -197,6 +193,6 @@ export async function Pricing() {
           ))}
         </div>
       </div>
-    </section>
+    </Container>
   );
 }

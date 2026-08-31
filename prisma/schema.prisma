@@ -48,6 +48,8 @@ model Tenant {
   orderPayments        OrderPayment[]
   appointments         Appointment[]
   notifications        Notification[]
+  feedback             Feedback[]
+  feedbackMessages     FeedbackMessage[]
 }
 
 enum Plan {
@@ -118,6 +120,7 @@ model User {
   notifications         Notification[]
   auditLogs             AuditLog[]           @relation("AuditLogActor")
   appointmentsResponded Appointment[]        @relation("AppointmentRespondedBy")
+  feedback              Feedback[]
 
   @@index([tenantId])
   @@index([tenantId, isActive])
@@ -952,6 +955,7 @@ model Account {
   vehicles      AccountVehicle[]
   devices       Device[]
   notifications Notification[]
+  feedback      Feedback[]
 }
 
 // --- AccountVehicle (Account ↔ global Vehicle холбоо) --------------------
@@ -1161,6 +1165,81 @@ model Notification {
   @@index([accountId, readAt])
   @@index([userId, createdAt(sort: Desc)])
   @@index([accountId, createdAt(sort: Desc)])
+}
+
+// --- Feedback (хэрэглэгчийн санал хүсэлт / алдааны мэдээллэл) -------------
+// Ажилтан (User) ЭСВЭЛ Account аль нэгээс ирнэ, SuperAdmin `/system/feedback`-д
+// хянана. Notification-той адил Account талын мөрд tenantId null (зөвхөн
+// bypass_rls горимд уншигдана — 20260813070000 migration-ийн адил policy).
+enum FeedbackType {
+  BUG
+  SUGGESTION
+  OTHER
+}
+
+enum FeedbackStatus {
+  NEW
+  IN_REVIEW
+  RESOLVED
+  DISMISSED
+}
+
+model Feedback {
+  id String @id @default(cuid())
+
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  accountId String?
+  account   Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  type          FeedbackType
+  message       String
+  screenshotUrl String?
+  pageUrl       String?
+  userAgent     String?
+
+  status     FeedbackStatus @default(NEW)
+  adminNote  String?
+  resolvedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  messages FeedbackMessage[]
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([tenantId])
+  @@index([userId])
+  @@index([accountId])
+}
+
+enum FeedbackMessageAuthor {
+  ADMIN
+  SUBMITTER
+}
+
+// Feedback дээрх хоёр талын харилцан яриа — SuperAdmin (ADMIN) ба анх
+// илгээгч (SUBMITTER, tenant талын ажилтан). tenantId нь Notification-той
+// адил RLS-д зориулж Feedback-аас denormalize хийсэн.
+model FeedbackMessage {
+  id String @id @default(cuid())
+
+  feedbackId String
+  feedback   Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+
+  tenantId String?
+  tenant   Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  author  FeedbackMessageAuthor
+  message String
+
+  createdAt DateTime @default(now())
+
+  @@index([feedbackId, createdAt])
+  @@index([tenantId])
 }
 
 // --- PlatformSetting (нэг мөртэй global тохиргоо — SuperAdmin засна) ------

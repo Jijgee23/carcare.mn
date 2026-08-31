@@ -1,45 +1,26 @@
-import Link from "next/link";
-import { RocketIcon } from "./landing-icons";
+import { ButtonGhost, ButtonPrimary, Container } from "./landing-ops-ui";
 
 export function CtaBanner() {
   return (
-    <section className="py-24 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-3xl mx-auto">
-        <div className="glass rounded-3xl p-10 sm:p-16 text-center border border-violet-500/20 relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-violet-600/10 to-blue-600/5 pointer-events-none" />
-          <div className="relative">
-            <div className="mx-auto w-14 h-14 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-violet-400 mb-6">
-              <RocketIcon />
-            </div>
-            <h2 className="text-3xl sm:text-4xl font-bold mb-4">
+    <Container className="pt-24">
+      <div className="relative overflow-hidden rounded-xl border border-[var(--oc-line)] bg-[var(--oc-panel)] p-8 sm:p-14">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(600px_300px_at_85%_20%,rgba(245,165,36,0.14),transparent_70%)]" />
+        <div className="relative flex flex-wrap items-center justify-between gap-10 sm:gap-12">
+          <div>
+            <h2 className="text-2xl sm:text-3xl lg:text-[36px] font-semibold tracking-[-0.03em] text-[var(--oc-ink)] text-balance">
               Сервисээ дараагийн түвшинд гарга
             </h2>
-            <p className="text-white/50 mb-10 leading-relaxed max-w-lg mx-auto">
+            <p className="mt-3.5 max-w-[560px] text-[16px] leading-relaxed text-[var(--oc-muted)]">
               14 хоног үнэгүй туршиж үзээрэй. Карт хэрэггүй, ямар ч үед цуцалж болно.
             </p>
-            <div className="flex flex-col sm:flex-row sm:flex-wrap gap-4 justify-center">
-              <Link
-                href="/page/signup"
-                className="glow-btn bg-violet-600 hover:bg-violet-500 transition-all px-8 py-3.5 rounded-xl font-semibold"
-              >
-                Үнэгүй эхлүүлэх
-              </Link>
-              <Link
-                href="/page/guide"
-                className="glass hover:bg-white/[0.08] transition-all px-8 py-3.5 rounded-xl font-semibold text-white/70"
-              >
-                Гарын авлага үзэх
-              </Link>
-              <a
-                href="mailto:hi@carcare.mn"
-                className="glass hover:bg-white/[0.08] transition-all px-8 py-3.5 rounded-xl font-semibold text-white/70"
-              >
-                Борлуулалттай ярих
-              </a>
-            </div>
+          </div>
+          <div className="flex flex-wrap shrink-0 gap-3">
+            <ButtonPrimary href="/page/signup">Үнэгүй эхлүүлэх</ButtonPrimary>
+            <ButtonGhost href="/page/guide">Гарын авлага үзэх</ButtonGhost>
+            <ButtonGhost href="mailto:hi@carcare.mn">Борлуулалттай ярих</ButtonGhost>
           </div>
         </div>
       </div>
-    </section>
+    </Container>
   );
 }

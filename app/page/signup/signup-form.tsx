@@ -8,7 +8,7 @@ import {
   Field,
   FormError,
   SubmitButton,
-} from "@/app/_components/auth-shell";
+} from "@/app/_components/landing-ops-ui";
 import { Select } from "@/app/_components/select";
 import {
   type AddressData,
@@ -30,7 +30,7 @@ const LocationPicker = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="h-64 w-full rounded-xl border border-white/[0.08] bg-white/[0.02] flex items-center justify-center text-sm text-white/40">
+      <div className="h-64 w-full rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] flex items-center justify-center text-sm text-[var(--oc-muted3)]">
         Газрын зураг ачаалж байна...
       </div>
     ),
@@ -276,7 +276,7 @@ export function SignUpForm({
           onClick={step > 1 && !awaitingOtp ? () => setStep(1) : undefined}
         />
         <div
-          className={`h-px flex-1 ${step > 1 ? "bg-violet-500/50" : "bg-white/10"}`}
+          className={`h-px flex-1 ${step > 1 ? "bg-[var(--oc-accent)]/50" : "bg-[var(--oc-line)]"}`}
         />
         <StepLabel
           num={2}
@@ -286,13 +286,13 @@ export function SignUpForm({
           onClick={step > 2 && !awaitingOtp ? () => setStep(2) : undefined}
         />
         <div
-          className={`h-px flex-1 ${step > 2 ? "bg-violet-500/50" : "bg-white/10"}`}
+          className={`h-px flex-1 ${step > 2 ? "bg-[var(--oc-accent)]/50" : "bg-[var(--oc-line)]"}`}
         />
         <StepLabel num={3} label="Админ хэрэглэгч" active={step === 3} />
       </div>
 
       {awaitingOtp && state?.message ? (
-        <div className="bg-violet-500/10 border border-violet-500/25 rounded-xl px-4 py-3 text-sm text-violet-200 light:bg-violet-100 light:border-violet-300 light:text-violet-700">
+        <div className="bg-[var(--oc-accent)]/10 border border-[var(--oc-accent)]/25 rounded-[10px] px-4 py-3 text-sm text-[var(--oc-ink2)]">
           {state.message}
         </div>
       ) : (
@@ -302,8 +302,8 @@ export function SignUpForm({
       {/* --- Алхам 1: Байгууллагын мэдээлэл (алхам 2-т hidden, DOM-д хэвээр) --- */}
       <section className={step === 1 ? "flex flex-col gap-5" : "hidden"}>
         <div>
-          <h2 className="font-semibold text-white">Байгууллагын мэдээлэл</h2>
-          <p className="mt-1 text-xs text-white/45">
+          <h2 className="font-semibold text-[var(--oc-ink)]">Байгууллагын мэдээлэл</h2>
+          <p className="mt-1 text-xs text-[var(--oc-muted3)]">
             carcare-д бүртгүүлэх үндсэн мэдээлэл.
           </p>
         </div>
@@ -338,7 +338,7 @@ export function SignUpForm({
                   fe.registerNumber
                     ? "border-red-500/50"
                     : regFound
-                      ? "border-emerald-500/40"
+                      ? "border-[var(--oc-ok)]/40"
                       : ""
                 }`}
                 placeholder="1234567"
@@ -346,7 +346,7 @@ export function SignUpForm({
               <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
                 {regLoading ? (
                   <svg
-                    className="w-4 h-4 animate-spin text-violet-300"
+                    className="w-4 h-4 animate-spin text-[var(--oc-accent)]"
                     viewBox="0 0 24 24"
                     fill="none"
                   >
@@ -449,7 +449,7 @@ export function SignUpForm({
           error={fe.logo}
         >
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 shrink-0 rounded-xl overflow-hidden flex items-center justify-center glass">
+            <div className="w-16 h-16 shrink-0 rounded-[10px] overflow-hidden flex items-center justify-center border border-[var(--oc-line)] bg-[var(--oc-panel)]">
               {logoPreview ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -458,7 +458,7 @@ export function SignUpForm({
                   className="w-full h-full object-contain"
                 />
               ) : (
-                <span className="text-[10px] text-white/30">Урьдчилан</span>
+                <span className="text-[10px] text-[var(--oc-muted3)]">Урьдчилан</span>
               )}
             </div>
             <div className="min-w-0">
@@ -473,7 +473,7 @@ export function SignUpForm({
               />
               <label
                 htmlFor="logo"
-                className="inline-flex items-center gap-2 cursor-pointer rounded-xl border border-white/[0.1] bg-white/[0.04] hover:bg-white/[0.08] px-4 py-2.5 text-sm font-medium text-white/80 transition-colors"
+                className="inline-flex items-center gap-2 cursor-pointer rounded-lg border border-[var(--oc-line)] bg-[var(--oc-panel)] hover:bg-[var(--oc-panel2)] px-4 py-2.5 text-sm font-medium text-[var(--oc-ink2)] transition-colors"
               >
                 <svg
                   width="15"
@@ -492,7 +492,7 @@ export function SignUpForm({
                 </svg>
                 Зураг сонгох
               </label>
-              <div className="mt-1.5 text-xs text-white/45 truncate">
+              <div className="mt-1.5 text-xs text-[var(--oc-muted3)] truncate">
                 {logoName ?? "Файл сонгоогүй"}
               </div>
             </div>
@@ -506,7 +506,7 @@ export function SignUpForm({
         <button
           type="button"
           onClick={goNext}
-          className="mt-1 w-full bg-violet-600 hover:bg-violet-500 transition-all py-3 rounded-xl font-semibold text-sm"
+          className="mt-1 w-full bg-[var(--oc-accent)] hover:bg-[var(--oc-accent-hi)] transition-colors py-3 rounded-lg font-semibold text-sm text-[var(--oc-on-accent)]"
         >
           Үргэлжлүүлэх →
         </button>
@@ -515,8 +515,8 @@ export function SignUpForm({
       {/* --- Алхам 2: Үндсэн салбар (алхам 1/3-т hidden, DOM-д хэвээр) --- */}
       <section className={step === 2 ? "flex flex-col gap-5" : "hidden"}>
         <div>
-          <h2 className="font-semibold text-white">Үндсэн салбарын мэдээлэл</h2>
-          <p className="mt-1 text-xs text-white/45">
+          <h2 className="font-semibold text-[var(--oc-ink)]">Үндсэн салбарын мэдээлэл</h2>
+          <p className="mt-1 text-xs text-[var(--oc-muted3)]">
             Үйлчлүүлэгчид харагдах хаяг, ажиллах цаг. Дараа нь Тохиргоо
             хэсгээс нэмж салбар үүсгэж, засварлаж болно.
           </p>
@@ -553,7 +553,7 @@ export function SignUpForm({
           <button
             type="button"
             onClick={() => setShowMap((v) => !v)}
-            className="self-start inline-flex items-center gap-1.5 text-xs font-medium text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800 transition-colors"
+            className="self-start inline-flex items-center gap-1.5 text-xs font-medium text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors"
           >
             📍{" "}
             {showMap
@@ -577,8 +577,8 @@ export function SignUpForm({
           <input type="hidden" name="longitude" value={lng ?? ""} />
         </div>
 
-        <div className="pt-4 border-t border-white/[0.06]">
-          <h3 className="text-xs font-medium text-white/50 uppercase tracking-wider mb-3">
+        <div className="pt-4 border-t border-[var(--oc-line)]">
+          <h3 className="font-plex-mono text-[11px] font-medium text-[var(--oc-muted3)] uppercase tracking-[0.1em] mb-3">
             Ажиллах цаг
           </h3>
           <div className="grid gap-5 grid-cols-2 sm:max-w-xs">
@@ -605,7 +605,7 @@ export function SignUpForm({
           </div>
 
           <div className="mt-4">
-            <label className="text-sm font-medium text-white/70 mb-2 block">
+            <label className="text-sm font-medium text-[var(--oc-ink2)] mb-2 block">
               Ажиллах өдрүүд
             </label>
             <div className="flex flex-wrap gap-2">
@@ -616,8 +616,8 @@ export function SignUpForm({
                     key={d.value}
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border cursor-pointer transition-colors text-sm ${
                       active
-                        ? "bg-violet-600/20 text-violet-200 border-violet-500/30 light:bg-violet-100 light:border-violet-300 light:text-violet-700"
-                        : "bg-white/[0.03] text-white/50 border-white/[0.08] hover:bg-white/[0.06]"
+                        ? "bg-[var(--oc-accent)]/15 text-[var(--oc-ink2)] border-[var(--oc-accent)]/40"
+                        : "bg-[var(--oc-panel)] text-[var(--oc-muted)] border-[var(--oc-line)] hover:bg-[var(--oc-panel2)]"
                     }`}
                   >
                     <input
@@ -633,7 +633,7 @@ export function SignUpForm({
                 );
               })}
             </div>
-            <p className="text-xs text-white/50 mt-2">
+            <p className="text-xs text-[var(--oc-muted3)] mt-2">
               Юу ч сонгохгүй бол анхдагч Даваа–Баасан ашиглагдана.
             </p>
           </div>
@@ -647,14 +647,14 @@ export function SignUpForm({
           <button
             type="button"
             onClick={() => setStep(1)}
-            className="flex-1 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.1] transition-all py-3 rounded-xl font-medium text-sm text-white/70"
+            className="flex-1 bg-[var(--oc-panel)] hover:bg-[var(--oc-panel2)] border border-[var(--oc-line)] transition-colors py-3 rounded-lg font-medium text-sm text-[var(--oc-ink2)]"
           >
             ← Буцах
           </button>
           <button
             type="button"
             onClick={goToAdminStep}
-            className="flex-[2] bg-violet-600 hover:bg-violet-500 transition-all py-3 rounded-xl font-semibold text-sm"
+            className="flex-[2] bg-[var(--oc-accent)] hover:bg-[var(--oc-accent-hi)] transition-colors py-3 rounded-lg font-semibold text-sm text-[var(--oc-on-accent)]"
           >
             Үргэлжлүүлэх →
           </button>
@@ -664,8 +664,8 @@ export function SignUpForm({
       {/* --- Алхам 3: Админ хэрэглэгч --- */}
       <section className={step === 3 ? "flex flex-col gap-5" : "hidden"}>
         <div>
-          <h2 className="font-semibold text-white">Админ хэрэглэгч</h2>
-          <p className="mt-1 text-xs text-white/45">
+          <h2 className="font-semibold text-[var(--oc-ink)]">Админ хэрэглэгч</h2>
+          <p className="mt-1 text-xs text-[var(--oc-muted3)]">
             Системийн анхны админ (OWNER) хэрэглэгч.
           </p>
         </div>
@@ -747,7 +747,7 @@ export function SignUpForm({
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors text-xs"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--oc-muted3)] hover:text-[var(--oc-muted)] transition-colors text-xs"
               >
                 {showPassword ? "Нуух" : "Харах"}
               </button>
@@ -777,7 +777,7 @@ export function SignUpForm({
                   fe.passwordConfirm
                     ? "border-red-500/50"
                     : passwordsMatch
-                      ? "border-emerald-500/40"
+                      ? "border-[var(--oc-ok)]/40"
                       : ""
                 }`}
                 placeholder="••••••••"
@@ -792,10 +792,10 @@ export function SignUpForm({
         </div>
 
         {awaitingOtp ? (
-          <div className="flex flex-col gap-3 pt-5 border-t border-white/[0.06]">
+          <div className="flex flex-col gap-3 pt-5 border-t border-[var(--oc-line)]">
             <div>
-              <h2 className="font-semibold text-white">Баталгаажуулалт</h2>
-              <p className="mt-1 text-xs text-white/45">
+              <h2 className="font-semibold text-[var(--oc-ink)]">Баталгаажуулалт</h2>
+              <p className="mt-1 text-xs text-[var(--oc-muted3)]">
                 Утсанд илгээсэн 6 оронтой кодыг доорх нүдэнд оруулна уу.
               </p>
             </div>
@@ -810,11 +810,11 @@ export function SignUpForm({
                 autoComplete="one-time-code"
                 required
                 autoFocus
-                className={`auth-input tracking-[0.5em] text-center font-mono ${fe.otpCode ? "border-red-500/50" : ""}`}
+                className={`auth-input font-plex-mono tracking-[0.5em] text-center ${fe.otpCode ? "border-red-500/50" : ""}`}
                 placeholder="••••••"
               />
             </Field>
-            <p className="text-[11px] text-white/45">
+            <p className="text-[11px] text-[var(--oc-muted3)]">
               Код ирээгүй юу? Кодны талбарыг хоосон үлдээгээд "Бүртгүүлэх"-ыг
               дарвал шинэ код илгээнэ.
             </p>
@@ -829,19 +829,19 @@ export function SignUpForm({
           <button
             type="button"
             onClick={() => setStep(2)}
-            className="text-xs text-white/40 hover:text-white/70 transition-colors"
+            className="text-xs text-[var(--oc-muted3)] hover:text-[var(--oc-accent-hi)] transition-colors"
           >
             ← Салбарын мэдээлэл рүү буцах
           </button>
         ) : null}
 
-        <p className="text-xs text-white/45 leading-relaxed">
+        <p className="text-xs text-[var(--oc-muted3)] leading-relaxed">
           Бүртгүүлснээр манай{" "}
-          <a className="text-violet-400 hover:text-violet-300 light:text-violet-700 light:hover:text-violet-800" href="/terms">
+          <a className="text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]" href="/terms">
             Үйлчилгээний нөхцөл
           </a>{" "}
           болон{" "}
-          <a className="text-violet-400 hover:text-violet-300 light:text-violet-700 light:hover:text-violet-800" href="/privacy">
+          <a className="text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]" href="/privacy">
             Нууцлалын бодлого
           </a>
           -г хүлээн зөвшөөрнө.
@@ -869,16 +869,16 @@ function StepLabel({
       <span
         className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${
           active
-            ? "bg-violet-600 text-white"
+            ? "bg-[var(--oc-accent)] text-[var(--oc-on-accent)]"
             : done
-              ? "bg-violet-500/20 text-violet-300 light:bg-violet-100 light:text-violet-700"
-              : "bg-white/[0.06] text-white/40"
+              ? "bg-[var(--oc-accent)]/20 text-[var(--oc-accent)]"
+              : "bg-white/[0.06] text-[var(--oc-muted3)]"
         }`}
       >
         {done ? "✓" : num}
       </span>
       <span
-        className={`text-xs font-medium ${active ? "text-white/90" : "text-white/40"}`}
+        className={`text-xs font-medium ${active ? "text-[var(--oc-ink)]" : "text-[var(--oc-muted3)]"}`}
       >
         {label}
       </span>
@@ -897,7 +897,7 @@ function StepLabel({
 function CheckIcon() {
   return (
     <svg
-      className="w-4 h-4 text-emerald-400"
+      className="w-4 h-4 text-[var(--oc-ok)]"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"

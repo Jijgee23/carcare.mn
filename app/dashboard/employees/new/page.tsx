@@ -1,9 +1,10 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { PageHeader } from "@/app/_components/page-header";
+import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
 import { requireUser } from "@/lib/auth";
 import { canCreate } from "@/lib/auth/roles";
 import { prisma } from "@/lib/prisma";
-import { EmployeeForm } from "../employee-form";
+import { EmployeeForm, EMPLOYEE_FORM_ID } from "../employee-form";
 
 export const metadata = {
   title: "Шинэ ажилтан",
@@ -17,7 +18,7 @@ export default async function NewEmployeePage() {
     prisma.branch.findMany({
       where: { tenantId: me.tenantId, isActive: true },
       orderBy: { createdAt: "asc" },
-      select: { id: true, name: true },
+      select: { id: true, name: true, district: true, slotCapacity: true },
     }),
     prisma.role.findMany({
       where: { tenantId: me.tenantId, isActive: true },
@@ -27,29 +28,48 @@ export default async function NewEmployeePage() {
   ]);
 
   return (
-    <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
-      <div className="w-full">
-        <PageHeader
-          title="Шинэ ажилтан"
-          description="Ажилтны үндсэн мэдээллийг оруулна уу. Тэр энэ имэйл, нууц үгээр нэвтрэх болно."
-        />
-        {roles.length === 0 ? (
-          <div className="glass rounded-xl p-5 border border-amber-500/30 text-sm text-amber-200">
-            Эхлээд{" "}
-            <a
-              href="/dashboard/employees/roles/new"
-              className="underline hover:text-amber-100"
-            >
-              хэрэглэгчийн үүрэг үүсгэнэ үү
-            </a>
-            . Ажилтны үүргийг үүсгэсэн үүргүүдээс сонгох болно.
-          </div>
-        ) : (
-          <div className="glass rounded-xl p-5 sm:p-6 border border-white/[0.08]">
-            <EmployeeForm branches={branches} roles={roles} />
-          </div>
-        )}
+    <div className="p-4 sm:p-6 max-w-4xl">
+      <nav className="flex items-center gap-1.5 text-[13px] text-[var(--oc-muted3)] mb-3">
+        <Link href="/dashboard/employees" className="hover:text-[var(--oc-accent-hi)] transition-colors">
+          Ажилтнууд
+        </Link>
+        <span>/</span>
+        <span className="text-[var(--oc-muted)]">Шинэ ажилтан</span>
+      </nav>
+
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">Шинэ ажилтан</h1>
+          <p className="text-sm text-[var(--oc-muted3)] mt-1">
+            Ажилтны үндсэн мэдээллийг оруулна уу. Тэр энэ имэйл, нууц үгээр нэвтрэх болно.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <BtnLink href="/dashboard/employees" variant="ghost">
+            ← Буцах
+          </BtnLink>
+          {roles.length > 0 ? (
+            <Btn type="submit" form={EMPLOYEE_FORM_ID}>
+              Үүсгэх
+            </Btn>
+          ) : null}
+        </div>
       </div>
+
+      {roles.length === 0 ? (
+        <div className="rounded-[10px] border border-[var(--oc-accent)]/30 bg-[var(--oc-panel)] p-5 text-sm text-[var(--oc-ink2)]">
+          Эхлээд{" "}
+          <a
+            href="/dashboard/employees/roles/new"
+            className="text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] underline"
+          >
+            хэрэглэгчийн үүрэг үүсгэнэ үү
+          </a>
+          . Ажилтны үүргийг үүсгэсэн үүргүүдээс сонгох болно.
+        </div>
+      ) : (
+        <EmployeeForm branches={branches} roles={roles} />
+      )}
     </div>
   );
 }

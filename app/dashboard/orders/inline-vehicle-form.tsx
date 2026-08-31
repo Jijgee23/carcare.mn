@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { quickCreateVehicleAction } from "@/app/_actions/quick-create";
 import { Field } from "@/app/_components/auth-shell";
+import { Btn } from "@/app/_components/landing-ops-ui";
 import { Select } from "@/app/_components/select";
 import { type HurVehicle, normalizeWheelPosition } from "@/lib/hur_service";
 
@@ -127,13 +128,13 @@ export function InlineVehicleForm({
   }
 
   return (
-    <div className="rounded-lg border border-violet-500/25 bg-violet-500/[0.06] p-4 flex flex-col gap-3">
+    <div className="rounded-lg border border-[var(--oc-accent)]/25 bg-[var(--oc-accent)]/[0.06] p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-violet-200">Шинэ машин</h3>
+        <h3 className="text-sm font-medium text-[var(--oc-accent)]">Шинэ машин</h3>
         <button
           type="button"
           onClick={onCancel}
-          className="text-xs text-white/50 hover:text-white/80 transition-colors"
+          className="text-xs text-[var(--oc-muted3)] hover:text-[var(--oc-ink2)] transition-colors"
         >
           ✕ Болих
         </button>
@@ -159,7 +160,7 @@ export function InlineVehicleForm({
             maxLength={7}
             value={plate}
             onChange={(e) => setPlate(e.target.value.toUpperCase())}
-            className={`compact-input uppercase ${fieldErrors.plate ? "border-red-500/50" : isValidPlate ? "border-emerald-500/40" : ""}`}
+            className={`auth-input uppercase ${fieldErrors.plate ? "border-red-500/50" : isValidPlate ? "border-emerald-500/40" : ""}`}
             placeholder="1234УБА"
           />
         </Field>
@@ -175,7 +176,7 @@ export function InlineVehicleForm({
             maxLength={17}
             value={vin}
             onChange={(e) => setVin(e.target.value.toUpperCase())}
-            className={`compact-input uppercase ${fieldErrors.vin ? "border-red-500/50" : ""}`}
+            className={`auth-input uppercase ${fieldErrors.vin ? "border-red-500/50" : ""}`}
           />
         </Field>
       </div>
@@ -188,7 +189,7 @@ export function InlineVehicleForm({
       ) : null}
 
       {hurInfo ? (
-        <div className="text-xs text-violet-300 light:text-violet-700">
+        <div className="text-xs text-[var(--oc-accent)]">
           {hurSource === "global" ? "Системийн бүртгэлээс" : "HUR-аас татав"}
           {hurInfo.color ? ` · ${hurInfo.color}` : ""}
           {hurInfo.fuelType ? ` · ${hurInfo.fuelType}` : ""}
@@ -203,7 +204,7 @@ export function InlineVehicleForm({
             required
             value={make}
             onChange={(e) => setMake(e.target.value)}
-            className={`compact-input ${fieldErrors.make ? "border-red-500/50" : ""}`}
+            className={`auth-input ${fieldErrors.make ? "border-red-500/50" : ""}`}
             placeholder="Toyota"
           />
         </Field>
@@ -214,7 +215,7 @@ export function InlineVehicleForm({
             required
             value={model}
             onChange={(e) => setModel(e.target.value)}
-            className={`compact-input ${fieldErrors.model ? "border-red-500/50" : ""}`}
+            className={`auth-input ${fieldErrors.model ? "border-red-500/50" : ""}`}
             placeholder="Prius 30"
           />
         </Field>
@@ -234,7 +235,7 @@ export function InlineVehicleForm({
             max={2100}
             value={year}
             onChange={(e) => setYear(e.target.value)}
-            className={`compact-input ${fieldErrors.year ? "border-red-500/50" : ""}`}
+            className={`auth-input ${fieldErrors.year ? "border-red-500/50" : ""}`}
             placeholder="2015"
           />
         </Field>
@@ -245,7 +246,7 @@ export function InlineVehicleForm({
             list="qv-fuel-types"
             value={fuelType}
             onChange={(e) => setFuelType(e.target.value)}
-            className="compact-input"
+            className="auth-input"
             placeholder="Бензин"
           />
           <datalist id="qv-fuel-types">
@@ -276,14 +277,9 @@ export function InlineVehicleForm({
       </div>
 
       <div className="flex justify-end">
-        <button
-          type="button"
-          disabled={pending}
-          onClick={onSubmit}
-          className="bg-violet-600 hover:bg-violet-500 disabled:opacity-60 transition-colors px-4 py-2 rounded-lg text-sm font-medium"
-        >
+        <Btn type="button" disabled={pending} onClick={onSubmit}>
           {pending ? "Үүсгэж..." : "Машин үүсгэх"}
-        </button>
+        </Btn>
       </div>
     </div>
   );

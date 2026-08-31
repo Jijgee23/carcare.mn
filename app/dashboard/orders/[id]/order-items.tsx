@@ -59,7 +59,7 @@ export function OrderItems({
   return (
     <div>
       {/* Tabs */}
-      <div className="flex items-center gap-1.5 px-3 py-2.5 border-b border-white/[0.06] overflow-x-auto">
+      <div className="flex items-center gap-1.5 px-3 py-2.5 border-b border-[var(--oc-line)] overflow-x-auto">
         <TabButton
           active={activeTab === "ALL"}
           onClick={() => setTab("ALL")}
@@ -81,7 +81,7 @@ export function OrderItems({
       {/* Мөрүүд — багана толгойтой хүснэгт: Тоо / Нэгж үнэ / Дүн зэрэгцэнэ */}
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-[11px] uppercase tracking-wide text-white/30 light:text-slate-500 border-b border-white/[0.04]">
+          <tr className="font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] border-b border-[var(--oc-line)]">
             <th className="text-left font-medium px-5 py-2">Үйлчилгээ</th>
             <th className="hidden sm:table-cell text-right font-medium px-2 py-2 w-16">
               Тоо
@@ -93,21 +93,21 @@ export function OrderItems({
             {canEdit ? <th className="w-9" aria-label="Үйлдэл" /> : null}
           </tr>
         </thead>
-        <tbody className="divide-y divide-white/[0.04]">
+        <tbody className="divide-y divide-[var(--oc-line)]">
           {visibleGroups.map((g) => (
             <Fragment key={g.kind}>
               {activeTab === "ALL" ? (
                 /* Бүлгийн гарчиг — хэсгийн толгой шиг уншигдана */
-                <tr className="bg-white/[0.02]">
+                <tr className="bg-[var(--oc-panel2)]">
                   <td colSpan={canEdit ? 5 : 4} className="px-5 py-1.5">
                     <div className="flex items-center gap-2">
                       <span
                         className={`w-1.5 h-1.5 rounded-full ${ITEM_KIND_DOT[g.kind]}`}
                       />
-                      <span className="text-[11px] font-medium uppercase tracking-wide text-white/45">
+                      <span className="font-plex-mono text-[10.5px] font-medium uppercase tracking-[0.08em] text-[var(--oc-muted3)]">
                         {ITEM_KIND_LABEL[g.kind]} · {g.items.length}
                       </span>
-                      <span className="ml-auto text-xs text-white/50 tabular-nums">
+                      <span className="ml-auto font-plex-mono text-xs text-[var(--oc-muted2)] tabular-nums">
                         {formatTugrik(g.subtotal)}
                       </span>
                     </div>
@@ -119,20 +119,20 @@ export function OrderItems({
                   key={it.id}
                   className="hover:bg-white/[0.02] transition-colors"
                 >
-                  <td className="px-5 py-2.5 text-white/90">
+                  <td className="px-5 py-2.5 text-[var(--oc-ink)]">
                     {it.description}
                     {/* Нарийн дэлгэцэд тоо×үнэ нэрийн доор */}
-                    <span className="sm:hidden block text-xs text-white/40 tabular-nums mt-0.5">
+                    <span className="sm:hidden block font-plex-mono text-xs text-[var(--oc-muted3)] tabular-nums mt-0.5">
                       {qtyText(it.quantity)} × {formatTugrik(it.unitPrice)}
                     </span>
                   </td>
-                  <td className="hidden sm:table-cell px-2 py-2.5 text-right text-white/60 tabular-nums whitespace-nowrap">
+                  <td className="hidden sm:table-cell px-2 py-2.5 text-right font-plex-mono text-[var(--oc-muted2)] tabular-nums whitespace-nowrap">
                     {qtyText(it.quantity)}
                   </td>
-                  <td className="hidden sm:table-cell px-2 py-2.5 text-right text-white/60 tabular-nums whitespace-nowrap">
+                  <td className="hidden sm:table-cell px-2 py-2.5 text-right font-plex-mono text-[var(--oc-muted2)] tabular-nums whitespace-nowrap">
                     {formatTugrik(it.unitPrice)}
                   </td>
-                  <td className="px-5 py-2.5 text-right font-semibold text-white/90 tabular-nums whitespace-nowrap">
+                  <td className="px-5 py-2.5 text-right font-plex-mono font-semibold text-[var(--oc-ink)] tabular-nums whitespace-nowrap">
                     {formatTugrik(it.total)}
                   </td>
                   {canEdit ? (
@@ -143,7 +143,7 @@ export function OrderItems({
                           type="submit"
                           aria-label={`"${it.description}" мөрийг устгах`}
                           title="Мөр устгах"
-                          className="w-7 h-7 rounded-lg inline-flex items-center justify-center text-white/30 hover:text-red-300 hover:bg-red-500/10 light:hover:text-red-600 transition-colors"
+                          className="w-7 h-7 rounded-lg inline-flex items-center justify-center text-[var(--oc-muted4)] hover:text-red-400 hover:bg-red-500/10 light:hover:text-red-600 transition-colors"
                         >
                           <svg
                             width="13"
@@ -170,7 +170,7 @@ export function OrderItems({
       </table>
 
       {/* Дүнгийн хураангуй */}
-      <div className="px-5 py-4 bg-white/[0.03] border-t border-white/[0.06]">
+      <div className="px-5 py-4 bg-[var(--oc-panel2)] border-t border-[var(--oc-line)]">
         <div className="flex flex-col gap-1.5">
           {groups.length > 1
             ? groups.map((g) => (
@@ -178,16 +178,16 @@ export function OrderItems({
                   key={g.kind}
                   className="flex items-center justify-between text-sm"
                 >
-                  <span className="text-white/45">{ITEM_KIND_LABEL[g.kind]}</span>
-                  <span className="text-white/70 tabular-nums">
+                  <span className="text-[var(--oc-muted3)]">{ITEM_KIND_LABEL[g.kind]}</span>
+                  <span className="font-plex-mono text-[var(--oc-muted2)] tabular-nums">
                     {formatTugrik(g.subtotal)}
                   </span>
                 </div>
               ))
             : null}
-          <div className="flex items-center justify-between pt-2 mt-1 border-t border-white/[0.06]">
-            <span className="text-sm font-semibold text-white/90">Нийт дүн</span>
-            <span className="text-lg font-bold gradient-text tabular-nums">
+          <div className="flex items-center justify-between pt-2 mt-1 border-t border-[var(--oc-line)]">
+            <span className="text-sm font-semibold text-[var(--oc-ink)]">Нийт дүн</span>
+            <span className="font-plex-mono text-lg font-bold text-[var(--oc-accent)] tabular-nums">
               {formatTugrik(grandTotal)}
             </span>
           </div>
@@ -216,8 +216,8 @@ function TabButton({
       onClick={onClick}
       className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
         active
-          ? "bg-violet-600 text-white"
-          : "text-white/55 hover:text-white/80 hover:bg-white/[0.05]"
+          ? "bg-[var(--oc-accent)] text-[var(--oc-on-accent)]"
+          : "text-[var(--oc-muted2)] hover:text-[var(--oc-ink2)] hover:bg-white/[0.05]"
       }`}
     >
       {kind && !active ? (
@@ -225,7 +225,7 @@ function TabButton({
       ) : null}
       {label}
       <span
-        className={`tabular-nums text-xs ${active ? "text-white/70" : "text-white/35"}`}
+        className={`font-plex-mono tabular-nums text-xs ${active ? "text-[var(--oc-on-accent)]/70" : "text-[var(--oc-muted3)]"}`}
       >
         {count}
       </span>

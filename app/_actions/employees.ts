@@ -493,3 +493,54 @@ export async function deleteEmployeeAction(formData: FormData): Promise<void> {
   revalidatePath("/dashboard/employees");
   revalidatePath("/dashboard");
 }
+
+/** `deleteEmployeeAction`-той ижил, гэхдээ ажилтны ДЭЛГЭРЭНГҮЙ хуудаснаас
+ * дуудагдана — устгасны дараа тэр хуудас өөрөө байхгүй болдог тул жагсаалт
+ * руу буцаана. */
+export async function deleteEmployeeAndReturnAction(
+  formData: FormData,
+): Promise<void> {
+  await deleteEmployeeAction(formData);
+  redirect("/dashboard/employees");
+}
+
+// --- RESET PASSWORD ---------------------------------------------------------
+
+/**
+ * Ажилтны нууц үгийг хүчингүй болгоно (шинэ ажилтан үүсгэхтэй ижил
+ * passwordHash=null, verified=false төлөв) — дараагийн удаа нэвтрэхдээ
+ * checkLoginEmailAction автоматаар «анх удаа нэвтрэх» (OTP + шинэ нууц үг)
+ * урсгал руу оруулна. Одоогийн нэвтэрсэн session хүчинтэй хэвээр үлдэнэ.
+ */
+export async function resetEmployeePasswordAction(
+  formData: FormData,
+): Promise<void> {
+  const me = await authorize("edit");
+  const id = s(formData, "id");
+  if (!id) return;
+  if (id === me.id) {
+    throw new Error("Та өөрийн нууц үгээ энд шинэчлэх боломжгүй.");
+  }
+
+  const target = await prisma.user.findFirst({
+    where: { id, tenantId: me.tenantId },
+    select: { firstName: true, lastName: true },
+  });
+  if (!target) return;
+
+  await prisma.user.update({
+    where: { id },
+    data: { passwordHash: null, verified: false },
+  });
+
+  await logAudit({
+    tenantId: me.tenantId,
+    userId: me.id,
+    entity: "User",
+    entityId: id,
+    action: "UPDATE",
+    summary: `${target.lastName} ${target.firstName} · нууц үг хүчингүй болгов`,
+  });
+
+  revalidatePath(`/dashboard/employees/${id}`);
+}

@@ -1,22 +1,18 @@
 import Link from "next/link";
-import { CarIcon, TrendingUpIcon, WrenchIcon } from "./landing-icons";
-import { SectionHeading } from "./section-heading";
+import { Container, Eyebrow } from "./landing-ops-ui";
 
 const PERSONAS = [
   {
-    icon: <TrendingUpIcon />,
     role: "Сервисийн эзэн",
     title: "Олон салбараа нэг дороос удирд",
     desc: "Орлого, ачаалал, нөөц, ажилчдын гүйцэтгэлийг бодит цагт хяна. Шийдвэрээ өгөгдөл дээр тулгуурлан гарга.",
   },
   {
-    icon: <WrenchIcon />,
     role: "Менежер / Мастер",
     title: "Өдрийн ажлын явц гартаа",
     desc: "Захиалга, машины түүх, ашиглах сэлбэг — гар утаснаасаа л шууд харна. Урт жагсаалт хэвлэхээ боль.",
   },
   {
-    icon: <CarIcon />,
     role: "Үйлчлүүлэгч",
     title: "Машиныхаа эрүүл мэндийг мэдэх",
     desc: "Өмнөх засваруудын түүх, дараагийн ТО-ны хугацаа, үнийн саналыг утсан дээрээ.",
@@ -27,38 +23,37 @@ const PERSONAS = [
 
 export function Personas() {
   return (
-    <section className="py-24 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto">
-        <SectionHeading
-          label="Хэнд зориулсан"
-          title="Сервистэй холбоотой хүн бүхэнд"
-        />
+    <Container className="pt-24">
+      <Eyebrow>Хэнд зориулсан</Eyebrow>
+      <h2 className="mt-4 mb-10 text-3xl sm:text-4xl lg:text-[40px] font-semibold tracking-[-0.03em] text-[var(--oc-ink)]">
+        Сервистэй холбоотой хүн бүхэнд
+      </h2>
 
-        <div className="grid md:grid-cols-3 gap-6">
-          {PERSONAS.map((p) => (
-            <div key={p.role} className="glass card-hover rounded-2xl p-7 min-w-0">
-              <div className="w-12 h-12 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-violet-400 mb-4">
-                {p.icon}
-              </div>
-              <span className="text-xs font-semibold uppercase tracking-wider text-violet-400">
-                {p.role}
-              </span>
-              <h3 className="mt-2 text-lg font-semibold">{p.title}</h3>
-              <p className="mt-2 text-sm text-white/50 leading-relaxed">
-                {p.desc}
-              </p>
-              {p.href ? (
-                <Link
-                  href={p.href}
-                  className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-violet-400 hover:text-violet-300 transition-colors"
-                >
-                  {p.ctaLabel} →
-                </Link>
-              ) : null}
+      <div className="grid gap-6 lg:grid-cols-3">
+        {PERSONAS.map((p) => (
+          <div
+            key={p.role}
+            className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] px-9 py-[34px]"
+          >
+            <div className="font-plex-mono text-[12px] uppercase tracking-[0.14em] text-[var(--oc-accent)]">
+              {p.role}
             </div>
-          ))}
-        </div>
+            <h3 className="mt-4 text-[22px] font-semibold tracking-[-0.02em] text-[var(--oc-ink)]">
+              {p.title}
+            </h3>
+            <p className="mt-3 text-[15px] leading-relaxed text-[var(--oc-muted)]">{p.desc}</p>
+            {p.href ? (
+              <Link
+                href={p.href}
+                className="mt-6 inline-flex items-center gap-1.5 text-[14.5px] font-semibold text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors"
+              >
+                <span className="font-plex-mono">→</span>
+                {p.ctaLabel}
+              </Link>
+            ) : null}
+          </div>
+        ))}
       </div>
-    </section>
+    </Container>
   );
 }

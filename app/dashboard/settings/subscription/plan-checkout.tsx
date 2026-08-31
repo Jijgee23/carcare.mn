@@ -7,6 +7,7 @@ import {
   checkSubscriptionPaymentAction,
   createSubscriptionPaymentAction,
 } from "@/app/_actions/subscription-payments";
+import { Btn } from "@/app/_components/landing-ops-ui";
 import { useToast } from "@/app/_components/toast";
 import {
   BILLING_PERIOD_LABEL,
@@ -66,7 +67,7 @@ function PlanList({ prices }: { prices: PlanPriceOption[] }) {
 
   if (prices.length === 0) {
     return (
-      <p className="text-sm text-white/40">
+      <p className="text-sm text-[var(--oc-muted3)]">
         Үнийн жагсаалт хоосон байна. carcare.mn-тэй холбоо барина уу.
       </p>
     );
@@ -79,23 +80,23 @@ function PlanList({ prices }: { prices: PlanPriceOption[] }) {
           <form
             key={p.id}
             action={formAction}
-            className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4 flex flex-col gap-3"
+            className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel2)] p-4 flex flex-col gap-3"
           >
             <input type="hidden" name="planPriceId" value={p.id} />
             <div>
-              <div className="text-xs text-white/40 uppercase tracking-wider">
+              <div className="font-plex-mono text-[10.5px] uppercase tracking-[0.1em] text-[var(--oc-muted3)]">
                 {BILLING_PERIOD_LABEL[p.period]}
               </div>
-              <div className="mt-1 text-lg font-semibold text-white">
+              <div className="mt-1 text-lg font-semibold text-[var(--oc-ink)]">
                 {PLAN_LABEL[p.plan]}
               </div>
             </div>
-            <div className="text-2xl font-bold gradient-text">
+            <div className="font-plex-mono text-2xl font-bold text-[var(--oc-accent)]">
               {Number.parseFloat(p.amount).toLocaleString("mn-MN")}{" "}
-              <span className="text-sm text-white/40">{p.currency}</span>
+              <span className="text-sm text-[var(--oc-muted3)]">{p.currency}</span>
             </div>
             {p.notes ? (
-              <p className="text-xs text-white/50 line-clamp-3">{p.notes}</p>
+              <p className="text-xs text-[var(--oc-muted2)] line-clamp-3">{p.notes}</p>
             ) : null}
             {p.features.length > 0 ? (
               <ul className="flex flex-col gap-1.5 text-xs">
@@ -104,8 +105,8 @@ function PlanList({ prices }: { prices: PlanPriceOption[] }) {
                     key={`${f.label}-${i}`}
                     className={`flex items-start gap-2 ${
                       f.highlighted
-                        ? "text-violet-200 light:text-violet-700"
-                        : "text-white/70"
+                        ? "text-[var(--oc-accent)]"
+                        : "text-[var(--oc-muted2)]"
                     }`}
                   >
                     <svg
@@ -117,25 +118,21 @@ function PlanList({ prices }: { prices: PlanPriceOption[] }) {
                       strokeWidth="3"
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      className="mt-0.5 shrink-0 text-emerald-400 light:text-emerald-600"
+                      className="mt-0.5 shrink-0 text-[var(--oc-ok)]"
                     >
                       <polyline points="20 6 9 17 4 12" />
                     </svg>
                     <span>
-                      <span className="text-white/85">{f.label}</span>
-                      <span className="text-white/40">: {f.value}</span>
+                      <span className="text-[var(--oc-ink2)]">{f.label}</span>
+                      <span className="text-[var(--oc-muted3)]">: {f.value}</span>
                     </span>
                   </li>
                 ))}
               </ul>
             ) : null}
-            <button
-              type="submit"
-              disabled={formPending}
-              className="mt-auto bg-violet-600 hover:bg-violet-500 disabled:opacity-60 transition-colors py-2.5 rounded-xl text-sm font-medium"
-            >
+            <Btn type="submit" disabled={formPending} className="mt-auto w-full">
               {formPending ? "Үүсгэж..." : "Багц авах"}
-            </button>
+            </Btn>
           </form>
         ))}
       </div>
@@ -188,23 +185,23 @@ function QRPanel({ pending }: { pending: PendingPayment }) {
   }
 
   return (
-    <div className="rounded-2xl border border-violet-500/25 bg-violet-500/[0.05] p-6 flex flex-col items-center gap-4">
+    <div className="rounded-[10px] border border-[var(--oc-accent)]/25 bg-[var(--oc-accent)]/[0.05] p-6 flex flex-col items-center gap-4">
       <div className="text-center">
-        <div className="text-xs text-white/40 uppercase tracking-wider">
+        <div className="font-plex-mono text-[10.5px] uppercase tracking-[0.1em] text-[var(--oc-muted3)]">
           {BILLING_PERIOD_LABEL[pending.period]} · {PLAN_LABEL[pending.plan]}
         </div>
-        <div className="mt-2 text-3xl font-bold gradient-text">
+        <div className="mt-2 font-plex-mono text-3xl font-bold text-[var(--oc-accent)]">
           {Number.parseFloat(pending.amount).toLocaleString("mn-MN")}{" "}
-          <span className="text-sm text-white/40">{pending.currency}</span>
+          <span className="text-sm text-[var(--oc-muted3)]">{pending.currency}</span>
         </div>
       </div>
 
       {paid ? (
-        <div className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-200 light:bg-emerald-50 light:border-emerald-300 light:text-emerald-700 rounded-xl px-4 py-3 text-sm">
+        <div className="bg-[var(--oc-ok)]/15 border border-[var(--oc-ok)]/30 text-[var(--oc-ok)] rounded-[10px] px-4 py-3 text-sm">
           Төлбөр амжилттай — багц идэвхжиж байна...
         </div>
       ) : pending.qrImage ? (
-        <div className="bg-white p-3 rounded-xl">
+        <div className="bg-white p-3 rounded-[10px]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={`data:image/png;base64,${pending.qrImage}`}
@@ -213,36 +210,31 @@ function QRPanel({ pending }: { pending: PendingPayment }) {
           />
         </div>
       ) : (
-        <div className="text-sm text-white/50">QR үүсэхэд хүлээнэ үү...</div>
+        <div className="text-sm text-[var(--oc-muted2)]">QR үүсэхэд хүлээнэ үү...</div>
       )}
 
       {pending.qrText ? (
         <a
           href={pending.qrText}
-          className="text-xs text-violet-300 hover:text-violet-200 light:text-violet-600"
+          className="text-xs text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]"
         >
           Банкны апп руу шилжих →
         </a>
       ) : null}
 
-      <p className="text-xs text-white/40 text-center max-w-xs">
+      <p className="text-xs text-[var(--oc-muted3)] text-center max-w-xs">
         Утсаараа банкны апп нээж QR-ыг уншуулна уу. Төлбөр төлөгдмөгц багц
         автоматаар идэвхжинэ.
       </p>
 
       <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={checkNow}
-          disabled={checking || paid}
-          className="bg-violet-600 hover:bg-violet-500 disabled:opacity-60 transition-colors px-4 py-2 rounded-xl text-sm font-medium"
-        >
+        <Btn type="button" onClick={checkNow} disabled={checking || paid}>
           {checking ? "Шалгаж байна..." : "Төлбөр шалгах"}
-        </button>
+        </Btn>
         <button
           type="button"
           onClick={onCancel}
-          className="text-xs text-white/50 hover:text-white/80 underline underline-offset-2"
+          className="text-xs text-[var(--oc-muted3)] hover:text-[var(--oc-ink2)] underline underline-offset-2"
         >
           Цуцлах
         </button>

@@ -1,14 +1,12 @@
 import { redirect } from "next/navigation";
 import { Prisma } from "@/app/generated/prisma/client";
+import { Chip, type ChipTone } from "@/app/_components/landing-ops-ui";
 import {
   FilterSelect,
   ResetFilters,
   SearchBox,
 } from "@/app/_components/list-filters";
-import {
-  EmptyState,
-  PageHeader,
-} from "@/app/_components/page-header";
+import { EmptyState } from "@/app/_components/page-header";
 import { Pagination } from "@/app/_components/pagination";
 import { requireUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/auth/roles";
@@ -34,27 +32,19 @@ const ACTION_LABEL: Record<string, string> = {
   OTHER: "Бусад",
 };
 
-const ACTION_BADGE: Record<string, string> = {
-  CREATE:
-    "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 light:text-emerald-700",
-  UPDATE:
-    "bg-blue-500/15 text-blue-300 border border-blue-500/30 light:text-blue-700",
-  DELETE: "bg-red-500/15 text-red-300 border border-red-500/30 light:text-red-700",
-  STATUS_CHANGE:
-    "bg-violet-500/15 text-violet-300 border border-violet-500/30 light:text-violet-700",
-  PAYMENT_CHANGE:
-    "bg-amber-500/15 text-amber-300 border border-amber-500/30 light:text-amber-700",
-  STOCK_CHANGE:
-    "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 light:text-cyan-700",
-  ITEM_ADDED:
-    "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 light:text-emerald-700",
-  ITEM_REMOVED:
-    "bg-rose-500/15 text-rose-300 border border-rose-500/30 light:text-rose-700",
-  ITEM_UPDATED:
-    "bg-blue-500/15 text-blue-300 border border-blue-500/30 light:text-blue-700",
-  LOGIN: "bg-white/10 text-white/60 border border-white/15",
-  LOGOUT: "bg-white/10 text-white/60 border border-white/15",
-  OTHER: "bg-white/10 text-white/60 border border-white/15",
+const ACTION_TONE: Record<string, ChipTone> = {
+  CREATE: "ok",
+  UPDATE: "accent",
+  DELETE: "danger",
+  STATUS_CHANGE: "accent",
+  PAYMENT_CHANGE: "warn",
+  STOCK_CHANGE: "neutral",
+  ITEM_ADDED: "ok",
+  ITEM_REMOVED: "danger",
+  ITEM_UPDATED: "accent",
+  LOGIN: "neutral",
+  LOGOUT: "neutral",
+  OTHER: "neutral",
 };
 
 const ENTITY_LABEL: Record<EntityType, string> = {
@@ -171,10 +161,12 @@ export default async function AuditLogPage({
 
   return (
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
-      <PageHeader
-        title="Аудит лог"
-        description="Тенант доторх чухал үйлдлийн түүх — захиалгын статус, төлбөр, нөөц, мөр нэмэх/устгах."
-      />
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">Аудит лог</h1>
+        <p className="text-sm text-[var(--oc-muted3)] mt-1">
+          Тенант доторх чухал үйлдлийн түүх — захиалгын статус, төлбөр, нөөц, мөр нэмэх/устгах.
+        </p>
+      </div>
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <SearchBox placeholder="Тайлбар, entity ID-аар хайх" />
@@ -205,8 +197,8 @@ export default async function AuditLogPage({
           description="Шүүлтүүрээ өөрчилж үзнэ үү эсвэл системд үйлдэл хийгдсэн эсэхийг шалгана уу."
         />
       ) : (
-        <div className="glass rounded-xl overflow-hidden flex-1 min-h-0 flex flex-col">
-          <div className="px-5 py-3 border-b border-white/[0.06] text-xs text-white/40 flex items-center justify-between">
+        <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden flex-1 min-h-0 flex flex-col">
+          <div className="px-5 py-3 border-b border-[var(--oc-line)] font-plex-mono text-xs text-[var(--oc-muted3)] flex items-center justify-between">
             <span>
               Нийт {total.toLocaleString("mn-MN")} бичлэг · {page}/{totalPages}{" "}
               хуудас
@@ -216,7 +208,7 @@ export default async function AuditLogPage({
           <div className="overflow-auto flex-1 min-h-0">
             <table className="w-full min-w-[860px]">
               <thead>
-                <tr className="border-b border-white/[0.06]">
+                <tr className="border-b border-[var(--oc-line)]">
                   {[
                     "Огноо",
                     "Хэрэглэгч",
@@ -226,14 +218,14 @@ export default async function AuditLogPage({
                   ].map((h) => (
                     <th
                       key={h}
-                      className="text-left text-xs text-white/30 light:text-slate-500 font-medium px-5 py-3"
+                      className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-5 py-3"
                     >
                       {h}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-[var(--oc-line)]">
                 {logs.map((l) => {
                   const href = entityHref(l.entity, l.entityId);
                   const entityLabel =
@@ -241,48 +233,44 @@ export default async function AuditLogPage({
                   return (
                     <tr
                       key={l.id}
-                      className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors"
+                      className="hover:bg-white/[0.02] transition-colors"
                     >
-                      <td className="px-5 py-3 text-xs text-white/60 whitespace-nowrap">
+                      <td className="px-5 py-3 font-plex-mono text-xs text-[var(--oc-muted2)] whitespace-nowrap">
                         {fmtDate(l.createdAt)}
                       </td>
-                      <td className="px-5 py-3 text-sm text-white/70">
+                      <td className="px-5 py-3 text-sm text-[var(--oc-ink2)]">
                         {l.user ? (
                           <>
                             {l.user.lastName} {l.user.firstName}
-                            <div className="text-xs text-white/30">
+                            <div className="text-xs text-[var(--oc-muted4)]">
                               {l.user.email}
                             </div>
                           </>
                         ) : (
-                          <span className="text-white/30 text-xs">Систем</span>
+                          <span className="text-[var(--oc-muted4)] text-xs">Систем</span>
                         )}
                       </td>
                       <td className="px-5 py-3 text-sm">
                         {href ? (
                           <a
                             href={href}
-                            className="text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800 transition-colors"
+                            className="text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors"
                           >
                             {entityLabel}
                           </a>
                         ) : (
-                          <span className="text-white/70">{entityLabel}</span>
+                          <span className="text-[var(--oc-ink2)]">{entityLabel}</span>
                         )}
-                        <div className="text-xs text-white/30 font-mono">
+                        <div className="font-plex-mono text-xs text-[var(--oc-muted4)]">
                           {l.entityId.slice(0, 10)}…
                         </div>
                       </td>
                       <td className="px-5 py-3">
-                        <span
-                          className={`text-xs px-2 py-0.5 rounded-full ${
-                            ACTION_BADGE[l.action] ?? ACTION_BADGE.OTHER
-                          }`}
-                        >
+                        <Chip tone={ACTION_TONE[l.action] ?? "neutral"}>
                           {ACTION_LABEL[l.action] ?? l.action}
-                        </span>
+                        </Chip>
                       </td>
-                      <td className="px-5 py-3 text-sm text-white/70">
+                      <td className="px-5 py-3 text-sm text-[var(--oc-ink2)]">
                         {l.summary ?? "—"}
                       </td>
                     </tr>

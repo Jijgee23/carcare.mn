@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useActionState, useState } from "react";
 import {
   type CustomerActionState,
@@ -8,6 +7,9 @@ import {
   updateCustomerAction,
 } from "@/app/_actions/customers";
 import { Field, FormError } from "@/app/_components/auth-shell";
+import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
+
+export const CUSTOMER_FORM_ID = "customer-form";
 
 type Initial = {
   id?: string;
@@ -16,6 +18,30 @@ type Initial = {
   email: string | null;
   note: string | null;
 };
+
+function SectionPanel({
+  index,
+  total,
+  title,
+  children,
+}: {
+  index: number;
+  total: number;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5 sm:p-6">
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="font-semibold text-[var(--oc-ink)]">{title}</h2>
+        <span className="font-plex-mono text-[11px] text-[var(--oc-muted3)]">
+          {String(index).padStart(2, "0")} / {String(total).padStart(2, "0")}
+        </span>
+      </div>
+      {children}
+    </section>
+  );
+}
 
 export function CustomerForm({ initial }: { initial?: Initial }) {
   const isEdit = Boolean(initial?.id);
@@ -28,6 +54,7 @@ export function CustomerForm({ initial }: { initial?: Initial }) {
     FormData
   >(action, null);
 
+  const [dirty, setDirty] = useState(false);
   // Controlled — action амжилтгүй болсон үед утгууд цэвэрлэгдэхгүй
   const [fullName, setFullName] = useState(initial?.fullName ?? "");
   const [phone, setPhone] = useState(initial?.phone ?? "");
@@ -35,78 +62,84 @@ export function CustomerForm({ initial }: { initial?: Initial }) {
   const [note, setNote] = useState(initial?.note ?? "");
 
   const fe = state?.fieldErrors ?? {};
-  const fieldMaxWidth = "max-w-xs";
 
   return (
-    <form action={formAction} className="flex flex-col gap-4" noValidate>
+    <form
+      id={CUSTOMER_FORM_ID}
+      action={formAction}
+      onChange={() => setDirty(true)}
+      className="flex flex-col gap-5"
+      noValidate
+    >
       <FormError message={state?.message} />
 
-      <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        <Field label="Овог нэр" htmlFor="fullName" hint="заавал биш" error={fe.fullName} className={fieldMaxWidth}>
-          <input
-            id="fullName"
-            name="fullName"
-            type="text"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            className={`compact-input ${fe.fullName ? "border-red-500/50" : ""}`}
-            placeholder="Жишээ: Батын Болд"
-          />
-        </Field>
-        <Field label="Утас" htmlFor="phone" error={fe.phone} className={fieldMaxWidth}>
-          <input
-            id="phone"
-            name="phone"
-            type="tel"
-            inputMode="numeric"
-            maxLength={8}
-            pattern="[0-9]{8}"
-            required
-            value={phone}
-            onChange={(e) => setPhone(e.target.value.replace(/\D+/g, ""))}
-            className={`compact-input ${fe.phone ? "border-red-500/50" : ""}`}
-            placeholder="99000000"
-          />
-        </Field>
-        <Field label="Имэйл" htmlFor="email" hint="заавал биш" error={fe.email} className={fieldMaxWidth}>
-          <input
-            id="email"
-            name="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className={`compact-input ${fe.email ? "border-red-500/50" : ""}`}
-            placeholder="bold@gmail.com"
-          />
-        </Field>
-      </div>
+      <SectionPanel index={1} total={1} title="Харилцагчийн мэдээлэл">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Field label="Овог нэр" htmlFor="fullName" hint="заавал биш" error={fe.fullName}>
+            <input
+              id="fullName"
+              name="fullName"
+              type="text"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              className={`auth-input ${fe.fullName ? "border-red-500/50" : ""}`}
+              placeholder="Жишээ: Батын Болд"
+            />
+          </Field>
+          <Field label="Утас" htmlFor="phone" error={fe.phone}>
+            <input
+              id="phone"
+              name="phone"
+              type="tel"
+              inputMode="numeric"
+              maxLength={8}
+              pattern="[0-9]{8}"
+              required
+              value={phone}
+              onChange={(e) => setPhone(e.target.value.replace(/\D+/g, ""))}
+              className={`auth-input font-plex-mono ${fe.phone ? "border-red-500/50" : ""}`}
+              placeholder="99000000"
+            />
+          </Field>
+          <Field label="Имэйл" htmlFor="email" hint="заавал биш" error={fe.email}>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className={`auth-input ${fe.email ? "border-red-500/50" : ""}`}
+              placeholder="bold@gmail.com"
+            />
+          </Field>
+        </div>
 
-      <Field label="Тэмдэглэл" htmlFor="note" hint="заавал биш" error={fe.note} className="max-w-2xl">
-        <textarea
-          id="note"
-          name="note"
-          rows={3}
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          className="compact-input resize-y"
-          placeholder="Үйлчлүүлэгчийн талаар тэмдэглэх зүйл..."
-        />
-      </Field>
+        <div className="mt-4">
+          <Field label="Тэмдэглэл" htmlFor="note" hint="заавал биш" error={fe.note}>
+            <textarea
+              id="note"
+              name="note"
+              rows={3}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              className="auth-input resize-y"
+              placeholder="Үйлчлүүлэгчийн талаар тэмдэглэх зүйл..."
+            />
+          </Field>
+        </div>
+      </SectionPanel>
 
-      <div className="flex gap-2 pt-3 border-t border-white/[0.05]">
-        <Link
-          href="/dashboard/customers"
-          className="bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] transition-all px-5 py-2 rounded-lg font-medium text-sm text-white/60 text-center"
-        >
-          ← Буцах
-        </Link>
-        <button
-          type="submit"
-          disabled={pending}
-          className="bg-violet-600 hover:bg-violet-500 disabled:opacity-60 disabled:cursor-not-allowed transition-all px-6 py-2 rounded-lg font-medium text-sm"
-        >
+      {/* Sticky action bar — урт форм scroll хийхэд ч Хадгалах үргэлж харагдана */}
+      <div className="sticky bottom-0 z-10 flex items-center gap-3 pt-3 pb-3 -mb-1 border-t border-[var(--oc-line2)] bg-[var(--oc-carbon)]/95 backdrop-blur-md">
+        <span className="text-xs text-[var(--oc-muted3)] flex-1">
+          {dirty ? "Хадгалагдаагүй өөрчлөлт байна" : ""}
+        </span>
+        <BtnLink href="/dashboard/customers" variant="ghost">
+          Болих
+        </BtnLink>
+        <Btn type="submit" disabled={pending}>
           {pending ? "..." : isEdit ? "Хадгалах" : "Үүсгэх"}
-        </button>
+        </Btn>
       </div>
     </form>
   );

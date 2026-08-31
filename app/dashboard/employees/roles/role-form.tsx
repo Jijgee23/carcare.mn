@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
 import {
   type RoleActionState,
@@ -8,6 +7,9 @@ import {
   updateRoleAction,
 } from "@/app/_actions/roles";
 import { Field, FormError } from "@/app/_components/auth-shell";
+import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
+
+export const ROLE_FORM_ID = "role-form";
 
 type ResourceRow = {
   key: string;
@@ -34,6 +36,37 @@ type Initial = {
   isActive: boolean;
 };
 
+function SectionPanel({
+  index,
+  total,
+  title,
+  description,
+  children,
+}: {
+  index: number;
+  total: number;
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5 sm:p-6">
+      <div className="flex items-start justify-between gap-4 mb-5">
+        <div>
+          <h2 className="font-semibold text-[var(--oc-ink)]">{title}</h2>
+          {description ? (
+            <p className="text-xs text-[var(--oc-muted3)] mt-0.5">{description}</p>
+          ) : null}
+        </div>
+        <span className="font-plex-mono text-[11px] text-[var(--oc-muted3)] shrink-0">
+          {String(index).padStart(2, "0")} / {String(total).padStart(2, "0")}
+        </span>
+      </div>
+      {children}
+    </section>
+  );
+}
+
 export function RoleForm({
   initial,
   resources,
@@ -55,6 +88,7 @@ export function RoleForm({
     null,
   );
 
+  const [dirty, setDirty] = useState(false);
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [selected, setSelected] = useState<Set<string>>(
@@ -63,6 +97,7 @@ export function RoleForm({
   const [isActive, setIsActive] = useState(initial?.isActive ?? true);
 
   function toggle(code: string) {
+    setDirty(true);
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(code)) next.delete(code);
@@ -72,6 +107,7 @@ export function RoleForm({
   }
 
   function toggleResourceRow(resourceKey: string, allOn: boolean) {
+    setDirty(true);
     setSelected((prev) => {
       const next = new Set(prev);
       for (const a of actions) {
@@ -84,6 +120,7 @@ export function RoleForm({
   }
 
   function toggleActionColumn(actionKey: string, allOn: boolean) {
+    setDirty(true);
     setSelected((prev) => {
       const next = new Set(prev);
       for (const r of resources) {
@@ -96,6 +133,7 @@ export function RoleForm({
   }
 
   function toggleAllCrud(allOn: boolean) {
+    setDirty(true);
     setSelected((prev) => {
       const next = new Set(prev);
       for (const r of resources) {
@@ -147,7 +185,13 @@ export function RoleForm({
   const allCrudOn = totalCrudSelected === totalCrud;
 
   return (
-    <form action={formAction} className="flex flex-col gap-5" noValidate>
+    <form
+      id={ROLE_FORM_ID}
+      action={formAction}
+      onChange={() => setDirty(true)}
+      className="flex flex-col gap-5"
+      noValidate
+    >
       <FormError message={state?.message} />
 
       {/* Submit-ийн үед selected төлөв-ийг hidden input-аар илгээнэ */}
@@ -155,59 +199,80 @@ export function RoleForm({
         <input key={code} type="hidden" name="permissions" value={code} />
       ))}
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Үүргийн нэр" htmlFor="name" error={fe.name}>
-          <input
-            id="name"
-            name="name"
-            type="text"
-            required
-            maxLength={60}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className={`compact-input ${fe.name ? "border-red-500/50" : ""}`}
-            placeholder="ж: Менежер, Кассчин, Засварчин"
-          />
-        </Field>
-        <Field
-          label="Тайлбар"
-          htmlFor="description"
-          hint="Энэ үүрэг юу хийдгийг богино тайлбарлана уу."
-        >
-          <input
-            id="description"
-            name="description"
-            type="text"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className="compact-input"
-            placeholder="Хоосон үлдэж болно"
-          />
-        </Field>
-      </div>
-
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-medium text-white/90">
-              Хийх боломжтой үйлдлүүд
-            </h3>
-            <p className="text-xs text-white/40 mt-0.5">
-              Нөөц бүрд харах, үүсгэх, засах, устгах эрхийг тус тусдаа сонгоно.
-            </p>
-          </div>
-          {fe.permissions ? (
-            <p className="text-red-400 light:text-red-600 text-xs">{fe.permissions}</p>
-          ) : null}
+      <SectionPanel index={1} total={2} title="Үндсэн мэдээлэл">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Үүргийн нэр" htmlFor="name" error={fe.name}>
+            <input
+              id="name"
+              name="name"
+              type="text"
+              required
+              maxLength={60}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className={`auth-input ${fe.name ? "border-red-500/50" : ""}`}
+              placeholder="ж: Менежер, Кассчин, Засварчин"
+            />
+          </Field>
+          <Field
+            label="Тайлбар"
+            htmlFor="description"
+            hint="Энэ үүрэг юу хийдгийг богино тайлбарлана уу."
+          >
+            <input
+              id="description"
+              name="description"
+              type="text"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="auth-input"
+              placeholder="Хоосон үлдэж болно"
+            />
+          </Field>
         </div>
 
+        <label
+          className={`mt-4 flex items-start gap-3 p-3.5 rounded-[10px] border cursor-pointer transition-colors max-w-md ${
+            isActive
+              ? "border-[var(--oc-accent)] bg-[var(--oc-accent)]/[0.08]"
+              : "border-[var(--oc-line)] bg-[var(--oc-panel2)] hover:border-[var(--oc-line2)]"
+          }`}
+        >
+          <input
+            type="checkbox"
+            name="isActive"
+            checked={isActive}
+            onChange={(e) => { setDirty(true); setIsActive(e.target.checked); }}
+            value="on"
+            className="mt-0.5 accent-[var(--oc-accent)]"
+          />
+          <div className="flex-1">
+            <div className="text-sm font-medium text-[var(--oc-ink2)]">Идэвхтэй</div>
+            <div className="text-xs text-[var(--oc-muted3)] mt-0.5">
+              Идэвхгүй үүргийг шинэ ажилтанд сонгох боломжгүй.
+            </div>
+          </div>
+        </label>
+        {!isActive ? <input type="hidden" name="isActive" value="off" /> : null}
+      </SectionPanel>
+
+      <SectionPanel
+        index={2}
+        total={2}
+        title="Эрхийн тохиргоо"
+        description="Нөөц бүрд харах, үүсгэх, засах, устгах эрхийг тус тусдаа сонгоно."
+      >
+        {fe.permissions ? (
+          <p className="text-red-400 light:text-red-600 text-xs mb-3">{fe.permissions}</p>
+        ) : null}
+
         {/* CRUD matrix */}
-        <div className="glass rounded-xl border border-white/[0.06] overflow-hidden">
+        <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel2)] overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[560px]">
               <thead>
-                <tr className="border-b border-white/[0.06] bg-white/[0.02]">
-                  <th className="text-left text-xs text-white/40 font-medium px-4 py-2.5">
+                <tr className="border-b border-[var(--oc-line)]">
+                  <th className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-4 py-2.5">
                     Нөөц
                   </th>
                   {actions.map((a) => {
@@ -223,8 +288,8 @@ export function RoleForm({
                           onClick={() => toggleActionColumn(a.key, allOn)}
                           className={`inline-flex flex-col items-center gap-0.5 transition-colors ${
                             allOn
-                              ? "text-violet-300 light:text-violet-700"
-                              : "text-white/40 hover:text-white/70"
+                              ? "text-[var(--oc-accent)]"
+                              : "text-[var(--oc-muted2)] hover:text-[var(--oc-ink2)]"
                           }`}
                           title={
                             allOn
@@ -233,18 +298,18 @@ export function RoleForm({
                           }
                         >
                           <span>{a.label}</span>
-                          <span className="text-[10px] text-white/30">
+                          <span className="font-plex-mono text-[10px] text-[var(--oc-muted3)]">
                             {count}/{resources.length}
                           </span>
                         </button>
                       </th>
                     );
                   })}
-                  <th className="text-center text-xs text-white/40 font-medium px-3 py-2.5 w-24">
+                  <th className="text-center text-xs text-[var(--oc-muted3)] font-medium px-3 py-2.5 w-24">
                     <button
                       type="button"
                       onClick={() => toggleAllCrud(allCrudOn)}
-                      className="text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800 transition-colors"
+                      className="text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors"
                       title={allCrudOn ? "Бүгдийг хасах" : "Бүгдийг сонгох"}
                     >
                       {allCrudOn ? "Бүгдийг хасах" : "Бүгдийг сонгох"}
@@ -271,8 +336,8 @@ export function RoleForm({
 
         {/* Standalone permissions */}
         {standalonePermissions.length > 0 ? (
-          <div className="glass rounded-xl p-4 border border-white/[0.06]">
-            <div className="text-xs uppercase tracking-wider text-white/40 font-medium mb-3">
+          <div className="mt-4 rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel2)] p-4">
+            <div className="font-plex-mono text-[10.5px] uppercase tracking-[0.1em] text-[var(--oc-muted3)] font-medium mb-3">
               Тусгай эрхүүд
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
@@ -283,21 +348,21 @@ export function RoleForm({
                     key={p.code}
                     className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
                       checked
-                        ? "border-violet-500/40 bg-violet-500/10"
-                        : "border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.04]"
+                        ? "border-[var(--oc-accent)] bg-[var(--oc-accent)]/[0.08]"
+                        : "border-[var(--oc-line)] bg-[var(--oc-panel)] hover:border-[var(--oc-line2)]"
                     }`}
                   >
                     <input
                       type="checkbox"
                       checked={checked}
                       onChange={() => toggle(p.code)}
-                      className="mt-0.5 accent-violet-500"
+                      className="mt-0.5 accent-[var(--oc-accent)]"
                     />
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-white/90">
+                      <div className="text-sm font-medium text-[var(--oc-ink2)]">
                         {p.label}
                       </div>
-                      <div className="text-xs text-white/40 mt-0.5">
+                      <div className="text-xs text-[var(--oc-muted3)] mt-0.5">
                         {p.description}
                       </div>
                     </div>
@@ -307,40 +372,19 @@ export function RoleForm({
             </div>
           </div>
         ) : null}
-      </div>
+      </SectionPanel>
 
-      <label className="flex items-start gap-3 p-3 rounded-lg border border-white/[0.06] bg-white/[0.02] cursor-pointer hover:bg-white/[0.04] max-w-md">
-        <input
-          type="checkbox"
-          name="isActive"
-          checked={isActive}
-          onChange={(e) => setIsActive(e.target.checked)}
-          value="on"
-          className="mt-0.5 accent-violet-500"
-        />
-        <div className="flex-1">
-          <div className="text-sm font-medium text-white/90">Идэвхтэй</div>
-          <div className="text-xs text-white/40 mt-0.5">
-            Идэвхгүй үүргийг шинэ ажилтанд сонгох боломжгүй.
-          </div>
-        </div>
-      </label>
-      {!isActive ? <input type="hidden" name="isActive" value="off" /> : null}
-
-      <div className="flex gap-2 pt-3 border-t border-white/[0.05]">
-        <Link
-          href="/dashboard/employees/roles"
-          className="bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] transition-all px-5 py-2 rounded-lg font-medium text-sm text-white/60 text-center"
-        >
-          ← Буцах
-        </Link>
-        <button
-          type="submit"
-          disabled={pending}
-          className="bg-violet-600 hover:bg-violet-500 disabled:opacity-60 disabled:cursor-not-allowed transition-all px-6 py-2 rounded-lg font-medium text-sm"
-        >
+      {/* Sticky action bar — урт форм scroll хийхэд ч Хадгалах үргэлж харагдана */}
+      <div className="sticky bottom-0 z-10 flex items-center gap-3 pt-3 pb-3 -mb-1 border-t border-[var(--oc-line2)] bg-[var(--oc-carbon)]/95 backdrop-blur-md">
+        <span className="text-xs text-[var(--oc-muted3)] flex-1">
+          {dirty ? "Хадгалагдаагүй өөрчлөлт байна" : ""}
+        </span>
+        <BtnLink href="/dashboard/employees/roles" variant="ghost">
+          Болих
+        </BtnLink>
+        <Btn type="submit" disabled={pending}>
           {pending ? "..." : isEdit ? "Хадгалах" : "Үүсгэх"}
-        </button>
+        </Btn>
       </div>
     </form>
   );
@@ -366,7 +410,7 @@ function RowGroup({
       <tr>
         <td
           colSpan={actions.length + 2}
-          className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-wider text-white/30 font-medium border-t border-white/[0.04]"
+          className="px-4 pt-3 pb-1 font-plex-mono text-[10px] uppercase tracking-[0.08em] text-[var(--oc-muted4)] font-medium border-t border-[var(--oc-line)]"
         >
           {group}
         </td>
@@ -380,10 +424,10 @@ function RowGroup({
         return (
           <tr
             key={r.key}
-            className="border-t border-white/[0.04] hover:bg-white/[0.02]"
+            className="border-t border-[var(--oc-line)] hover:bg-white/[0.02]"
           >
             <td className="px-4 py-2.5">
-              <span className="text-sm text-white/85">{r.label}</span>
+              <span className="text-sm text-[var(--oc-ink2)]">{r.label}</span>
             </td>
             {actions.map((a) => {
               const code = `${r.key}.${a.key}`;
@@ -394,7 +438,7 @@ function RowGroup({
                     type="checkbox"
                     checked={checked}
                     onChange={() => onToggle(code)}
-                    className="accent-violet-500 w-4 h-4 cursor-pointer"
+                    className="accent-[var(--oc-accent)] w-4 h-4 cursor-pointer"
                     aria-label={`${r.label} — ${a.label}`}
                   />
                 </td>
@@ -406,8 +450,8 @@ function RowGroup({
                 onClick={() => onToggleRow(r.key, allOn)}
                 className={`text-xs transition-colors ${
                   allOn
-                    ? "text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
-                    : "text-white/40 hover:text-white/70"
+                    ? "text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]"
+                    : "text-[var(--oc-muted3)] hover:text-[var(--oc-ink2)]"
                 }`}
               >
                 {allOn ? "Хасах" : "Бүгд"}

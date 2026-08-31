@@ -6,6 +6,7 @@ import {
   updateProfileAction,
 } from "@/app/_actions/profile";
 import { Field, FormError } from "@/app/_components/auth-shell";
+import { Btn } from "@/app/_components/landing-ops-ui";
 
 type Initial = {
   firstName: string;
@@ -27,7 +28,7 @@ export function ProfileForm({ initial }: { initial: Initial }) {
   return (
     <form action={formAction} className="flex flex-col gap-4" noValidate>
       {state?.ok && state.message ? (
-        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 text-sm text-emerald-300 light:text-emerald-700">
+        <div className="bg-[var(--oc-ok)]/10 border border-[var(--oc-ok)]/25 rounded-lg px-3 py-2 text-sm text-[var(--oc-ok)]">
           {state.message}
         </div>
       ) : null}
@@ -43,7 +44,7 @@ export function ProfileForm({ initial }: { initial: Initial }) {
             type="text"
             required
             defaultValue={initial.lastName}
-            className={`compact-input ${fe.lastName ? "border-red-500/50" : ""}`}
+            className={`auth-input ${fe.lastName ? "border-red-500/50" : ""}`}
           />
         </Field>
         <Field label="Нэр" htmlFor="firstName" error={fe.firstName} className={FIELD_MW}>
@@ -53,7 +54,7 @@ export function ProfileForm({ initial }: { initial: Initial }) {
             type="text"
             required
             defaultValue={initial.firstName}
-            className={`compact-input ${fe.firstName ? "border-red-500/50" : ""}`}
+            className={`auth-input ${fe.firstName ? "border-red-500/50" : ""}`}
           />
         </Field>
         <Field label="Имэйл" htmlFor="email" error={fe.email} className={FIELD_MW}>
@@ -63,7 +64,7 @@ export function ProfileForm({ initial }: { initial: Initial }) {
             type="email"
             required
             defaultValue={initial.email}
-            className={`compact-input ${fe.email ? "border-red-500/50" : ""}`}
+            className={`auth-input ${fe.email ? "border-red-500/50" : ""}`}
           />
         </Field>
         <Field label="Утас" htmlFor="phone" error={fe.phone} className={FIELD_MW}>
@@ -76,19 +77,15 @@ export function ProfileForm({ initial }: { initial: Initial }) {
             pattern="[0-9]{8}"
             required
             defaultValue={initial.phone}
-            className={`compact-input ${fe.phone ? "border-red-500/50" : ""}`}
+            className={`auth-input ${fe.phone ? "border-red-500/50" : ""}`}
           />
         </Field>
       </div>
 
       <div className="flex pt-2">
-        <button
-          type="submit"
-          disabled={pending}
-          className="bg-violet-600 hover:bg-violet-500 disabled:opacity-60 disabled:cursor-not-allowed transition-all px-6 py-2 rounded-lg font-medium text-sm"
-        >
+        <Btn type="submit" disabled={pending}>
           {pending ? "..." : "Хадгалах"}
-        </button>
+        </Btn>
       </div>
     </form>
   );

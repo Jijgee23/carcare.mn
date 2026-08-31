@@ -1,5 +1,6 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { PageHeader } from "@/app/_components/page-header";
+import { Btn, BtnLink, Chip } from "@/app/_components/landing-ops-ui";
 import { requireUser } from "@/lib/auth";
 import { canEdit } from "@/lib/auth/roles";
 import { formatTugrik } from "@/lib/orders";
@@ -7,16 +8,23 @@ import { prisma } from "@/lib/prisma";
 import {
   SERVICE_KIND_BADGE,
   SERVICE_KIND_LABEL,
-  STOCK_BADGE,
+  SERVICE_KIND_SLUG,
   STOCK_LABEL,
   type ServiceKind,
+  type StockLevel,
   formatStock,
   stockLevel,
 } from "@/lib/services";
-import { ServiceForm } from "../service-form";
+import { ServiceForm, SERVICE_FORM_ID } from "../service-form";
 import { StockAdjustForm } from "../stock-adjust-form";
 
 export const metadata = { title: "Үйлчилгээ засах" };
+
+const STOCK_TONE: Record<StockLevel, "danger" | "warn" | "ok"> = {
+  out: "danger",
+  low: "warn",
+  ok: "ok",
+};
 
 export default async function EditServicePage({
   params,
@@ -53,24 +61,45 @@ export default async function EditServicePage({
   const type = svc.type as ServiceKind;
   const isGoods = type === "GOODS";
   const stockNum = svc.stock ? Number.parseFloat(svc.stock.toString()) : 0;
+  const backHref = `/dashboard/services/${SERVICE_KIND_SLUG[type]}`;
 
   return (
-    <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
-      <PageHeader
-        title={svc.name}
-        description={svc.code ? `Код: ${svc.code}` : undefined}
-        actions={
+    <div className="p-4 sm:p-6">
+      <nav className="flex items-center gap-1.5 text-[13px] text-[var(--oc-muted3)] mb-3">
+        <Link href={backHref} className="hover:text-[var(--oc-accent-hi)] transition-colors">
+          {SERVICE_KIND_LABEL[type]}
+        </Link>
+        <span>/</span>
+        <span className="text-[var(--oc-muted)]">{svc.name}</span>
+      </nav>
+
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">{svc.name}</h1>
           <span
-            className={`text-xs px-2.5 py-1 rounded-full ${SERVICE_KIND_BADGE[type]}`}
+            className={`font-plex-mono text-[11px] px-2.5 py-1 rounded-full ${SERVICE_KIND_BADGE[type]}`}
           >
             {SERVICE_KIND_LABEL[type]}
           </span>
-        }
-      />
+        </div>
+        <div className="flex items-center gap-2">
+          <BtnLink href={backHref} variant="ghost">
+            ← Буцах
+          </BtnLink>
+          <Btn type="submit" form={SERVICE_FORM_ID}>
+            Хадгалах
+          </Btn>
+        </div>
+      </div>
+      {svc.code ? (
+        <p className="font-plex-mono text-xs text-[var(--oc-muted3)] -mt-4 mb-6">
+          Код: {svc.code}
+        </p>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-5">
-        <div className="lg:col-span-3 glass rounded-xl p-4 sm:p-5 border border-white/[0.08]">
-          <h2 className="font-semibold mb-4">Мэдээлэл</h2>
+        <div className="lg:col-span-3 rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-4 sm:p-5">
+          <h2 className="font-semibold text-[var(--oc-ink)] mb-4">Мэдээлэл</h2>
           <ServiceForm
             categories={categories}
             units={units}
@@ -93,12 +122,12 @@ export default async function EditServicePage({
         </div>
 
         <div className="lg:col-span-2 flex flex-col gap-4">
-          <div className="glass rounded-xl p-4 sm:p-5">
-            <div className="text-xs text-white/40 uppercase tracking-wider">
+          <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-4 sm:p-5">
+            <div className="font-plex-mono text-[10.5px] uppercase tracking-[0.1em] text-[var(--oc-muted3)]">
               {isGoods ? "Одоогийн үлдэгдэл" : "Үнэ"}
             </div>
             <div className="mt-2 flex items-baseline gap-2">
-              <div className="text-3xl font-bold gradient-text">
+              <div className="font-plex-mono text-3xl font-bold text-[var(--oc-accent)]">
                 {isGoods
                   ? formatStock(stockNum, svc.unit?.name ?? null)
                   : formatTugrik(svc.price.toString())}
@@ -106,11 +135,9 @@ export default async function EditServicePage({
             </div>
             {isGoods ? (
               <div className="mt-3">
-                <span
-                  className={`text-xs px-2.5 py-1 rounded-full ${STOCK_BADGE[stockLevel(stockNum)]}`}
-                >
+                <Chip tone={STOCK_TONE[stockLevel(stockNum)]}>
                   {STOCK_LABEL[stockLevel(stockNum)]}
-                </span>
+                </Chip>
               </div>
             ) : null}
 
@@ -118,35 +145,35 @@ export default async function EditServicePage({
               {isGoods ? (
                 <>
                   <div>
-                    <dt className="text-xs text-white/40">Өртөг</dt>
-                    <dd className="mt-0.5 text-white/80">
+                    <dt className="text-xs text-[var(--oc-muted3)]">Өртөг</dt>
+                    <dd className="mt-0.5 font-plex-mono text-[var(--oc-ink2)]">
                       {svc.costPrice
                         ? formatTugrik(svc.costPrice.toString())
                         : "—"}
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-white/40">Борлуулах</dt>
-                    <dd className="mt-0.5 text-white/80">
+                    <dt className="text-xs text-[var(--oc-muted3)]">Борлуулах</dt>
+                    <dd className="mt-0.5 font-plex-mono text-[var(--oc-ink2)]">
                       {formatTugrik(svc.price.toString())}
                     </dd>
                   </div>
                 </>
               ) : (
                 <div>
-                  <dt className="text-xs text-white/40">Нэгж</dt>
-                  <dd className="mt-0.5 text-white/80">
+                  <dt className="text-xs text-[var(--oc-muted3)]">Нэгж</dt>
+                  <dd className="mt-0.5 text-[var(--oc-ink2)]">
                     {svc.unit?.name ?? "—"}
                   </dd>
                 </div>
               )}
               <div>
-                <dt className="text-xs text-white/40">Захиалгад орсон</dt>
-                <dd className="mt-0.5 text-white/80">{svc._count.items} удаа</dd>
+                <dt className="text-xs text-[var(--oc-muted3)]">Захиалгад орсон</dt>
+                <dd className="mt-0.5 font-plex-mono text-[var(--oc-ink2)]">{svc._count.items} удаа</dd>
               </div>
               <div>
-                <dt className="text-xs text-white/40">Бүртгэсэн</dt>
-                <dd className="mt-0.5 text-white/80">
+                <dt className="text-xs text-[var(--oc-muted3)]">Бүртгэсэн</dt>
+                <dd className="mt-0.5 font-plex-mono text-[var(--oc-ink2)]">
                   {svc.createdAt.toLocaleDateString("mn-MN")}
                 </dd>
               </div>
@@ -154,9 +181,9 @@ export default async function EditServicePage({
           </div>
 
           {isGoods ? (
-            <div className="glass rounded-xl p-4 sm:p-5">
-              <h2 className="font-semibold mb-1">Орлого / Зарлага</h2>
-              <p className="text-xs text-white/40 mb-4">
+            <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-4 sm:p-5">
+              <h2 className="font-semibold text-[var(--oc-ink)] mb-1">Орлого / Зарлага</h2>
+              <p className="text-xs text-[var(--oc-muted3)] mb-4">
                 Гараар тохируулах. Захиалгад ашиглавал автоматаар хасагдана.
               </p>
               <StockAdjustForm

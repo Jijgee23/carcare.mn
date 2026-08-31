@@ -11,15 +11,15 @@ import type { OrderStatus } from "@/lib/orders";
 
 const STATUS_BTN_STYLE: Record<OrderStatus, string> = {
   SCHEDULED:
-    "bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 light:text-amber-700",
+    "bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/30 light:text-amber-700",
   IN_PROGRESS:
-    "bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 light:text-blue-700",
+    "bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30 light:text-blue-700",
   WAITING_PARTS:
     "bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 light:text-purple-700",
   COMPLETED:
-    "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 light:text-emerald-700",
+    "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 light:text-emerald-700",
   CANCELLED:
-    "bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 light:text-red-700",
+    "bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 light:text-red-700",
 };
 
 const STATUS_BTN_LABEL: Record<OrderStatus, string> = {

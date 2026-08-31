@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { changeOrderPaymentStatusAction } from "@/app/_actions/orders";
+import { Btn } from "@/app/_components/landing-ops-ui";
 import type { PaymentStatus } from "@/lib/orders";
 
 /* Идэвхтэй статусын товч тод "сонгогдсон" (✓, өнгөт), бусад нь сул нейтрал
@@ -10,7 +11,7 @@ function segCls(active: boolean, color: "emerald" | "amber" | "red"): string {
   const base =
     "w-full text-sm font-medium px-3 py-2 rounded-xl transition-colors border";
   if (!active) {
-    return `${base} bg-white/[0.03] border-white/[0.08] text-white/50 hover:text-white/80 hover:bg-white/[0.06]`;
+    return `${base} bg-[var(--oc-panel2)] border-[var(--oc-line)] text-[var(--oc-muted2)] hover:text-[var(--oc-ink2)] hover:border-[var(--oc-line2)]`;
   }
   const activeMap = {
     emerald:
@@ -83,14 +84,11 @@ export function PaymentControls({
             name="paidAmount"
             required
             placeholder={`0 / ${totalAmount}`}
-            className="compact-input flex-1 text-sm"
+            className="auth-input flex-1 text-sm"
           />
-          <button
-            type="submit"
-            className="text-sm font-medium px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 transition-colors"
-          >
+          <Btn type="submit" size="sm">
             Хадгалах
-          </button>
+          </Btn>
         </form>
       ) : null}
     </div>

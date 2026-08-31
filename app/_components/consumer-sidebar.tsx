@@ -4,8 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { accountSignOutAction } from "@/app/_actions/account-auth";
+import { submitAccountFeedback } from "@/app/_actions/feedback";
 import { AccountNotificationBell } from "./account-notification-bell";
 import { Brand, BrandMark } from "./brand";
+import { FeedbackButton } from "./feedback-button";
 import { ThemeToggle } from "./theme-toggle";
 import { useSidebarCollapse } from "./use-sidebar-collapse";
 
@@ -315,7 +317,12 @@ export function ConsumerSidebar({
           {collapsed ? <BrandMark size="sm" /> : <Brand />}
         </Link>
         {loggedIn && !collapsed ? (
-          <div className="pr-4">
+          <div className="pr-4 flex items-center gap-1">
+            <FeedbackButton
+              submitAction={submitAccountFeedback}
+              compact
+              className="inline-flex items-center justify-center rounded-lg p-1.5 text-white/40 transition-colors hover:bg-white/[0.06] hover:text-white/80"
+            />
             <AccountNotificationBell initialUnread={notificationUnread} />
           </div>
         ) : null}
@@ -409,6 +416,11 @@ export function ConsumerMobileTopbar({
           <div className="flex items-center gap-2 shrink-0">
             {loggedIn ? (
               <>
+                <FeedbackButton
+                  submitAction={submitAccountFeedback}
+                  compact
+                  className="inline-flex items-center justify-center rounded-lg p-1.5 text-white/50 transition-colors hover:bg-white/[0.06] hover:text-white/90"
+                />
                 <AccountNotificationBell initialUnread={notificationUnread} />
                 <Link
                   href="/account"

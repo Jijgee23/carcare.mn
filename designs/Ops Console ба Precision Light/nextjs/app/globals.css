@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html { scroll-behavior: smooth; }
+body { @apply bg-carbon text-ink font-sans antialiased; }
+a { @apply text-accent no-underline; }
+a:hover { @apply text-accentHi; }

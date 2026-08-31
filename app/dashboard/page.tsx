@@ -1,12 +1,11 @@
 import Link from "next/link";
-import { PageHeader } from "@/app/_components/page-header";
 import { requireUser } from "@/lib/auth";
 import { branchScopeId, userRoleLabel } from "@/lib/auth/roles";
 import { prisma } from "@/lib/prisma";
 import { formatTugrik } from "@/lib/orders";
 import { DatePicker } from "@/app/_components/date-picker";
 import { Sparkline } from "@/app/_components/sparkline";
-import { IncomeChart } from "./income-chart";
+import { IncomeBarChart } from "./income-bar-chart";
 import { type Trend, dailyTrend } from "./trend";
 import {
   INCOME_QUICK_RANGES,
@@ -29,6 +28,18 @@ export const metadata = {
 function incomeRangeHref(key: IncomeRangeKey): string {
   return key === "week" ? "/dashboard" : `/dashboard?range=${key}`;
 }
+
+type JobStatus = "IN_PROGRESS" | "WAITING_PARTS" | "SCHEDULED";
+const JOB_STATUS_LABEL: Record<JobStatus, string> = {
+  IN_PROGRESS: "Явцтай",
+  WAITING_PARTS: "Хүлээгдэж",
+  SCHEDULED: "Товлосон",
+};
+const JOB_STATUS_STYLE: Record<JobStatus, string> = {
+  IN_PROGRESS: "bg-[var(--oc-accent)]/15 text-[var(--oc-accent)]",
+  WAITING_PARTS: "bg-white/[0.06] text-[var(--oc-muted)]",
+  SCHEDULED: "bg-white/[0.06] text-[var(--oc-muted)]",
+};
 
 export default async function DashboardPage({
   searchParams,
@@ -71,6 +82,7 @@ export default async function DashboardPage({
     vehicleDates,
     branchDates,
     employeeDates,
+    activeJobs,
   ] = await Promise.all([
     prisma.branch.count({ where: { tenantId: user.tenantId } }),
     prisma.user.count({ where: { tenantId: user.tenantId } }),
@@ -142,6 +154,26 @@ export default async function DashboardPage({
       where: recentWhere,
       select: { createdAt: true },
     }),
+    prisma.serviceOrder.findMany({
+      where: {
+        tenantId: user.tenantId,
+        ...orderBranchFilter,
+        status: { in: ["IN_PROGRESS", "WAITING_PARTS", "SCHEDULED"] },
+      },
+      orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
+      take: 6,
+      select: {
+        id: true,
+        status: true,
+        vehicle: { select: { plate: true } },
+        assignedTo: { select: { firstName: true, lastName: true } },
+        items: {
+          orderBy: { createdAt: "asc" },
+          take: 1,
+          select: { description: true },
+        },
+      },
+    }),
   ]);
   const activeSub = resolveActiveSubscription(subscriptions);
 
@@ -158,18 +190,21 @@ export default async function DashboardPage({
 
   return (
     <div className="p-4 sm:p-6">
-      <PageHeader
-        title={`Сайн байна уу, ${user.firstName}!`}
-        description={`${user.tenant.name} · ${userRoleLabel(user)}`}
-      />
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">
+          Сайн байна уу, {user.firstName}!
+        </h1>
+        <p className="text-sm text-[var(--oc-muted3)] mt-1">
+          {user.tenant.name} · {userRoleLabel(user)}
+        </p>
+      </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-line)] lg:grid-cols-3 xl:grid-cols-6">
         <StatCard
           label="Идэвхтэй захиалга"
           value={openOrderCount}
           href="/dashboard/orders"
           trend={orderTrend}
-          accent
         />
         <StatCard
           label="Энэ сар дуусгасан"
@@ -203,22 +238,22 @@ export default async function DashboardPage({
         />
       </div>
 
-      <section className="mt-6 glass rounded-2xl p-4 sm:p-6 lg:p-8">
+      <section className="mt-6 rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-4 sm:p-6 lg:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
           <div>
-            <h2 className="font-semibold mb-1">Орлогын явц</h2>
-            <p className="text-xs text-white/40">{incomeRange.label}</p>
+            <h2 className="font-semibold text-[var(--oc-ink)] mb-1">Орлогын явц</h2>
+            <p className="text-xs text-[var(--oc-muted3)]">{incomeRange.label}</p>
           </div>
           <div className="text-right">
-            <div className="text-2xl sm:text-3xl font-bold gradient-text leading-none">
+            <div className="font-plex-mono text-2xl sm:text-3xl font-semibold text-[var(--oc-ink)] leading-none">
               {formatTugrik(income.total)}
             </div>
             {income.changePct != null ? (
               <div
                 title="Өмнөх ижил урттай үетэй харьцуулав"
-                className={`mt-1.5 inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
+                className={`mt-1.5 inline-flex items-center gap-1 font-plex-mono text-xs font-medium px-2 py-0.5 rounded-full ${
                   incomeUp
-                    ? "bg-emerald-500/15 text-emerald-300 light:text-emerald-700"
+                    ? "bg-[var(--oc-ok)]/15 text-[var(--oc-ok)]"
                     : "bg-red-500/15 text-red-300 light:text-red-700"
                 }`}
               >
@@ -226,13 +261,13 @@ export default async function DashboardPage({
                 <span className="tabular-nums">
                   {Math.abs(income.changePct).toFixed(1)}%
                 </span>
-                <span className="text-white/30">өмнөх үе</span>
+                <span className="text-[var(--oc-muted3)]">өмнөх үе</span>
               </div>
             ) : null}
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap mb-5">
+        <div className="flex items-center gap-2 flex-wrap mb-6">
           {INCOME_QUICK_RANGES.map((q) => {
             const active = incomeRange.key === q.key;
             return (
@@ -241,8 +276,8 @@ export default async function DashboardPage({
                 href={incomeRangeHref(q.key)}
                 className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${
                   active
-                    ? "bg-violet-600/30 text-violet-300 border border-violet-500/30 light:bg-violet-100 light:border-violet-300 light:text-violet-700"
-                    : "text-white/40 hover:text-white/70 border border-white/10 hover:border-white/20"
+                    ? "bg-[var(--oc-accent)]/15 text-[var(--oc-accent)] border border-[var(--oc-accent)]/30"
+                    : "text-[var(--oc-muted3)] hover:text-[var(--oc-ink2)] border border-[var(--oc-line)] hover:border-[var(--oc-line2)]"
                 }`}
               >
                 {q.label}
@@ -263,52 +298,93 @@ export default async function DashboardPage({
             />
             <button
               type="submit"
-              className="text-xs bg-violet-600 hover:bg-violet-500 transition-colors px-3 py-1.5 rounded-lg font-medium shrink-0 w-full sm:w-auto"
+              className="text-xs bg-[var(--oc-accent)] hover:bg-[var(--oc-accent-hi)] transition-colors px-3 py-1.5 rounded-lg font-medium text-[var(--oc-on-accent)] shrink-0 w-full sm:w-auto"
             >
               Шүүх
             </button>
           </form>
         </div>
 
-        <IncomeChart points={income.points} up={incomeUp} />
+        <IncomeBarChart points={income.points} />
       </section>
 
       <section className="mt-6 grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2 glass rounded-2xl p-5 sm:p-6 lg:p-8">
-          <h2 className="font-semibold mb-1">Хурдан үйлдлүүд</h2>
-          <p className="text-sm text-white/40 mb-6">
-            Дарж шууд эхэлнэ.
-          </p>
-          <div className="grid sm:grid-cols-2 gap-3">
-            <QuickAction
-              href="/dashboard/orders/new"
-              title="Шинэ захиалга авах"
-              desc="Үйлчилгээний ажлыг бүртгэж эхлэх"
-              icon="🧾"
-            />
-            <QuickAction
-              href="/dashboard/customers/new"
-              title="Үйлчлүүлэгч нэмэх"
-              desc="Шинэ харилцагчийг бүртгэх"
-              icon="🙋"
-            />
-            <QuickAction
-              href="/dashboard/vehicles/new"
-              title="Машин бүртгэх"
-              desc="Машины мэдээлэл, эзэмшигчийг бүртгэх"
-              icon="🚗"
-            />
-            <QuickAction
-              href="/dashboard/employees/new"
-              title="Ажилтан нэмэх"
-              desc="Мастер, кассчин, менежерийг урих"
-              icon="👤"
-            />
+        <div className="lg:col-span-2 flex flex-col gap-6">
+          <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5 sm:p-6 lg:p-8">
+            <h2 className="font-semibold text-[var(--oc-ink)] mb-1">Хурдан үйлдлүүд</h2>
+            <p className="text-sm text-[var(--oc-muted3)] mb-6">Дарж шууд эхэлнэ.</p>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <QuickAction
+                href="/dashboard/orders/new"
+                title="Шинэ захиалга авах"
+                desc="Үйлчилгээний ажлыг бүртгэж эхлэх"
+              />
+              <QuickAction
+                href="/dashboard/customers/new"
+                title="Үйлчлүүлэгч нэмэх"
+                desc="Шинэ харилцагчийг бүртгэх"
+              />
+              <QuickAction
+                href="/dashboard/vehicles/new"
+                title="Машин бүртгэх"
+                desc="Машины мэдээлэл, эзэмшигчийг бүртгэх"
+              />
+              <QuickAction
+                href="/dashboard/employees/new"
+                title="Ажилтан нэмэх"
+                desc="Мастер, кассчин, менежерийг урих"
+              />
+            </div>
+          </div>
+
+          <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden">
+            <div className="flex items-center justify-between px-5 sm:px-6 lg:px-8 py-4 border-b border-[var(--oc-line)]">
+              <h2 className="font-semibold text-[var(--oc-ink)]">Явцтай ажил</h2>
+              <span className="font-plex-mono text-[11px] text-[var(--oc-muted3)]">
+                {activeJobs.length} идэвхтэй
+              </span>
+            </div>
+            {activeJobs.length === 0 ? (
+              <p className="text-sm text-[var(--oc-muted3)] py-8 text-center">
+                Одоогоор идэвхтэй ажил алга.
+              </p>
+            ) : (
+              <div className="divide-y divide-[var(--oc-line)]">
+                {activeJobs.map((job) => {
+                  const status = job.status as JobStatus;
+                  const master = job.assignedTo
+                    ? `${job.assignedTo.lastName} ${job.assignedTo.firstName}`
+                    : "Хариуцагчгүй";
+                  return (
+                    <Link
+                      key={job.id}
+                      href={`/dashboard/orders/${job.id}`}
+                      className="flex items-center gap-4 px-5 sm:px-6 lg:px-8 py-3.5 text-[13px] hover:bg-white/[0.02] transition-colors"
+                    >
+                      <span className="font-plex-mono text-[var(--oc-ink2)] shrink-0 w-[92px]">
+                        {job.vehicle?.plate ?? "—"}
+                      </span>
+                      <span className="text-[var(--oc-muted2)] flex-1 min-w-0 truncate">
+                        {job.items[0]?.description ?? "—"}
+                      </span>
+                      <span className="hidden sm:inline text-[var(--oc-muted3)] shrink-0 max-w-[9rem] truncate">
+                        {master}
+                      </span>
+                      <span
+                        className={`shrink-0 rounded px-2 py-0.5 font-plex-mono text-[11px] ${JOB_STATUS_STYLE[status]}`}
+                      >
+                        {JOB_STATUS_LABEL[status]}
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="glass rounded-2xl p-5 sm:p-6 lg:p-8">
-          <h2 className="font-semibold mb-4">Байгууллагын мэдээлэл</h2>
+        <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5 sm:p-6 lg:p-8">
+          <h2 className="font-semibold text-[var(--oc-ink)] mb-4">Байгууллагын мэдээлэл</h2>
           <dl className="space-y-3 text-sm">
             <InfoRow label="Нэр" value={user.tenant.name} />
             <InfoRow label="Регистр" value={user.tenant.registerNumber} />
@@ -317,14 +393,14 @@ export default async function DashboardPage({
             {user.tenant.phone2 ? (
               <InfoRow label="Утас 2" value={user.tenant.phone2} />
             ) : null}
-            <div className="pt-2 border-t border-white/[0.06]">
+            <div className="pt-2 border-t border-[var(--oc-line)]">
               <div className="flex items-center justify-between">
-                <span className="text-white/40">Багц</span>
+                <span className="text-[var(--oc-muted3)]">Багц</span>
                 <span
-                  className={`text-xs px-2.5 py-1 rounded-full ${
+                  className={`font-plex-mono text-xs px-2.5 py-1 rounded-full ${
                     activeSub
                       ? SUBSCRIPTION_STATUS_BADGE[activeSub.subscription.status]
-                      : "bg-violet-500/15 text-violet-300 border border-violet-500/30 light:text-violet-700"
+                      : "bg-[var(--oc-accent)]/15 text-[var(--oc-accent)] border border-[var(--oc-accent)]/30"
                   }`}
                 >
                   {activeSub
@@ -337,14 +413,14 @@ export default async function DashboardPage({
               </div>
               {activeSub?.expiresAt ? (
                 <div className="mt-2 flex items-center justify-between text-xs">
-                  <span className="text-white/40">Хугацаа</span>
-                  <span className="text-white/80 text-right">
+                  <span className="text-[var(--oc-muted3)]">Хугацаа</span>
+                  <span className="text-[var(--oc-ink2)] text-right">
                     {activeSub.expiresAt.toLocaleDateString("mn-MN")}
                     <span
                       className={`block text-[10px] ${
                         activeSub.daysLeft <= 3
                           ? "text-red-300 light:text-red-700"
-                          : "text-white/40"
+                          : "text-[var(--oc-muted3)]"
                       }`}
                     >
                       {formatDaysLeft(activeSub.daysLeft)}
@@ -354,9 +430,9 @@ export default async function DashboardPage({
               ) : null}
               <Link
                 href="/dashboard/settings/subscription"
-                className="mt-3 inline-block text-xs text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
+                className="mt-3 inline-flex items-center justify-center w-full rounded-lg bg-[var(--oc-accent)] hover:bg-[var(--oc-accent-hi)] transition-colors py-2.5 text-xs font-semibold text-[var(--oc-on-accent)]"
               >
-                Дэлгэрэнгүй / түүх →
+                Багц сунгах
               </Link>
             </div>
           </dl>
@@ -371,44 +447,36 @@ function StatCard({
   value,
   href,
   trend,
-  accent = false,
 }: {
   label: string;
   value: number;
   href?: string;
   trend?: Trend;
-  accent?: boolean;
 }) {
   const pct = trend?.changePct ?? null;
   // Чиглэл: өссөн/буурсан/өөрчлөлтгүй — өнгө, сумыг бодит утгаар ялгана.
   const dir = pct == null ? null : pct > 0 ? "up" : pct < 0 ? "down" : "flat";
   const up = pct == null ? true : pct >= 0;
   const inner = (
-    <div
-      className={`group glass card-hover rounded-2xl p-3 sm:p-4 flex flex-col gap-2.5 sm:gap-3 h-full ${
-        accent ? "border border-violet-500/30" : ""
-      }`}
-    >
+    <div className="group bg-[var(--oc-panel)] hover:bg-[var(--oc-panel2)] transition-colors p-3 sm:p-4 flex flex-col gap-2.5 sm:gap-3 h-full">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="text-xs text-white/40 truncate">{label}</div>
-          <div
-            className={`text-xl sm:text-2xl font-bold mt-0.5 tabular-nums ${
-              accent ? "gradient-text" : "text-white"
-            }`}
-          >
+          <div className="font-plex-mono text-[10.5px] uppercase tracking-[0.1em] text-[var(--oc-muted3)] truncate">
+            {label}
+          </div>
+          <div className="font-plex-mono text-xl sm:text-2xl font-semibold mt-1 tabular-nums text-[var(--oc-ink)]">
             {value.toLocaleString("mn-MN")}
           </div>
         </div>
         {pct != null ? (
           <span
             title="Сүүлийн 7 хоногийг өмнөх 7 хоногтой харьцуулав"
-            className={`shrink-0 inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+            className={`shrink-0 inline-flex items-center gap-0.5 font-plex-mono text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
               dir === "up"
-                ? "bg-emerald-500/15 text-emerald-300 light:text-emerald-700"
+                ? "bg-[var(--oc-ok)]/15 text-[var(--oc-ok)]"
                 : dir === "down"
                   ? "bg-red-500/15 text-red-300 light:text-red-700"
-                  : "bg-white/[0.06] text-white/45 light:text-slate-500"
+                  : "bg-white/[0.06] text-[var(--oc-muted3)]"
             }`}
           >
             <span>{dir === "up" ? "▲" : dir === "down" ? "▼" : "—"}</span>
@@ -432,25 +500,25 @@ function QuickAction({
   href,
   title,
   desc,
-  icon,
 }: {
   href: string;
   title: string;
   desc: string;
-  icon: string;
 }) {
   return (
     <Link
       href={href}
-      className="group glass card-hover rounded-xl p-5 flex items-start gap-4"
+      className="group rounded-[10px] border border-[var(--oc-line)] hover:border-[var(--oc-line2)] hover:bg-[var(--oc-panel2)] transition-colors p-5 flex items-center justify-between gap-3"
     >
-      <div className="text-3xl shrink-0">{icon}</div>
       <div className="min-w-0">
-        <div className="font-semibold text-white group-hover:text-violet-300 light:group-hover:text-violet-700 transition-colors">
+        <div className="font-semibold text-[var(--oc-ink2)] group-hover:text-[var(--oc-accent)] transition-colors">
           {title}
         </div>
-        <div className="text-sm text-white/40 mt-0.5">{desc}</div>
+        <div className="text-sm text-[var(--oc-muted3)] mt-0.5">{desc}</div>
       </div>
+      <span className="font-plex-mono text-[var(--oc-muted3)] group-hover:text-[var(--oc-accent)] transition-colors shrink-0">
+        →
+      </span>
     </Link>
   );
 }
@@ -458,8 +526,8 @@ function QuickAction({
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <span className="text-white/40">{label}</span>
-      <span className="text-white/90 truncate text-right">{value}</span>
+      <span className="text-[var(--oc-muted3)]">{label}</span>
+      <span className="text-[var(--oc-ink2)] truncate text-right">{value}</span>
     </div>
   );
 }
