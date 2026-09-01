@@ -13,7 +13,11 @@ export type DeviceInput = {
   os?: string | null;
 };
 
-type DeviceOwner = { userId?: string | null; accountId?: string | null };
+type DeviceOwner = {
+  userId?: string | null;
+  accountId?: string | null;
+  superAdminId?: string | null;
+};
 
 /**
  * Клиентээс ирсэн body-г шалгаж DeviceInput болгоно (web action + мобайл API
@@ -68,6 +72,7 @@ export async function registerDevice(
     os: input.os ?? null,
     userId: owner.userId ?? null,
     accountId: owner.accountId ?? null,
+    superAdminId: owner.superAdminId ?? null,
     lastSeenAt: new Date(),
   };
   return prisma.device.upsert({
@@ -87,6 +92,7 @@ export async function removeDevice(
       deviceId,
       ...(owner.userId ? { userId: owner.userId } : {}),
       ...(owner.accountId ? { accountId: owner.accountId } : {}),
+      ...(owner.superAdminId ? { superAdminId: owner.superAdminId } : {}),
     },
   });
 }
@@ -108,6 +114,17 @@ export async function getFirebaseTokensForAccount(
 ): Promise<string[]> {
   const rows = await prisma.device.findMany({
     where: { accountId, firebaseToken: { not: null } },
+    select: { firebaseToken: true },
+  });
+  return rows.map((r) => r.firebaseToken).filter((t): t is string => Boolean(t));
+}
+
+/** Push илгээхэд — SuperAdmin-тай холбоотой FCM token-ууд. */
+export async function getFirebaseTokensForSuperAdmin(
+  superAdminId: string,
+): Promise<string[]> {
+  const rows = await prisma.device.findMany({
+    where: { superAdminId, firebaseToken: { not: null } },
     select: { firebaseToken: true },
   });
   return rows.map((r) => r.firebaseToken).filter((t): t is string => Boolean(t));

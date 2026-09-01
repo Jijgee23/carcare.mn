@@ -212,6 +212,7 @@ const secondaryItems: NavItem[] = [
       { href: "/dashboard/settings/system", label: "Системийн" },
       { href: "/dashboard/settings/qpay", label: "QPay" },
       { href: "/dashboard/settings/subscription", label: "Багц" },
+      { href: "/page/api-docs?tab=tenant", label: "Мобайл API" },
     ],
   },
   {

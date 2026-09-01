@@ -1,5 +1,6 @@
 import { Prisma, prisma } from "@/lib/prisma";
-import { sendPushToAccount, sendPushToUser } from "@/lib/push";
+import { sendPushToAccount, sendPushToSuperAdmin, sendPushToTokens, sendPushToUser } from "@/lib/push";
+import { setBypassContext } from "@/lib/tenant-context";
 
 // Мэдэгдэлийн төв — илгээгдсэн мэдэгдэл бүрийг DB-д хадгалж (Notification), дараа нь
 // best-effort push илгээнэ. Ажилтан (User) ба Account хоёуланд нэг урсгалаар.
@@ -17,11 +18,14 @@ export const NOTIFICATION_TYPES = [
   "subscription_expiring",
   "feedback_replied_staff",
   "feedback_replied_account",
+  "tenant_created",
+  "broadcast_staff",
+  "broadcast_account",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
-export type NotificationRealm = "staff" | "account";
+export type NotificationRealm = "staff" | "account" | "system";
 
 // Түүх жагсаалтад харуулах төрлийн нэр (badge).
 export const NOTIFICATION_TYPE_LABEL: Record<NotificationType, string> = {
@@ -34,6 +38,9 @@ export const NOTIFICATION_TYPE_LABEL: Record<NotificationType, string> = {
   subscription_expiring: "Багц дуусах",
   feedback_replied_staff: "Санал хүсэлтэд хариу ирсэн",
   feedback_replied_account: "Санал хүсэлтэд хариу ирсэн",
+  tenant_created: "Шинэ байгууллага бүртгүүлсэн",
+  broadcast_staff: "Мэдэгдэл",
+  broadcast_account: "Мэдэгдэл",
 };
 
 // Event тус бүрд дамжуулах түүхий утгууд (бүгд string — FCM data-д ч мөн).
@@ -144,6 +151,36 @@ export const NOTIFICATION_REGISTRY: Record<NotificationType, NotificationDef> = 
     }),
     href: () => "/account",
   },
+  tenant_created: {
+    realm: "system",
+    build: (i) => ({
+      title: "Шинэ байгууллага бүртгүүлсэн",
+      body: i.tenantName ? `"${i.tenantName}" бүртгүүллээ.` : "Шинэ байгууллага бүртгүүллээ.",
+      data: { type: "tenant_created", tenantId: i.tenantId ?? "" },
+    }),
+    href: (d) => (d.tenantId ? `/system/tenants/${d.tenantId}` : "/system/tenants"),
+  },
+  // Систем админаас гар аргаар бичсэн мэдэгдэл — доорх 2 нь зөвхөн хүлээн
+  // авагчийн realm-ээрээ ялгаатай, текст нь бүрэн admin-аас ирнэ (fixed
+  // template биш) — broadcastNotification (lib/notifications.ts) л дуудна.
+  broadcast_staff: {
+    realm: "staff",
+    build: (i) => ({
+      title: i.title ?? "Мэдэгдэл",
+      body: i.body ?? "",
+      data: { type: "broadcast_staff" },
+    }),
+    href: () => "/dashboard",
+  },
+  broadcast_account: {
+    realm: "account",
+    build: (i) => ({
+      title: i.title ?? "Мэдэгдэл",
+      body: i.body ?? "",
+      data: { type: "broadcast_account" },
+    }),
+    href: () => "/account",
+  },
 };
 
 // Клиент рүү дамжуулах хялбаршуулсан хэлбэр (server action-ууд буцаана).
@@ -191,7 +228,10 @@ export function notificationHref(
   return def.href(obj);
 }
 
-type Recipient = { userId: string } | { accountId: string };
+type Recipient =
+  | { userId: string }
+  | { accountId: string }
+  | { superAdminId: string };
 
 /**
  * Нэг хүлээн авагчид мэдэгдэл үүсгэнэ — эхлээд DB-д хадгална (заавал), дараа нь
@@ -218,7 +258,9 @@ export async function createNotification(args: {
         tenantId: args.tenantId ?? null,
         ...("userId" in args.recipient
           ? { userId: args.recipient.userId }
-          : { accountId: args.recipient.accountId }),
+          : "accountId" in args.recipient
+            ? { accountId: args.recipient.accountId }
+            : { superAdminId: args.recipient.superAdminId }),
       },
     });
   } catch (e) {
@@ -236,8 +278,10 @@ export async function createNotification(args: {
   try {
     if ("userId" in args.recipient) {
       await sendPushToUser(args.recipient.userId, payload);
-    } else {
+    } else if ("accountId" in args.recipient) {
       await sendPushToAccount(args.recipient.accountId, payload);
+    } else {
+      await sendPushToSuperAdmin(args.recipient.superAdminId, payload);
     }
   } catch (err) {
     console.warn(`[notify] push (${args.type}):`, err);
@@ -305,4 +349,133 @@ export async function notifyStaff(args: {
       ),
     ),
   );
+}
+
+/**
+ * Бүх систем админд (SuperAdmin) нэг мэдэгдэл fan-out хийнэ. `SuperAdmin`-д
+ * тенант/эрх/идэвх зэрэг шүүх багана байхгүй тул `staffRecipientWhere`-ийн
+ * адил шүүлт алга — бүх мөр хүлээн авна. Cross-tenant (bypass) query.
+ */
+export async function notifySuperAdmins(args: {
+  type: NotificationType;
+  input: NotificationInput;
+}): Promise<void> {
+  setBypassContext();
+  const recipients = await prisma.superAdmin.findMany({ select: { id: true } });
+  if (recipients.length === 0) return;
+
+  const def = NOTIFICATION_REGISTRY[args.type];
+  const built = def.build(args.input);
+
+  await prisma.notification.createMany({
+    data: recipients.map((r) => ({
+      type: args.type,
+      title: built.title,
+      body: built.body,
+      data: built.data,
+      superAdminId: r.id,
+    })),
+  });
+
+  const payload = { title: built.title, body: built.body, data: built.data };
+  await Promise.all(
+    recipients.map((r) =>
+      sendPushToSuperAdmin(r.id, payload).catch((err) =>
+        console.warn(`[notify] superadmin push (${args.type}):`, err),
+      ),
+    ),
+  );
+}
+
+const BROADCAST_BATCH_SIZE = 500;
+
+/**
+ * Систем админаас бүх ажилтан (User) болон/эсвэл бүх хэрэглэгч (Account) руу
+ * гар аргаар мэдэгдэл илгээнэ ("Мэдэгдэл илгээх" хуудас). Cross-tenant тул
+ * bypass context — `id`-аар cursor-pagination хийж багц (500)-аар боловсруулна,
+ * бүх мөрийг нэг дор санах ойд ачаалахгүй.
+ */
+export async function broadcastNotification(args: {
+  title: string;
+  body: string;
+  targets: ("staff" | "account")[];
+}): Promise<{ staffNotified: number; accountsNotified: number }> {
+  setBypassContext();
+
+  const built = { title: args.title, body: args.body, data: {} as Record<string, string> };
+  let staffNotified = 0;
+  let accountsNotified = 0;
+
+  if (args.targets.includes("staff")) {
+    staffNotified = await broadcastToRealm("staff", "broadcast_staff", {
+      ...built,
+      data: { type: "broadcast_staff" },
+    });
+  }
+  if (args.targets.includes("account")) {
+    accountsNotified = await broadcastToRealm("account", "broadcast_account", {
+      ...built,
+      data: { type: "broadcast_account" },
+    });
+  }
+
+  return { staffNotified, accountsNotified };
+}
+
+async function broadcastToRealm(
+  realm: "staff" | "account",
+  type: "broadcast_staff" | "broadcast_account",
+  built: BuiltNotification,
+): Promise<number> {
+  const ownerField = realm === "staff" ? "userId" : "accountId";
+  let cursor: string | undefined;
+  let total = 0;
+
+  for (;;) {
+    const rows =
+      realm === "staff"
+        ? await prisma.user.findMany({
+            select: { id: true },
+            take: BROADCAST_BATCH_SIZE,
+            orderBy: { id: "asc" },
+            ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+          })
+        : await prisma.account.findMany({
+            select: { id: true },
+            take: BROADCAST_BATCH_SIZE,
+            orderBy: { id: "asc" },
+            ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+          });
+    if (rows.length === 0) break;
+
+    await prisma.notification.createMany({
+      data: rows.map((r) => ({
+        type,
+        title: built.title,
+        body: built.body,
+        data: built.data,
+        [ownerField]: r.id,
+      })),
+    });
+
+    const ids = rows.map((r) => r.id);
+    const tokens = await prisma.device.findMany({
+      where: { [ownerField]: { in: ids }, firebaseToken: { not: null } },
+      select: { firebaseToken: true },
+    });
+    try {
+      await sendPushToTokens(
+        tokens.map((t) => t.firebaseToken).filter((t): t is string => Boolean(t)),
+        { title: built.title, body: built.body, data: built.data },
+      );
+    } catch (err) {
+      console.warn(`[notify] broadcast push (${type}):`, err);
+    }
+
+    total += rows.length;
+    cursor = ids[ids.length - 1];
+    if (rows.length < BROADCAST_BATCH_SIZE) break;
+  }
+
+  return total;
 }

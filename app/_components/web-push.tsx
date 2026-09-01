@@ -4,6 +4,7 @@ import { getToken, onMessage } from "firebase/messaging";
 import { useEffect, useState } from "react";
 import {
   registerAccountDevice,
+  registerSuperAdminDevice,
   registerUserDevice,
 } from "@/app/_actions/devices";
 import {
@@ -41,7 +42,11 @@ function osFromUA(ua: string): string {
   return "Web";
 }
 
-export function WebPushToggle({ target }: { target: "account" | "user" }) {
+export function WebPushToggle({
+  target,
+}: {
+  target: "account" | "user" | "system-admin";
+}) {
   const [status, setStatus] = useState<Status>("idle");
 
   useEffect(() => {
@@ -127,7 +132,9 @@ export function WebPushToggle({ target }: { target: "account" | "user" }) {
       const res =
         target === "account"
           ? await registerAccountDevice(input)
-          : await registerUserDevice(input);
+          : target === "user"
+            ? await registerUserDevice(input)
+            : await registerSuperAdminDevice(input);
       if (!res.ok) {
         setStatus("error");
         return;

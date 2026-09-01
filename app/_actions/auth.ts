@@ -12,6 +12,7 @@ import {
 import { issueOtp, revokeAllOtps, verifyOtp } from "@/lib/auth/otp";
 import { revokeAllForUser } from "@/lib/auth/refresh-token";
 import { signSession } from "@/lib/auth/session";
+import { notifySuperAdmins } from "@/lib/notifications";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
 import {
   createUserSession,
@@ -404,6 +405,16 @@ export async function signUpAction(
 
   const token = await signSession(session);
   await setSessionCookie(token);
+
+  try {
+    await notifySuperAdmins({
+      type: "tenant_created",
+      input: { tenantId: session.tenantId, tenantName: orgName },
+    });
+  } catch (err) {
+    console.warn("[notify] tenant_created:", err);
+  }
+
   redirect("/dashboard");
 }
 

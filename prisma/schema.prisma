@@ -1117,10 +1117,12 @@ model Device {
   model         String? // "iPhone 14 Pro" / "SM-G991B"
   os            String? // "iOS 17.2" / "Android 14" / "Windows"
 
-  userId    String?
-  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  accountId String?
-  account   Account? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  userId       String?
+  user         User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId    String?
+  account      Account?    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  superAdminId String?
+  superAdmin   SuperAdmin? @relation(fields: [superAdminId], references: [id], onDelete: Cascade)
 
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -1128,6 +1130,7 @@ model Device {
 
   @@index([userId])
   @@index([accountId])
+  @@index([superAdminId])
   @@index([firebaseToken])
 }
 
@@ -1150,6 +1153,9 @@ model Notification {
   accountId String?
   account   Account? @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
+  superAdminId String?
+  superAdmin   SuperAdmin? @relation(fields: [superAdminId], references: [id], onDelete: Cascade)
+
   type  String // registry key — "appointment_confirmed", "appointment_created" г.м.
   title String
   body  String
@@ -1163,8 +1169,10 @@ model Notification {
 
   @@index([userId, readAt])
   @@index([accountId, readAt])
+  @@index([superAdminId, readAt])
   @@index([userId, createdAt(sort: Desc)])
   @@index([accountId, createdAt(sort: Desc)])
+  @@index([superAdminId, createdAt(sort: Desc)])
 }
 
 // --- Feedback (хэрэглэгчийн санал хүсэлт / алдааны мэдээллэл) -------------
@@ -1263,6 +1271,8 @@ model SuperAdmin {
   updatedAt    DateTime @updatedAt
 
   subscriptionsCreated Subscription[]
+  devices              Device[]
+  notifications        Notification[]
 }
 
 // --- AuditLog (тенант доторх чухал үйлдлийн түүх) ------------------------

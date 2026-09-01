@@ -2,6 +2,7 @@
 
 import { requireUser } from "@/lib/auth";
 import { requireAccount } from "@/lib/auth/account";
+import { requireSuperAdmin } from "@/lib/auth/system";
 import { parseDeviceInput, registerDevice } from "@/lib/devices";
 
 export type DeviceActionResult = { ok: boolean; error?: string };
@@ -30,5 +31,18 @@ export async function registerUserDevice(
   const parsed = parseDeviceInput(input);
   if (!parsed.ok) return { ok: false, error: parsed.error };
   await registerDevice({ userId: user.id }, parsed.data);
+  return { ok: true };
+}
+
+/**
+ * Web дээр систем админы (SuperAdmin) FCM token бүртгэх (/system push мэдэгдэлд).
+ */
+export async function registerSuperAdminDevice(
+  input: unknown,
+): Promise<DeviceActionResult> {
+  const admin = await requireSuperAdmin();
+  const parsed = parseDeviceInput(input);
+  if (!parsed.ok) return { ok: false, error: parsed.error };
+  await registerDevice({ superAdminId: admin.id }, parsed.data);
   return { ok: true };
 }

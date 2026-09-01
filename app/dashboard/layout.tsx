@@ -6,6 +6,7 @@ import {
 import { SubscriptionBanner } from "@/app/_components/subscription-banner";
 import { SubscriptionGuard } from "@/app/_components/subscription-guard";
 import { ToastProvider } from "@/app/_components/toast";
+import { WebPushToggle } from "@/app/_components/web-push";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getSubscriptionState } from "@/lib/subscription-server";
@@ -76,6 +77,17 @@ export default async function DashboardLayout({
             hasPendingPayment={subState.hasPendingPayment}
             isOwner={user.isOwner}
           />
+          <div className="px-4 sm:px-6 lg:px-8 pt-3">
+            <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-3 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-[var(--oc-ink2)]">Push мэдэгдэл</div>
+                <div className="text-xs text-[var(--oc-muted3)]">
+                  Захиалга, цаг захиалгын мэдэгдлийг энэ төхөөрөмж дээр авах.
+                </div>
+              </div>
+              <WebPushToggle target="user" />
+            </section>
+          </div>
           <main className="flex-1 flex flex-col min-w-0">{children}</main>
         </div>
       </div>
