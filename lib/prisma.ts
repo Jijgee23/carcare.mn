@@ -86,7 +86,29 @@ function createBaseClient(): PrismaClient {
   });
 }
 
-export const prisma = globalForPrisma.prisma ?? withTenantContext(createBaseClient());
+const baseClient = globalForPrisma.prisma ? undefined : createBaseClient();
+export const prisma = globalForPrisma.prisma ?? withTenantContext(baseClient!);
+
+/**
+ * Сервер эхлэхэд (зөвхөн БОДИТ ажиллах үед — `next build`-ийн static
+ * generation worker-үүдэд БИШ, тэдгээр нь `NEXT_PHASE=phase-production-build`
+ * тул module-ыг хэд хэдэн тусдаа process дотор зэрэг ачаалж, warm-up
+ * зэрэгцэн Postgres-ийн max_connections-г шавхаж static export-ийг эвдэж
+ * байсныг олж, ийнхүү хязгаарласан) pool-ыг тэр даруй бүрэн дүүргэнэ
+ * (`poolMax()` тооны холболт зэрэг үүсгэнэ) — эхний бодит хүсэлтүүд ирэхэд
+ * ШИНЭ холболт зэрэг үүсгэх (cold start) хийхгүй байхын тулд. Бодит
+ * production-д (PM2 restart-ийн дараах эхний давалгаа) зэрэгцээ шинэ
+ * холболт үүсгэх мөч дээр `pg`-ийн "client already executing a query" race
+ * ажиглагдсан — pool аль хэдийн дүүрсэн үед энэ цонх бүхэлдээ алга болно.
+ * RLS extension-ийг тойрч (context шаардахгүй) суурь client дээр шууд
+ * ажиллуулна.
+ */
+if (baseClient && process.env.NEXT_PHASE !== "phase-production-build") {
+  const warm = Array.from({ length: poolMax() }, () =>
+    baseClient.$queryRaw`SELECT 1`.catch(() => {}),
+  );
+  Promise.all(warm).catch(() => {});
+}
 
 /**
  * `prisma.$transaction(async (tx) => ...)` дотор өгөгддөг tx client-ийн төрөл —
