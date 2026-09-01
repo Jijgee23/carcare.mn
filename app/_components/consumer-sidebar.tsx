@@ -86,13 +86,13 @@ function isLeafActive(pathname: string, item: NavLeaf): boolean {
 }
 
 const activePillClasses =
-  "bg-violet-600 text-white shadow-[0_10px_28px_-12px_rgba(124,58,237,0.75)]";
+  "bg-[var(--oc-accent)] text-[var(--oc-on-accent)] shadow-[0_10px_28px_-12px_rgba(245,165,36,0.55)]";
 const inactivePillClasses =
-  "text-white/50 hover:bg-white/[0.04] hover:text-white light:text-slate-500 light:hover:bg-black/[0.04] light:hover:text-slate-900";
+  "text-[var(--oc-muted)] hover:bg-white/[0.04] hover:text-[var(--oc-ink)]";
 
 function NavTooltip({ label }: { label: string }) {
   return (
-    <span className="sidebar-tooltip pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-3 whitespace-nowrap rounded-lg bg-[var(--popover)] border border-white/10 light:border-black/10 px-2.5 py-1.5 text-xs font-medium text-white/90 light:text-slate-800 opacity-0 scale-95 origin-left group-hover:opacity-100 group-hover:scale-100 shadow-xl z-50">
+    <span className="sidebar-tooltip pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-3 whitespace-nowrap rounded-lg bg-[var(--oc-panel2)] border border-[var(--oc-line)] px-2.5 py-1.5 text-xs font-medium text-[var(--oc-ink2)] opacity-0 scale-95 origin-left group-hover:opacity-100 group-hover:scale-100 shadow-xl z-50">
       {label}
     </span>
   );
@@ -124,7 +124,7 @@ function ConsumerNavList({
                 collapsed ? "justify-center px-0" : "px-3"
               } ${active ? activePillClasses : inactivePillClasses}`}
             >
-              <span className={`nav-icon shrink-0 ${active ? "text-white" : "text-white/40 light:text-slate-500"}`}>
+              <span className={`nav-icon shrink-0 ${active ? "text-[var(--oc-on-accent)]" : "text-[var(--oc-muted3)]"}`}>
                 {item.icon}
               </span>
               {!collapsed ? item.label : null}
@@ -149,20 +149,20 @@ function ConsumerPromoCard({ collapsed }: { collapsed: boolean }) {
       <div className="min-h-0">
         <Link
           href="/contact"
-          className="card-hover group block rounded-2xl p-4 bg-gradient-to-br from-violet-600/20 via-violet-600/10 to-blue-500/10 border border-violet-400/20 light:from-violet-100 light:via-violet-50 light:to-blue-50 light:border-violet-200"
+          className="card-hover group block rounded-2xl p-4 bg-gradient-to-br from-[var(--oc-accent)]/20 via-[var(--oc-accent)]/10 to-[var(--oc-accent-hi)]/10 border border-[var(--oc-accent)]/20"
         >
-          <div className="w-9 h-9 rounded-xl bg-violet-600 text-white flex items-center justify-center shadow-lg shadow-violet-900/30 light:shadow-violet-300/50">
+          <div className="w-9 h-9 rounded-xl bg-[var(--oc-accent)] text-[var(--oc-on-accent)] flex items-center justify-center shadow-lg shadow-[var(--oc-accent)]/30">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
           </div>
-          <div className="mt-2.5 text-sm font-semibold text-white/90 light:text-slate-900">
+          <div className="mt-2.5 text-sm font-semibold text-[var(--oc-ink)]">
             Тусламж хэрэгтэй юу?
           </div>
-          <div className="mt-0.5 text-xs text-white/45 light:text-slate-500 leading-snug">
+          <div className="mt-0.5 text-xs text-[var(--oc-muted3)] leading-snug">
             Бидэнтэй холбогдоорой
           </div>
-          <div className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-violet-300 group-hover:text-violet-200 light:text-violet-700 light:group-hover:text-violet-800">
+          <div className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-[var(--oc-accent)] group-hover:text-[var(--oc-accent-hi)]">
             Холбоо барих
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-hover:translate-x-0.5">
               <polyline points="9 18 15 12 9 6" />
@@ -191,11 +191,11 @@ function ConsumerFooter({
   if (!loggedIn) {
     if (collapsed) {
       return (
-        <div className="p-3 border-t border-white/[0.06] flex flex-col items-center gap-2">
+        <div className="p-3 border-t border-[var(--oc-line2)] flex flex-col items-center gap-2">
           <Link
             href="/login"
             title="Нэвтрэх"
-            className="w-9 h-9 flex items-center justify-center rounded-xl bg-violet-600 hover:bg-violet-500 transition-colors"
+            className="w-9 h-9 flex items-center justify-center rounded-xl bg-[var(--oc-accent)] hover:bg-[var(--oc-accent-hi)] text-[var(--oc-on-accent)] transition-colors"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
@@ -208,10 +208,10 @@ function ConsumerFooter({
       );
     }
     return (
-      <div className="p-3 border-t border-white/[0.06] space-y-2">
+      <div className="p-3 border-t border-[var(--oc-line2)] space-y-2">
         <Link
           href="/login"
-          className="w-full flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-500 transition-colors px-4 py-2.5 rounded-xl text-sm font-medium"
+          className="w-full flex items-center justify-center gap-2 bg-[var(--oc-accent)] hover:bg-[var(--oc-accent-hi)] text-[var(--oc-on-accent)] transition-colors px-4 py-2.5 rounded-xl text-sm font-medium"
         >
           Нэвтрэх
         </Link>
@@ -222,11 +222,11 @@ function ConsumerFooter({
 
   if (collapsed) {
     return (
-      <div className="p-3 border-t border-white/[0.06] flex flex-col items-center gap-2">
+      <div className="p-3 border-t border-[var(--oc-line2)] flex flex-col items-center gap-2">
         <Link
           href="/account"
           title={accountName || "Профайл"}
-          className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-xs font-bold shrink-0"
+          className="w-9 h-9 rounded-full bg-gradient-to-br from-[var(--oc-accent)] to-[var(--oc-accent-hi)] text-[var(--oc-on-accent)] flex items-center justify-center text-xs font-bold shrink-0"
         >
           {initial ?? (
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -240,7 +240,7 @@ function ConsumerFooter({
           <button
             type="submit"
             title="Гарах"
-            className="p-2 rounded-lg text-white/50 hover:text-white light:text-slate-500 light:hover:text-slate-900 hover:bg-white/[0.06] transition-colors"
+            className="p-2 rounded-lg text-[var(--oc-muted)] hover:text-[var(--oc-ink)] hover:bg-white/[0.06] transition-colors"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -254,12 +254,12 @@ function ConsumerFooter({
   }
 
   return (
-    <div className="p-3 border-t border-white/[0.06] space-y-2">
+    <div className="p-3 border-t border-[var(--oc-line2)] space-y-2">
       <Link
         href="/account"
         className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-white/[0.04] transition-colors"
       >
-        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-xs font-bold shrink-0">
+        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[var(--oc-accent)] to-[var(--oc-accent-hi)] text-[var(--oc-on-accent)] flex items-center justify-center text-xs font-bold shrink-0">
           {initial ?? (
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
@@ -268,14 +268,14 @@ function ConsumerFooter({
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-white/80 truncate">
+          <div className="text-sm font-medium text-[var(--oc-ink2)] truncate">
             {accountName || "Профайл"}
           </div>
-          <div className="text-xs text-white/30 truncate tabular-nums">
+          <div className="text-xs text-[var(--oc-muted3)] truncate tabular-nums">
             {accountPhone}
           </div>
         </div>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-white/25 shrink-0">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--oc-muted3)] shrink-0">
           <polyline points="9 18 15 12 9 6" />
         </svg>
       </Link>
@@ -283,7 +283,7 @@ function ConsumerFooter({
       <form action={accountSignOutAction}>
         <button
           type="submit"
-          className="w-full text-sm text-white/50 hover:text-white transition-colors px-3 py-2 rounded-xl hover:bg-white/[0.04] text-left"
+          className="w-full text-sm text-[var(--oc-muted)] hover:text-[var(--oc-ink)] transition-colors px-3 py-2 rounded-xl hover:bg-white/[0.04] text-left"
         >
           Гарах
         </button>
@@ -308,8 +308,8 @@ export function ConsumerSidebar({
   const { collapsed, toggle } = useSidebarCollapse();
 
   return (
-    <aside className="app-sidebar fixed top-0 left-0 h-screen bg-[var(--shell-surface)] border-r border-white/[0.06] flex-col z-40 hidden lg:flex">
-      <div className="relative h-16 border-b border-white/[0.06] flex items-center shrink-0">
+    <aside className="app-sidebar fixed top-0 left-0 h-screen bg-[var(--oc-panel)] border-r border-[var(--oc-line2)] flex-col z-40 hidden lg:flex">
+      <div className="relative h-16 border-b border-[var(--oc-line2)] flex items-center shrink-0">
         <Link
           href="/discover"
           className={`flex items-center gap-2.5 flex-1 min-w-0 overflow-hidden ${collapsed ? "justify-center px-2" : "px-5"}`}
@@ -321,7 +321,7 @@ export function ConsumerSidebar({
             <FeedbackButton
               submitAction={submitAccountFeedback}
               compact
-              className="inline-flex items-center justify-center rounded-lg p-1.5 text-white/40 transition-colors hover:bg-white/[0.06] hover:text-white/80"
+              className="inline-flex items-center justify-center rounded-lg p-1.5 text-[var(--oc-muted3)] transition-colors hover:bg-white/[0.06] hover:text-[var(--oc-ink2)]"
             />
             <AccountNotificationBell initialUnread={notificationUnread} />
           </div>
@@ -331,7 +331,7 @@ export function ConsumerSidebar({
           onClick={toggle}
           data-collapsed={collapsed}
           aria-label={collapsed ? "Цэс дэлгэх" : "Цэс хумих"}
-          className="sidebar-collapse-btn absolute top-1/2 -right-3 -translate-y-1/2 w-6 h-6 rounded-full border border-white/10 light:border-black/10 bg-[var(--shell-surface)] text-white/50 hover:text-white light:text-slate-500 light:hover:text-slate-900 flex items-center justify-center shadow-md z-10"
+          className="sidebar-collapse-btn absolute top-1/2 -right-3 -translate-y-1/2 w-6 h-6 rounded-full border border-[var(--oc-line)] bg-[var(--oc-panel)] text-[var(--oc-muted)] hover:text-[var(--oc-ink)] flex items-center justify-center shadow-md z-10"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="15 18 9 12 15 6" />
@@ -392,7 +392,7 @@ export function ConsumerMobileTopbar({
 
   return (
     <>
-      <header className="lg:hidden sticky top-0 z-30 glass border-b border-white/[0.06]">
+      <header className="lg:hidden sticky top-0 z-30 bg-[var(--oc-panel)]/95 backdrop-blur border-b border-[var(--oc-line2)]">
         <div className="px-4 py-3 flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 min-w-0">
             <button
@@ -400,7 +400,7 @@ export function ConsumerMobileTopbar({
               onClick={() => setOpen(true)}
               aria-label="Цэс нээх"
               aria-expanded={open}
-              className="p-1.5 -ml-1 rounded-lg text-white/70 hover:text-white hover:bg-white/[0.06] transition-colors shrink-0"
+              className="p-1.5 -ml-1 rounded-lg text-[var(--oc-muted)] hover:text-[var(--oc-ink)] hover:bg-white/[0.06] transition-colors shrink-0"
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="3" y1="6" x2="21" y2="6" />
@@ -419,12 +419,12 @@ export function ConsumerMobileTopbar({
                 <FeedbackButton
                   submitAction={submitAccountFeedback}
                   compact
-                  className="inline-flex items-center justify-center rounded-lg p-1.5 text-white/50 transition-colors hover:bg-white/[0.06] hover:text-white/90"
+                  className="inline-flex items-center justify-center rounded-lg p-1.5 text-[var(--oc-muted)] transition-colors hover:bg-white/[0.06] hover:text-[var(--oc-ink2)]"
                 />
                 <AccountNotificationBell initialUnread={notificationUnread} />
                 <Link
                   href="/account"
-                  className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-xs font-bold shrink-0"
+                  className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--oc-accent)] to-[var(--oc-accent-hi)] text-[var(--oc-on-accent)] flex items-center justify-center text-xs font-bold shrink-0"
                 >
                   {initial ?? ""}
                 </Link>
@@ -432,7 +432,7 @@ export function ConsumerMobileTopbar({
             ) : (
               <Link
                 href="/login"
-                className="px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-sm font-medium transition-colors"
+                className="px-3 py-1.5 rounded-lg bg-[var(--oc-accent)] hover:bg-[var(--oc-accent-hi)] text-[var(--oc-on-accent)] text-sm font-medium transition-colors"
               >
                 Нэвтрэх
               </Link>
@@ -456,11 +456,11 @@ export function ConsumerMobileTopbar({
           role="dialog"
           aria-modal="true"
           aria-label="Үндсэн цэс"
-          className={`absolute top-0 left-0 h-full w-72 max-w-[85vw] bg-[var(--shell-surface)] border-r border-white/[0.06] flex flex-col shadow-2xl transition-transform duration-300 ease-out ${
+          className={`absolute top-0 left-0 h-full w-72 max-w-[85vw] bg-[var(--oc-panel)] border-r border-[var(--oc-line2)] flex flex-col shadow-2xl transition-transform duration-300 ease-out ${
             open ? "translate-x-0" : "-translate-x-full"
           }`}
         >
-          <div className="flex items-center justify-between gap-2 px-5 h-16 border-b border-white/[0.06]">
+          <div className="flex items-center justify-between gap-2 px-5 h-16 border-b border-[var(--oc-line2)]">
             <Link
               href="/discover"
               onClick={() => setOpen(false)}
@@ -472,7 +472,7 @@ export function ConsumerMobileTopbar({
               type="button"
               onClick={() => setOpen(false)}
               aria-label="Цэс хаах"
-              className="p-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/[0.06] transition-colors"
+              className="p-1.5 rounded-lg text-[var(--oc-muted)] hover:text-[var(--oc-ink)] hover:bg-white/[0.06] transition-colors"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18" />

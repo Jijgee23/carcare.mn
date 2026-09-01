@@ -1,3 +1,4 @@
+import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import type { ReactNode } from "react";
 import {
   ConsumerMobileTopbar,
@@ -7,6 +8,19 @@ import { ToastProvider } from "@/app/_components/toast";
 import { getAccount } from "@/lib/auth/account";
 import { formatPhone } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
+
+// Ops Console дизайны фонт — dashboard-тай ижил механизм, зөвхөн энэ
+// (жолооч/хэрэглэгчийн) route бүлэгт scoped.
+const plexSans = IBM_Plex_Sans({
+  subsets: ["latin", "cyrillic"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-plex-sans",
+});
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin", "cyrillic"],
+  weight: ["400", "500", "600"],
+  variable: "--font-plex-mono",
+});
 
 // Эцсийн хэрэглэгчийн (Account) вэбийн ерөнхий хүрээ — байгууллага хайх, цаг
 // захиалах, миний цагууд. Ажилтны /dashboard-той адил зүүн sidebar-тай.
@@ -29,7 +43,9 @@ export default async function ConsumerLayout({
 
   return (
     <ToastProvider>
-      <div className="min-h-screen bg-[var(--shell-bg-primary)] flex">
+      <div
+        className={`${plexSans.variable} ${plexMono.variable} landing-ops min-h-screen bg-[var(--oc-carbon)] flex`}
+      >
         <ConsumerSidebar
           loggedIn={loggedIn}
           accountName={accountName}
@@ -38,7 +54,6 @@ export default async function ConsumerLayout({
           notificationUnread={unreadNotifications}
         />
         <div className="app-content-offset flex-1 min-w-0 min-h-screen flex flex-col relative isolate">
-          <div aria-hidden className="shell-content-bg" />
           <ConsumerMobileTopbar
             loggedIn={loggedIn}
             accountName={accountName}
@@ -53,8 +68,8 @@ export default async function ConsumerLayout({
             </div>
           </main>
 
-          <footer className="border-t border-white/[0.06]">
-            <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8 py-6 text-center text-xs text-white/30">
+          <footer className="border-t border-[var(--oc-line2)]">
+            <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8 py-6 text-center text-xs text-[var(--oc-muted3)]">
               carcare.mn — авто үйлчилгээний цаг захиалга
             </div>
           </footer>

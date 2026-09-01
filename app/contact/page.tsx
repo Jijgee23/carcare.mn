@@ -1,7 +1,19 @@
 import Link from "next/link";
+import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import { Brand } from "@/app/_components/brand";
 import { Footer } from "@/app/_components/footer";
 import { CONTACT } from "@/lib/contact";
+
+const plexSans = IBM_Plex_Sans({
+  subsets: ["latin", "cyrillic"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-plex-sans",
+});
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin", "cyrillic"],
+  weight: ["400", "500", "600"],
+  variable: "--font-plex-mono",
+});
 
 export const metadata = {
   title: "Холбоо барих",
@@ -11,15 +23,17 @@ export const revalidate = 3600;
 
 export default function ContactPage() {
   return (
-    <div className="min-h-screen flex flex-col bg-[var(--bg-primary)]">
-      <header className="border-b border-white/[0.06]">
+    <div
+      className={`${plexSans.variable} ${plexMono.variable} landing-ops min-h-screen flex flex-col`}
+    >
+      <header className="border-b border-[var(--oc-line2)]">
         <div className="mx-auto max-w-5xl px-4 h-16 flex items-center justify-between">
           <Link href="/">
             <Brand />
           </Link>
           <Link
             href="/page/landing"
-            className="text-sm text-white/50 hover:text-white transition-colors"
+            className="text-sm text-[var(--oc-muted2)] hover:text-[var(--oc-accent-hi)] transition-colors"
           >
             ← Нүүр
           </Link>
@@ -28,18 +42,18 @@ export default function ContactPage() {
 
       <main className="flex-1 mx-auto w-full max-w-3xl px-4 py-12">
         <h1 className="text-3xl font-bold">Холбоо барих</h1>
-        <p className="text-white/40 text-sm mt-2">
+        <p className="text-[var(--oc-muted3)] text-sm mt-2">
           {CONTACT.org}-тэй холбогдох мэдээлэл.
         </p>
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2">
           <Card title="Байгууллага">
-            <div className="text-white/85 font-medium">{CONTACT.org}</div>
+            <div className="text-[var(--oc-ink2)] font-medium">{CONTACT.org}</div>
             <a
               href={`https://${CONTACT.website}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800 text-sm"
+              className="text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors text-sm"
             >
               {CONTACT.website}
             </a>
@@ -48,7 +62,7 @@ export default function ContactPage() {
           <Card title="Имэйл">
             <a
               href={`mailto:${CONTACT.email}`}
-              className="text-white/85 hover:text-violet-200"
+              className="text-[var(--oc-ink2)] hover:text-[var(--oc-accent-hi)] transition-colors"
             >
               {CONTACT.email}
             </a>
@@ -60,7 +74,7 @@ export default function ContactPage() {
                 <a
                   key={p}
                   href={`tel:${p}`}
-                  className="text-white/85 hover:text-violet-200"
+                  className="text-[var(--oc-ink2)] hover:text-[var(--oc-accent-hi)] transition-colors"
                 >
                   {p}
                 </a>
@@ -69,7 +83,7 @@ export default function ContactPage() {
           </Card>
 
           <Card title="Хаяг">
-            <div className="text-white/85">{CONTACT.address}</div>
+            <div className="text-[var(--oc-ink2)]">{CONTACT.address}</div>
           </Card>
         </div>
       </main>
@@ -87,8 +101,8 @@ function Card({
   children: React.ReactNode;
 }) {
   return (
-    <div className="glass rounded-2xl p-5 border border-white/[0.08]">
-      <div className="text-xs uppercase tracking-wider text-white/30 mb-2">
+    <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5">
+      <div className="font-plex-mono text-[10.5px] uppercase tracking-[0.1em] text-[var(--oc-muted3)] mb-2">
         {title}
       </div>
       {children}

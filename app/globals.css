@@ -310,9 +310,22 @@ html.light .landing-ops {
   border-color: rgba(245, 165, 36, 0.6);
   box-shadow: 0 0 0 3px rgba(245, 165, 36, 0.15);
 }
+.landing-ops .compact-input:focus {
+  border-color: rgba(245, 165, 36, 0.6);
+  box-shadow: 0 0 0 3px rgba(245, 165, 36, 0.15);
+}
+/* /discover-ийн Select (Аймаг/хот, Сум/дүүрэг) нь ердийн `.auth-input`
+   (форм-ийн 44px өндөр) ашигладаг ч энэ хуудсанд tab товч/хайлтын input-тай
+   (h-10, 40px) нэг мөрөнд зэрэгцдэг тул зөвхөн энд өндрийг тохируулна —
+   `Select` компонент өөрөө className авдаггүй тул scoped override хэрэглэв. */
+.discover-filter-select .auth-input {
+  height: 2.5rem;
+  padding-top: 0;
+  padding-bottom: 0;
+}
 /* `BrandWordmark`-ийн "care" хэсэг ердийн violet брэндэд зориулагдсан ч Ops
    Console (amber) хуудсуудад (dashboard sidebar, /system/login гэх мэт)
-   энд түрж дарна — /contact, /page/guide зэрэг хараахан шилжээгүй хуудсууд
+   энд түрж дарна — /page/guide зэрэг хараахан шилжээгүй хуудсууд
    энэ scope-д ороогүй тул violet хэвээрээ үлдэнэ. */
 .landing-ops .brand-care-accent {
   color: var(--oc-accent);

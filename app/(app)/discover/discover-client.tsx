@@ -15,6 +15,7 @@ export type DiscoverBranch = {
   lng: number | null;
   open: boolean;
   hours: string | null;
+  services: string[];
 };
 
 const DEFAULT_CITY = "Улаанбаатар";
@@ -127,6 +128,23 @@ function OpenBadge({ open, hours }: { open: boolean; hours: string | null }) {
   );
 }
 
+// Салбарын үзүүлдэг үйлчилгээний ангиллууд (жагсаалт мөр + map карт хоёуланд).
+function ServiceTags({ services }: { services: string[] }) {
+  if (services.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {services.map((s) => (
+        <span
+          key={s}
+          className="text-[11px] px-2 py-0.5 rounded-full bg-white/[0.05] text-white/60 border border-white/[0.08] light:bg-black/[0.04] light:text-slate-600 light:border-black/[0.08]"
+        >
+          {s}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function DiscoverClient({
   orgs,
   apiKey,
@@ -153,6 +171,9 @@ export function DiscoverClient({
     cities.includes(DEFAULT_CITY) ? DEFAULT_CITY : "",
   );
   const [district, setDistrict] = useState("");
+  // Засварын (үйлчилгээ) нэр эсвэл салбарын нэрээр хайх — жагсаалт/газрын
+  // зураг хоёуланд хамаарна.
+  const [query, setQuery] = useState("");
 
   // Сонгосон хотод хамаарах дүүрэг/сумууд.
   const districts = useMemo(() => {
@@ -166,19 +187,24 @@ export function DiscoverClient({
     return [...s].sort((a, b) => a.localeCompare(b, "mn"));
   }, [orgs, city]);
 
+  const q = query.trim().toLowerCase();
+
   const visibleOrgs = useMemo(() => {
-    if (!city && !district) return orgs;
+    if (!city && !district && !q) return orgs;
     return orgs
       .map((o) => ({
         ...o,
         branches: o.branches.filter(
           (b) =>
             (!city || (b.city ?? "").trim() === city) &&
-            (!district || (b.district ?? "").trim() === district),
+            (!district || (b.district ?? "").trim() === district) &&
+            (!q ||
+              b.name.toLowerCase().includes(q) ||
+              b.services.some((s) => s.toLowerCase().includes(q))),
         ),
       }))
       .filter((o) => o.branches.length > 0);
-  }, [orgs, city, district]);
+  }, [orgs, city, district, q]);
 
   const markers = useMemo<Marker[]>(
     () =>
@@ -348,12 +374,12 @@ export function DiscoverClient({
     <div className="flex flex-col gap-4">
       {/* Tab + шүүлтүүд нэг мөрөнд */}
       <div className="flex items-center gap-2 flex-wrap">
-        <div className="inline-flex rounded-xl border border-white/[0.1] p-0.5 bg-white/[0.03] shrink-0">
+        <div className="inline-flex items-center rounded-xl border border-white/[0.1] p-0.5 bg-white/[0.03] shrink-0">
           {hasMap ? (
             <button
               type="button"
               onClick={() => setView("map")}
-              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${view === "map"
+              className={`h-10 flex items-center px-4 rounded-lg text-sm font-medium transition-colors ${view === "map"
                 ? "bg-violet-600 text-white"
                 : "text-white/55 hover:text-white/80"
                 }`}
@@ -364,7 +390,7 @@ export function DiscoverClient({
           <button
             type="button"
             onClick={() => setView("list")}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${view === "list" || !hasMap
+            className={`h-10 flex items-center px-4 rounded-lg text-sm font-medium transition-colors ${view === "list" || !hasMap
               ? "bg-violet-600 text-white"
               : "text-white/55 hover:text-white/80"
               }`}
@@ -373,8 +399,35 @@ export function DiscoverClient({
           </button>
         </div>
 
+        <div className="relative flex-1 min-w-[10rem] sm:flex-none sm:w-64">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none"
+          >
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setSelected(null);
+            }}
+            placeholder="Засвар, салбарын нэрээр хайх..."
+            className="auth-input !h-10 !py-0 !pl-9 !text-sm !rounded-lg"
+          />
+        </div>
+
         {cities.length > 0 ? (
-          <div className="w-36 sm:w-40 shrink-0">
+          <div className="discover-filter-select w-36 sm:w-40 shrink-0">
             <Select
               name="discover-city"
               value={city}
@@ -390,7 +443,7 @@ export function DiscoverClient({
         ) : null}
 
         {districts.length > 0 ? (
-          <div className="w-36 sm:w-40 shrink-0">
+          <div className="discover-filter-select w-36 sm:w-40 shrink-0">
             <Select
               name="discover-district"
               value={district}
@@ -494,6 +547,8 @@ export function DiscoverClient({
                     </a>
                   ) : null}
 
+                  <ServiceTags services={selected.branch.services} />
+
                   <Link
                     href={`/org/${selected.org.slug}?branch=${selected.branch.id}`}
                     className="mt-1 inline-flex w-full items-center justify-center gap-2 bg-violet-600 hover:bg-violet-500 transition-colors px-4 py-3 rounded-2xl text-sm font-semibold"
@@ -551,6 +606,11 @@ export function DiscoverClient({
                       <div className="text-xs text-white/40 mt-0.5 truncate">
                         {b.address}
                       </div>
+                      {b.services.length > 0 ? (
+                        <div className="mt-1.5">
+                          <ServiceTags services={b.services} />
+                        </div>
+                      ) : null}
                     </div>
                     <div className="shrink-0">
                       <OpenBadge open={b.open} hours={b.hours} />

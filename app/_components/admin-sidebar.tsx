@@ -126,20 +126,12 @@ const navItems: NavItem[] = [
         <circle cx="12" cy="7" r="4" />
       </svg>
     ),
+    children: [
+      { href: "/dashboard/customers", label: "Үйлчлүүлэгчид" },
+      { href: "/dashboard/vehicles", label: "Машинууд" },
+    ]
   },
-  {
-    href: "/dashboard/vehicles",
-    view: "vehicles",
-    label: "Машинууд",
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M5 16V11l2-5h10l2 5v5" />
-        <path d="M3 16h18v3a1 1 0 0 1-1 1h-1a1 1 0 0 1-1-1v-1H6v1a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3z" />
-        <circle cx="7" cy="17" r="1.2" />
-        <circle cx="17" cy="17" r="1.2" />
-      </svg>
-    ),
-  },
+
   {
     href: "/dashboard/services",
     view: "services",
@@ -307,11 +299,11 @@ function SidebarNavList({
   const filterChildren = (it: NavItem): NavItem =>
     hasChildren(it)
       ? {
-          ...it,
-          children: it.children.filter((c) =>
-            canSeeView(c.view, isOwner, permissions),
-          ),
-        }
+        ...it,
+        children: it.children.filter((c) =>
+          canSeeView(c.view, isOwner, permissions),
+        ),
+      }
       : it;
   const visibleNav = navItems
     .filter((it) => canSeeView(it.view, isOwner, permissions))
@@ -478,9 +470,8 @@ function HoverFlyoutPortal({
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
       style={{ position: "fixed", top: pos.top, left: pos.left }}
-      className={`sidebar-tooltip z-[200] origin-left transition-all ${
-        center ? "-translate-y-1/2" : ""
-      } ${open ? "pointer-events-auto opacity-100 scale-100" : "pointer-events-none opacity-0 scale-95"}`}
+      className={`sidebar-tooltip z-[200] origin-left transition-all ${center ? "-translate-y-1/2" : ""
+        } ${open ? "pointer-events-auto opacity-100 scale-100" : "pointer-events-none opacity-0 scale-95"}`}
     >
       {children}
     </div>,
@@ -671,9 +662,8 @@ function NavLeafLink({
         href={item.href}
         onClick={onNavigate}
         title={collapsed ? item.label : undefined}
-        className={`flex h-11 items-center gap-3 rounded-xl text-[13px] font-medium transition-colors ${
-          collapsed ? "justify-center px-0" : "px-3"
-        } ${active ? activePillClasses : inactivePillClasses}`}
+        className={`flex h-11 items-center gap-3 rounded-xl text-[13px] font-medium transition-colors ${collapsed ? "justify-center px-0" : "px-3"
+          } ${active ? activePillClasses : inactivePillClasses}`}
       >
         {item.icon ? (
           <span className={`nav-icon shrink-0 ${active ? "" : "text-[var(--oc-muted3)]"}`}>
@@ -727,9 +717,8 @@ function NavGroupItem({
           href={item.href}
           onClick={onNavigate}
           title={item.label}
-          className={`flex h-11 items-center justify-center rounded-xl text-[13px] font-medium transition-colors ${
-            parentActive ? activePillClasses : inactivePillClasses
-          }`}
+          className={`flex h-11 items-center justify-center rounded-xl text-[13px] font-medium transition-colors ${parentActive ? activePillClasses : inactivePillClasses
+            }`}
         >
           {item.icon ? (
             <span className={`nav-icon ${parentActive ? "" : "text-[var(--oc-muted3)]"}`}>
@@ -750,11 +739,10 @@ function NavGroupItem({
                   key={child.href}
                   href={child.href}
                   onClick={onNavigate}
-                  className={`block px-3 py-2 text-[13px] transition-colors ${
-                    childActive
-                      ? "bg-[var(--oc-accent)]/10 text-[var(--oc-accent)]"
-                      : "text-[var(--oc-muted)] hover:bg-white/[0.06] hover:text-[var(--oc-ink)]"
-                  }`}
+                  className={`block px-3 py-2 text-[13px] transition-colors ${childActive
+                    ? "bg-[var(--oc-accent)]/10 text-[var(--oc-accent)]"
+                    : "text-[var(--oc-muted)] hover:bg-white/[0.06] hover:text-[var(--oc-ink)]"
+                    }`}
                 >
                   {child.label}
                 </Link>
@@ -771,9 +759,8 @@ function NavGroupItem({
       <button
         type="button"
         onClick={onToggle}
-        className={`w-full flex h-11 items-center gap-3 px-3 rounded-xl text-[13px] font-medium transition-colors ${
-          parentActive ? activePillClasses : inactivePillClasses
-        }`}
+        className={`w-full flex h-11 items-center gap-3 px-3 rounded-xl text-[13px] font-medium transition-colors ${parentActive ? activePillClasses : inactivePillClasses
+          }`}
         aria-expanded={open}
       >
         {item.icon ? (
@@ -791,9 +778,8 @@ function NavGroupItem({
           strokeWidth="2.5"
           strokeLinecap="round"
           strokeLinejoin="round"
-          className={`transition-transform duration-200 ${
-            open ? "rotate-90" : ""
-          } ${parentActive ? "" : "text-[var(--oc-muted3)]"}`}
+          className={`transition-transform duration-200 ${open ? "rotate-90" : ""
+            } ${parentActive ? "" : "text-[var(--oc-muted3)]"}`}
         >
           <polyline points="9 18 15 12 9 6" />
         </svg>
@@ -808,11 +794,10 @@ function NavGroupItem({
                 key={child.href}
                 href={child.href}
                 onClick={onNavigate}
-                className={`flex items-center px-3 py-1.5 rounded-lg text-[13px] transition-colors ${
-                  childActive
-                    ? "bg-[var(--oc-accent)]/10 text-[var(--oc-accent)]"
-                    : "text-[var(--oc-muted3)] hover:text-[var(--oc-ink)]"
-                }`}
+                className={`flex items-center px-3 py-1.5 rounded-lg text-[13px] transition-colors ${childActive
+                  ? "bg-[var(--oc-accent)]/10 text-[var(--oc-accent)]"
+                  : "text-[var(--oc-muted3)] hover:text-[var(--oc-ink)]"
+                  }`}
               >
                 {child.label}
               </Link>
@@ -921,17 +906,15 @@ export function MobileTopbar({
       >
         <div
           onClick={() => setOpen(false)}
-          className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${
-            open ? "opacity-100" : "opacity-0"
-          }`}
+          className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${open ? "opacity-100" : "opacity-0"
+            }`}
         />
         <aside
           role="dialog"
           aria-modal="true"
           aria-label="Үндсэн цэс"
-          className={`absolute top-0 left-0 h-full w-72 max-w-[85vw] bg-[var(--oc-panel)] border-r border-[var(--oc-line2)] flex flex-col shadow-2xl transition-transform duration-300 ease-out ${
-            open ? "translate-x-0" : "-translate-x-full"
-          }`}
+          className={`absolute top-0 left-0 h-full w-72 max-w-[85vw] bg-[var(--oc-panel)] border-r border-[var(--oc-line2)] flex flex-col shadow-2xl transition-transform duration-300 ease-out ${open ? "translate-x-0" : "-translate-x-full"
+            }`}
         >
           <div className="flex items-center justify-between gap-2 px-5 h-16 border-b border-[var(--oc-line2)]">
             <Link

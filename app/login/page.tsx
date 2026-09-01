@@ -1,7 +1,19 @@
+import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import { redirect } from "next/navigation";
-import { AuthShell } from "@/app/_components/auth-shell";
+import { ConsumerAuthShell } from "@/app/_components/consumer-auth-shell";
 import { getAccount } from "@/lib/auth/account";
 import { AccountLoginForm } from "./login-form";
+
+const plexSans = IBM_Plex_Sans({
+  subsets: ["latin", "cyrillic"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-plex-sans",
+});
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin", "cyrillic"],
+  weight: ["400", "500", "600"],
+  variable: "--font-plex-mono",
+});
 
 export const metadata = {
   title: "Нэвтрэх",
@@ -13,11 +25,13 @@ export default async function AccountLoginPage() {
   if (account) redirect("/account");
 
   return (
-    <AuthShell
-      title="Нэвтрэх / Бүртгүүлэх"
-      subtitle="Утасны дугаараа оруулаад, ирэх 6 оронтой кодоор нэвтэрнэ."
-    >
-      <AccountLoginForm />
-    </AuthShell>
+    <div className={`${plexSans.variable} ${plexMono.variable}`}>
+      <ConsumerAuthShell
+        title="Нэвтрэх / Бүртгүүлэх"
+        subtitle="Утасны дугаараа оруулаад, ирэх 6 оронтой кодоор нэвтэрнэ."
+      >
+        <AccountLoginForm />
+      </ConsumerAuthShell>
+    </div>
   );
 }

@@ -1,7 +1,19 @@
 import Link from "next/link";
+import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import { Brand } from "@/app/_components/brand";
 import { Footer } from "@/app/_components/footer";
 import { CONTACT } from "@/lib/contact";
+
+const plexSans = IBM_Plex_Sans({
+  subsets: ["latin", "cyrillic"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-plex-sans",
+});
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin", "cyrillic"],
+  weight: ["400", "500", "600"],
+  variable: "--font-plex-mono",
+});
 
 export const metadata = {
   title: "Үйлчилгээний нөхцөл",
@@ -18,8 +30,8 @@ function Section({
 }) {
   return (
     <section className="mt-7">
-      <h2 className="text-lg font-semibold text-white/90 mb-2">{title}</h2>
-      <div className="text-sm text-white/60 leading-relaxed space-y-2">
+      <h2 className="text-lg font-semibold text-[var(--oc-ink)] mb-2">{title}</h2>
+      <div className="text-sm text-[var(--oc-muted)] leading-relaxed space-y-2">
         {children}
       </div>
     </section>
@@ -28,15 +40,17 @@ function Section({
 
 export default function TermsPage() {
   return (
-    <div className="min-h-screen flex flex-col bg-[var(--bg-primary)]">
-      <header className="border-b border-white/[0.06]">
+    <div
+      className={`${plexSans.variable} ${plexMono.variable} landing-ops min-h-screen flex flex-col`}
+    >
+      <header className="border-b border-[var(--oc-line2)]">
         <div className="mx-auto max-w-5xl px-4 h-16 flex items-center justify-between">
           <Link href="/">
             <Brand />
           </Link>
           <Link
             href="/page/landing"
-            className="text-sm text-white/50 hover:text-white transition-colors"
+            className="text-sm text-[var(--oc-muted2)] hover:text-[var(--oc-accent-hi)] transition-colors"
           >
             ← Нүүр
           </Link>
@@ -45,7 +59,7 @@ export default function TermsPage() {
 
       <main className="flex-1 mx-auto w-full max-w-3xl px-4 py-12">
         <h1 className="text-3xl font-bold">Үйлчилгээний нөхцөл</h1>
-        <p className="text-white/40 text-sm mt-2">Сүүлд шинэчилсэн: 2021 он</p>
+        <p className="text-[var(--oc-muted3)] text-sm mt-2">Сүүлд шинэчилсэн: 2021 он</p>
 
         <Section title="1. Ерөнхий заалт">
           <p>
@@ -111,7 +125,7 @@ export default function TermsPage() {
             Танай байгууллагын оруулсан өгөгдөл танай өмч хэвээр үлдэнэ. Бид зөвхөн
             Үйлчилгээ үзүүлэх, сайжруулах зорилгоор тус өгөгдлийг боловсруулна
             (дэлгэрэнгүйг{" "}
-            <Link href="/privacy" className="text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800">
+            <Link href="/privacy" className="text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors">
               Нууцлалын бодлого
             </Link>
             -оос үзнэ үү).
@@ -155,7 +169,7 @@ export default function TermsPage() {
               Имэйл:{" "}
               <a
                 href={`mailto:${CONTACT.email}`}
-                className="text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
+                className="text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors"
               >
                 {CONTACT.email}
               </a>

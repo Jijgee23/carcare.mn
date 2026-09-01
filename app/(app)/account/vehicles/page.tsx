@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { deleteAccountVehicle } from "@/app/_actions/account-vehicles";
+import { TagChip } from "@/app/_components/landing-ops-ui";
 import { requireAccount } from "@/lib/auth/account";
 import { prisma } from "@/lib/prisma";
 import { AddAccountVehicle } from "../add-account-vehicle";
@@ -77,16 +78,16 @@ export default async function AccountVehiclesPage() {
 
   return (
     <div className="w-full flex flex-col gap-3.5">
-      <h1 className="font-semibold text-white/80 text-sm">
+      <h1 className="font-semibold text-[var(--oc-ink2)] text-sm">
         Миний машинууд
         {vehicles.length > 0 ? (
-          <span className="text-white/35 font-normal"> · {vehicles.length}</span>
+          <span className="text-[var(--oc-muted3)] font-normal"> · {vehicles.length}</span>
         ) : null}
       </h1>
 
       <div className="flex flex-col gap-2">
         {vehicles.length === 0 ? (
-          <p className="text-sm text-white/40">
+          <p className="text-sm text-[var(--oc-muted3)]">
             Машин бүртгээгүй байна. Цаг захиалахад хэрэг болно.
           </p>
         ) : (
@@ -94,9 +95,9 @@ export default async function AccountVehiclesPage() {
             {vehicles.map((v) => (
               <div
                 key={v.id}
-                className="glass rounded-xl p-2.5 border border-white/[0.08] flex items-center gap-2.5"
+                className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-2.5 flex items-center gap-2.5"
               >
-                <div className="w-9 h-9 rounded-lg bg-white/[0.04] border border-white/[0.06] flex items-center justify-center text-violet-300 light:text-violet-700 shrink-0">
+                <div className="w-9 h-9 rounded-lg bg-[var(--oc-panel2)] border border-[var(--oc-line2)] flex items-center justify-center text-[var(--oc-accent)] shrink-0">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M5 16V11l2-5h10l2 5v5" />
                     <path d="M3 16h18v3a1 1 0 0 1-1 1h-1a1 1 0 0 1-1-1v-1H6v1a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3z" />
@@ -109,17 +110,19 @@ export default async function AccountVehiclesPage() {
                   className="min-w-0 flex-1 group"
                   title="Машины дэлгэрэнгүй ба үйлчилгээний түүх"
                 >
-                  <div className="font-semibold text-white/90 group-hover:text-violet-300 light:group-hover:text-violet-700 transition-colors tabular-nums">
+                  <div className="font-semibold text-[var(--oc-ink)] group-hover:text-[var(--oc-accent)] transition-colors tabular-nums">
                     {v.plate}
                   </div>
-                  <div className="text-xs text-white/40 truncate">
-                    {v.make} {v.model}
-                    {v.year ? ` · ${v.year}` : ""}
+                  <div className="text-xs text-[var(--oc-muted3)] flex items-center gap-1 min-w-0">
+                    <span className="truncate">
+                      {v.make} {v.model}
+                      {v.year ? ` · ${v.year}` : ""}
+                    </span>
                     {!v.removable ? (
-                      <span className="text-white/30"> · сервисээс</span>
-                    ) : (
-                      ""
-                    )}
+                      <span className="shrink-0">
+                        <TagChip>Сервисээс</TagChip>
+                      </span>
+                    ) : null}
                   </div>
                 </Link>
                 {v.removable ? (
@@ -128,7 +131,7 @@ export default async function AccountVehiclesPage() {
                     <button
                       type="submit"
                       aria-label="Устгах"
-                      className="text-red-300/70 hover:text-red-300 light:text-red-600 light:hover:text-red-700 hover:bg-red-500/10 p-2 rounded-lg transition-colors"
+                      className="text-red-400 light:text-red-600 hover:text-red-300 hover:bg-red-500/10 p-2 rounded-lg transition-colors"
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <polyline points="3 6 5 6 21 6" />

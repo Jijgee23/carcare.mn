@@ -69,7 +69,7 @@ export default async function EditCustomerPage({
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px] items-start">
+      <div className="grid gap-6 lg:grid-cols-[1fr_400px] items-start">
         <CustomerForm
           initial={{
             id: customer.id,

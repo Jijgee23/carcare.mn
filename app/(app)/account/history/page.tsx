@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Prisma } from "@/app/generated/prisma/client";
+import { BtnLink, Chip } from "@/app/_components/landing-ops-ui";
 import { requireAccount } from "@/lib/auth/account";
 import { normalizePlate } from "@/lib/vehicles";
 import {
@@ -89,31 +90,33 @@ export default async function AccountHistoryPage({
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Үйлчилгээний түүх</h1>
-          <p className="text-white/40 text-sm mt-0.5">
+          <p className="text-[var(--oc-muted3)] text-sm mt-0.5">
             {plate
               ? `${plate} — хийгдсэн үйлчилгээнүүд`
               : "Таны машинд хийгдсэн бүх үйлчилгээ"}
           </p>
         </div>
-        <Link
-          href="/account"
-          className="text-sm text-white/50 hover:text-white border border-white/[0.1] hover:bg-white/[0.05] px-4 py-2 rounded-lg transition-colors"
-        >
+        <BtnLink href="/account" variant="ghost">
           ← Буцах
-        </Link>
+        </BtnLink>
       </div>
 
       {plate ? (
-        <Link
-          href="/account/history"
-          className="self-start text-xs text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
-        >
-          Бүх машины түүхийг харах →
-        </Link>
+        <div className="flex items-center gap-2">
+          <Chip tone="accent" bordered>
+            {plate}
+          </Chip>
+          <Link
+            href="/account/history"
+            className="text-xs text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors"
+          >
+            Бүх машины түүхийг харах
+          </Link>
+        </div>
       ) : null}
 
       {orders.length === 0 ? (
-        <div className="glass rounded-2xl p-10 border border-white/[0.08] text-center text-sm text-white/40">
+        <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-10 text-center text-sm text-[var(--oc-muted3)]">
           Одоогоор хийгдсэн үйлчилгээ алга. Цаг захиалга баталгаажиж, үйлчилгээ
           хийгдсэний дараа энд харагдана.
         </div>
@@ -125,35 +128,35 @@ export default async function AccountHistoryPage({
               <Link
                 key={o.id}
                 href={`/account/history/${o.id}`}
-                className="glass rounded-2xl p-4 border border-white/[0.08] block hover:bg-white/[0.03] transition-colors"
+                className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-4 block hover:bg-[var(--oc-panel2)] transition-colors"
               >
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-white/90">
+                      <span className="font-semibold text-[var(--oc-ink)]">
                         {o.tenant.name}
                       </span>
-                      <span className="text-xs text-white/30 font-mono">
+                      <span className="text-xs text-[var(--oc-muted3)] font-plex-mono">
                         №{o.number}
                       </span>
                       <span
-                        className={`text-xs px-2.5 py-1 rounded-full ${ORDER_STATUS_BADGE[o.status as OrderStatus]}`}
+                        className={`font-plex-mono text-[11px] px-2.5 py-1 rounded-full ${ORDER_STATUS_BADGE[o.status as OrderStatus]}`}
                       >
                         {ORDER_STATUS_LABEL[o.status as OrderStatus]}
                       </span>
                     </div>
-                    <div className="text-sm text-white/55 mt-1">
+                    <div className="text-sm text-[var(--oc-muted)] mt-1">
                       {o.vehicle.plate} · {o.vehicle.make} {o.vehicle.model}
                     </div>
-                    <div className="text-xs text-white/35 mt-0.5 tabular-nums">
+                    <div className="text-xs text-[var(--oc-muted3)] mt-0.5 tabular-nums">
                       {formatDate(when)} · {o.branch.name} · {o._count.items} мөр
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="font-semibold text-white/90 tabular-nums">
+                    <div className="font-semibold text-[var(--oc-ink)] tabular-nums">
                       {formatTugrik(o.totalAmount?.toString() ?? null)}
                     </div>
-                    <div className="text-xs text-white/40 mt-0.5">
+                    <div className="text-xs text-[var(--oc-muted3)] mt-0.5">
                       {PAYMENT_STATUS_LABEL[o.paymentStatus as PaymentStatus]}
                     </div>
                   </div>

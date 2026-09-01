@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { cancelAppointmentByAccount } from "@/app/_actions/appointments";
+import { AddLinkButton, Btn } from "@/app/_components/landing-ops-ui";
 import { WebPushToggle } from "@/app/_components/web-push";
 import {
   APPOINTMENT_STATUS_BADGE,
@@ -73,22 +74,13 @@ export default async function AccountPage() {
   return (
     <div className="w-full flex flex-col gap-3.5">
       {/* Шинэ цаг захиалах */}
-      <Link
-        href="/discover"
-        className="flex w-xs items-center justify-center gap-2 bg-violet-600 hover:bg-violet-500 transition-colors px-4 py-2.5 rounded-xl text-sm font-semibold"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="12" y1="5" x2="12" y2="19" />
-          <line x1="5" y1="12" x2="19" y2="12" />
-        </svg>
-        Шинэ цаг захиалах
-      </Link>
+      <AddLinkButton href="/discover">Шинэ цаг захиалах</AddLinkButton>
 
       {/* Push мэдэгдэл */}
-      <section className="glass rounded-xl p-3 border border-white/[0.08] flex items-center justify-between gap-3">
+      <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-3 flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-sm font-medium text-white/85">Push мэдэгдэл</div>
-          <div className="text-xs text-white/40">
+          <div className="text-sm font-medium text-[var(--oc-ink2)]">Push мэдэгдэл</div>
+          <div className="text-xs text-[var(--oc-muted3)]">
             Цаг баталгаажих, сануулгыг энэ төхөөрөмж дээр авах.
           </div>
         </div>
@@ -97,21 +89,21 @@ export default async function AccountPage() {
 
       {/* Цагууд */}
       <div>
-        <h1 className="font-semibold text-white/80 text-sm mb-2">
+        <h1 className="font-semibold text-[var(--oc-ink2)] text-sm mb-2">
           Миний цагууд
           {sortedAppts.length > 0 ? (
-            <span className="text-white/35 font-normal"> · {sortedAppts.length}</span>
+            <span className="text-[var(--oc-muted3)] font-normal"> · {sortedAppts.length}</span>
           ) : null}
         </h1>
 
         {sortedAppts.length === 0 ? (
-          <div className="glass rounded-2xl p-8 border border-white/[0.08] text-center">
-            <p className="text-sm text-white/40">
+          <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-8 text-center">
+            <p className="text-sm text-[var(--oc-muted3)]">
               Та одоогоор цаг захиалаагүй байна.
             </p>
             <Link
               href="/discover"
-              className="inline-block mt-2 text-sm text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
+              className="inline-block mt-2 text-sm text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors"
             >
               Автосервис сонгож цаг захиалах →
             </Link>
@@ -125,15 +117,15 @@ export default async function AccountPage() {
               return (
                 <div
                   key={a.id}
-                  className={`glass rounded-xl p-3 border border-white/[0.08] flex items-stretch gap-3 ${canCancel ? "" : "opacity-70"
+                  className={`rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-3 flex items-stretch gap-3 ${canCancel ? "" : "opacity-70"
                     }`}
                 >
                   {/* Огнооны chip */}
-                  <div className="shrink-0 w-14 rounded-lg bg-white/[0.04] border border-white/[0.06] flex flex-col items-center justify-center py-1.5">
+                  <div className="shrink-0 w-14 rounded-lg bg-[var(--oc-panel2)] border border-[var(--oc-line2)] flex flex-col items-center justify-center py-1.5">
                     <div className="text-sm font-bold tabular-nums leading-tight">
                       {dt.time}
                     </div>
-                    <div className="text-[11px] text-white/40 tabular-nums">
+                    <div className="text-[11px] text-[var(--oc-muted3)] tabular-nums">
                       {dt.date}
                     </div>
                   </div>
@@ -142,22 +134,22 @@ export default async function AccountPage() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <Link
                         href={`/org/${a.tenant.slug}`}
-                        className="font-semibold text-white/90 hover:text-violet-300 light:hover:text-violet-700 transition-colors truncate"
+                        className="font-semibold text-[var(--oc-ink)] hover:text-[var(--oc-accent)] transition-colors truncate"
                       >
                         {a.tenant.name}
                       </Link>
                       <span
-                        className={`text-xs px-2 py-0.5 rounded-full ${APPOINTMENT_STATUS_BADGE[a.status]}`}
+                        className={`font-plex-mono text-[11px] px-2.5 py-1 rounded-full ${APPOINTMENT_STATUS_BADGE[a.status]}`}
                       >
                         {APPOINTMENT_STATUS_LABEL[a.status]}
                       </span>
                     </div>
-                    <div className="text-xs text-white/45 mt-0.5">
+                    <div className="text-xs text-[var(--oc-muted)] mt-0.5">
                       {dt.weekday} · {a.branch.name}
                       {a.category ? ` · ${a.category.name}` : ""}
                     </div>
                     {a.note ? (
-                      <div className="text-xs text-white/35 mt-0.5 truncate">
+                      <div className="text-xs text-[var(--oc-muted3)] mt-0.5 truncate">
                         {a.note}
                       </div>
                     ) : null}
@@ -169,12 +161,9 @@ export default async function AccountPage() {
                       className="shrink-0 flex items-center"
                     >
                       <input type="hidden" name="id" value={a.id} />
-                      <button
-                        type="submit"
-                        className="text-xs text-red-300/80 hover:text-red-300 light:text-red-600 light:hover:text-red-700 border border-red-500/20 hover:bg-red-500/10 px-3 py-1.5 rounded-lg transition-colors"
-                      >
+                      <Btn variant="danger" size="sm" type="submit">
                         Цуцлах
-                      </button>
+                      </Btn>
                     </form>
                   ) : null}
                 </div>

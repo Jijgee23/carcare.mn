@@ -283,13 +283,12 @@ export function VehicleForm({
               value={plate}
               onChange={(e) => setPlate(e.target.value.toUpperCase())}
               aria-invalid={showFormatError || Boolean(fe.plate)}
-              className={`auth-input uppercase pr-10 ${
-                fe.plate || showFormatError
+              className={`auth-input uppercase pr-10 ${fe.plate || showFormatError
                   ? "border-red-500/50"
                   : isValidPlate
                     ? "border-emerald-500/40"
                     : ""
-              }`}
+                }`}
               placeholder="1234УБА"
             />
             <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
@@ -560,7 +559,7 @@ export function VehicleForm({
       ) : null}
 
       {/* Sticky action bar — урт форм scroll хийхэд ч Хадгалах үргэлж харагдана */}
-      <div className="sticky bottom-0 z-10 flex gap-2 pt-3 pb-3 -mb-1 border-t border-[var(--oc-line2)] bg-[var(--oc-carbon)]/95 backdrop-blur-md">
+      <div className="sticky bottom-0 z-10 flex gap-2 pl-3 pt-3 pb-3 -mb-1 border-t border-[var(--oc-line2)] bg-[var(--oc-carbon)]/95 backdrop-blur-md">
         <BtnLink href={backHref} variant="ghost">
           ← Буцах
         </BtnLink>

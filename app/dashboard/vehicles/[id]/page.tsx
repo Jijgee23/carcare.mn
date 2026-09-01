@@ -26,10 +26,10 @@ export const metadata = {
 function fmtDate(d: Date | null): string {
   return d
     ? d.toLocaleDateString("mn-MN", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      })
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    })
     : "—";
 }
 
@@ -114,7 +114,7 @@ export default async function VehicleDetailPage({
           </h1>
           <p className="font-plex-mono text-sm text-[var(--oc-muted3)] mt-1">{vehicle.plate}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center  gap-2">
           <BtnLink href="/dashboard/vehicles" variant="ghost">
             ← Буцах
           </BtnLink>
@@ -206,7 +206,7 @@ export default async function VehicleDetailPage({
                           <div className="text-xs text-[var(--oc-muted3)]">
                             {
                               PAYMENT_STATUS_LABEL[
-                                o.paymentStatus as PaymentStatus
+                              o.paymentStatus as PaymentStatus
                               ]
                             }
                           </div>

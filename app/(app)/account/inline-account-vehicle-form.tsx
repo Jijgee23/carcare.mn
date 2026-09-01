@@ -5,7 +5,7 @@ import {
   type CreatedAccountVehicle,
   quickCreateAccountVehicle,
 } from "@/app/_actions/account-vehicles";
-import { Field } from "@/app/_components/auth-shell";
+import { Btn, Field, FormError } from "@/app/_components/landing-ops-ui";
 import { Select } from "@/app/_components/select";
 import { type PublicHurVehicle, normalizeWheelPosition } from "@/lib/hur_service";
 
@@ -171,21 +171,21 @@ export function InlineAccountVehicleForm({
   }
 
   return (
-    <div className="rounded-lg border border-violet-500/25 bg-violet-500/[0.06] p-4 flex flex-col gap-3">
+    <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-violet-200 light:text-violet-700">Шинэ машин</h3>
+        <h3 className="text-sm font-medium text-[var(--oc-ink)]">Шинэ машин</h3>
         {onCancel ? (
           <button
             type="button"
             onClick={onCancel}
-            className="text-xs text-white/50 hover:text-white/80 transition-colors"
+            className="text-xs text-[var(--oc-muted)] hover:text-[var(--oc-ink2)] transition-colors"
           >
             ✕ Болих
           </button>
         ) : null}
       </div>
 
-      {message ? <p className="text-xs text-red-400 light:text-red-600">{message}</p> : null}
+      <FormError message={message ?? undefined} />
 
       <div className="grid gap-3 sm:grid-cols-2">
         <Field
@@ -227,16 +227,17 @@ export function InlineAccountVehicleForm({
       ) : null}
 
       <div className="flex items-center gap-3 flex-wrap">
-        <button
+        <Btn
+          variant="ghost"
+          size="sm"
           type="button"
           onClick={refreshFromHur}
           disabled={hurLoading || !isValidPlate}
-          className="inline-flex items-center gap-1.5 text-xs text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800 disabled:text-white/30 disabled:cursor-not-allowed border border-violet-500/30 disabled:border-white/[0.08] bg-violet-500/[0.06] hover:bg-violet-500/[0.12] disabled:bg-transparent transition-all px-3 py-1.5 rounded-lg font-medium"
         >
           {hurLoading ? "Татаж байна..." : "↻ HUR-аас шинэчлэх"}
-        </button>
+        </Btn>
         {hurInfo ? (
-          <span className="text-xs text-violet-300/80 light:text-violet-700">
+          <span className="text-xs text-[var(--oc-muted2)]">
             {hurSource === "global" ? "Бүртгэлээс олдлоо" : "HUR-аас татав"}
             {hurInfo.color ? ` · ${hurInfo.color}` : ""}
             {hurInfo.capacity ? ` · ${hurInfo.capacity} см³` : ""}
@@ -344,14 +345,9 @@ export function InlineAccountVehicleForm({
       </div>
 
       <div className="flex justify-end">
-        <button
-          type="button"
-          disabled={pending}
-          onClick={onSubmit}
-          className="bg-violet-600 hover:bg-violet-500 disabled:opacity-60 transition-colors px-4 py-2 rounded-lg text-sm font-medium"
-        >
+        <Btn variant="primary" type="button" disabled={pending} onClick={onSubmit}>
           {pending ? "Нэмж..." : "Машин нэмэх"}
-        </button>
+        </Btn>
       </div>
     </div>
   );

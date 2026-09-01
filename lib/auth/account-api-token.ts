@@ -3,9 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { setBypassContext } from "@/lib/tenant-context";
 
 // Эцсийн хэрэглэгчийн (Account) мобайл API token. User-ийн api-token-аас tag-аар
-// тусгаарлагдсан. Refresh-гүй — урт настай (30 хоног) access token.
+// тусгаарлагдсан. Refresh-гүй, хугацаагүй (`exp` claim-гүй) — зөвхөн Account.isActive
+// = false болгосноор хүчингүй болно (getApiAccountFromRequest-д шалгадаг).
 const ALG = "HS256";
-export const ACCOUNT_ACCESS_TOKEN_MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30 хоног
 
 export type AccountTokenPayload = {
   accountId: string;
@@ -28,7 +28,6 @@ export async function signAccountApiToken(
   return await new SignJWT({ ...payload })
     .setProtectedHeader({ alg: ALG })
     .setIssuedAt()
-    .setExpirationTime(`${ACCOUNT_ACCESS_TOKEN_MAX_AGE_SECONDS}s`)
     .sign(getSecret());
 }
 

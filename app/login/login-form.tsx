@@ -5,7 +5,7 @@ import {
   type AccountAuthState,
   accountLoginAction,
 } from "@/app/_actions/account-auth";
-import { Field, FormError, SubmitButton } from "@/app/_components/auth-shell";
+import { Field, FormError, SubmitButton } from "@/app/_components/landing-ops-ui";
 
 export function AccountLoginForm() {
   const [state, formAction, pending] = useActionState<AccountAuthState, FormData>(
@@ -23,7 +23,7 @@ export function AccountLoginForm() {
   return (
     <form action={formAction} className="flex flex-col gap-5" noValidate>
       {awaiting && state?.message ? (
-        <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl px-4 py-3 text-sm text-violet-200 light:bg-violet-100 light:border-violet-300 light:text-violet-700">
+        <div className="bg-[var(--oc-accent)]/10 border border-[var(--oc-accent)]/25 rounded-[10px] px-4 py-3 text-sm text-[var(--oc-ink2)]">
           {state.message}
         </div>
       ) : (
@@ -69,7 +69,7 @@ export function AccountLoginForm() {
           <SubmitButton pending={pending}>Нэвтрэх →</SubmitButton>
           <a
             href="/login"
-            className="text-center text-xs text-white/40 hover:text-white/70 transition-colors"
+            className="text-center text-xs text-[var(--oc-muted3)] hover:text-[var(--oc-accent-hi)] transition-colors"
           >
             ← Өөр дугаар оруулах
           </a>

@@ -1,8 +1,5 @@
 import { jsonError, jsonOk } from "@/lib/api";
-import {
-  ACCOUNT_ACCESS_TOKEN_MAX_AGE_SECONDS,
-  signAccountApiToken,
-} from "@/lib/auth/account-api-token";
+import { signAccountApiToken } from "@/lib/auth/account-api-token";
 import { verifyPhoneOtp } from "@/lib/auth/otp";
 import { normalizePhone } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
@@ -63,7 +60,6 @@ export async function POST(req: Request) {
 
   return jsonOk({
     accessToken,
-    expiresInSeconds: ACCOUNT_ACCESS_TOKEN_MAX_AGE_SECONDS,
     account: { id: account.id, phone: account.phone, name: account.name },
   });
 }

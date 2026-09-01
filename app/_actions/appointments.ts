@@ -21,6 +21,7 @@ import { createNotification, notifyStaff } from "@/lib/notifications";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { isFeatureEnabled } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
+import { setBypassContext } from "@/lib/tenant-context";
 
 // Мэдэгдэлд цаг харуулах нэг мөрийн формат.
 function formatWhen(d: Date): string {
@@ -52,6 +53,9 @@ export async function getBranchDaySlots(
   branchId: string,
   dateStr: string,
 ): Promise<DayAvailability> {
+  // Нэвтрээгүй зочид ч дуудах нийтэд нээлттэй action (booking-form-оос) тул
+  // bypass ашиглана — org/[slug]/page.tsx-ийн адил зарчим.
+  setBypassContext();
   if (!branchId || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
     return { open: false, reason: "Буруу өдөр.", slots: [] };
   }

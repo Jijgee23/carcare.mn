@@ -27,12 +27,12 @@ Content-Type: application/json
 { "phone": "99112233", "code": "123456", "name": "Бат" }   // name заавал биш
 → 200 {
   "accessToken": "<JWT>",
-  "expiresInSeconds": 2592000,           // 30 хоног
   "account": { "id": "...", "phone": "99112233", "name": "Бат" }
 }
 ```
 `accessToken`-ийг хадгалж, цаашид бүх хүсэлтэд `Authorization: Bearer <accessToken>`
-гэж явуулна.
+гэж явуулна. Токен **хугацаагүй** (`exp` claim байхгүй, refresh endpoint шаардлагагүй) —
+зөвхөн Account идэвхгүй болгосноор хүчингүй болно.
 
 ---
 

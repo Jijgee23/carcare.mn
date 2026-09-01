@@ -54,6 +54,14 @@ export default async function DiscoverPage() {
           },
         },
       },
+      // Идэвхтэй ангилал + аль салбарт хамаарах (хоосон бол бүх салбарт) —
+      // "тухайн салбар ямар үйлчилгээ үзүүлдэг"-ийг харуулахад ашиглана
+      // (org/[slug]/page.tsx-ийн booking category логиктой ижил зарчим).
+      categories: {
+        where: { isActive: true },
+        orderBy: { name: "asc" },
+        select: { name: true, branches: { select: { id: true } } },
+      },
     },
   });
 
@@ -77,6 +85,13 @@ export default async function DiscoverPage() {
         },
         now,
       );
+      // Энэ салбарт хамаарах ангилал: хамаарах салбаргүй (бүх салбарт) эсвэл
+      // энэ салбарыг шууд сонгосон ангилал.
+      const services = t.categories
+        .filter(
+          (c) => c.branches.length === 0 || c.branches.some((x) => x.id === b.id),
+        )
+        .map((c) => c.name);
       return {
         id: b.id,
         name: b.name,
@@ -88,6 +103,7 @@ export default async function DiscoverPage() {
         lng: b.longitude,
         open: status.open,
         hours: status.hours,
+        services,
       };
     }),
   }));

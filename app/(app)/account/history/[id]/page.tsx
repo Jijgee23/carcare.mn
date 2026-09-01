@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
+import { BtnLink } from "@/app/_components/landing-ops-ui";
 import { requireAccount } from "@/lib/auth/account";
 import {
   ITEM_KIND_BADGE,
@@ -107,49 +107,46 @@ export default async function AccountHistoryDetailPage({
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-2xl font-bold truncate">{order.tenant.name}</h1>
-            <span className="text-xs text-white/30 font-mono">
+            <span className="text-xs text-[var(--oc-muted3)] font-plex-mono">
               №{order.number}
             </span>
           </div>
-          <p className="text-white/45 text-sm mt-0.5">
+          <p className="text-[var(--oc-muted)] text-sm mt-0.5">
             {order.vehicle.plate} · {order.vehicle.make} {order.vehicle.model}
             {order.vehicle.year ? ` · ${order.vehicle.year}` : ""}
           </p>
         </div>
-        <Link
-          href="/account/history"
-          className="shrink-0 text-sm text-white/50 hover:text-white border border-white/[0.1] hover:bg-white/[0.05] px-4 py-2 rounded-lg transition-colors"
-        >
+        <BtnLink href="/account/history" variant="ghost" className="shrink-0">
           ← Буцах
-        </Link>
+        </BtnLink>
       </div>
 
       {/* Товч мэдээлэл */}
-      <div className="glass rounded-2xl p-4 border border-white/[0.08] grid gap-3 sm:grid-cols-2">
+      <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5 grid gap-3 sm:grid-cols-2">
         <Info label="Төлөв">
           <span
-            className={`text-xs px-2.5 py-1 rounded-full ${ORDER_STATUS_BADGE[order.status as OrderStatus]}`}
+            className={`font-plex-mono text-[11px] px-2.5 py-1 rounded-full ${ORDER_STATUS_BADGE[order.status as OrderStatus]}`}
           >
             {ORDER_STATUS_LABEL[order.status as OrderStatus]}
           </span>
         </Info>
         <Info label="Төлбөр">
           <span
-            className={`text-xs px-2.5 py-1 rounded-full ${PAYMENT_STATUS_BADGE[order.paymentStatus as PaymentStatus]}`}
+            className={`font-plex-mono text-[11px] px-2.5 py-1 rounded-full ${PAYMENT_STATUS_BADGE[order.paymentStatus as PaymentStatus]}`}
           >
             {PAYMENT_STATUS_LABEL[order.paymentStatus as PaymentStatus]}
           </span>
         </Info>
         <Info label="Салбар">
-          <span className="text-sm text-white/80">
+          <span className="text-sm text-[var(--oc-ink2)]">
             {order.branch.name}
             {order.branch.phone ? (
-              <span className="text-white/40"> · {order.branch.phone}</span>
+              <span className="text-[var(--oc-muted3)]"> · {order.branch.phone}</span>
             ) : null}
           </span>
         </Info>
         <Info label="Огноо">
-          <span className="text-sm text-white/80 tabular-nums">
+          <span className="text-sm text-[var(--oc-ink2)] tabular-nums">
             {fmtDateTime(
               order.completedAt ?? order.scheduledAt ?? order.createdAt,
             )}
@@ -159,10 +156,10 @@ export default async function AccountHistoryDetailPage({
 
       {/* Үйлчилгээний мөрүүд */}
       <div>
-        <h2 className="font-semibold text-white/80 text-sm mb-2">
+        <h2 className="font-semibold text-[var(--oc-ink2)] text-sm mb-2">
           Хийгдсэн ажил, сэлбэг
           {order.items.length > 0 ? (
-            <span className="text-white/35 font-normal">
+            <span className="text-[var(--oc-muted3)] font-normal">
               {" "}
               · {order.items.length}
             </span>
@@ -170,26 +167,26 @@ export default async function AccountHistoryDetailPage({
         </h2>
 
         {order.items.length === 0 ? (
-          <div className="glass rounded-2xl p-8 border border-white/[0.08] text-center text-sm text-white/40">
+          <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-8 text-center text-sm text-[var(--oc-muted3)]">
             Мөр бүртгэгдээгүй байна.
           </div>
         ) : (
-          <div className="glass rounded-2xl border border-white/[0.08] overflow-hidden divide-y divide-white/[0.04]">
+          <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden divide-y divide-[var(--oc-line)]">
             {order.items.map((it) => (
               <div key={it.id} className="flex items-start gap-3 px-4 py-3">
                 <span
-                  className={`shrink-0 mt-0.5 text-[10px] px-1.5 py-0.5 rounded-full ${ITEM_KIND_BADGE[it.kind as ItemKind]}`}
+                  className={`shrink-0 mt-0.5 font-plex-mono text-[10px] px-1.5 py-0.5 rounded-full ${ITEM_KIND_BADGE[it.kind as ItemKind]}`}
                 >
                   {ITEM_KIND_LABEL[it.kind as ItemKind]}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm text-white/85">{it.description}</div>
-                  <div className="text-xs text-white/40 mt-0.5 tabular-nums">
+                  <div className="text-sm text-[var(--oc-ink2)]">{it.description}</div>
+                  <div className="text-xs text-[var(--oc-muted3)] mt-0.5 tabular-nums">
                     {qtyText(it.quantity.toString())} ×{" "}
                     {formatTugrik(it.unitPrice.toString())}
                   </div>
                 </div>
-                <div className="shrink-0 text-sm font-medium text-white/90 tabular-nums">
+                <div className="shrink-0 text-sm font-medium text-[var(--oc-ink)] tabular-nums">
                   {formatTugrik(it.total.toString())}
                 </div>
               </div>
@@ -199,17 +196,17 @@ export default async function AccountHistoryDetailPage({
       </div>
 
       {/* Дүн */}
-      <div className="glass rounded-2xl p-4 border border-white/[0.08] flex flex-col gap-2">
+      <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5 flex flex-col gap-2">
         <div className="flex items-center justify-between text-sm">
-          <span className="text-white/50">Нийт дүн</span>
-          <span className="font-bold text-white/90 tabular-nums text-base">
+          <span className="text-[var(--oc-muted)]">Нийт дүн</span>
+          <span className="font-bold text-[var(--oc-ink)] tabular-nums text-base">
             {formatTugrik(order.totalAmount?.toString() ?? null)}
           </span>
         </div>
         {order.paidAmount != null ? (
           <div className="flex items-center justify-between text-sm">
-            <span className="text-white/50">Төлсөн</span>
-            <span className="text-white/80 tabular-nums">
+            <span className="text-[var(--oc-muted)]">Төлсөн</span>
+            <span className="text-[var(--oc-ink2)] tabular-nums">
               {formatTugrik(order.paidAmount.toString())}
             </span>
           </div>
@@ -217,9 +214,11 @@ export default async function AccountHistoryDetailPage({
       </div>
 
       {order.notes ? (
-        <div className="glass rounded-2xl p-4 border border-white/[0.08]">
-          <div className="text-xs text-white/40 mb-1">Тэмдэглэл</div>
-          <p className="text-sm text-white/75 whitespace-pre-wrap">
+        <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5">
+          <div className="font-plex-mono text-[10.5px] uppercase tracking-[0.1em] text-[var(--oc-muted3)] mb-1">
+            Тэмдэглэл
+          </div>
+          <p className="text-sm text-[var(--oc-ink2)] whitespace-pre-wrap">
             {order.notes}
           </p>
         </div>
@@ -237,7 +236,9 @@ function Info({
 }) {
   return (
     <div className="flex items-center gap-2">
-      <span className="text-xs text-white/35 w-16 shrink-0">{label}</span>
+      <span className="font-plex-mono text-[10.5px] uppercase tracking-[0.1em] text-[var(--oc-muted3)] w-20 shrink-0">
+        {label}
+      </span>
       {children}
     </div>
   );
