@@ -42,6 +42,30 @@ function osFromUA(ua: string): string {
   return "Web";
 }
 
+/**
+ * `navigator.serviceWorker.register()` нь SW "installing" төлөвт ормогц шууд
+ * resolve хийдэг — "activated" болтол хүлээхгүй. Харин `pushManager.subscribe()`
+ * (getToken дотор дуудагддаг) ЗААВАЛ идэвхтэй (active) SW шаарддаг тул үүнийг
+ * хүлээхгүй бол "AbortError: ...no active Service Worker" гарна. 10с timeout —
+ * ямар нэг шалтгаанаар statechange ирэхгүй бол мөнхөд зогсохгүй байх.
+ */
+function waitForServiceWorkerActivation(
+  reg: ServiceWorkerRegistration,
+): Promise<void> {
+  if (reg.active) return Promise.resolve();
+  const worker = reg.installing ?? reg.waiting;
+  if (!worker) return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, 10_000);
+    worker.addEventListener("statechange", () => {
+      if (worker.state === "activated") {
+        clearTimeout(timer);
+        resolve();
+      }
+    });
+  });
+}
+
 export function WebPushToggle({
   target,
 }: {
@@ -110,6 +134,7 @@ export function WebPushToggle({
         )}`,
         { scope: "/firebase-cloud-messaging-push-scope" },
       );
+      await waitForServiceWorkerActivation(reg);
 
       const token = await getToken(messaging, {
         vapidKey,
@@ -140,12 +165,14 @@ export function WebPushToggle({
         return;
       }
 
-      // Foreground мессеж — энгийн Notification болгож харуулна.
+      // Foreground мессеж — энгийн Notification болгож харуулаад, хонхыг
+      // (NotificationBell) шууд шинэчлэхийг мэдэгдэнэ (45с polling-ийг хүлээлгүй).
       onMessage(messaging, (payload) => {
         const n = payload.notification;
         if (n && Notification.permission === "granted") {
           new Notification(n.title ?? "Carcare", { body: n.body ?? "" });
         }
+        window.dispatchEvent(new Event("carcare:notification-received"));
       });
 
       setStatus("granted");

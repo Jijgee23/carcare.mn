@@ -83,16 +83,36 @@ export function NotificationBell({
       .catch(() => {});
   }, [getUnreadCount]);
 
+  const openRef = useRef(open);
+  useEffect(() => {
+    openRef.current = open;
+  }, [open]);
+
+  // Push ирэх мөчид dropdown нээлттэй байвал жагсаалтыг ч дахин татна —
+  // зөвхөн тоог шинэчлээд items хуучин хэвээр үлдэхгүйн тулд.
+  const refreshAll = useCallback(() => {
+    refreshCount();
+    if (openRef.current) {
+      getRecent()
+        .then(setItems)
+        .catch(() => {});
+    }
+  }, [refreshCount, getRecent]);
+
   useEffect(() => {
     const id = window.setInterval(refreshCount, POLL_MS);
     window.addEventListener("focus", refreshCount);
     document.addEventListener("visibilitychange", refreshCount);
+    // Foreground push ирмэгц (web-push.tsx-ийн onMessage) шууд шинэчилнэ — 45с
+    // polling-ийг хүлээхгүй.
+    window.addEventListener("carcare:notification-received", refreshAll);
     return () => {
       window.clearInterval(id);
       window.removeEventListener("focus", refreshCount);
       document.removeEventListener("visibilitychange", refreshCount);
+      window.removeEventListener("carcare:notification-received", refreshAll);
     };
-  }, [refreshCount]);
+  }, [refreshCount, refreshAll]);
 
   // Нээлттэй үед: Escape-д хаах, scroll/resize-д дахин байрлуулах.
   useEffect(() => {
