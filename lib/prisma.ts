@@ -13,11 +13,11 @@ function withTenantContext(client: PrismaClient) {
   return client.$extends({
     name: "tenant-context-rls",
     query: {
-      async $allOperations({ args, query }) {
+      async $allOperations({ model, operation, args, query }) {
         const ctx = getTenantContext();
         if (!ctx) {
           throw new Error(
-            "Tenant context тохируулагдаагүй байна — requireUser()/requireApiUser()/setBypassContext() дуудсан эсэхээ шалгана уу.",
+            `Tenant context тохируулагдаагүй байна (${model ?? "?"}.${operation}) — requireUser()/requireApiUser()/setBypassContext() дуудсан эсэхээ шалгана уу.`,
           );
         }
         const [, result] = await client.$transaction(
