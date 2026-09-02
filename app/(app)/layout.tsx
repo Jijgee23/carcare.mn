@@ -8,6 +8,7 @@ import { ToastProvider } from "@/app/_components/toast";
 import { getAccount } from "@/lib/auth/account";
 import { formatPhone } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
+import { setBypassContext } from "@/lib/tenant-context";
 
 // Ops Console дизайны фонт — dashboard-тай ижил механизм, зөвхөн энэ
 // (жолооч/хэрэглэгчийн) route бүлэгт scoped.
@@ -29,6 +30,11 @@ export default async function ConsumerLayout({
 }: {
   children: ReactNode;
 }) {
+  // Layout нь `children` (page)-тэй зэрэгцээ, тусдаа async execution
+  // chain-ээр ажиллаж болзошгүй тул `getAccount()`-ийн дотоод
+  // setBypassContext()-д итгэхгүй — энд ч бие даан тавина (org/[slug]
+  // OrgPage-тэй адил зарчим; Account глобал, cross-tenant тул bypass).
+  setBypassContext();
   const account = await getAccount();
   const unreadNotifications = account
     ? await prisma.notification.count({

@@ -7,6 +7,7 @@ import { requireUser } from "@/lib/auth";
 import { assertActiveSubscription } from "@/lib/subscription-server";
 import { branchScopeId, canCreate, canEdit } from "@/lib/auth/roles";
 import { resolveCustomerForAccount } from "@/lib/appointments";
+import { ensureAppointmentFeeCheckout } from "@/lib/appointment-payments";
 import { ensureTenantVehicle } from "@/lib/vehicles";
 import {
   DEFAULT_SLOT_CAPACITY,
@@ -273,7 +274,21 @@ export async function createAppointment(
     console.warn("[notify] createAppointment:", e);
   }
 
+  // Цаг захиалгын хураамж — идэвхтэй бол QPay invoice татаж, хэрэглэгчийг
+  // шууд төлбөрийн хуудас руу чиглүүлнэ. QPay доголдвол ч захиалга үүсэхийг
+  // тасалдуулахгүй (payment мөр FAILED-ээр үлдэж дараа дахин оролдоно).
+  let requiresPayment = false;
+  try {
+    const result = await ensureAppointmentFeeCheckout(created.id);
+    requiresPayment = result.required;
+  } catch (e) {
+    console.warn("[payment] createAppointment:", e);
+  }
+
   revalidatePath("/account");
+  if (requiresPayment) {
+    redirect(`/account/appointments/${created.id}/pay`);
+  }
   redirect("/account");
 }
 
@@ -536,6 +551,7 @@ export async function confirmAppointment(formData: FormData): Promise<void> {
   }
 
   revalidatePath("/dashboard/appointments");
+  revalidatePath("/account");
 }
 
 /** Ажилтан цаг татгалзах. */

@@ -57,6 +57,7 @@ export default async function AccountPage() {
       tenant: { select: { name: true, slug: true } },
       branch: { select: { name: true } },
       category: { select: { name: true } },
+      payment: { select: { id: true, amount: true } },
     },
   });
 
@@ -114,6 +115,16 @@ export default async function AccountPage() {
               const canCancel =
                 a.status === "PENDING" || a.status === "CONFIRMED";
               const dt = dateParts(a.requestedAt);
+
+              // Хураамжийн badge: Invoice (payment) төлөгдсөн, эсвэл fee*
+              // талбар (checkout явцад буй/амжилтгүй) байвал л харагдана.
+              const feeAmount = a.payment?.amount ?? a.feeAmount;
+              const feeLabel = a.payment
+                ? "Хураамж төлөгдсөн ✓"
+                : a.feeQpayInvoiceId
+                  ? `Хураамж төлөх · ${Number.parseFloat(feeAmount!.toString()).toLocaleString("mn-MN")}₮`
+                  : "Хураамж — дахин оролдох";
+
               return (
                 <div
                   key={a.id}
@@ -155,17 +166,28 @@ export default async function AccountPage() {
                     ) : null}
                   </div>
 
-                  {canCancel ? (
-                    <form
-                      action={cancelAppointmentByAccount}
-                      className="shrink-0 flex items-center"
-                    >
-                      <input type="hidden" name="id" value={a.id} />
-                      <Btn variant="danger" size="sm" type="submit">
-                        Цуцлах
-                      </Btn>
-                    </form>
-                  ) : null}
+                  <div className="shrink-0 flex flex-col items-end justify-center gap-1.5">
+                    {a.payment || a.feeAmount ? (
+                      <Link
+                        href={`/account/appointments/${a.id}/pay`}
+                        className={`font-plex-mono text-[11px] px-2.5 py-1 rounded-full whitespace-nowrap transition-colors ${
+                          a.payment
+                            ? "bg-emerald-500/15 text-emerald-400 light:bg-emerald-100 light:text-emerald-700"
+                            : "bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 light:bg-amber-100 light:text-amber-700"
+                        }`}
+                      >
+                        {feeLabel}
+                      </Link>
+                    ) : null}
+                    {canCancel ? (
+                      <form action={cancelAppointmentByAccount}>
+                        <input type="hidden" name="id" value={a.id} />
+                        <Btn variant="danger" size="sm" type="submit">
+                          Цуцлах
+                        </Btn>
+                      </form>
+                    ) : null}
+                  </div>
                 </div>
               );
             })}

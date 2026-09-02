@@ -47,6 +47,7 @@ model Tenant {
   qpaySettings         TenantQPaySettings?
   orderPayments        OrderPayment[]
   appointments         Appointment[]
+  appointmentPayments  AppointmentPayment[]
   notifications        Notification[]
   feedback             Feedback[]
   feedbackMessages     FeedbackMessage[]
@@ -956,6 +957,7 @@ model Account {
   devices       Device[]
   notifications Notification[]
   feedback      Feedback[]
+  payments      AppointmentPayment[]
 }
 
 // --- AccountVehicle (Account ↔ global Vehicle холбоо) --------------------
@@ -1043,6 +1045,27 @@ model Appointment {
   // Сануулга SMS илгээсэн эсэх (cron давхар илгээхгүйн тулд).
   reminderSentAt DateTime?
 
+  // Хураамжийн QPay checkout — ЗӨВХӨН явцад буй (төлөгдөөгүй) оролдлогыг
+  // хөтөлнө (AppointmentPayment "Invoice" мөр ТӨЛӨГДСӨНИЙ дараа л үүснэ,
+  // энэ талбарууд түр зуурын). feeAmount/feeCurrency нэхэмжлэл хүсэгдсэн
+  // үеийн тохиргооны snapshot.
+  feeAmount        Decimal? @db.Decimal(12, 2)
+  feeCurrency      String?
+  feeQpayInvoiceId String?
+  feeQrImage       String?
+  feeQrText        String?
+
+  // QPay-аас "дутуу" (0 < төлсөн дүн < feeAmount) төлбөр илэрвэл тэмдэглэнэ
+  // — Invoice ҮҮСГЭХГҮЙ (confirmAppointmentPayment), гагцхүү account/ажилтанд
+  // "дутуу төлсөн" гэдгийг харуулах зорилготой. Бүрэн төлөгдмөгц цэвэрлэнэ.
+  feeUnderpaidAmount Decimal?  @db.Decimal(12, 2)
+  feeUnderpaidAt     DateTime?
+
+  // Хураамж төлөгдсөний дараа ГАНЦХАН удаа үүсэх "Invoice" (санхүүгийн
+  // бичлэг — платформын орлого). Төлбөр амжилтгүй/хүлээгдэж буй үед энэ
+  // мөр байхгүй.
+  payment AppointmentPayment?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1052,6 +1075,73 @@ model Appointment {
   @@index([categoryId])
   @@index([respondedById])
   @@index([status, requestedAt, reminderSentAt])
+}
+
+// --- AppointmentPayment (цаг захиалгын хураамжийн Invoice — платформын
+// (SuperAdmin) орлого) -----------------------------------------------------
+// Хэрэглэгч захиалахдаа Appointment.fee* талбаруудаар QPay invoice татаж
+// (lib/appointment-payments.ts: ensureAppointmentFeeCheckout) QR уншуулна.
+// Энэ мөр ЗӨВХӨН QPay-аас "PAID" гэж баталгаажсаны дараа л (confirmAppointmentPayment)
+// нэг удаа үүснэ — амжилтгүй/хүлээгдэж буй оролдлого DB-д Invoice болж
+// хадгалагдахгүй. SubscriptionPayment/OrderPayment-тэй ижил хэлбэрийн QPay
+// урсгал, гагцхүү системийн (платформын) QPaySettings ашигладгаараа
+// TenantQPaySettings ашигладаг OrderPayment-ээс ялгаатай.
+
+// Практикт зөвхөн PAID үүснэ (доорх тайлбарыг үз) — бусад утгууд хуучин
+// өгөгдөлтэй нийцтэй байлгах, ирээдүйд буцаан татах/цуцлах (refund) зэрэгт
+// зориулж enum-д үлдээв.
+enum AppointmentPaymentStatus {
+  PENDING
+  PAID
+  CANCELLED
+  FAILED
+  REFUNDED
+}
+
+model AppointmentPayment {
+  id String @id @default(cuid())
+
+  // Санхүүгийн бичлэг — appointment/tenant/account устахад дагаад устахгүй
+  // (Restrict), OrderPayment/SubscriptionPayment-тэй адил зарчим.
+  appointmentId String @unique
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  amount   Decimal @db.Decimal(12, 2)
+  currency String  @default("MNT")
+
+  status AppointmentPaymentStatus @default(PENDING)
+
+  // QPay-аас ирсэн талбарууд
+  qpayInvoiceId String?
+  qpayPaymentId String?
+  qrImage       String? // base64
+  qrText        String? // QPay deep link
+  paidAt        DateTime?
+
+  // "P2P" (банкны шилжүүлэг/QR) эсвэл "CARD" — QPay.payment/check хариунаас.
+  // Буцаалтын боломжтой эсэхийг үүгээр шийднэ: QPay-ийн refund/cancel API
+  // ЗӨВХӨН CARD гүйлгээнд ажилладаг тул P2P бол гараар (bank transfer-ээр)
+  // буцааж, зөвхөн энд тэмдэглэнэ.
+  paymentType String?
+
+  // Буцаалт — SuperAdmin гараар (P2P) эсвэл QPay refund API-аар (CARD) хийнэ.
+  refundedAt    DateTime?
+  refundNote    String?
+  refundedById  String?
+  refundedBy    SuperAdmin? @relation(fields: [refundedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, status])
+  @@index([accountId, status])
+  @@index([qpayInvoiceId])
 }
 
 // --- RefreshToken (мобайл клиентэд зориулсан, эргүүлдэг token) -----------
@@ -1256,7 +1346,13 @@ model PlatformSetting {
   id          String   @id @default("default")
   facebookUrl String?
   youtubeUrl  String?
-  updatedAt   DateTime @updatedAt
+
+  // Цаг захиалгын хураамж (AppointmentPayment) — super admin засна. false бол
+  // үнэгүй (хэрэглэгч захиалахдаа QPay invoice-гүй, шууд захиална).
+  appointmentFeeEnabled Boolean @default(true)
+  appointmentFeeAmount  Decimal @default(1000) @db.Decimal(12, 2)
+
+  updatedAt DateTime @updatedAt
 }
 
 // --- SuperAdmin (carservice.mn-ын платформын эзэн) ---------------------------
@@ -1273,6 +1369,7 @@ model SuperAdmin {
   subscriptionsCreated Subscription[]
   devices              Device[]
   notifications        Notification[]
+  refundedAppointmentPayments AppointmentPayment[]
 }
 
 // --- AuditLog (тенант доторх чухал үйлдлийн түүх) ------------------------

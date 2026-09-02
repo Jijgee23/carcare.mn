@@ -128,13 +128,15 @@ Res:  201 { "vehicle": { "id": "...", "plate": "1234УБА", "make": "Toyota", "
 
       {/* --- Цаг захиалга --- */}
       <Section title="4. Цаг захиалга">
-        <Endpoint method="GET" path="/api/v1/app/appointments" auth="bearer" title="Өөрийн бүх цагийн жагсаалт (бүх байгууллага дамнасан).">
+        <Endpoint method="GET" path="/api/v1/app/appointments" auth="bearer" title="Өөрийн бүх цагийн жагсаалт (бүх байгууллага дамнасан). Цаг бүрд хураамжийн одоогийн төлөв (payment) хавсарна.">
           <Code>{`Res: 200 { "appointments": [{
   "id": "...", "status": "PENDING", "requestedAt": "2026-09-02T09:00:00.000Z", "note": "...",
   "tenant": { "name": "Инфосистемс", "slug": "infosystems" },
   "branch": { "name": "Үндсэн салбар" },
   "category": { "name": "Тоормос" } | null,
-  "accountVehicle": { "plate": "1234УБА" } | null
+  "accountVehicle": { "plate": "1234УБА" } | null,
+  "payment": { "status": "PENDING", "amount": 1000, "currency": "MNT",
+               "qrImage": "<base64>", "qrText": "...", "underpaidAmount": null } | null
 }] }`}</Code>
         </Endpoint>
 
@@ -142,11 +144,15 @@ Res:  201 { "vehicle": { "id": "...", "plate": "1234УБА", "make": "Toyota", "
           method="POST"
           path="/api/v1/app/appointments"
           auth="bearer"
-          title="Шинэ цаг захиалах. Слот дүүрсэн/өнгөрсөн цаг/байгууллага онлайн захиалга хүлээж авдаггүй бол алдаа."
+          title="Шинэ цаг захиалах. Слот дүүрсэн/өнгөрсөн цаг/байгууллага онлайн захиалга хүлээж авдаггүй бол алдаа. Хураамж идэвхтэй бол QPay invoice-ыг ЭНД шууд татаж хариунд хавсаргана."
         >
           <Code>{`Req:  { "branchId": "...", "requestedAt": "2026-09-02T09:00:00.000Z",
         "accountVehicleId": "...", "categoryId": "...", "note": "..." }  // сүүлийн 3 заавал биш
-Res:  201 { "appointment": { "id": "...", "status": "PENDING", "requestedAt": "..." } }
+Res:  201 { "appointment": {
+  "id": "...", "status": "PENDING", "requestedAt": "...",
+  "payment": { "status": "PENDING", "amount": 1000, "currency": "MNT",
+               "qrImage": "<base64>", "qrText": "...", "underpaidAmount": null } | null
+} }
 400  { "error": "branchId шаардлагатай." } | { "error": "requestedAt буруу (ISO огноо шаардлагатай)." }
 403  { "error": "Энэ байгууллага онлайн цаг захиалга хүлээн авахгүй." }
 404  { "error": "Салбар олдсонгүй." }
@@ -162,6 +168,67 @@ Res:  201 { "appointment": { "id": "...", "status": "PENDING", "requestedAt": ".
           <Code>{`Res: 200 { "ok": true }
 404 { "error": "Цаг олдсонгүй." }
 409 { "error": "Энэ цагийг цуцлах боломжгүй." }`}</Code>
+        </Endpoint>
+      </Section>
+
+      {/* --- Цаг захиалгын хураамж --- */}
+      <Section title="4.1. Цаг захиалгын хураамж (QPay)">
+        <p className="text-sm text-[var(--oc-muted)] -mt-2">
+          Платформын хураамжийг (super admin{" "}
+          <code className="font-plex-mono text-[var(--oc-muted2)]">
+            /system/settings
+          </code>
+          -ээс тохируулна — идэвхгүй бол бүрэн үнэгүй) хэрэглэгч цаг
+          захиалахдаа шууд QPay-ээр төлнө.{" "}
+          <strong>DB-д Invoice зөвхөн бодитоор ТӨЛӨГДСӨНИЙ дараа л үүснэ</strong>{" "}
+          — доорх бүх endpoint нэг ижил хэлбэрийн{" "}
+          <code className="font-plex-mono text-[var(--oc-muted2)]">
+            payment
+          </code>{" "}
+          объект буцаана:
+        </p>
+        <Code>{`payment: null                                    // хураамж шаардлагагүй (үнэгүй/идэвхгүй)
+payment: {
+  status: "PENDING" | "PAID" | "UNDERPAID" | "FAILED",
+  amount: 1000, currency: "MNT",
+  qrImage: "<base64>" | null,   // PENDING/UNDERPAID үед л ирнэ (банкны апп-аар уншуулах)
+  qrText: "qpay://..." | null,  // deeplink — банкны апп руу шууд шилжих
+  underpaidAmount: 500 | null   // зөвхөн UNDERPAID үед: одоог хүртэл ирсэн дутуу дүн
+}`}</Code>
+
+        <Endpoint
+          method="GET"
+          path="/api/v1/app/appointments/[id]/payment"
+          auth="bearer"
+          title="Тухайн цагийн хураамжийн одоогийн төлөв — 'Төлбөр' дэлгэц нээх бүрд дуудна."
+        >
+          <Code>{`Res: 200 { "payment": { ... } | null }
+404 { "error": "Цаг олдсонгүй." }`}</Code>
+        </Endpoint>
+
+        <Endpoint
+          method="POST"
+          path="/api/v1/app/appointments/[id]/payment/check"
+          auth="bearer"
+          title="QR уншуулсны дараа дарж шалгах (polling). Бүрэн төлөгдсөн бол ЭНД анх удаа Invoice үүсэж, тенант рүү мэдэгдэл очно. Дахин дуудсан ч аюулгүй (idempotent)."
+        >
+          <Code>{`Res: 200 { "paid": true, "underpaidAmount": null, "message": null }
+Res: 200 { "paid": false, "underpaidAmount": 500,
+           "message": "Дутуу төлбөр: 500₮ / 1,000₮ ирсэн. Үлдэгдлийг нөхөж төлнө үү." }
+Res: 200 { "paid": false, "underpaidAmount": null, "message": null }  // хараахан төлөгдөөгүй
+404 { "error": "Цаг олдсонгүй." }
+422 { "error": "QPay invoice байхгүй." }`}</Code>
+        </Endpoint>
+
+        <Endpoint
+          method="POST"
+          path="/api/v1/app/appointments/[id]/payment/retry"
+          auth="bearer"
+          title="Invoice татах үед QPay доголдож (status: FAILED) checkout эхлээгүй тохиолдолд дахин оролдох."
+        >
+          <Code>{`Res: 200 { "payment": { "status": "PENDING", "amount": 1000, ... } }
+404 { "error": "Цаг олдсонгүй." }
+502 { "error": "QPay invoice үүсгэхэд алдаа: ..." }`}</Code>
         </Endpoint>
       </Section>
 

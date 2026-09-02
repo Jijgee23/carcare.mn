@@ -77,13 +77,27 @@ export type QPayInvoiceCreated = {
   qr_image: string; // base64 (without data: prefix)
 };
 
+// QPay-ийн бодит enum: NEW (эхлэн, төлөгдөөгүй), PAID, FAILED, REFUNDED.
+// "PENDING" гэж ЭРГЭЖ ИРДЭГГҮЙ — хуучин код үүнийг андуурч бичсэн байсан
+// (2026-09-02 засав, developer.qpay.mn v2.0.0 баримт бичгийг судалж
+// баталгаажуулсан).
+export type QPayPaymentStatus = "NEW" | "PAID" | "FAILED" | "REFUNDED";
+
 export type QPayCheckResponse = {
   count: number;
   paid_amount: number;
   rows: {
     payment_id: string;
-    payment_status: "PAID" | "PENDING" | "FAILED";
-    paid_at: string;
+    payment_status: QPayPaymentStatus;
+    // Бодит талбарын нэр `payment_date` (өмнө нь буруу `paid_at` гэж
+    // уншдаг байсан тул огноо үргэлж null ирж, `?? new Date()` fallback-аар
+    // "одоо" цагаар орлуулагддаг байсан — 2026-09-02 засав).
+    payment_date: string;
+    payment_amount?: string;
+    // "P2P" (банкны шилжүүлэг/QR) эсвэл "CARD" — баримт бичигт талбарын нэр
+    // тодорхойгүй тул хоёр боломжит хувилбарыг аль алиныг нь уншина.
+    payment_type?: string;
+    transaction_type?: string;
   }[];
 };
 
@@ -133,6 +147,12 @@ export const QPayService = {
   /**
    * Шинэ invoice үүсгэнэ. `senderInvoiceNo` нь өөрийн SubscriptionPayment.id-г
    * QPay-руу дамжуулдаг түлхүүр. Хариунд QR image (base64) + invoice_id ирнэ.
+   *
+   * `allow_partial`/`allow_exceed`-ийг ЭНД тогтмол false тавьсан — доод тал нь
+   * QPay-ийн invoice түвшинд дутуу/илүү дүнгээр "төлөгдсөн" гэж бүртгэгдэхээс
+   * сэргийлнэ (дуудагч тал `checkPayment`-ийн `paidAmount`-ыг заавал expected-тэй
+   * дахин тулгах ёстой хэвээр — QPay-ийн P2P (банкны шилжүүлэг) гүйлгээнд энэ
+   * хязгаарлалт баталгаат биш байж болзошгүй тул).
    */
   async createInvoice(args: {
     senderInvoiceNo: string;
@@ -159,6 +179,8 @@ export const QPayService = {
         invoice_description: args.invoiceDescription,
         amount: args.amount,
         callback_url: args.callbackUrl ?? settings.callbackUrl ?? undefined,
+        allow_partial: false,
+        allow_exceed: false,
       }),
     });
     if (!res.ok) {
@@ -171,14 +193,25 @@ export const QPayService = {
     return data;
   },
 
+  /**
+   * Invoice-ийн бүх гүйлгээг татаж, `expectedAmount`-той тулгана.
+   *   - `paid`: PAID мөр байгаа БА нийт төлсөн дүн (`paidAmount`) >= expected.
+   *   - `underpaidAmount`: 0 < paidAmount < expected үед л утгатай (дутуу
+   *     төлбөр — Invoice ҮҮСГЭХГҮЙ, гагцхүү дуудагч тал "дутуу" гэж тэмдэглэнэ).
+   *   - `paymentType`: PAID мөрийн P2P/CARD төрөл — буцаалт (refund) зөвхөн
+   *     CARD-д л QPay API-аар боломжтой тул дуудагч тал үүгээр шийднэ.
+   */
   async checkPayment(
     invoiceId: string,
+    expectedAmount?: number,
   ): Promise<
     | {
         paid: boolean;
         paymentId: string | null;
         paidAt: Date | null;
         paidAmount: number;
+        underpaidAmount: number | null;
+        paymentType: string | null;
       }
     | { error: string }
   > {
@@ -203,13 +236,93 @@ export const QPayService = {
     }
     const data = (await res.json()) as QPayCheckResponse;
     const paidRow = data.rows?.find((r) => r.payment_status === "PAID") ?? null;
+    const paidAmount =
+      typeof data.paid_amount === "number" ? data.paid_amount : 0;
+
+    // Бүтэн эсэхийг ЭНД (lib түвшинд) дуудагч талд БҮГД өөрсдөө давхар шалгах
+    // шаардлагагүй болгож нэгтгэсэн — expectedAmount өгөгдсөн бол ашиглана.
+    const fullyPaid =
+      Boolean(paidRow) &&
+      (expectedAmount === undefined || paidAmount >= expectedAmount);
+    const underpaidAmount =
+      !fullyPaid && expectedAmount !== undefined && paidAmount > 0
+        ? paidAmount
+        : null;
+
     return {
-      paid: Boolean(paidRow),
+      paid: fullyPaid,
       paymentId: paidRow?.payment_id ?? null,
-      paidAt: paidRow?.paid_at ? new Date(paidRow.paid_at) : null,
+      paidAt: paidRow?.payment_date ? new Date(paidRow.payment_date) : null,
       // QPay-аас бодитоор төлөгдсөн нийт дүн — дуудагч талд expected-тэй
       // тулгаж шалгана (хэсэгчилсэн төлбөрийг бүтэн гэж тооцохгүй).
-      paidAmount: typeof data.paid_amount === "number" ? data.paid_amount : 0,
+      paidAmount,
+      underpaidAmount,
+      paymentType: paidRow?.payment_type ?? paidRow?.transaction_type ?? null,
     };
   },
+
+  /**
+   * Гүйлгээ цуцлах ("card reversal" — ихэвчлэн тухайн өдөрт нь, capture-аас
+   * өмнө). ⚠️ QPay-ийн баримт бичигт зөвхөн КАРТЫН гүйлгээнд ажилладаг гэж
+   * тодорхойлогдсон (P2P/банкны шилжүүлгээр төлсөн invoice-д ажиллахгүй байж
+   * болзошгүй) — дуудахаасаа өмнө `checkPayment`-ийн `paymentType === "CARD"`
+   * эсэхийг шалгасан байх ёстой.
+   */
+  async cancelPayment(
+    paymentId: string,
+    note?: string,
+  ): Promise<{ ok: true } | { error: string }> {
+    return deletePayment("cancel", paymentId, note);
+  },
+
+  /**
+   * Төлбөр буцаах. ⚠️ QPay-ийн баримт бичигт зөвхөн КАРТЫН гүйлгээнд
+   * ажилладаг гэж тодорхойлогдсон — P2P (банкны шилжүүлэг/QR)-ээр төлсөн
+   * гүйлгээг ЭНЭ API-аар буцаах боломжгүй; тэдгээрийг гараар (банкны
+   * шилжүүлгээр) буцааж, зөвхөн DB-д тэмдэглэнэ
+   * (app/_actions/booking-revenue.ts-ийн refundAppointmentPaymentAction).
+   */
+  async refundPayment(
+    paymentId: string,
+    note?: string,
+  ): Promise<{ ok: true } | { error: string }> {
+    return deletePayment("refund", paymentId, note);
+  },
 };
+
+/**
+ * `cancel`/`refund` хоёул ижил хэлбэртэй: `DELETE /v2/payment/{action}/{id}`,
+ * body `{ callback_url, note }`. QPay-ийн нийтэд нээлттэй баримт бичигт зөвхөн
+ * cancel-ийн жишээ URL/body баталгаажсан (2026-09-02 судалгаагаар) — refund
+ * ижил хэлбэртэй гэж таамаглаж хэрэгжүүлсэн тул PROD дээр эхлээд sandbox-д
+ * туршиж баталгаажуулах шаардлагатай.
+ */
+async function deletePayment(
+  action: "cancel" | "refund",
+  paymentId: string,
+  note?: string,
+): Promise<{ ok: true } | { error: string }> {
+  if (!paymentId) return { error: "payment_id шаардлагатай." };
+  const tokenResult = await QPayService.getAccessToken();
+  if ("error" in tokenResult) return { error: tokenResult.error };
+  const settings = await prisma.qPaySettings.findUnique({ where: { id: 1 } });
+
+  const res = await fetch(`${QPAY_URL}payment/${action}/${paymentId}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${tokenResult.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      callback_url: settings?.callbackUrl ?? undefined,
+      note: note ?? undefined,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    return {
+      error: `QPay ${action === "cancel" ? "цуцлахад" : "буцаахад"} алдаа: ${res.status} ${text}`,
+    };
+  }
+  return { ok: true };
+}

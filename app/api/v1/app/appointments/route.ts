@@ -1,5 +1,9 @@
 import { jsonError, jsonOk } from "@/lib/api";
 import { isSlotAvailable } from "@/lib/appointment-slots";
+import {
+  ensureAppointmentFeeCheckout,
+  serializeAppointmentFee,
+} from "@/lib/appointment-payments";
 import { getApiAccountFromRequest } from "@/lib/auth/account-api-token";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { isFeatureEnabled } from "@/lib/plan-limits-server";
@@ -22,14 +26,29 @@ export async function GET(req: Request) {
       branch: { select: { name: true } },
       category: { select: { name: true } },
       accountVehicle: { select: { vehicle: { select: { plate: true } } } },
+      feeAmount: true,
+      feeCurrency: true,
+      feeQpayInvoiceId: true,
+      feeQrImage: true,
+      feeQrText: true,
+      feeUnderpaidAmount: true,
+      payment: { select: { amount: true, currency: true } },
     },
   });
-  // Хариуны хэлбэрийг хадгална: accountVehicle: { plate } | null.
+  // Хариуны хэлбэрийг хадгална: accountVehicle: { plate } | null,
+  // payment: AppointmentFeeInfo (null бол хураамж шаардлагагүй).
   const shaped = appointments.map((a) => ({
-    ...a,
+    id: a.id,
+    status: a.status,
+    requestedAt: a.requestedAt,
+    note: a.note,
+    tenant: a.tenant,
+    branch: a.branch,
+    category: a.category,
     accountVehicle: a.accountVehicle
       ? { plate: a.accountVehicle.vehicle.plate }
       : null,
+    payment: serializeAppointmentFee(a),
   }));
   return jsonOk({ appointments: shaped });
 }
@@ -128,5 +147,29 @@ export async function POST(req: Request) {
     },
     select: { id: true, status: true, requestedAt: true },
   });
-  return jsonOk({ appointment: appt }, { status: 201 });
+
+  // Цаг захиалгын хураамж — идэвхтэй бол QPay invoice татна. Доголдвол ч
+  // захиалга үүсэхийг тасалдуулахгүй (fee талбарууд FAILED-тэй үлдэж,
+  // /payment/retry-ээр дараа дахин оролдоно).
+  let payment = null;
+  try {
+    await ensureAppointmentFeeCheckout(appt.id);
+    const withFee = await prisma.appointment.findUnique({
+      where: { id: appt.id },
+      select: {
+        feeAmount: true,
+        feeCurrency: true,
+        feeQpayInvoiceId: true,
+        feeQrImage: true,
+        feeQrText: true,
+        feeUnderpaidAmount: true,
+        payment: { select: { amount: true, currency: true } },
+      },
+    });
+    if (withFee) payment = serializeAppointmentFee(withFee);
+  } catch (e) {
+    console.warn("[payment] POST /api/v1/app/appointments:", e);
+  }
+
+  return jsonOk({ appointment: { ...appt, payment } }, { status: 201 });
 }

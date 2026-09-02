@@ -15,7 +15,7 @@ export default async function SystemSettingsPage() {
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
       <PageHeader
         title="Тохиргоо"
-        description="Платформын сошиал холбоос. Тохируулсан үед landing footer-т харагдана."
+        description="Платформын сошиал холбоос болон цаг захиалгын хураамж."
       />
       <div className="glass rounded-xl p-4 sm:p-5 border border-white/[0.08] max-w-xl">
         <SettingsForm initial={settings} />

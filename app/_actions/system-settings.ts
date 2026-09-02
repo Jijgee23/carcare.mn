@@ -27,12 +27,19 @@ export async function updatePlatformSettings(
 
   const facebookUrl = s(formData, "facebookUrl");
   const youtubeUrl = s(formData, "youtubeUrl");
+  const appointmentFeeEnabled = formData.get("appointmentFeeEnabled") === "on";
+  const appointmentFeeAmountRaw = s(formData, "appointmentFeeAmount");
 
   const fieldErrors: Record<string, string> = {};
   if (!isUrlOrEmpty(facebookUrl))
     fieldErrors.facebookUrl = "http(s):// эхэлсэн хаяг оруулна уу.";
   if (!isUrlOrEmpty(youtubeUrl))
     fieldErrors.youtubeUrl = "http(s):// эхэлсэн хаяг оруулна уу.";
+
+  const appointmentFeeAmount = Number.parseFloat(appointmentFeeAmountRaw);
+  if (!Number.isFinite(appointmentFeeAmount) || appointmentFeeAmount <= 0) {
+    fieldErrors.appointmentFeeAmount = "0-ээс их дүн оруулна уу.";
+  }
   if (Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors };
 
   await prisma.platformSetting.upsert({
@@ -41,14 +48,19 @@ export async function updatePlatformSettings(
       id: "default",
       facebookUrl: facebookUrl || null,
       youtubeUrl: youtubeUrl || null,
+      appointmentFeeEnabled,
+      appointmentFeeAmount,
     },
     update: {
       facebookUrl: facebookUrl || null,
       youtubeUrl: youtubeUrl || null,
+      appointmentFeeEnabled,
+      appointmentFeeAmount,
     },
   });
 
   revalidatePath("/system/settings");
+  revalidatePath("/system");
   revalidatePath("/page/landing");
   return { ok: true, message: "Хадгалагдлаа." };
 }

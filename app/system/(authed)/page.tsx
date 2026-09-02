@@ -18,6 +18,7 @@ export default async function SystemOverviewPage() {
     userCount,
     orderCount,
     completedRevenueAgg,
+    bookingRevenueAgg,
     planCounts,
     recentTenants,
   ] = await Promise.all([
@@ -29,6 +30,11 @@ export default async function SystemOverviewPage() {
     prisma.serviceOrder.aggregate({
       where: { status: "COMPLETED" },
       _sum: { totalAmount: true },
+    }),
+    // Цэвэр орлого — буцаагдсаныг (REFUNDED) хасна.
+    prisma.appointmentPayment.aggregate({
+      where: { status: "PAID" },
+      _sum: { amount: true },
     }),
     prisma.tenant.groupBy({
       by: ["plan"],
@@ -51,6 +57,9 @@ export default async function SystemOverviewPage() {
 
   const totalRevenue = Number.parseFloat(
     completedRevenueAgg._sum.totalAmount?.toString() ?? "0",
+  );
+  const bookingRevenue = Number.parseFloat(
+    bookingRevenueAgg._sum.amount?.toString() ?? "0",
   );
 
   const planMap = Object.fromEntries(
@@ -179,6 +188,21 @@ export default async function SystemOverviewPage() {
               Бүх байгууллагын дууссан захиалгын нийлбэр
             </p>
           </div>
+
+          <Link
+            href="/system/booking-revenue"
+            className="glass rounded-2xl p-6 border border-red-500/20 hover:border-red-500/40 transition-colors"
+          >
+            <div className="text-xs text-white/40 uppercase tracking-wider">
+              Цаг захиалгын орлого
+            </div>
+            <div className="mt-2 text-2xl sm:text-3xl font-bold gradient-text">
+              {formatTugrik(bookingRevenue)}
+            </div>
+            <p className="text-xs text-white/40 mt-2">
+              Онлайн цаг захиалгаас хэрэглэгчээс авсан хураамжийн нийлбэр →
+            </p>
+          </Link>
         </div>
       </div>
     </div>

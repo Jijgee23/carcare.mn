@@ -6,6 +6,214 @@ CARCARE.MN — Хөгжүүлэлтийн түүх (Dev history)
 
 
 ------------------------------------------------------------------------
+2026-09-02  ·  суурь commit 27a9875 (Auto-select vehicle when a single-vehicle
+                customer is chosen on order form)
+------------------------------------------------------------------------
+
+Прод дээрх "Tenant context тохируулагдаагүй байна (Notification.count)"
+алдаа засав
+------------------------------------------------------------------------
+Хэрэглэгч pm2 error log-оос давтагдан гарч байгааг мэдээлэв. Эх сурвалж:
+app/(app)/layout.tsx — getAccount() дуудаад шууд prisma.notification.count
+(unread badge). getAccount/getAccountSession нь React.cache()-тэй, дотроо
+setBypassContext() дуудна, гэвч layout (эцэг) БОЛОН org/[slug]/page.tsx
+(child) хоёул getAccount()-ыг тус тусдаа дуудна — Next.js layout/page-ийг
+sibling async execution chain дээр render хийж болзошгүй тул cache()-ийн
+dedupe хийсэн promise-г хүлээхэд context үргэлж дамждаггүй байна.
+org/[slug]/page.tsx-д аль хэдийн (өмнөх сессид) энэ загварын засвар
+(setBypassContext() өөрөө, getAccount()-аас өмнө) орсон байсан ч
+(app)/layout.tsx-д байгаагүй.
+
+- app/(app)/layout.tsx: getAccount()-аас өмнө бие даан setBypassContext()
+  нэмэв.
+- rls-tenant-isolation memory: "зөвхөн Turbopack dev-д" гэсэн өмнөх
+  таамаглалыг засаж, ПРОД дээр ч (next start) гарсан бодит жишээ болгон
+  баримтжуулав (Зургаа дахь давтагдах хэлбэр).
+
+⚠️ Мөн log-д "Failed to find Server Action" алдаа ажиглагдсан — энэ нь код
+алдаа биш, deploy хийх үед хуучин client bundle шинэ серверийн action ID-тай
+таарахгүй болсны улмаас (хэрэглэгч хуучин tab-аа шинэчлээгүй үед) гардаг
+хэвийн үзэгдэл. Deploy бүрийн дараа түр зуур гарвал хэвийн; байнга/deploy-гүй
+үед гарвал дахин шалгах шаардлагатай.
+
+Цаг захиалгын хураамжийн mobile API холбож, api-docs-д баримтжуулав
+------------------------------------------------------------------------
+Анзаарсан цоорхой: POST /api/v1/app/appointments (mobile) нь web-ийн
+createAppointment-аас ялгаатай, ensureAppointmentFeeCheckout-ыг ОГТ
+дуудахгүй байсан — mobile хэрэглэгч захиалахад QPay invoice огт үүсдэггүй
+байв.
+
+- lib/appointment-payments.ts: serializeAppointmentFee(appt) (шинэ, exported) —
+  Appointment.fee*/payment-ийг нэг ойлгомжтой { status: PENDING|PAID|
+  UNDERPAID|FAILED, amount, currency, qrImage, qrText, underpaidAmount }
+  хэлбэрт хувиргана. Web/mobile хоёулаа ашиглаж болно (одоогоор зөвхөн
+  mobile route-уудад ашигласан).
+- app/api/v1/app/appointments/route.ts: POST-д ensureAppointmentFeeCheckout
+  дуудлага нэмж, хариунд payment хавсаргав. GET (жагсаалт) мөн цаг бүрд
+  payment талбар нэмэв.
+- app/api/v1/app/appointments/[id]/payment (шинэ, GET) — тухайн цагийн
+  хураамжийн одоогийн төлөв.
+- app/api/v1/app/appointments/[id]/payment/check (шинэ, POST) —
+  confirmAppointmentPayment дуудна (polling, Invoice/мэдэгдэл ЭНД үүснэ).
+- app/api/v1/app/appointments/[id]/payment/retry (шинэ, POST) —
+  retryAppointmentFeeCheckout (FAILED дараа дахин invoice татах).
+- app/page/api-docs/account-docs.tsx: "4.1. Цаг захиалгын хураамж" хэсэг
+  нэмж 3 endpoint + payment объектын бүтцийг баримтжуулав.
+
+QPay v2 баримт бичиг судалж, бүрэн/дутуу төлбөрийн шалгалт бэхжүүлж,
+буцаалт (refund) холбов
+------------------------------------------------------------------------
+developer.qpay.mn v2.0.0 (+ техпартнерс qpay-go SDK-ийн эх сурвалж, docs сайт
+Swagger/SPA тул WebFetch-ээр дутуу мэдээлэл өгсөн) судалснаар lib/qpay.ts:
+
+- БАГ засав: QPayCheckResponse.rows[].paid_at гэдэг талбар байдаггүй байсан,
+  бодит нэр нь payment_date — өмнө нь paidAt үргэлж null → одоогийн цагаар
+  fallback хийгддэг байсан.
+- payment_status enum засав: "PENDING" биш, QPay-ийн бодит утга "NEW".
+- createInvoice-д allow_partial:false, allow_exceed:false тогтмол нэмэв
+  (QPay invoice түвшинд дутуу/илүү дүнг "төлөгдсөн" гэж бүртгэхээс сэргийлэх).
+- checkPayment(invoiceId, expectedAmount?) — 2 дахь параметр нэмж paid/
+  underpaidAmount/paymentType (P2P эсвэл CARD)-г нэг дор буцаадаг болгов
+  (subscription-payments.ts-д backward-compatible).
+- cancelPayment/refundPayment (DELETE /v2/payment/{cancel,refund}/{id})
+  нэмэв. ⚠️ Баримт бичигт ЗӨВХӨН КАРТЫН гүйлгээнд ажилладаг гэж тодорхой
+  бичсэн — манай 1000₮ хураамж ихэвчлэн P2P (банкны шилжүүлэг/QR)-ээр
+  төлөгддөг тул QPay API-аар буцаах боломжгүй байх магадлалтай.
+
+- prisma/schema.prisma: Appointment.feeUnderpaidAmount/feeUnderpaidAt
+  (дутуу төлбөр тэмдэглэх). AppointmentPayment.paymentType/refundedAt/
+  refundNote/refundedById(→SuperAdmin) + enum-д REFUNDED нэмэв (migrations
+  20260902030000, 20260902040000 — Postgres ALTER TYPE ADD VALUE тусдаа
+  migration шаардсан).
+- lib/appointment-payments.ts: confirmAppointmentPayment одоо
+  expectedAmount дамжуулж, дутуу төлбөр илэрвэл Appointment дээр тэмдэглээд
+  (Invoice ҮҮСГЭХГҮЙ) "Дутуу төлбөр: X/Y₮" мессежтэй буцаана; бүрэн
+  төлөгдвөл paymentType-ийг AppointmentPayment дээр хадгална.
+- app/_actions/booking-revenue.ts (шинэ): refundAppointmentPaymentAction —
+  paymentType==="CARD" бол QPay.refundPayment бодитоор дуудна, бусад
+  тохиолдолд (P2P) API дуудахгүй, SuperAdmin-ы тэмдэглэсэн шалтгаантайгаар
+  зөвхөн DB-д REFUNDED гэж тэмдэглэнэ (гараар банкаар буцаасны баталгаа).
+- app/system/(authed)/booking-revenue: цэвэр орлого (REFUNDED хассан),
+  буцаагдсан дүн/тоо, "дутуу төлбөр" тусдаа жагсаалт, мөр бүрт "Буцаах"
+  товч (refund-button.tsx, inline note textarea).
+- app/(app)/account/appointments/[id]/pay: дутуу төлбөрийн persistent
+  amber banner + toast нэмэв.
+
+⚠️ Баталгаажаагүй: payment/refund-ийн request body-г cancel-ийн
+баталгаажсан жишээнээс таамагласан (refund-ийхаа тусдаа жишээ олдоогүй) —
+prod-д ашиглахаасаа өмнө QPay sandbox дээр туршиж баталгаажуулах хэрэгтэй.
+
+Цаг захиалгын Invoice-ийг зөвхөн ТӨЛӨГДСӨНИЙ дараа DB-д үүсгэж, тенантад
+мэдэгдэл нэмэв
+------------------------------------------------------------------------
+Тодруулга: booking үед шууд AppointmentPayment(PENDING) мөр (Invoice) үүсгэдэг
+байсныг өөрчилж, зөвхөн QPay-аас "PAID" гэж баталгаажсаны дараа л Invoice
+DB-д бичигдэх, мөн яг тэр мөчид тенантын ажилтнуудад мэдэгдэл очих болгов.
+
+- prisma/schema.prisma: Appointment-д fee* талбарууд нэмэв (feeAmount,
+  feeCurrency, feeQpayInvoiceId, feeQrImage, feeQrText) — явцад буй
+  (төлөгдөөгүй) QPay checkout-ийг эдгээр дээр хөтөлнө (Invoice биш, түр
+  зуурын). AppointmentPayment одоо ЗӨВХӨН PAID мөр агуулна. Migration
+  20260902020000_appointment_fee_checkout_fields (fee* багана нэмээд, хуучин
+  PENDING/FAILED AppointmentPayment мөрийг Appointment.fee* руу нүүлгэж
+  устгах дата-migration — ⚠️ энэ хэсэг нь FORCE RLS-ээс болж migrate deploy
+  дотор no-op болсныг илрүүлж dev дээр гараар засав, дэлгэрэнгүй нь
+  rls-tenant-isolation memory-д).
+- lib/appointment-payments.ts: бүрэн дахин зохион байгуулав.
+  ensureAppointmentFeeCheckout/retryAppointmentFeeCheckout (QPay invoice
+  татаж Appointment.fee*-д хадгална, DB Invoice үүсгэхгүй).
+  confirmAppointmentPayment(appointmentId) — QPay.checkPayment баталгаажсан
+  ЛИШЬ ЭНД prisma.appointmentPayment.create (P2002 unique(appointmentId)-ээр
+  webhook+polling race-ийг idempotent болгосон) + notifyStaff({type:
+  "appointment_fee_paid", ...}) дуудна.
+- lib/notifications.ts: шинэ NotificationType "appointment_fee_paid" (realm
+  staff, href /dashboard/appointments).
+- app/api/v1/appointments/qpay/callback: query param payment_id →
+  appointment_id (AppointmentPayment урьдчилж үүсдэггүй болсон тул).
+- app/_actions/appointment-payments.ts: check/retry action-ууд одоо
+  appointmentId дамжуулна (paymentId биш), account ownership
+  Appointment.findFirst-ээр шалгана.
+- app/(app)/account/appointments/[id]/pay: page.tsx + payment-panel.tsx
+  appointmentId-ээр ажилладаг болгож дахин бичив (paid/QR/failed 3 төлөв,
+  appt.payment эсвэл appt.fee* талбараас тодорхойлно).
+- app/(app)/account/page.tsx: хураамжийн badge/линк a.payment эсвэл
+  a.feeAmount-аас тодорхойлогдоно.
+- app/system/(authed)/booking-revenue: бүх мөр PAID тул статус
+  filter/PENDING тоо хассан, зөвхөн нийт орлого + invoice тоо + жагсаалт
+  үлдээв.
+
+------------------------------------------------------------------------
+2026-09-02  ·  суурь commit 27a9875 (Auto-select vehicle when a single-vehicle
+                customer is chosen on order form)
+------------------------------------------------------------------------
+
+Цаг захиалгын хураамж — trigger-ийг booking руу шилжүүлж, super admin
+тохируулдаг/үнэгүй болгодог болгов
+------------------------------------------------------------------------
+Тодруулга: хураамж нь ажилтан CONFIRMED хийх мөчид биш, ХЭРЭГЛЭГЧ цаг
+ЗАХИАЛАХ (createAppointment, PENDING үүсэх) мөчид авагдах ёстой байсан.
+Мөн дүнг код дотор хатуу бичихийн оронд super admin `/system/settings`-ээс
+тохируулдаг, бүр бүрэн идэвхгүй (үнэгүй) болгож болдог байх шаардлагатай
+болов.
+
+- prisma/schema.prisma: PlatformSetting.appointmentFeeEnabled (Boolean,
+  default true) + appointmentFeeAmount (Decimal, default 1000). Migration
+  20260902010000_platform_appointment_fee_settings.
+- lib/platform-settings.ts: getPlatformSettings() эдгээр 2 талбарыг мөн
+  буцаадаг боллоо (мөр байхгүй бол анхны утга).
+- lib/appointment-payments.ts: BOOKING_FEE_AMOUNT тогтмолыг устгаж,
+  ensureAppointmentPayment нь эхлээд getPlatformSettings()-ээс уншиж,
+  идэвхгүй/0 бол { ok:true, required:false } (invoice үүсгэхгүй) буцаана.
+  InvoiceResult-д required: boolean нэмэв (дуудагч тал pay хуудас руу
+  чиглүүлэх эсэхээ мэдэхийн тулд).
+- app/_actions/appointments.ts: ensureAppointmentPayment дуудлагыг
+  confirmAppointment-аас ХАСАЖ createAppointment руу шилжүүлэв (Appointment
+  create-ийн дараа шууд). required бол redirect("/account") -ийн оронд
+  redirect(`/account/appointments/${id}/pay`) — redirect() нь try/catch-ийн
+  ГАДНА байрлуулав (NEXT_REDIRECT-ийг санамсаргүй барихаас сэргийлэх).
+- app/(app)/account/page.tsx: badge/линкийг зөвхөн CONFIRMED биш, a.payment
+  байгаа ЛЮБОЙ статустай цагт харуулна; дүнг хатуу "1,000₮" гэж бичихийн
+  оронд a.payment.amount-аас динамикаар харуулна.
+- app/system/(authed)/settings/settings-form.tsx: "Хураамж авах" checkbox +
+  "Дүн (₮)" тоон талбар нэмэв (checkbox off бол backend талд бүрэн үнэгүй).
+- app/system/(authed)/booking-revenue: одоогийн хураамж/идэвхийн төлөв +
+  /system/settings холбоос нэмэв; тайлбар доторх хатуу "1,000₮" ишлэлийг
+  хассан. /system тойм хуудсан дахь card-ын тайлбарыг мөн ерөнхий болгов.
+
+------------------------------------------------------------------------
+
+Цаг захиалгын хураамж (1000₮) — Account QPay-ээр төлдөг, SuperAdmin орлого
+---------------------------------------------------------------------------
+Бодлого: онлайн цаг захиалга (Appointment) ажилтнаар CONFIRMED болмогц
+платформын 1000₮ хураамжийг эцсийн хэрэглэгч (Account) бодит QPay
+гүйлгээгээр төлнө. SubscriptionPayment/OrderPayment-тэй ижил QPay urgs хэв
+маягтай, гэхдээ систем-level QPaySettings ашиглана (тенантынх биш).
+
+- prisma/schema.prisma: AppointmentPayment загвар (appointmentId/tenantId/
+  accountId Restrict, amount/currency, status enum PENDING/PAID/CANCELLED/
+  FAILED, qpayInvoiceId/qpayPaymentId/qrImage/qrText/paidAt) + Appointment.
+  payment (1:1), Tenant/Account талын relation. Migration
+  20260902000000_add_appointment_payment + RLS
+  20260902000001_appointment_payment_rls (tenant_isolation policy, бусад
+  payment хүснэгттэй ижил).
+- lib/appointment-payments.ts (шинэ): BOOKING_FEE_AMOUNT=1000,
+  ensureAppointmentPayment (invoice үүсгэх, idempotent), retryAppointmentPayment
+  (FAILED-ийг дахин оролдох), confirmAppointmentPayment (QPay.checkPayment-ээр
+  бие даан баталгаажуулна — subscription-payments-тэй ижил зарчим).
+- app/_actions/appointments.ts: confirmAppointment-д ensureAppointmentPayment
+  дуудлага нэмэв (try/catch — QPay доголдвол ч баталгаажилтыг тасалдуулахгүй).
+- app/_actions/appointment-payments.ts (шинэ): checkAppointmentPaymentAction
+  (polling), retryAppointmentPaymentAction (account-scoped).
+- app/api/v1/appointments/qpay/callback (шинэ): webhook, callback агуулгад
+  найдахгүй, checkPayment-ээр бие даан баталгаажуулна.
+- app/(app)/account/page.tsx: CONFIRMED цагт хураамжийн badge/линк
+  (Хураамж төлөх / Төлөгдсөн ✓) → /account/appointments/[id]/pay (шинэ, QR +
+  polling + FAILED үед дахин оролдох товч).
+- app/system/(authed)/booking-revenue (шинэ): нийт орлого, PAID/PENDING тоо,
+  жагсаалт (status filter, pagination). /system тойм хуудсанд card + sidebar
+  нэмэв.
+
+------------------------------------------------------------------------
 2026-06-25  ·  commit хийгдээгүй
 ------------------------------------------------------------------------
 

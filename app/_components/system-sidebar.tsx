@@ -94,6 +94,16 @@ const navItems: NavItem[] = [
     ),
   },
   {
+    href: "/system/booking-revenue",
+    label: "Цаг захиалгын орлого",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v10M9 9.5c0-1.4 1.3-2.5 3-2.5s3 .9 3 2.2-1.3 1.9-3 2.3-3 .9-3 2.3 1.3 2.2 3 2.2 3-1.1 3-2.5" />
+      </svg>
+    ),
+  },
+  {
     href: "/system/sessions",
     label: "Нэвтрэлт",
     icon: (
