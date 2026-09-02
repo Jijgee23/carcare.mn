@@ -8,7 +8,6 @@ import {
   registerUserDevice,
 } from "@/app/_actions/devices";
 import {
-  firebaseConfig,
   getClientMessaging,
   isFirebaseConfigured,
   vapidKey,
@@ -127,11 +126,10 @@ export function WebPushToggle({
       }
 
       // SW-ийг НАРИЙН scope-д бүртгэнэ — бүх апп-ийн навигацийг "удирдаж",
-      // chunk ачаалалд саад болохоос сэргийлнэ (FCM-ийн жишиг scope).
+      // chunk ачаалалд саад болохоос сэргийлнэ (FCM-ийн жишиг scope). Config
+      // нь SW файлдаа шууд шигтгэгдсэн (public/firebase-messaging-sw.js).
       const reg = await navigator.serviceWorker.register(
-        `/firebase-messaging-sw.js?firebaseConfig=${encodeURIComponent(
-          JSON.stringify(firebaseConfig),
-        )}`,
+        "/firebase-messaging-sw.js",
         { scope: "/firebase-cloud-messaging-push-scope" },
       );
       await waitForServiceWorkerActivation(reg);
