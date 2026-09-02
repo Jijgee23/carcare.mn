@@ -24,10 +24,9 @@ function BrandPanel() {
       <div className="absolute bottom-[-4rem] right-[-4rem] w-96 h-96 bg-blue-500/15 rounded-full blur-[100px]" />
 
       <Link href="/" className="relative flex items-center gap-2.5">
-        {/* Панел үргэлж бараан тул theme-ээс үл хамааран dark хувилбарын тэмдэг */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/brand/mark-dark.png"
+          src="/brand/mark.png"
           alt="carservice"
           className="w-9 h-9 object-contain"
         />
