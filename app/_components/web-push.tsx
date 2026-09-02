@@ -72,6 +72,24 @@ export function WebPushToggle({
 }) {
   const [status, setStatus] = useState<Status>("idle");
 
+  // Background мессеж (service worker-ийн onBackgroundMessage) нь
+  // web-push.tsx-ийн onMessage-ийг ДАМЖИХГҮЙ тул NotificationBell-ийн
+  // "carcare:notification-received" dispatch хийгддэггүй байсан — SW-ээс
+  // (public/firebase-messaging-sw.js) postMessage-ээр ирсэн дохиог энд
+  // хүлээж аваад мөн адил window event болгож дамжуулна. `enable()`-ийн
+  // амжилттай дуусахаас үл хамааран, mount болмогц л бүртгэнэ — SW нь
+  // өмнөх session-оос идэвхтэй байж болно.
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+    function onSwMessage(event: MessageEvent) {
+      if (event.data?.type === "carcare:notification-received") {
+        window.dispatchEvent(new Event("carcare:notification-received"));
+      }
+    }
+    navigator.serviceWorker.addEventListener("message", onSwMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onSwMessage);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     async function init() {

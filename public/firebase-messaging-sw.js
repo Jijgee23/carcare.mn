@@ -27,6 +27,17 @@ messaging.onBackgroundMessage((payload) => {
     body: n.body || "",
     data: (payload && payload.data) || {},
   });
+
+  // Нээлттэй байгаа таб(ууд)-д мэдэгдэнэ — тэдгээрийн NotificationBell шууд
+  // (45с polling-ийг хүлээлгүй) шинэчлэгдэхийн тулд. Background message нь
+  // web-push.tsx-ийн онгойлт (onMessage) дундуур ЯВДАГГҮЙ тул тэр талын
+  // "carcare:notification-received" dispatch энд хүрдэггүй — иймд SW-ээс
+  // өөрөө clients руу postMessage хийж дамжуулна.
+  self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+    for (const client of list) {
+      client.postMessage({ type: "carcare:notification-received" });
+    }
+  });
 });
 
 // Мэдэгдэл дээр дарахад апп нээх.
