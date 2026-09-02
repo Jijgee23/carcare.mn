@@ -29,7 +29,7 @@ export default async function SignUpPage() {
     <div className={`${plexSans.variable} ${plexMono.variable}`}>
       <TenantAuthShellWide
         title="Байгууллагаа бүртгүүлэх"
-        subtitle="2 минутын дотор carcare дээр салбараа үүсгээрэй."
+        subtitle="2 минутын дотор carservice дээр салбараа үүсгээрэй."
         footer={
           <>
             Бүртгэлтэй юу?{" "}

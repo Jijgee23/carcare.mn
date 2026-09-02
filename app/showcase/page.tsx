@@ -54,7 +54,7 @@ export default function ShowcasePage() {
               Шууд хяналт · 2026 Q2
             </div>
             <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-              <span className="gradient-text">Carcare</span> хяналтын самбар
+              <span className="gradient-text">Carservice</span> хяналтын самбар
             </h1>
             <p className="mt-1.5 text-sm text-white/45">
               Bento сүлжээ · бараан горим · неон онцлол

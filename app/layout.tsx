@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   description:
     "Автомашины оношилгоо, засвар үйлчилгээ эрхэлдэг байгууллагуудад зориулсан олон салбарын PaaS. Захиалга, түүх, нөөц, тайлан — нэг дороос.",
   keywords: [
-    "carcare",
+    "carservice",
     "carservice.mn",
     "авто засвар",
     "авто оношилгоо",

@@ -28,10 +28,10 @@ function BrandPanel() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/brand/mark-dark.png"
-          alt="carcare"
+          alt="carservice"
           className="w-9 h-9 object-contain"
         />
-        <span className="font-bold text-xl tracking-tight">carcare</span>
+        <span className="font-bold text-xl tracking-tight">carservice</span>
       </Link>
 
       <div className="relative max-w-sm">

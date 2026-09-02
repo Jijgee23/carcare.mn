@@ -8,7 +8,7 @@ export function BrandMark({ size = "md" }: { size?: "sm" | "md" }) {
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src="/brand/mark-dark.png"
-        alt="Carcare"
+        alt="Carservice"
         className={`${cls} object-contain dark-only`}
       />
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -25,7 +25,7 @@ export function BrandMark({ size = "md" }: { size?: "sm" | "md" }) {
 export function BrandWordmark({ size = "md" }: { size?: "sm" | "md" }) {
   return (
     <span className={size === "sm" ? "font-bold" : "font-bold text-lg tracking-tight"}>
-      car<span className="text-violet-400 brand-care-accent">care</span>
+      car<span className="text-violet-400 brand-care-accent">service</span>
     </span>
   );
 }

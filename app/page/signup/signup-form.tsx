@@ -304,7 +304,7 @@ export function SignUpForm({
         <div>
           <h2 className="font-semibold text-[var(--oc-ink)]">Байгууллагын мэдээлэл</h2>
           <p className="mt-1 text-xs text-[var(--oc-muted3)]">
-            carcare-д бүртгүүлэх үндсэн мэдээлэл.
+            carservice-д бүртгүүлэх үндсэн мэдээлэл.
           </p>
         </div>
 

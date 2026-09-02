@@ -23,7 +23,7 @@ const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
   const n = (payload && payload.notification) || {};
-  self.registration.showNotification(n.title || "Carcare", {
+  self.registration.showNotification(n.title || "Carservice", {
     body: n.body || "",
     data: (payload && payload.data) || {},
   });

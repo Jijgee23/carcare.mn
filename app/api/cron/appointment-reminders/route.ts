@@ -78,7 +78,7 @@ async function run(req: Request) {
 
     // SMS (утас байвал)
     if (phone) {
-      const ok = await sendSms(phone, `Carcare: ${body}`);
+      const ok = await sendSms(phone, `Carservice: ${body}`);
       if (ok) smsSent++;
     }
 

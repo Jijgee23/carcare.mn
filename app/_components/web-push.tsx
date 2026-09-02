@@ -186,7 +186,7 @@ export function WebPushToggle({
       onMessage(messaging, (payload) => {
         const n = payload.notification;
         if (n && Notification.permission === "granted") {
-          new Notification(n.title ?? "Carcare", { body: n.body ?? "" });
+          new Notification(n.title ?? "Carservice", { body: n.body ?? "" });
         }
         window.dispatchEvent(new Event("carcare:notification-received"));
       });

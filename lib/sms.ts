@@ -10,7 +10,7 @@ import type { OtpType } from "@/lib/auth/otp";
 
 // CallPro gateway нь баталгаажаагүй линк агуулсан текстийг 400 алдаа болгож
 // буцаадаг тул брэндийн ".mn" TLD-ийг хасаж энгийн нэрээр илгээнэ.
-const SMS_BRAND = "Carcare";
+const SMS_BRAND = "Carservice";
 
 const SUBJECT_BY_TYPE: Record<OtpType, string> = {
   SIGNUP: "Бүртгэл баталгаажуулах",
