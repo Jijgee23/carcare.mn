@@ -176,10 +176,13 @@ export function OrderForm({
   }
 
   // Үйлчлүүлэгч солиход — сонгосон машин нь шинэ эзэмшигчийнх биш бол цэвэрлэнэ.
+  // Тухайн үйлчлүүлэгч яг ганц машинтай бол уг машиныг автоматаар сонгоно.
   function onCustomerChange(v: string) {
     setCustomerId(v);
     const veh = vehicles.find((x) => x.id === vehicleId);
-    if (!veh || veh.customerId !== v) setVehicleId("");
+    if (veh && veh.customerId === v) return;
+    const owned = vehicles.filter((x) => x.customerId === v);
+    setVehicleId(owned.length === 1 ? owned[0].id : "");
   }
 
   function onCustomerCreated(c: CreatedCustomer) {
