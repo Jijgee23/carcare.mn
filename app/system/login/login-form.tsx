@@ -37,7 +37,7 @@ export function SystemLoginForm() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           className={`auth-input ${fe.email ? "border-red-500/50" : ""}`}
-          placeholder="root@carcare.mn"
+          placeholder="root@carservice.mn"
         />
       </Field>
 

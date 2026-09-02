@@ -100,7 +100,7 @@ export function QPaySettingsForm({ initial }: { initial: Initial }) {
             type="url"
             defaultValue={initial.callbackUrl}
             className="auth-input"
-            placeholder="https://carcare.mn/api/qpay/callback"
+            placeholder="https://carservice.mn/api/qpay/callback"
           />
         </Field>
       </div>

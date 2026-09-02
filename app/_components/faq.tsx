@@ -38,8 +38,8 @@ export function Faq() {
           </h2>
           <p className="mt-4 text-[14.5px] leading-relaxed text-[var(--oc-muted2)]">
             Хариулт олдсонгүй юу?{" "}
-            <a href="mailto:hi@carcare.mn" className="text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]">
-              hi@carcare.mn
+            <a href="mailto:hi@carservice.mn" className="text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]">
+              hi@carservice.mn
             </a>
           </p>
         </div>

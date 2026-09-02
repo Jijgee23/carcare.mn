@@ -112,6 +112,6 @@ export function getAppBaseUrl(): string {
   return (
     process.env.APP_URL ??
     process.env.NEXT_PUBLIC_APP_URL ??
-    "https://carcare.mn"
+    "https://carservice.mn"
   ).replace(/\/+$/, "");
 }

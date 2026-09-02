@@ -210,7 +210,7 @@ export default function ShowcasePage() {
         </div>
 
         <footer className="mt-10 text-center text-xs text-white/25">
-          Дизайн демо · carcare.mn — bento dashboard showcase
+          Дизайн демо · carservice.mn — bento dashboard showcase
         </footer>
       </div>
     </div>

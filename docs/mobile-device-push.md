@@ -4,7 +4,7 @@
 бэлэн болгосон. Апп нэвтрэх бүрт / FCM token шинэчлэгдэх бүрт төхөөрөмжөө
 бүртгэнэ, logout үед хасна.
 
-Бүх `Base URL`: production-д `https://carcare.mn`, dev-д `http://<LAN-IP>:4000`.
+Бүх `Base URL`: production-д `https://carservice.mn`, dev-д `http://<LAN-IP>:4000`.
 
 ---
 
@@ -77,7 +77,7 @@ Authorization: Bearer <accessToken>
 ## 3. Жишээ (TypeScript / React Native fetch)
 
 ```ts
-const BASE = "https://carcare.mn";
+const BASE = "https://carservice.mn";
 
 async function registerDevice(accessToken: string, fcmToken: string) {
   const deviceId = await getOrCreateDeviceId(); // uuid-г AsyncStorage-д хадгал

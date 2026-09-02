@@ -15,7 +15,7 @@ export async function GET(req: Request) {
   const data = await loadReportData(user, range);
 
   const wb = new ExcelJS.Workbook();
-  wb.creator = "carcare.mn";
+  wb.creator = "carservice.mn";
   wb.created = new Date();
 
   const summary = wb.addWorksheet("Хураангуй");

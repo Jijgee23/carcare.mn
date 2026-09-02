@@ -9,16 +9,16 @@ const geist = Geist({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://carcare.mn"),
+  metadataBase: new URL("https://carservice.mn"),
   title: {
-    default: "carcare.mn — Авто үйлчилгээний ухаалаг платформ",
-    template: "%s · carcare.mn",
+    default: "carservice.mn — Авто үйлчилгээний ухаалаг платформ",
+    template: "%s · carservice.mn",
   },
   description:
     "Автомашины оношилгоо, засвар үйлчилгээ эрхэлдэг байгууллагуудад зориулсан олон салбарын PaaS. Захиалга, түүх, нөөц, тайлан — нэг дороос.",
   keywords: [
     "carcare",
-    "carcare.mn",
+    "carservice.mn",
     "авто засвар",
     "авто оношилгоо",
     "сервис менежмент",
@@ -28,11 +28,11 @@ export const metadata: Metadata = {
   // Icon-уудыг файлын конвенцоор (app/favicon.ico, app/icon.png,
   // app/apple-icon.png) Next автоматаар <head>-д нэмнэ.
   openGraph: {
-    title: "carcare.mn — Авто үйлчилгээний ухаалаг платформ",
+    title: "carservice.mn — Авто үйлчилгээний ухаалаг платформ",
     description:
       "Олон салбарт ажиллах сервис төвүүдэд зориулсан орчин үеийн PaaS систем.",
-    url: "https://carcare.mn",
-    siteName: "carcare.mn",
+    url: "https://carservice.mn",
+    siteName: "carservice.mn",
     locale: "mn_MN",
     type: "website",
     // icon: [

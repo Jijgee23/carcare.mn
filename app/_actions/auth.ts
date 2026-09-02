@@ -571,7 +571,7 @@ export async function signInAction(
     return {
       ok: false,
       message:
-        "Таны байгууллагын хандалт түр зогссон байна. carcare.mn-тай холбоо барина уу.",
+        "Таны байгууллагын хандалт түр зогссон байна. carservice.mn-тай холбоо барина уу.",
     };
   }
 
@@ -947,7 +947,7 @@ export async function activateAccountAction(
       step: "verify",
       email,
       message:
-        "Таны байгууллагын хандалт түр зогссон байна. carcare.mn-тай холбоо барина уу.",
+        "Таны байгууллагын хандалт түр зогссон байна. carservice.mn-тай холбоо барина уу.",
     };
   }
 

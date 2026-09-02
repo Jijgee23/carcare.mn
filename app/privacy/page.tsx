@@ -65,7 +65,7 @@ export default function PrivacyPage() {
 
         <Section title="1. Ерөнхий">
           <p>
-            {CONTACT.org} ({CONTACT.website}) нь carcare.mn платформыг
+            {CONTACT.org} ({CONTACT.website}) нь carservice.mn платформыг
             ажиллуулдаг. Энэхүү бодлого нь таны хувийн мэдээллийг хэрхэн
             цуглуулж, ашиглаж, хамгаалдаг талаар тайлбарлана. Үйлчилгээг
             ашигласнаар та энэхүү бодлогыг хүлээн зөвшөөрсөнд тооцно.

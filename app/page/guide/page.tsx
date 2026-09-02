@@ -46,12 +46,12 @@ export default function GuidePage() {
       <main className="flex-1 mx-auto w-full max-w-3xl px-4 py-12">
         <h1 className="text-3xl font-bold">Гарын авлага</h1>
         <p className="text-white/40 text-sm mt-2">
-          carcare.mn платформыг хэрхэн ашиглах талаарх заавар
+          carservice.mn платформыг хэрхэн ашиглах талаарх заавар
         </p>
 
         <Section title="Платформын тухай">
           <p>
-            carcare.mn нь авто засвар, үйлчилгээний байгууллага болон
+            carservice.mn нь авто засвар, үйлчилгээний байгууллага болон
             тэдгээрийн үйлчлүүлэгчдийг холбосон онлайн цаг захиалгын платформ
             юм. Доор харилцагч болон засварын газрын талд зориулсан үндсэн
             боломжуудыг товч танилцуулав.

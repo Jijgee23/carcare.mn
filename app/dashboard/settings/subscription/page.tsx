@@ -158,7 +158,7 @@ export default async function SubscriptionPage() {
             </div>
           ) : (
             <p className="text-sm text-[var(--oc-muted3)]">
-              Идэвхтэй багц байхгүй. Багц авахын тулд carcare.mn-тэй холбоо
+              Идэвхтэй багц байхгүй. Багц авахын тулд carservice.mn-тэй холбоо
               барина уу.
             </p>
           )}

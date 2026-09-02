@@ -1,4 +1,4 @@
-// carcare.mn — multi-tenant авто үйлчилгээний платформын schema
+// carservice.mn — multi-tenant авто үйлчилгээний платформын schema
 // https://pris.ly/d/prisma-schema
 
 generator client {
@@ -1259,7 +1259,7 @@ model PlatformSetting {
   updatedAt   DateTime @updatedAt
 }
 
-// --- SuperAdmin (carcare.mn-ын платформын эзэн) ---------------------------
+// --- SuperAdmin (carservice.mn-ын платформын эзэн) ---------------------------
 
 model SuperAdmin {
   id           String   @id @default(cuid())

@@ -51,7 +51,7 @@ export default function SystemLoginPage() {
               Системийн нэвтрэх
             </h1>
             <p className="text-[var(--oc-muted3)] text-sm mt-2">
-              Зөвхөн carcare.mn-ын эзэн нэвтрэх боломжтой.
+              Зөвхөн carservice.mn-ын эзэн нэвтрэх боломжтой.
             </p>
           </div>
 

@@ -61,7 +61,7 @@ export default async function SystemOverviewPage() {
     <div className="p-6 sm:p-8 max-screen">
       <PageHeader
         title={`Сайн байна уу, ${admin.firstName}`}
-        description="carcare.mn платформын ерөнхий тойм"
+        description="carservice.mn платформын ерөнхий тойм"
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">

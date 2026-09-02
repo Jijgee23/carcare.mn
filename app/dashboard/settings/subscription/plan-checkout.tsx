@@ -68,7 +68,7 @@ function PlanList({ prices }: { prices: PlanPriceOption[] }) {
   if (prices.length === 0) {
     return (
       <p className="text-sm text-[var(--oc-muted3)]">
-        Үнийн жагсаалт хоосон байна. carcare.mn-тэй холбоо барина уу.
+        Үнийн жагсаалт хоосон байна. carservice.mn-тэй холбоо барина уу.
       </p>
     );
   }

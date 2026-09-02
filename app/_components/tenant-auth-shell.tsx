@@ -115,7 +115,7 @@ function ConsolePanel() {
 function ShellFooter() {
   return (
     <footer className="border-t border-[var(--oc-line2)] px-6 sm:px-10 py-4 flex flex-wrap items-center justify-between gap-3 font-plex-mono text-[11.5px] text-[var(--oc-muted3)]">
-      <span>© {new Date().getFullYear()} carcare.mn · Автосервис бизнесийн платформ</span>
+      <span>© {new Date().getFullYear()} carservice.mn · Автосервис бизнесийн платформ</span>
       <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
         <Link href="/terms" className="hover:text-[var(--oc-accent-hi)] transition-colors">
           Нөхцөл

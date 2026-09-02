@@ -54,7 +54,7 @@ export function ApiDocsTabs() {
               Base URL
             </div>
             <div className="text-[var(--oc-ink2)]">
-              Прод: <code className="font-plex-mono">https://carcare.mn</code>
+              Прод: <code className="font-plex-mono">https://carservice.mn</code>
               <br />
               Dev: <code className="font-plex-mono">http://&lt;LAN-IP&gt;:4000</code>
             </div>

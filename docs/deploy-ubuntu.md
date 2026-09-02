@@ -45,6 +45,9 @@ NODE_ENV=production
 DATABASE_URL="postgresql://carcare:ХҮЧТЭЙ_НУУЦ@localhost:5432/carcare.mn?schema=public"
 SESSION_SECRET="32+ тэмдэгт санамсаргүй"
 CRON_SECRET="санамсаргүй секрет"
+# Апп-ийн бодит нийтийн base URL — QPay callback (getAppBaseUrl(), lib/subscription-server.ts)
+# үүнийг ашиглана. Тохируулаагүй бол кодын hardcoded fallback руу унана — үргэлж тохируул.
+NEXT_PUBLIC_APP_URL="https://www.carservice.mn"
 ENCRYPTION_KEY="..."            # QPay нууцлал
 CALL_PRO_API_KEY="..."          # SMS
 CALL_PRO_SPECIAL_KEY="..."
@@ -147,7 +150,7 @@ pm2 logs carcare                    # лог харах
 `/etc/nginx/sites-available/carcare`:
 ```nginx
 server {
-    server_name carcare.mn www.carcare.mn;
+    server_name carservice.mn www.carservice.mn;
     client_max_body_size 5m;             # 4mb upload-д зориулж
 
     location /uploads/ {
@@ -171,7 +174,7 @@ sudo ln -s /etc/nginx/sites-available/carcare /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 # HTTPS (web push, secure cookie-д ЗААВАЛ):
 sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d carcare.mn -d www.carcare.mn
+sudo certbot --nginx -d carservice.mn -d www.carservice.mn
 ```
 
 > `X-Forwarded-For/Proto` чухал — IP лог, secure cookie зөв ажиллана.
@@ -183,15 +186,15 @@ sudo certbot --nginx -d carcare.mn -d www.carcare.mn
 `crontab -e` (`ubuntu` хэрэглэгчээр, sudo хэрэггүй):
 ```cron
 # Захиалгын сануулга — цаг тутам
-0 * * * * curl -fsS -H "Authorization: Bearer ШИНИЙ_CRON_SECRET" https://carcare.mn/api/cron/appointment-reminders > /dev/null 2>&1
+0 * * * * curl -fsS -H "Authorization: Bearer ШИНИЙ_CRON_SECRET" https://carservice.mn/api/cron/appointment-reminders > /dev/null 2>&1
 # Хугацаа хэтэрсэн (хариу өгөөгүй) цаг захиалгыг цуцлах — цаг тутам
-15 * * * * curl -fsS -H "Authorization: Bearer ШИНИЙ_CRON_SECRET" https://carcare.mn/api/cron/expire-appointments > /dev/null 2>&1
+15 * * * * curl -fsS -H "Authorization: Bearer ШИНИЙ_CRON_SECRET" https://carservice.mn/api/cron/expire-appointments > /dev/null 2>&1
 # Subscription хугацаа дуусгах — өдөр бүр 00:05
-5 0 * * * curl -fsS -H "Authorization: Bearer ШИНИЙ_CRON_SECRET" https://carcare.mn/api/cron/expire-subscriptions > /dev/null 2>&1
+5 0 * * * curl -fsS -H "Authorization: Bearer ШИНИЙ_CRON_SECRET" https://carservice.mn/api/cron/expire-subscriptions > /dev/null 2>&1
 # Багц дуусах сануулга (эзэд рүү push/мэдэгдэл) — өдөр бүр 09:00
-0 9 * * * curl -fsS -H "Authorization: Bearer ШИНИЙ_CRON_SECRET" https://carcare.mn/api/cron/subscription-reminders > /dev/null 2>&1
+0 9 * * * curl -fsS -H "Authorization: Bearer ШИНИЙ_CRON_SECRET" https://carservice.mn/api/cron/subscription-reminders > /dev/null 2>&1
 # Хуучин (уншсан) мэдэгдэл цэвэрлэх — өдөр бүр 03:00
-0 3 * * * curl -fsS -H "Authorization: Bearer ШИНИЙ_CRON_SECRET" https://carcare.mn/api/cron/notifications-prune > /dev/null 2>&1
+0 3 * * * curl -fsS -H "Authorization: Bearer ШИНИЙ_CRON_SECRET" https://carservice.mn/api/cron/notifications-prune > /dev/null 2>&1
 ```
 `CRON_SECRET`-ийг `.env`-ийнхтэй ижил болго.
 

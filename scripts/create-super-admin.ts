@@ -4,7 +4,7 @@
  * Ажиллуулах:
  *   npm run system:create-admin -- <email> <password> <firstName> <lastName>
  * Жишээ:
- *   npm run system:create-admin -- root@carcare.mn supersecret123 Бат Болд
+ *   npm run system:create-admin -- root@carservice.mn supersecret123 Бат Болд
  */
 
 import "dotenv/config";

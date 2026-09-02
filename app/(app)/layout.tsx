@@ -70,7 +70,7 @@ export default async function ConsumerLayout({
 
           <footer className="border-t border-[var(--oc-line2)]">
             <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8 py-6 text-center text-xs text-[var(--oc-muted3)]">
-              carcare.mn — авто үйлчилгээний цаг захиалга
+              carservice.mn — авто үйлчилгээний цаг захиалга
             </div>
           </footer>
         </div>

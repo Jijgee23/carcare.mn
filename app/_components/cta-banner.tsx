@@ -17,7 +17,7 @@ export function CtaBanner() {
           <div className="flex flex-wrap shrink-0 gap-3">
             <ButtonPrimary href="/page/signup">Үнэгүй эхлүүлэх</ButtonPrimary>
             <ButtonGhost href="/page/guide">Гарын авлага үзэх</ButtonGhost>
-            <ButtonGhost href="mailto:hi@carcare.mn">Борлуулалттай ярих</ButtonGhost>
+            <ButtonGhost href="mailto:hi@carservice.mn">Борлуулалттай ярих</ButtonGhost>
           </div>
         </div>
       </div>
