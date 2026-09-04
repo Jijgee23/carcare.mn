@@ -1,7 +1,32 @@
 import type { Prisma } from "@/app/generated/prisma/client";
+import { prisma } from "@/lib/prisma";
 import type { PrismaTransactionClient } from "@/lib/prisma";
 
 type Client = PrismaTransactionClient;
+
+/**
+ * Account-ийн БАТАЛГААЖСАН эзэмшлийн машины ID-үүд (cross-tenant) —
+ * үйлчилгээ/оношилгооны түүх бүтээхэд ашиглана. `AccountVehicle` өөрөө
+ * claim хийдэг тул эзэмшлийн нотолгоо БОЛОХГҮЙ (харах: prisma/schema.prisma
+ * AccountVehicle) — зөвхөн TenantVehicle дэх Customer.accountId холбоос
+ * эсвэл утасны тохирлыг эзэмшил гэж үзнэ.
+ */
+export async function ownedVehicleIdsForAccount(
+  accountId: string,
+  phone: string,
+): Promise<string[]> {
+  const links = await prisma.tenantVehicle.findMany({
+    where: {
+      OR: [
+        { customer: { accountId } },
+        { customer: { phone: { endsWith: phone } } },
+      ],
+    },
+    select: { vehicleId: true },
+    distinct: ["vehicleId"],
+  });
+  return links.map((l) => l.vehicleId);
+}
 
 // Global Vehicle-д бичигдэх машины бие даасан/тогтмол шинж (харьяалал биш).
 export type VehicleAttrs = {

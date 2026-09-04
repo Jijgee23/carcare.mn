@@ -232,8 +232,73 @@ Res: 200 { "paid": false, "underpaidAmount": null, "message": null }  // хар�
         </Endpoint>
       </Section>
 
+      {/* --- Үйлчилгээний түүх --- */}
+      <Section title="5. Үйлчилгээний түүх (захиалга + оношилгоо)">
+        <p className="text-sm text-[var(--oc-muted)] -mt-2">
+          Хэрэглэгчийн (бүх байгууллага дамнасан) хийгдсэн үйлчилгээний
+          жагсаалт — эзэмшлийн машин (баталгаажсан утсаар холбогдсон) болон
+          account-тай холбоотой Customer-ийн захиалгууд. Захиалга бүрт
+          хавсаргасан оношилгооны тайлан (
+          <code className="font-plex-mono text-[var(--oc-muted2)]">
+            reports
+          </code>
+          ) орно.
+        </p>
+
+        <Endpoint
+          method="GET"
+          path="/api/v1/app/orders"
+          auth="bearer"
+          title="Миний үйлчилгээний түүх (жагсаалт). Query: page, pageSize (эсвэл хуучин нэрээр limit; анхдагч 50, дээд тал нь 200), vehicleId (заавал биш шүүлт)."
+        >
+          <Code>{`Res: 200 { "orders": [{
+  "id": "...", "number": 1042, "status": "COMPLETED", "paymentStatus": "PAID",
+  "scheduledAt": "...", "completedAt": "...", "createdAt": "...",
+  "totalAmount": "150000", "paidAmount": "150000",
+  "tenant": { "name": "Инфосистемс", "slug": "infosystems" },
+  "branch": { "name": "Үндсэн салбар" },
+  "vehicle": { "plate": "1234УБА", "make": "Toyota", "model": "Prius", "year": 2018 },
+  "itemCount": 4,
+  "reports": [{
+    "id": "...", "type": "POST_SERVICE", "templateName": "Үйлчилгээний дараах шалгалт",
+    "mileageAtReport": 45000, "createdAt": "..."
+  }]
+}],
+"pagination": { "page": 1, "pageSize": 50, "total": 3, "totalPages": 1, "hasPrev": false, "hasNext": false } }`}</Code>
+        </Endpoint>
+
+        <Endpoint
+          method="GET"
+          path="/api/v1/app/orders/[id]"
+          auth="bearer"
+          title="Нэг захиалгын дэлгэрэнгүй — хийгдсэн ажил/сэлбэгийн мөрүүд, мөн хавсаргасан оношилгооны тайлангуудын БҮРЭН бөглөлт (templateSchema-тай хамт, шууд харуулахад бэлэн)."
+        >
+          <Code>{`Res: 200 { "order": {
+  "id": "...", "number": 1042, "status": "COMPLETED", "paymentStatus": "PAID",
+  "scheduledAt": "...", "completedAt": "...", "createdAt": "...", "notes": "...",
+  "totalAmount": "150000", "paidAmount": "150000",
+  "tenant": { "name": "Инфосистемс", "slug": "infosystems" },
+  "branch": { "name": "Үндсэн салбар", "phone": "70110000" },
+  "vehicle": { "plate": "1234УБА", "make": "Toyota", "model": "Prius", "year": 2018 },
+  "items": [{ "id": "...", "kind": "LABOR", "description": "Тосны солилт",
+              "quantity": "1", "unitPrice": "50000", "total": "50000" }],
+  "reports": [{
+    "id": "...", "type": "POST_SERVICE", "templateName": "Үйлчилгээний дараах шалгалт",
+    "templateSchema": { "sections": [{ "id": "...", "title": "...", "items": [
+      { "id": "...", "label": "Тормоз", "type": "check", "required": true, "options": ["Хэвийн","Анхаарах","Солих"] }
+    ] }] },
+    "templateVersion": 1,
+    "data": { "<itemId>": { "value": "Хэвийн", "photos": ["..."], "note": "..." } },
+    "signatureUrl": "..." | null, "mileageAtReport": 45000 | null, "notes": "..." | null,
+    "createdAt": "..."
+  }]
+} }
+404 { "error": "Захиалга олдсонгүй." }`}</Code>
+        </Endpoint>
+      </Section>
+
       {/* --- Push --- */}
-      <Section title="5. Төхөөрөмж бүртгэл (push мэдэгдэл)">
+      <Section title="6. Төхөөрөмж бүртгэл (push мэдэгдэл)">
         <p className="text-sm text-[var(--oc-muted)] -mt-2">
           Нэвтэрсний дараа (эсвэл FCM токен шинэчлэгдэх бүрт) дуудна.{" "}
           <code className="font-plex-mono text-[var(--oc-muted2)]">deviceId</code>{" "}
@@ -256,7 +321,7 @@ Res:  200 { "device": { "id": "...", "deviceId": "..." } }`}</Code>
       </Section>
 
       {/* --- Алдааны формат --- */}
-      <Section title="6. Алдааны формат">
+      <Section title="7. Алдааны формат">
         <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5">
           <p className="text-sm text-[var(--oc-muted)] mb-3">
             Бүх алдаа ижил хэлбэртэй буцна:
