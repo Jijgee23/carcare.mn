@@ -81,8 +81,8 @@ export default async function SystemTenantsPage({
         description={`Платформ дээр бүртгэлтэй ${total} байгууллага`}
       />
 
-      <div className="glass rounded-2xl overflow-hidden">
-        <div className="p-4 border-b border-white/[0.06] flex flex-wrap items-center gap-3">
+      <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden">
+        <div className="p-4 border-b border-[var(--oc-line2)] flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2 flex-wrap">
             {(
               [
@@ -103,7 +103,7 @@ export default async function SystemTenantsPage({
                   className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${
                     active
                       ? "bg-red-500/20 text-red-200 border border-red-500/30 light:bg-red-100 light:border-red-300 light:text-red-700"
-                      : "text-white/40 hover:text-white/70 border border-white/10 hover:border-white/20"
+                      : "text-[var(--oc-muted3)] hover:text-[var(--oc-muted)] border border-[var(--oc-line)] hover:border-[var(--oc-line2)]"
                   }`}
                 >
                   {f.label}
@@ -136,14 +136,14 @@ export default async function SystemTenantsPage({
         </div>
 
         {tenants.length === 0 ? (
-          <div className="px-5 py-16 text-center text-white/40 text-sm">
+          <div className="px-5 py-16 text-center text-[var(--oc-muted3)] text-sm">
             Хайлтад тохирох байгууллага алга.
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px]">
               <thead>
-                <tr className="border-b border-white/[0.06]">
+                <tr className="border-b border-[var(--oc-line2)]">
                   {[
                     "Байгууллага",
                     "Регистр",
@@ -157,7 +157,7 @@ export default async function SystemTenantsPage({
                   ].map((h) => (
                     <th
                       key={h}
-                      className="text-left text-xs text-white/30 font-medium px-5 py-3"
+                      className="text-left text-xs text-[var(--oc-muted3)] font-medium px-5 py-3"
                     >
                       {h}
                     </th>
@@ -168,27 +168,27 @@ export default async function SystemTenantsPage({
                 {tenants.map((t) => (
                   <tr
                     key={t.id}
-                    className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors"
+                    className="border-b border-[var(--oc-line2)] last:border-0 hover:bg-white/[0.02] transition-colors"
                   >
                     <td className="px-5 py-4">
                       <Link
                         href={`/system/tenants/${t.id}`}
                         className="flex items-center gap-3 group"
                       >
-                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-red-500/30 to-violet-500/30 flex items-center justify-center text-sm font-bold text-red-300 light:text-red-700 shrink-0">
+                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-red-500/30 to-red-600/20 flex items-center justify-center text-sm font-bold text-red-300 light:text-red-700 shrink-0">
                           {t.name[0]?.toUpperCase() ?? "?"}
                         </div>
                         <div>
-                          <div className="text-sm font-medium text-white/90 group-hover:text-red-200 light:group-hover:text-red-700 transition-colors">
+                          <div className="text-sm font-medium text-[var(--oc-ink2)] group-hover:text-red-200 light:group-hover:text-red-700 transition-colors">
                             {t.name}
                           </div>
-                          <div className="text-xs text-white/30">
+                          <div className="text-xs text-[var(--oc-muted3)]">
                             {t.email}
                           </div>
                         </div>
                       </Link>
                     </td>
-                    <td className="px-5 py-4 text-xs font-mono text-white/60">
+                    <td className="px-5 py-4 text-xs font-mono text-[var(--oc-muted)]">
                       {t.registerNumber}
                     </td>
                     <td className="px-5 py-4">
@@ -200,16 +200,16 @@ export default async function SystemTenantsPage({
                         {t.plan}
                       </span>
                     </td>
-                    <td className="px-5 py-4 text-sm text-white/60">
+                    <td className="px-5 py-4 text-sm text-[var(--oc-muted)]">
                       {t._count.branches}
                     </td>
-                    <td className="px-5 py-4 text-sm text-white/60">
+                    <td className="px-5 py-4 text-sm text-[var(--oc-muted)]">
                       {t._count.users}
                     </td>
-                    <td className="px-5 py-4 text-sm text-white/60">
+                    <td className="px-5 py-4 text-sm text-[var(--oc-muted)]">
                       {t._count.serviceOrders}
                     </td>
-                    <td className="px-5 py-4 text-sm text-white/80">
+                    <td className="px-5 py-4 text-sm text-[var(--oc-ink2)]">
                       {formatTugrik(revenueByTenant[t.id] ?? 0)}
                     </td>
                     <td className="px-5 py-4">
@@ -223,7 +223,7 @@ export default async function SystemTenantsPage({
                         </span>
                       )}
                     </td>
-                    <td className="px-5 py-4 text-xs text-white/40">
+                    <td className="px-5 py-4 text-xs text-[var(--oc-muted3)]">
                       {t.createdAt.toLocaleDateString("mn-MN")}
                     </td>
                   </tr>
@@ -238,6 +238,7 @@ export default async function SystemTenantsPage({
           totalPages={meta.totalPages}
           total={meta.total}
           params={{ filter: filter ?? "", q: q ?? "" }}
+          tone="danger"
         />
       </div>
     </div>

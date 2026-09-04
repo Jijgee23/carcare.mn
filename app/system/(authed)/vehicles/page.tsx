@@ -78,16 +78,16 @@ export default async function SystemVehiclesPage({
         />
       </div>
 
-      <div className="glass rounded-2xl overflow-hidden">
+      <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden">
         {vehicles.length === 0 ? (
-          <div className="px-5 py-16 text-center text-white/40 text-sm">
+          <div className="px-5 py-16 text-center text-[var(--oc-muted3)] text-sm">
             Хайлтад тохирох машин алга.
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[860px]">
               <thead>
-                <tr className="border-b border-white/[0.06]">
+                <tr className="border-b border-[var(--oc-line2)]">
                   {[
                     "Машин",
                     "Дугаар",
@@ -99,7 +99,7 @@ export default async function SystemVehiclesPage({
                   ].map((h) => (
                     <th
                       key={h}
-                      className="text-left text-xs text-white/30 font-medium px-5 py-3"
+                      className="text-left text-xs text-[var(--oc-muted4)] font-medium px-5 py-3"
                     >
                       {h}
                     </th>
@@ -110,33 +110,33 @@ export default async function SystemVehiclesPage({
                 {vehicles.map((v) => (
                   <tr
                     key={v.id}
-                    className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors"
+                    className="border-b border-[var(--oc-line2)] last:border-0 hover:bg-white/[0.02] transition-colors"
                   >
                     <td className="px-5 py-4">
-                      <div className="text-sm font-medium text-white/90">
+                      <div className="text-sm font-medium text-[var(--oc-ink2)]">
                         {v.make} {v.model}
                       </div>
-                      <div className="text-xs text-white/30">
+                      <div className="text-xs text-[var(--oc-muted3)]">
                         {v.year ? `${v.year} он` : "—"}
                         {v.fuelType ? ` · ${v.fuelType}` : ""}
                       </div>
                     </td>
-                    <td className="px-5 py-4 text-sm font-mono font-medium text-white/80">
+                    <td className="px-5 py-4 text-sm font-mono font-medium text-[var(--oc-ink2)]">
                       {v.plate}
                     </td>
-                    <td className="px-5 py-4 text-sm text-white/60">
+                    <td className="px-5 py-4 text-sm text-[var(--oc-muted)]">
                       {v.colorName ?? "—"}
                     </td>
-                    <td className="px-5 py-4 text-xs text-white/50">
+                    <td className="px-5 py-4 text-xs text-[var(--oc-muted)]">
                       {ownerKindFromRegnum(v.ownerRegnum) ?? "—"}
                     </td>
-                    <td className="px-5 py-4 text-sm text-white/60">
+                    <td className="px-5 py-4 text-sm text-[var(--oc-muted)]">
                       {v._count.tenantLinks}
                     </td>
-                    <td className="px-5 py-4 text-sm text-white/60">
+                    <td className="px-5 py-4 text-sm text-[var(--oc-muted)]">
                       {v._count.serviceOrders}
                     </td>
-                    <td className="px-5 py-4 text-xs text-white/40">
+                    <td className="px-5 py-4 text-xs text-[var(--oc-muted3)]">
                       {v.createdAt.toLocaleDateString("mn-MN")}
                     </td>
                   </tr>
@@ -151,6 +151,7 @@ export default async function SystemVehiclesPage({
           totalPages={meta.totalPages}
           total={meta.total}
           params={{ q, tenantId }}
+          tone="danger"
         />
       </div>
     </div>

@@ -5,7 +5,7 @@ import {
   type SettingsActionState,
   updatePlatformSettings,
 } from "@/app/_actions/system-settings";
-import { Field, FormError } from "@/app/_components/auth-shell";
+import { Field, FormError } from "@/app/_components/landing-ops-ui";
 
 export function SettingsForm({
   initial,
@@ -65,30 +65,30 @@ export function SettingsForm({
         />
       </Field>
 
-      <div className="border-t border-white/10 pt-4 flex flex-col gap-4">
+      <div className="border-t border-[var(--oc-line)] pt-4 flex flex-col gap-4">
         <div>
-          <div className="text-sm font-medium text-white/90">
+          <div className="text-sm font-medium text-[var(--oc-ink2)]">
             Цаг захиалгын хураамж
           </div>
-          <div className="text-xs text-white/40 mt-0.5">
+          <div className="text-xs text-[var(--oc-muted3)] mt-0.5">
             Хэрэглэгч онлайн цаг захиалахдаа QPay-ээр төлөх хураамж —
             орлого платформ дээр ирнэ.
           </div>
         </div>
 
-        <label className="flex items-start gap-3 p-3.5 rounded-[10px] border border-white/10 bg-white/[0.02] cursor-pointer hover:border-white/20 max-w-md">
+        <label className="flex items-start gap-3 p-3.5 rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel2)] cursor-pointer hover:border-[var(--oc-line2)] max-w-md">
           <input
             type="checkbox"
             name="appointmentFeeEnabled"
             checked={feeEnabled}
             onChange={(e) => setFeeEnabled(e.target.checked)}
-            className="mt-0.5 h-4 w-4 accent-violet-500"
+            className="mt-0.5 h-4 w-4 accent-red-500"
           />
           <span className="flex flex-col gap-0.5">
-            <span className="text-sm font-medium text-white/90">
+            <span className="text-sm font-medium text-[var(--oc-ink2)]">
               Хураамж авах
             </span>
-            <span className="text-xs text-white/40">
+            <span className="text-xs text-[var(--oc-muted3)]">
               Идэвхгүй болговол цаг захиалга үнэгүй болно — хэрэглэгчээс
               төлбөр авахгүй, invoice үүсэхгүй.
             </span>
@@ -119,7 +119,7 @@ export function SettingsForm({
         <button
           type="submit"
           disabled={pending}
-          className="bg-violet-600 hover:bg-violet-500 disabled:opacity-60 transition-all px-6 py-2 rounded-lg font-medium text-sm"
+          className="bg-red-600 hover:bg-red-500 disabled:opacity-60 transition-all px-6 py-2 rounded-lg font-medium text-sm text-white"
         >
           {pending ? "..." : "Хадгалах"}
         </button>

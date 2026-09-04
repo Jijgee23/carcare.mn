@@ -6,6 +6,12 @@ import Link from "next/link";
  *
  * `totalPages <= 1` үед юу ч render хийхгүй.
  */
+const ACTIVE_PAGE_TONE = {
+  accent:
+    "bg-[var(--oc-accent)]/20 text-[var(--oc-accent)] border border-[var(--oc-accent)]/30",
+  danger: "bg-red-500/20 text-red-400 light:text-red-600 border border-red-500/30",
+} as const;
+
 export function Pagination({
   page,
   totalPages,
@@ -13,6 +19,7 @@ export function Pagination({
   params = {},
   pageParam = "page",
   className,
+  tone = "accent",
 }: {
   page: number;
   totalPages: number;
@@ -20,6 +27,7 @@ export function Pagination({
   params?: Record<string, string | number | null | undefined>;
   pageParam?: string;
   className?: string;
+  tone?: keyof typeof ACTIVE_PAGE_TONE;
 }) {
   if (totalPages <= 1) return null;
 
@@ -51,9 +59,9 @@ export function Pagination({
 
   return (
     <div
-      className={`px-5 py-3 border-t border-white/[0.06] flex items-center justify-between gap-3 text-xs ${className ?? ""}`}
+      className={`px-5 py-3 border-t border-[var(--oc-line2)] flex items-center justify-between gap-3 text-xs ${className ?? ""}`}
     >
-      <span className="text-white/40 whitespace-nowrap">
+      <span className="text-[var(--oc-muted3)] whitespace-nowrap">
         {typeof total === "number" ? (
           <>
             Нийт {total.toLocaleString("mn-MN")} · {page}/{totalPages} хуудас
@@ -70,24 +78,24 @@ export function Pagination({
           <Link
             href={makeHref(page - 1)}
             scroll={false}
-            className="text-white/60 hover:text-white px-2.5 py-1 rounded-md hover:bg-white/[0.04] transition-colors"
+            className="text-[var(--oc-muted)] hover:text-[var(--oc-ink)] px-2.5 py-1 rounded-md hover:bg-white/[0.04] transition-colors"
           >
             ← Өмнөх
           </Link>
         ) : (
-          <span className="text-white/20 px-2.5 py-1">← Өмнөх</span>
+          <span className="text-[var(--oc-muted4)] px-2.5 py-1">← Өмнөх</span>
         )}
 
         <div className="hidden sm:flex items-center gap-1">
           {pages.map((p, i) =>
             p === "…" ? (
-              <span key={`gap-${i}`} className="text-white/20 px-1.5">
+              <span key={`gap-${i}`} className="text-[var(--oc-muted4)] px-1.5">
                 …
               </span>
             ) : p === page ? (
               <span
                 key={p}
-                className="min-w-[1.75rem] text-center px-2 py-1 rounded-md bg-violet-600/30 text-violet-200 border border-violet-500/30 light:bg-violet-100 light:text-violet-700 light:border-violet-300"
+                className={`min-w-[1.75rem] text-center px-2 py-1 rounded-md ${ACTIVE_PAGE_TONE[tone]}`}
               >
                 {p}
               </span>
@@ -96,7 +104,7 @@ export function Pagination({
                 key={p}
                 href={makeHref(p)}
                 scroll={false}
-                className="min-w-[1.75rem] text-center px-2 py-1 rounded-md text-white/60 hover:text-white hover:bg-white/[0.04] transition-colors"
+                className="min-w-[1.75rem] text-center px-2 py-1 rounded-md text-[var(--oc-muted)] hover:text-[var(--oc-ink)] hover:bg-white/[0.04] transition-colors"
               >
                 {p}
               </Link>
@@ -108,12 +116,12 @@ export function Pagination({
           <Link
             href={makeHref(page + 1)}
             scroll={false}
-            className="text-white/60 hover:text-white px-2.5 py-1 rounded-md hover:bg-white/[0.04] transition-colors"
+            className="text-[var(--oc-muted)] hover:text-[var(--oc-ink)] px-2.5 py-1 rounded-md hover:bg-white/[0.04] transition-colors"
           >
             Дараах →
           </Link>
         ) : (
-          <span className="text-white/20 px-2.5 py-1">Дараах →</span>
+          <span className="text-[var(--oc-muted4)] px-2.5 py-1">Дараах →</span>
         )}
       </div>
     </div>

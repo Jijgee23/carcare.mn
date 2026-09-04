@@ -6,7 +6,7 @@ import { requireAccount } from "@/lib/auth/account";
 import { requireUser } from "@/lib/auth";
 import { assertActiveSubscription } from "@/lib/subscription-server";
 import { branchScopeId, canCreate, canEdit } from "@/lib/auth/roles";
-import { resolveCustomerForAccount } from "@/lib/appointments";
+import { formatWhen, resolveCustomerForAccount } from "@/lib/appointments";
 import { ensureAppointmentFeeCheckout } from "@/lib/appointment-payments";
 import { ensureTenantVehicle } from "@/lib/vehicles";
 import {
@@ -23,17 +23,6 @@ import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { isFeatureEnabled } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
 import { setBypassContext } from "@/lib/tenant-context";
-
-// Мэдэгдэлд цаг харуулах нэг мөрийн формат.
-function formatWhen(d: Date): string {
-  return d.toLocaleString("mn-MN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-}
 
 export type AppointmentActionState = {
   ok: boolean;
@@ -258,22 +247,6 @@ export async function createAppointment(
     },
   });
 
-  // Холбогдох ажилтнуудад шинэ цаг захиалга ирсэн тухай мэдэгдэнэ.
-  try {
-    const who = account.name?.trim() || account.phone;
-    await notifyStaff({
-      type: "appointment_created",
-      tenantId: branch.tenantId,
-      branchId: branch.id,
-      input: {
-        appointmentId: created.id,
-        body: `${who} — ${formatWhen(requestedAt!)} цагт цаг захиаллаа.`,
-      },
-    });
-  } catch (e) {
-    console.warn("[notify] createAppointment:", e);
-  }
-
   // Цаг захиалгын хураамж — идэвхтэй бол QPay invoice татаж, хэрэглэгчийг
   // шууд төлбөрийн хуудас руу чиглүүлнэ. QPay доголдвол ч захиалга үүсэхийг
   // тасалдуулахгүй (payment мөр FAILED-ээр үлдэж дараа дахин оролдоно).
@@ -283,6 +256,26 @@ export async function createAppointment(
     requiresPayment = result.required;
   } catch (e) {
     console.warn("[payment] createAppointment:", e);
+  }
+
+  // Холбогдох ажилтнуудад шинэ цаг захиалга ирсэн тухай мэдэгдэнэ — гэхдээ
+  // хураамж шаардлагатай бол хэрэглэгч төлөх хүртэл хүлээнэ (мэдэгдэл
+  // `confirmAppointmentPayment`-аас, төлбөр баталгаажсаны дараа очно).
+  if (!requiresPayment) {
+    try {
+      const who = account.name?.trim() || account.phone;
+      await notifyStaff({
+        type: "appointment_created",
+        tenantId: branch.tenantId,
+        branchId: branch.id,
+        input: {
+          appointmentId: created.id,
+          body: `${who} — ${formatWhen(requestedAt!)} цагт цаг захиаллаа.`,
+        },
+      });
+    } catch (e) {
+      console.warn("[notify] createAppointment:", e);
+    }
   }
 
   revalidatePath("/account");

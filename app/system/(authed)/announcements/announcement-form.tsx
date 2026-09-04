@@ -5,7 +5,7 @@ import {
   type AnnouncementActionState,
   sendAnnouncementAction,
 } from "@/app/_actions/system-announcements";
-import { Field, FormError } from "@/app/_components/auth-shell";
+import { Field, FormError } from "@/app/_components/landing-ops-ui";
 
 export function AnnouncementForm() {
   const [state, action, pending] = useActionState<AnnouncementActionState, FormData>(
@@ -46,14 +46,14 @@ export function AnnouncementForm() {
       </Field>
 
       <div>
-        <div className="text-sm font-medium text-white/90 mb-2">Хүлээн авагч</div>
+        <div className="text-sm font-medium text-[var(--oc-ink2)] mb-2">Хүлээн авагч</div>
         <div className="flex flex-col gap-2">
-          <label className="flex items-center gap-2 text-sm text-white/70">
-            <input type="checkbox" name="targetStaff" defaultChecked className="accent-violet-600" />
+          <label className="flex items-center gap-2 text-sm text-[var(--oc-muted)]">
+            <input type="checkbox" name="targetStaff" defaultChecked className="accent-red-600" />
             Ажилтан (байгууллагын дотоод хэрэглэгчид)
           </label>
-          <label className="flex items-center gap-2 text-sm text-white/70">
-            <input type="checkbox" name="targetAccount" defaultChecked className="accent-violet-600" />
+          <label className="flex items-center gap-2 text-sm text-[var(--oc-muted)]">
+            <input type="checkbox" name="targetAccount" defaultChecked className="accent-red-600" />
             Хэрэглэгч (мобайл апп-ийн эцсийн хэрэглэгчид)
           </label>
         </div>
@@ -64,7 +64,7 @@ export function AnnouncementForm() {
         <button
           type="submit"
           disabled={pending}
-          className="bg-violet-600 hover:bg-violet-500 disabled:opacity-60 transition-all px-6 py-2 rounded-lg font-medium text-sm"
+          className="bg-red-600 hover:bg-red-500 disabled:opacity-60 transition-all px-6 py-2 rounded-lg font-medium text-sm text-white"
         >
           {pending ? "Илгээж байна..." : "Илгээх"}
         </button>

@@ -74,16 +74,16 @@ export default async function SystemCustomersPage({
         />
       </div>
 
-      <div className="glass rounded-2xl overflow-hidden">
+      <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden">
         {customers.length === 0 ? (
-          <div className="px-5 py-16 text-center text-white/40 text-sm">
+          <div className="px-5 py-16 text-center text-[var(--oc-muted3)] text-sm">
             Хайлтад тохирох үйлчлүүлэгч алга.
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[820px]">
               <thead>
-                <tr className="border-b border-white/[0.06]">
+                <tr className="border-b border-[var(--oc-line2)]">
                   {[
                     "Үйлчлүүлэгч",
                     "Утас",
@@ -95,7 +95,7 @@ export default async function SystemCustomersPage({
                   ].map((h) => (
                     <th
                       key={h}
-                      className="text-left text-xs text-white/30 font-medium px-5 py-3"
+                      className="text-left text-xs text-[var(--oc-muted4)] font-medium px-5 py-3"
                     >
                       {h}
                     </th>
@@ -106,26 +106,26 @@ export default async function SystemCustomersPage({
                 {customers.map((c) => (
                   <tr
                     key={c.id}
-                    className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors"
+                    className="border-b border-[var(--oc-line2)] last:border-0 hover:bg-white/[0.02] transition-colors"
                   >
                     <td className="px-5 py-4">
-                      <div className="text-sm font-medium text-white/90">
+                      <div className="text-sm font-medium text-[var(--oc-ink2)]">
                         {customerLabel(c)}
                       </div>
                       {c.email ? (
-                        <div className="text-xs text-white/30">{c.email}</div>
+                        <div className="text-xs text-[var(--oc-muted3)]">{c.email}</div>
                       ) : null}
                     </td>
-                    <td className="px-5 py-4 text-sm text-white/60 tabular-nums">
+                    <td className="px-5 py-4 text-sm text-[var(--oc-muted)] tabular-nums">
                       {formatPhone(c.phone)}
                     </td>
-                    <td className="px-5 py-4 text-sm text-white/70">
+                    <td className="px-5 py-4 text-sm text-[var(--oc-muted)]">
                       {c.tenant.name}
                     </td>
-                    <td className="px-5 py-4 text-sm text-white/60">
+                    <td className="px-5 py-4 text-sm text-[var(--oc-muted)]">
                       {c._count.tenantVehicles}
                     </td>
-                    <td className="px-5 py-4 text-sm text-white/60">
+                    <td className="px-5 py-4 text-sm text-[var(--oc-muted)]">
                       {c._count.serviceOrders}
                     </td>
                     <td className="px-5 py-4">
@@ -134,10 +134,10 @@ export default async function SystemCustomersPage({
                           Холбоотой
                         </span>
                       ) : (
-                        <span className="text-white/30 text-xs">—</span>
+                        <span className="text-[var(--oc-muted3)] text-xs">—</span>
                       )}
                     </td>
-                    <td className="px-5 py-4 text-xs text-white/40">
+                    <td className="px-5 py-4 text-xs text-[var(--oc-muted3)]">
                       {c.createdAt.toLocaleDateString("mn-MN")}
                     </td>
                   </tr>
@@ -152,6 +152,7 @@ export default async function SystemCustomersPage({
           totalPages={meta.totalPages}
           total={meta.total}
           params={{ q, tenantId }}
+          tone="danger"
         />
       </div>
     </div>

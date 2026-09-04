@@ -2,6 +2,7 @@ import "server-only";
 
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@/app/generated/prisma/client";
+import { formatWhen } from "@/lib/appointments";
 import { notifyStaff } from "@/lib/notifications";
 import { getPlatformSettings } from "@/lib/platform-settings";
 import { prisma } from "@/lib/prisma";
@@ -245,6 +246,7 @@ export async function confirmAppointmentPayment(
       feeAmount: true,
       feeCurrency: true,
       feeQpayInvoiceId: true,
+      requestedAt: true,
       payment: { select: { id: true } },
       account: { select: { name: true, phone: true } },
     },
@@ -317,17 +319,19 @@ export async function confirmAppointmentPayment(
     throw e;
   }
 
-  // Тенант рүү мэдэгдэл — зөвхөн Invoice-ийг ЭНД, шинээр үүсгэсэн дуудалт
-  // дээр л илгээнэ (давхар мэдэгдэхгүй, дээрх P2002 замд орохгүй).
+  // Тенант рүү шинэ цаг захиалгын мэдэгдэл — хураамж шаардлагатай захиалгад
+  // үүсгэх үед биш, яг ЭНД (төлбөр баталгаажсаны дараа) л явна (харах:
+  // createAppointment). Зөвхөн Invoice-ийг ЭНД шинээр үүсгэсэн дуудалт дээр
+  // л илгээнэ (давхар мэдэгдэхгүй, дээрх P2002 замд орохгүй).
   try {
     const who = appt.account?.name?.trim() || appt.account?.phone || "Хэрэглэгч";
     await notifyStaff({
-      type: "appointment_fee_paid",
+      type: "appointment_created",
       tenantId: appt.tenantId,
       branchId: appt.branchId,
       input: {
         appointmentId: appt.id,
-        body: `${who} — цаг захиалгын ${Number.parseFloat(appt.feeAmount.toString()).toLocaleString("mn-MN")}₮ хураамж төлөгдлөө.`,
+        body: `${who} — ${formatWhen(appt.requestedAt)} цагт цаг захиаллаа.`,
       },
     });
   } catch (e) {

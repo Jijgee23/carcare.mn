@@ -215,6 +215,16 @@ const secondaryItems: NavItem[] = [
     ],
   },
   {
+    href: "/manual",
+    label: "Гарын авлага",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+      </svg>
+    ),
+  },
+  {
     href: "/dashboard/profile",
     label: "Профайл",
     icon: (
@@ -481,9 +491,13 @@ function HoverFlyoutPortal({
 
 // Collapsed үед hover дээр гарч ирэх жижиг tooltip — label дэлгэрэнгүй биш
 // үед харагдахгүй болсон тул орлуулна.
+// `document.body`-руу portal хийгддэг тул `.landing-ops`-ийн ГАДНА орших —
+// `var(--oc-*)` тэнд уламжлагдахгүй (DatePicker-ийн `.dp-accent-*`-тай адил
+// шалтгаан). Иймд шууд hex утга ашиглана, `light:` variant-аар л theme-ийг
+// ялгана (энэ нь `html.light` удамд суурилдаг тул portal-д ч ажиллана).
 function NavTooltip({ label }: { label: string }) {
   return (
-    <span className="whitespace-nowrap rounded-lg bg-[var(--oc-panel2)] border border-[var(--oc-line)] px-2.5 py-1.5 text-xs font-medium text-[var(--oc-ink2)] shadow-xl block">
+    <span className="whitespace-nowrap rounded-lg bg-[#101318] light:bg-[#faf9f8] border border-[#23272e] light:border-[#e3e0da] px-2.5 py-1.5 text-xs font-medium text-[#edeef0] light:text-[#1e1f24] shadow-xl block">
       {label}
     </span>
   );
@@ -727,9 +741,11 @@ function NavGroupItem({
           ) : null}
         </Link>
 
+        {/* Portal (`document.body`) → `.landing-ops`-ийн гадна, `var(--oc-*)`
+            уламжлагдахгүй тул шууд hex + `light:` variant (NavTooltip-тэй адил). */}
         <HoverFlyoutPortal pos={pos} open={flyoutOpen} onEnter={onEnter} onLeave={onLeave}>
-          <div className="min-w-[11rem] overflow-hidden rounded-xl border border-[var(--oc-line)] bg-[var(--oc-panel2)] py-1.5 shadow-xl">
-            <div className="px-3 py-1.5 font-plex-mono text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--oc-muted3)]">
+          <div className="min-w-[11rem] overflow-hidden rounded-xl border border-[#23272e] light:border-[#e3e0da] bg-[#101318] light:bg-[#faf9f8] py-1.5 shadow-xl">
+            <div className="px-3 py-1.5 font-plex-mono text-[11px] font-semibold uppercase tracking-[0.1em] text-[#6e747e] light:text-[#90949b]">
               {item.label}
             </div>
             {item.children.map((child) => {
@@ -740,8 +756,8 @@ function NavGroupItem({
                   href={child.href}
                   onClick={onNavigate}
                   className={`block px-3 py-2 text-[13px] transition-colors ${childActive
-                    ? "bg-[var(--oc-accent)]/10 text-[var(--oc-accent)]"
-                    : "text-[var(--oc-muted)] hover:bg-white/[0.06] hover:text-[var(--oc-ink)]"
+                    ? "bg-[#f5a524]/10 light:bg-[#c9820a]/10 text-[#f5a524] light:text-[#c9820a]"
+                    : "text-[#a7adb6] light:text-[#5c6067] hover:bg-white/[0.06] hover:text-[#edeef0] light:hover:text-[#1e1f24]"
                     }`}
                 >
                   {child.label}

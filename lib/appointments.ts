@@ -44,6 +44,17 @@ export const APPOINTMENT_STATUS_TRANSITIONS: Record<
   NO_SHOW: [],
 };
 
+// Мэдэгдэлд цаг харуулах нэг мөрийн формат.
+export function formatWhen(d: Date): string {
+  return d.toLocaleString("mn-MN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
 type Client = PrismaTransactionClient;
 
 /**

@@ -69,23 +69,23 @@ export default async function SystemSessionsPage({
       />
 
       {/* Таб */}
-      <div className="flex rounded-lg border border-white/[0.1] overflow-hidden self-start mb-4">
+      <div className="flex rounded-lg border border-[var(--oc-line)] overflow-hidden self-start mb-4">
         <Link
           href={tabHref("staff")}
           className={`px-4 py-1.5 text-sm transition-colors ${
             tab === "staff"
-              ? "bg-violet-600/30 text-violet-200 light:bg-violet-100 light:text-violet-700"
-              : "text-white/60 hover:bg-white/[0.06]"
+              ? "bg-red-500/20 text-red-300 light:bg-red-100 light:text-red-700"
+              : "text-[var(--oc-muted)] hover:bg-white/[0.06]"
           }`}
         >
           Ажилтан
         </Link>
         <Link
           href={tabHref("customer")}
-          className={`px-4 py-1.5 text-sm transition-colors border-l border-white/[0.1] ${
+          className={`px-4 py-1.5 text-sm transition-colors border-l border-[var(--oc-line)] ${
             tab === "customer"
-              ? "bg-violet-600/30 text-violet-200 light:bg-violet-100 light:text-violet-700"
-              : "text-white/60 hover:bg-white/[0.06]"
+              ? "bg-red-500/20 text-red-300 light:bg-red-100 light:text-red-700"
+              : "text-[var(--oc-muted)] hover:bg-white/[0.06]"
           }`}
         >
           Хэрэглэгч
@@ -175,13 +175,13 @@ async function StaffTab({
       {rows.length === 0 ? (
         <Empty />
       ) : (
-        <div className="glass rounded-2xl overflow-x-auto border border-white/[0.08]">
+        <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-x-auto">
           <table className="w-full min-w-[860px]">
             <thead>
-              <tr className="border-b border-white/[0.06]">
+              <tr className="border-b border-[var(--oc-line2)]">
                 {["Байгууллага", "Ажилтан", "Утас", "Төхөөрөмж", "IP", "Нэвтэрсэн", "Төлөв"].map(
                   (h) => (
-                    <th key={h} className="text-left text-xs text-white/30 font-medium px-5 py-3">
+                    <th key={h} className="text-left text-xs text-[var(--oc-muted3)] font-medium px-5 py-3">
                       {h}
                     </th>
                   ),
@@ -192,26 +192,26 @@ async function StaffTab({
               {rows.map((r) => {
                 const st = sessionStatus(r);
                 return (
-                  <tr key={r.id} className="border-b border-white/[0.04] last:border-0">
-                    <td className="px-5 py-3 text-sm text-white/70">
+                  <tr key={r.id} className="border-b border-[var(--oc-line2)] last:border-0">
+                    <td className="px-5 py-3 text-sm text-[var(--oc-muted)]">
                       {r.user.tenant.name}
                     </td>
                     <td className="px-5 py-3">
-                      <div className="text-sm text-white/85">
+                      <div className="text-sm text-[var(--oc-ink2)]">
                         {r.user.lastName} {r.user.firstName}
                       </div>
-                      <div className="text-xs text-white/35">{r.user.email}</div>
+                      <div className="text-xs text-[var(--oc-muted3)]">{r.user.email}</div>
                     </td>
-                    <td className="px-5 py-3 text-sm text-white/60 tabular-nums">
+                    <td className="px-5 py-3 text-sm text-[var(--oc-muted)] tabular-nums">
                       {r.user.phone ? formatPhone(r.user.phone) : "—"}
                     </td>
-                    <td className="px-5 py-3 text-sm text-white/60">
+                    <td className="px-5 py-3 text-sm text-[var(--oc-muted)]">
                       {deviceLabel(r.userAgent)}
                     </td>
-                    <td className="px-5 py-3 text-xs text-white/40 tabular-nums">
+                    <td className="px-5 py-3 text-xs text-[var(--oc-muted3)] tabular-nums">
                       {r.ip ?? "—"}
                     </td>
-                    <td className="px-5 py-3 text-xs text-white/50 tabular-nums whitespace-nowrap">
+                    <td className="px-5 py-3 text-xs text-[var(--oc-muted3)] tabular-nums whitespace-nowrap">
                       {fmt(r.createdAt)}
                     </td>
                     <td className="px-5 py-3">
@@ -232,6 +232,7 @@ async function StaffTab({
         totalPages={meta.totalPages}
         total={meta.total}
         params={{ tab: "staff", q, tenantId }}
+        tone="danger"
       />
     </>
   );
@@ -288,12 +289,12 @@ async function CustomerTab({
       {rows.length === 0 ? (
         <Empty />
       ) : (
-        <div className="glass rounded-2xl overflow-x-auto border border-white/[0.08]">
+        <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-x-auto">
           <table className="w-full min-w-[640px]">
             <thead>
-              <tr className="border-b border-white/[0.06]">
+              <tr className="border-b border-[var(--oc-line2)]">
                 {["Хэрэглэгч", "Утас", "Сүүлд нэвтэрсэн", "Төхөөрөмж", "Бүртгүүлсэн"].map((h) => (
-                  <th key={h} className="text-left text-xs text-white/30 font-medium px-5 py-3">
+                  <th key={h} className="text-left text-xs text-[var(--oc-muted3)] font-medium px-5 py-3">
                     {h}
                   </th>
                 ))}
@@ -301,20 +302,20 @@ async function CustomerTab({
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} className="border-b border-white/[0.04] last:border-0">
-                  <td className="px-5 py-3 text-sm text-white/85">
+                <tr key={r.id} className="border-b border-[var(--oc-line2)] last:border-0">
+                  <td className="px-5 py-3 text-sm text-[var(--oc-ink2)]">
                     {r.name?.trim() || "—"}
                   </td>
-                  <td className="px-5 py-3 text-sm text-white/60 tabular-nums">
+                  <td className="px-5 py-3 text-sm text-[var(--oc-muted)] tabular-nums">
                     {formatPhone(r.phone)}
                   </td>
-                  <td className="px-5 py-3 text-xs text-white/50 tabular-nums whitespace-nowrap">
+                  <td className="px-5 py-3 text-xs text-[var(--oc-muted3)] tabular-nums whitespace-nowrap">
                     {fmt(r.lastLoginAt)}
                   </td>
-                  <td className="px-5 py-3 text-sm text-white/60">
+                  <td className="px-5 py-3 text-sm text-[var(--oc-muted)]">
                     {r._count.devices}
                   </td>
-                  <td className="px-5 py-3 text-xs text-white/40 tabular-nums whitespace-nowrap">
+                  <td className="px-5 py-3 text-xs text-[var(--oc-muted3)] tabular-nums whitespace-nowrap">
                     {fmt(r.createdAt)}
                   </td>
                 </tr>
@@ -329,6 +330,7 @@ async function CustomerTab({
         totalPages={meta.totalPages}
         total={meta.total}
         params={{ tab: "customer", q }}
+        tone="danger"
       />
     </>
   );
@@ -336,7 +338,7 @@ async function CustomerTab({
 
 function Empty() {
   return (
-    <div className="glass rounded-2xl p-10 border border-white/[0.08] text-center text-sm text-white/40">
+    <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-10 text-center text-sm text-[var(--oc-muted3)]">
       Бичлэг алга.
     </div>
   );

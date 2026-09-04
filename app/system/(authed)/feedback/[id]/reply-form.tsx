@@ -28,11 +28,11 @@ export function FeedbackReplyForm({ id }: { id: string }) {
     <form
       ref={formRef}
       action={formAction}
-      className="mt-6 flex flex-col gap-3 border-t border-white/[0.06] pt-5"
+      className="mt-6 flex flex-col gap-3 border-t border-[var(--oc-line2)] pt-5"
     >
       <input type="hidden" name="id" value={id} />
 
-      <label className="text-xs text-white/50">
+      <label className="text-xs text-[var(--oc-muted)]">
         Хариу бичих (илгээгчид мэдэгдэл болж очно)
         <textarea
           name="message"
@@ -48,7 +48,7 @@ export function FeedbackReplyForm({ id }: { id: string }) {
       <button
         type="submit"
         disabled={pending}
-        className="self-end rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-60 disabled:cursor-not-allowed"
+        className="self-end rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-500 disabled:opacity-60 disabled:cursor-not-allowed"
       >
         {pending ? "Илгээж байна..." : "Хариу илгээх"}
       </button>

@@ -7,7 +7,7 @@ import {
   deletePlanPriceAction,
   updatePlanPriceAction,
 } from "@/app/_actions/system-plan-prices";
-import { Field, FormError } from "@/app/_components/auth-shell";
+import { Field, FormError } from "@/app/_components/landing-ops-ui";
 import {
   BILLING_PERIODS,
   BILLING_PERIOD_LABEL,
@@ -35,27 +35,27 @@ export function PlanPriceManager({ prices }: { prices: PlanPriceRow[] }) {
 
   return (
     <div className="grid gap-6">
-      <section className="glass rounded-2xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-white/[0.06]">
-          <h2 className="font-semibold">Жагсаалт</h2>
-          <p className="text-xs text-white/40 mt-0.5">
+      <section className="rounded-2xl border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden">
+        <div className="px-5 py-4 border-b border-[var(--oc-line2)]">
+          <h2 className="font-semibold text-[var(--oc-ink)]">Жагсаалт</h2>
+          <p className="text-xs text-[var(--oc-muted3)] mt-0.5">
             Нийт {prices.length} мөр
           </p>
         </div>
         {prices.length === 0 ? (
-          <div className="px-5 py-10 text-center text-sm text-white/40">
+          <div className="px-5 py-10 text-center text-sm text-[var(--oc-muted3)]">
             Үнэ бүртгэгдээгүй байна.
           </div>
         ) : (
           <div className="overflow-auto">
             <table className="w-full min-w-[720px] text-sm">
               <thead>
-                <tr className="border-b border-white/[0.06]">
+                <tr className="border-b border-[var(--oc-line2)]">
                   {["Багц", "Хугацаа", "Үнэ", "Валют", "Тэмдэглэл", "Төлөв", ""].map(
                     (h) => (
                       <th
                         key={h}
-                        className="text-left text-xs text-white/30 font-medium px-5 py-3"
+                        className="text-left text-xs text-[var(--oc-muted3)] font-medium px-5 py-3"
                       >
                         {h}
                       </th>
@@ -85,9 +85,9 @@ export function PlanPriceManager({ prices }: { prices: PlanPriceRow[] }) {
         )}
       </section>
 
-      <section className="glass rounded-2xl p-6 border border-white/[0.08]">
-        <h2 className="font-semibold mb-1">Шинэ үнэ нэмэх</h2>
-        <p className="text-xs text-white/40 mb-5">
+      <section className="rounded-2xl border border-[var(--oc-line)] bg-[var(--oc-panel)] p-6">
+        <h2 className="font-semibold text-[var(--oc-ink)] mb-1">Шинэ үнэ нэмэх</h2>
+        <p className="text-xs text-[var(--oc-muted3)] mb-5">
           Багц + хугацаа + валют хослол давтагдашгүй.
         </p>
         <CreateForm />
@@ -98,18 +98,18 @@ export function PlanPriceManager({ prices }: { prices: PlanPriceRow[] }) {
 
 function ViewRow({ row, onEdit }: { row: PlanPriceRow; onEdit: () => void }) {
   return (
-    <tr className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors">
-      <td className="px-5 py-3 text-white/85">{PLAN_LABEL[row.plan]}</td>
-      <td className="px-5 py-3 text-white/70">
+    <tr className="border-b border-[var(--oc-line2)] last:border-0 hover:bg-white/[0.02] transition-colors">
+      <td className="px-5 py-3 text-[var(--oc-ink2)]">{PLAN_LABEL[row.plan]}</td>
+      <td className="px-5 py-3 text-[var(--oc-muted)]">
         {BILLING_PERIOD_LABEL[row.period]}
       </td>
-      <td className="px-5 py-3 text-white/85 font-mono">
+      <td className="px-5 py-3 text-[var(--oc-ink2)] font-mono">
         {Number.parseFloat(row.amount).toLocaleString("mn-MN")}
       </td>
-      <td className="px-5 py-3 text-white/60 font-mono text-xs">
+      <td className="px-5 py-3 text-[var(--oc-muted)] font-mono text-xs">
         {row.currency}
       </td>
-      <td className="px-5 py-3 text-white/50 text-xs max-w-[240px]">
+      <td className="px-5 py-3 text-[var(--oc-muted3)] text-xs max-w-[240px]">
         {row.notes ?? "—"}
       </td>
       <td className="px-5 py-3">
@@ -118,7 +118,7 @@ function ViewRow({ row, onEdit }: { row: PlanPriceRow; onEdit: () => void }) {
             Идэвхтэй
           </span>
         ) : (
-          <span className="text-xs px-2 py-0.5 rounded-full bg-white/[0.05] text-white/40 border border-white/[0.08]">
+          <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--oc-panel2)] text-[var(--oc-muted3)] border border-[var(--oc-line)]">
             Идэвхгүй
           </span>
         )}
@@ -128,7 +128,7 @@ function ViewRow({ row, onEdit }: { row: PlanPriceRow; onEdit: () => void }) {
           <button
             type="button"
             onClick={onEdit}
-            className="text-xs text-violet-400 hover:text-violet-300 light:text-violet-700 light:hover:text-violet-800 px-2.5 py-1.5 rounded-lg hover:bg-violet-500/10 transition-colors"
+            className="text-xs text-[var(--oc-muted)] hover:text-[var(--oc-ink)] px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06] transition-colors"
           >
             Засах
           </button>
@@ -162,7 +162,7 @@ function EditRow({
   const fe = state?.fieldErrors ?? {};
 
   return (
-    <tr className="border-b border-white/[0.04] bg-white/[0.02]">
+    <tr className="border-b border-[var(--oc-line2)] bg-[var(--oc-panel2)]">
       <td colSpan={7} className="px-5 py-3">
         <form action={formAction} className="flex flex-col gap-2" noValidate>
           {state?.message && !state.ok ? (
@@ -215,12 +215,12 @@ function EditRow({
               className="auth-input !py-2 !text-sm sm:col-span-2"
             />
           </div>
-          <label className="flex items-center gap-2 text-xs text-white/70">
+          <label className="flex items-center gap-2 text-xs text-[var(--oc-muted)]">
             <input
               type="checkbox"
               name="isActive"
               defaultChecked={row.isActive}
-              className="accent-violet-500"
+              className="accent-red-500"
             />
             Идэвхтэй (тенант сонгох боломжтой)
           </label>
@@ -228,14 +228,14 @@ function EditRow({
             <button
               type="button"
               onClick={onClose}
-              className="text-xs px-3 py-1.5 rounded-lg text-white/60 hover:text-white/90 hover:bg-white/[0.05]"
+              className="text-xs px-3 py-1.5 rounded-lg text-[var(--oc-muted)] hover:text-[var(--oc-ink)] hover:bg-white/[0.05]"
             >
               Болих
             </button>
             <button
               type="submit"
               disabled={pending}
-              className="text-xs px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-60 font-medium"
+              className="text-xs px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white disabled:opacity-60 font-medium"
             >
               {pending ? "Хадгалж..." : "Хадгалах"}
             </button>
@@ -310,12 +310,12 @@ function CreateForm() {
             className="auth-input uppercase"
           />
         </Field>
-        <label className="flex items-end gap-2 text-sm text-white/70 pb-2.5">
+        <label className="flex items-end gap-2 text-sm text-[var(--oc-muted)] pb-2.5">
           <input
             type="checkbox"
             name="isActive"
             defaultChecked
-            className="accent-violet-500"
+            className="accent-red-500"
           />
           Идэвхтэй
         </label>
@@ -335,7 +335,7 @@ function CreateForm() {
         <button
           type="submit"
           disabled={pending}
-          className="bg-violet-600 hover:bg-violet-500 disabled:opacity-60 transition-colors px-4 py-2.5 rounded-xl text-sm font-medium"
+          className="bg-red-600 hover:bg-red-500 text-white disabled:opacity-60 transition-colors px-4 py-2.5 rounded-xl text-sm font-medium"
         >
           {pending ? "Нэмж..." : "Үнэ нэмэх"}
         </button>

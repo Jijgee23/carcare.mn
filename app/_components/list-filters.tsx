@@ -97,7 +97,7 @@ export function SearchBox({
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
-        className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none"
+        className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--oc-muted4)] pointer-events-none"
       >
         <circle cx="11" cy="11" r="8" />
         <line x1="21" y1="21" x2="16.65" y2="16.65" />
@@ -434,7 +434,7 @@ export function ResetFilters({
         next.delete("page");
         router.push(`${pathname}?${next.toString()}`, { scroll: false });
       }}
-      className="shrink-0 text-xs text-white/40 hover:text-white/80 underline underline-offset-2 whitespace-nowrap"
+      className="shrink-0 text-xs text-[var(--oc-muted3)] hover:text-[var(--oc-ink2)] underline underline-offset-2 whitespace-nowrap"
     >
       Цэвэрлэх
     </button>
@@ -476,7 +476,7 @@ export function DateRangeFilter({
 
   return (
     <div className={`relative flex shrink-0 items-center gap-1.5 ${className ?? ""}`}>
-      <span className="text-xs text-white/40 shrink-0">{label}</span>
+      <span className="text-xs text-[var(--oc-muted3)] shrink-0">{label}</span>
       <DatePicker
         mode="range"
         value={{ from, to }}

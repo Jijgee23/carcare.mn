@@ -94,16 +94,16 @@ export default async function SystemUsersPage({
         />
       </div>
 
-      <div className="glass rounded-2xl overflow-hidden">
+      <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden">
         {users.length === 0 ? (
-          <div className="px-5 py-16 text-center text-white/40 text-sm">
+          <div className="px-5 py-16 text-center text-[var(--oc-muted3)] text-sm">
             Хайлтад тохирох хэрэглэгч алга.
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[820px]">
               <thead>
-                <tr className="border-b border-white/[0.06]">
+                <tr className="border-b border-[var(--oc-line2)]">
                   {[
                     "Хэрэглэгч",
                     "Утас",
@@ -114,7 +114,7 @@ export default async function SystemUsersPage({
                   ].map((h) => (
                     <th
                       key={h}
-                      className="text-left text-xs text-white/30 font-medium px-5 py-3"
+                      className="text-left text-xs text-[var(--oc-muted4)] font-medium px-5 py-3"
                     >
                       {h}
                     </th>
@@ -125,27 +125,27 @@ export default async function SystemUsersPage({
                 {users.map((u) => (
                   <tr
                     key={u.id}
-                    className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors"
+                    className="border-b border-[var(--oc-line2)] last:border-0 hover:bg-white/[0.02] transition-colors"
                   >
                     <td className="px-5 py-4">
-                      <div className="text-sm font-medium text-white/90">
+                      <div className="text-sm font-medium text-[var(--oc-ink2)]">
                         {u.lastName} {u.firstName}
                       </div>
-                      <div className="text-xs text-white/30">{u.email}</div>
+                      <div className="text-xs text-[var(--oc-muted3)]">{u.email}</div>
                     </td>
-                    <td className="px-5 py-4 text-sm text-white/60 tabular-nums">
+                    <td className="px-5 py-4 text-sm text-[var(--oc-muted)] tabular-nums">
                       {formatPhone(u.phone)}
                     </td>
-                    <td className="px-5 py-4 text-sm text-white/70">
+                    <td className="px-5 py-4 text-sm text-[var(--oc-muted)]">
                       {u.tenant.name}
                     </td>
                     <td className="px-5 py-4 text-sm">
                       {u.isOwner ? (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/25 light:bg-violet-100 light:border-violet-300 light:text-violet-700">
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-500/25 light:bg-red-100 light:border-red-300 light:text-red-700">
                           Админ
                         </span>
                       ) : (
-                        <span className="text-white/50 text-xs">
+                        <span className="text-[var(--oc-muted)] text-xs">
                           {u.role?.name ?? "—"}
                         </span>
                       )}
@@ -156,10 +156,10 @@ export default async function SystemUsersPage({
                           Идэвхтэй
                         </span>
                       ) : (
-                        <span className="text-xs text-white/40">Идэвхгүй</span>
+                        <span className="text-xs text-[var(--oc-muted3)]">Идэвхгүй</span>
                       )}
                     </td>
-                    <td className="px-5 py-4 text-xs text-white/40">
+                    <td className="px-5 py-4 text-xs text-[var(--oc-muted3)]">
                       {u.createdAt.toLocaleDateString("mn-MN")}
                     </td>
                   </tr>
@@ -174,6 +174,7 @@ export default async function SystemUsersPage({
           totalPages={meta.totalPages}
           total={meta.total}
           params={{ q, tenantId, status }}
+          tone="danger"
         />
       </div>
     </div>

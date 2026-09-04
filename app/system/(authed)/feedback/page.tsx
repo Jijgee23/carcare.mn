@@ -20,7 +20,7 @@ export const metadata = { title: "Санал хүсэлт" };
 export const dynamic = "force-dynamic";
 
 const STATUS_BADGE: Record<string, string> = {
-  NEW: "bg-violet-500/15 text-violet-300 border border-violet-500/25 light:bg-violet-100 light:border-violet-300 light:text-violet-700",
+  NEW: "bg-red-500/15 text-red-300 border border-red-500/25 light:bg-red-100 light:border-red-300 light:text-red-700",
   IN_REVIEW: "bg-amber-500/15 text-amber-300 border border-amber-500/25 light:bg-amber-100 light:border-amber-300 light:text-amber-700",
   RESOLVED: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700",
   DISMISSED: "bg-zinc-500/15 text-zinc-300 border border-zinc-500/25 light:bg-zinc-100 light:border-zinc-300 light:text-zinc-600",
@@ -118,12 +118,12 @@ export default async function SystemFeedbackPage({
           description="Одоогоор энэ шүүлтэд тохирох санал хүсэлт байхгүй байна."
         />
       ) : (
-        <div className="glass rounded-2xl overflow-x-auto border border-white/[0.08]">
+        <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-x-auto">
           <table className="w-full min-w-[860px]">
             <thead>
-              <tr className="border-b border-white/[0.06]">
+              <tr className="border-b border-[var(--oc-line2)]">
                 {["Огноо", "Төрөл", "Илгээгч", "Мессеж", "Төлөв"].map((h) => (
-                  <th key={h} className="text-left text-xs text-white/30 font-medium px-5 py-3">
+                  <th key={h} className="text-left text-xs text-[var(--oc-muted4)] font-medium px-5 py-3">
                     {h}
                   </th>
                 ))}
@@ -139,19 +139,19 @@ export default async function SystemFeedbackPage({
                 return (
                   <tr
                     key={r.id}
-                    className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02]"
+                    className="border-b border-[var(--oc-line2)] last:border-0 hover:bg-white/[0.02]"
                   >
-                    <td className="px-5 py-3 text-xs text-white/50 tabular-nums whitespace-nowrap">
+                    <td className="px-5 py-3 text-xs text-[var(--oc-muted)] tabular-nums whitespace-nowrap">
                       {fmt(r.createdAt)}
                     </td>
-                    <td className="px-5 py-3 text-sm text-white/70">
+                    <td className="px-5 py-3 text-sm text-[var(--oc-muted)]">
                       {FEEDBACK_TYPE_LABEL[r.type]}
                     </td>
-                    <td className="px-5 py-3 text-sm text-white/70">{submitter}</td>
-                    <td className="px-5 py-3 text-sm text-white/60 max-w-[28rem] truncate">
+                    <td className="px-5 py-3 text-sm text-[var(--oc-muted)]">{submitter}</td>
+                    <td className="px-5 py-3 text-sm text-[var(--oc-muted)] max-w-[28rem] truncate">
                       <Link
                         href={`/system/feedback/${r.id}`}
-                        className="inline-flex items-center gap-1.5 hover:text-white hover:underline"
+                        className="inline-flex items-center gap-1.5 hover:text-[var(--oc-ink)] hover:underline"
                       >
                         {r.screenshotUrl ? (
                           <svg
@@ -163,7 +163,7 @@ export default async function SystemFeedbackPage({
                             strokeWidth="2"
                             strokeLinecap="round"
                             strokeLinejoin="round"
-                            className="shrink-0 text-white/30"
+                            className="shrink-0 text-[var(--oc-muted4)]"
                             aria-label="Зурагтай"
                           >
                             <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -192,6 +192,7 @@ export default async function SystemFeedbackPage({
         totalPages={meta.totalPages}
         total={meta.total}
         params={{ q, status, type }}
+        tone="danger"
       />
     </div>
   );

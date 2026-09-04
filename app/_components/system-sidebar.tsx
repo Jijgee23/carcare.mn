@@ -142,33 +142,28 @@ const navItems: NavItem[] = [
       </svg>
     ),
   },
-  // Зөвхөн хөгжүүлэлтэд — SMS-гүйгээр нэвтрэх OTP кодуудыг харах.
-  ...(process.env.NODE_ENV !== "production"
-    ? [
-        {
-          href: "/system/otp",
-          label: "OTP (dev)",
-          icon: (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="7.5" cy="15.5" r="4.5" />
-              <path d="m10.5 12.5 7-7" />
-              <path d="m17 7 2 2" />
-              <path d="m14 8 2 2" />
-            </svg>
-          ),
-        },
-      ]
-    : []),
+  {
+    href: "/system/otp",
+    label: "OTP",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="7.5" cy="15.5" r="4.5" />
+        <path d="m10.5 12.5 7-7" />
+        <path d="m17 7 2 2" />
+        <path d="m14 8 2 2" />
+      </svg>
+    ),
+  },
 ];
 
 const activePillClasses =
   "bg-red-500/90 text-white shadow-[0_10px_28px_-12px_rgba(239,68,68,0.7)]";
 const inactivePillClasses =
-  "text-white/50 hover:bg-white/[0.04] hover:text-white/80 light:text-slate-500 light:hover:bg-black/[0.04] light:hover:text-slate-900";
+  "text-[var(--oc-muted)] hover:bg-white/[0.04] hover:text-[var(--oc-ink)]";
 
 function NavTooltip({ label }: { label: string }) {
   return (
-    <span className="sidebar-tooltip pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-3 whitespace-nowrap rounded-lg bg-[var(--popover)] border border-white/10 light:border-black/10 px-2.5 py-1.5 text-xs font-medium text-white/90 light:text-slate-800 opacity-0 scale-95 origin-left group-hover:opacity-100 group-hover:scale-100 shadow-xl z-50">
+    <span className="sidebar-tooltip pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-3 whitespace-nowrap rounded-lg bg-[var(--oc-panel2)] border border-[var(--oc-line)] px-2.5 py-1.5 text-xs font-medium text-[var(--oc-ink2)] opacity-0 scale-95 origin-left group-hover:opacity-100 group-hover:scale-100 shadow-xl z-50">
       {label}
     </span>
   );
@@ -189,15 +184,15 @@ export function SystemSidebar({
     item.exact ? pathname === item.href : pathname.startsWith(item.href);
 
   return (
-    <aside className="app-sidebar fixed top-0 left-0 h-screen bg-[var(--shell-surface)] border-r border-red-500/[0.15] flex-col z-40 hidden lg:flex">
-      <div className="relative h-16 border-b border-white/[0.06] flex items-center shrink-0">
+    <aside className="app-sidebar fixed top-0 left-0 h-screen bg-[var(--oc-panel)] border-r border-red-500/[0.15] flex-col z-40 hidden lg:flex">
+      <div className="relative h-16 border-b border-[var(--oc-line2)] flex items-center shrink-0">
         <Link
           href="/system"
           className={`flex items-center gap-2.5 flex-1 min-w-0 overflow-hidden ${collapsed ? "justify-center px-2" : "px-5"}`}
         >
           {collapsed ? <BrandMark size="sm" /> : <Brand />}
           {!collapsed ? (
-            <div className="text-[10px] text-red-400 light:text-red-600 font-mono leading-none whitespace-nowrap">
+            <div className="font-plex-mono text-[10px] text-red-400 light:text-red-600 uppercase tracking-[0.1em] leading-none whitespace-nowrap">
               SYSTEM
             </div>
           ) : null}
@@ -207,7 +202,7 @@ export function SystemSidebar({
           onClick={toggle}
           data-collapsed={collapsed}
           aria-label={collapsed ? "Цэс дэлгэх" : "Цэс хумих"}
-          className="sidebar-collapse-btn absolute top-1/2 -right-3 -translate-y-1/2 w-6 h-6 rounded-full border border-red-500/20 bg-[var(--shell-surface)] text-white/50 hover:text-white light:text-slate-500 light:hover:text-slate-900 flex items-center justify-center shadow-md z-10"
+          className="sidebar-collapse-btn absolute top-1/2 -right-3 -translate-y-1/2 w-6 h-6 rounded-full border border-red-500/20 bg-[var(--oc-panel)] text-[var(--oc-muted)] hover:text-[var(--oc-ink)] flex items-center justify-center shadow-md z-10"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="15 18 9 12 15 6" />
@@ -216,7 +211,7 @@ export function SystemSidebar({
       </div>
 
       {!collapsed ? (
-        <div className="px-4 pt-4 pb-2 text-[10px] text-red-400/70 light:text-red-600/80 uppercase tracking-wider">
+        <div className="px-4 pt-4 pb-2 font-plex-mono text-[10px] text-red-400/70 light:text-red-600/80 uppercase tracking-[0.1em]">
           Платформын админ
         </div>
       ) : null}
@@ -233,7 +228,7 @@ export function SystemSidebar({
                   collapsed ? "justify-center px-0" : "px-3"
                 } ${active ? activePillClasses : inactivePillClasses}`}
               >
-                <span className={active ? "text-white" : "text-white/40 light:text-slate-500"}>
+                <span className={`nav-icon shrink-0 ${active ? "" : "text-[var(--oc-muted3)]"}`}>
                   {item.icon}
                 </span>
                 {!collapsed ? item.label : null}
@@ -245,10 +240,10 @@ export function SystemSidebar({
       </nav>
 
       {collapsed ? (
-        <div className="p-3 border-t border-white/[0.06] flex flex-col items-center gap-2">
+        <div className="p-3 border-t border-[var(--oc-line2)] flex flex-col items-center gap-2">
           <div
             title={adminName}
-            className="w-9 h-9 rounded-full bg-gradient-to-br from-red-500 to-violet-500 flex items-center justify-center text-xs font-bold shrink-0"
+            className="w-9 h-9 rounded-full bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center text-xs font-bold text-white shrink-0"
           >
             {initials}
           </div>
@@ -256,7 +251,7 @@ export function SystemSidebar({
             <button
               type="submit"
               title="Гарах"
-              className="p-2 rounded-lg text-white/50 hover:text-white light:text-slate-500 light:hover:text-slate-900 hover:bg-white/[0.06] transition-colors"
+              className="p-2 rounded-lg text-[var(--oc-muted)] hover:text-[var(--oc-ink)] hover:bg-white/[0.06] transition-colors"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -267,22 +262,22 @@ export function SystemSidebar({
           </form>
         </div>
       ) : (
-        <div className="p-3 border-t border-white/[0.06] space-y-2">
+        <div className="p-3 border-t border-[var(--oc-line2)] space-y-2">
           <div className="flex items-center gap-3 p-2.5 rounded-xl">
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-red-500 to-violet-500 flex items-center justify-center text-xs font-bold shrink-0">
+            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center text-xs font-bold text-white shrink-0">
               {initials}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-white/80 truncate">
+              <div className="text-sm font-medium text-[var(--oc-ink2)] truncate">
                 {adminName}
               </div>
-              <div className="text-xs text-white/30 truncate">{adminEmail}</div>
+              <div className="text-xs text-[var(--oc-muted3)] truncate">{adminEmail}</div>
             </div>
           </div>
           <form action={signOutSystemAction}>
             <button
               type="submit"
-              className="w-full text-sm text-white/50 hover:text-white transition-colors px-3 py-2 rounded-xl hover:bg-white/[0.04] text-left"
+              className="w-full text-sm text-[var(--oc-muted)] hover:text-[var(--oc-ink)] transition-colors px-3 py-2 rounded-xl hover:bg-white/[0.04] text-left"
             >
               Гарах
             </button>
@@ -303,13 +298,13 @@ export function SystemMobileTopbar({
   const pathname = usePathname();
 
   return (
-    <header className="lg:hidden sticky top-0 z-30 glass border-b border-red-500/[0.15]">
+    <header className="lg:hidden sticky top-0 z-30 bg-[var(--oc-panel)]/95 backdrop-blur border-b border-red-500/[0.15]">
       <div className="px-4 py-3 flex items-center justify-between">
         <Link href="/system" className="flex items-center gap-2">
           <Brand size="sm" />
-          <span className="text-[10px] text-red-400 light:text-red-600 font-mono">SYSTEM</span>
+          <span className="font-plex-mono text-[10px] text-red-400 light:text-red-600">SYSTEM</span>
         </Link>
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-red-500 to-violet-500 flex items-center justify-center text-xs font-bold">
+        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center text-xs font-bold text-white">
           {initials}
         </div>
       </div>
@@ -326,7 +321,7 @@ export function SystemMobileTopbar({
               className={`shrink-0 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                 active
                   ? "bg-red-500/15 text-red-200 border border-red-500/25 light:bg-red-100 light:text-red-700 light:border-red-300"
-                  : "text-white/50 border border-white/[0.06]"
+                  : "text-[var(--oc-muted)] border border-[var(--oc-line2)]"
               }`}
             >
               {item.icon}

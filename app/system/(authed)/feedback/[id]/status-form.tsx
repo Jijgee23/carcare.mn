@@ -30,10 +30,10 @@ export function FeedbackStatusForm({
   }, [state, toast]);
 
   return (
-    <form action={formAction} className="mt-6 flex flex-col gap-3 border-t border-white/[0.06] pt-5">
+    <form action={formAction} className="mt-6 flex flex-col gap-3 border-t border-[var(--oc-line2)] pt-5">
       <input type="hidden" name="id" value={id} />
 
-      <label className="text-xs text-white/50">
+      <label className="text-xs text-[var(--oc-muted)]">
         Төлөв
         <select name="status" defaultValue={status} className="auth-input mt-1 w-full">
           {FEEDBACK_STATUS_VALUES.map((v) => (
@@ -44,7 +44,7 @@ export function FeedbackStatusForm({
         </select>
       </label>
 
-      <label className="text-xs text-white/50">
+      <label className="text-xs text-[var(--oc-muted)]">
         Тэмдэглэл (SuperAdmin-д л харагдана)
         <textarea
           name="adminNote"
@@ -58,7 +58,7 @@ export function FeedbackStatusForm({
       <button
         type="submit"
         disabled={pending}
-        className="self-end rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-60 disabled:cursor-not-allowed"
+        className="self-end rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-500 disabled:opacity-60 disabled:cursor-not-allowed"
       >
         {pending ? "Хадгалж байна..." : "Хадгалах"}
       </button>

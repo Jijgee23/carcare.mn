@@ -50,41 +50,41 @@ export default async function SystemFeedbackDetailPage({
 
   return (
     <div className="p-4 sm:p-6 max-w-2xl mx-auto w-full">
-      <Link href="/system/feedback" className="text-sm text-white/40 hover:text-white/70">
+      <Link href="/system/feedback" className="text-sm text-[var(--oc-muted3)] hover:text-[var(--oc-muted)]">
         ← Санал хүсэлт рүү буцах
       </Link>
 
-      <div className="glass rounded-2xl border border-white/[0.08] p-6 mt-4">
+      <div className="rounded-2xl border border-[var(--oc-line)] bg-[var(--oc-panel)] p-6 mt-4">
         <div className="flex items-center justify-between gap-3">
-          <h1 className="text-lg font-semibold text-white">
+          <h1 className="text-lg font-semibold text-[var(--oc-ink)]">
             {FEEDBACK_TYPE_LABEL[feedback.type]}
           </h1>
-          <span className="text-xs text-white/40 tabular-nums whitespace-nowrap">
+          <span className="text-xs text-[var(--oc-muted3)] tabular-nums whitespace-nowrap">
             {fmt(feedback.createdAt)}
           </span>
         </div>
 
-        <div className="mt-4 text-sm text-white/50">
+        <div className="mt-4 text-sm text-[var(--oc-muted)]">
           <div>
-            Илгээгч: <span className="text-white/80">{submitterName}</span>
+            Илгээгч: <span className="text-[var(--oc-ink2)]">{submitterName}</span>
             {submitterPhone ? (
-              <span className="text-white/40"> · {formatPhone(submitterPhone)}</span>
+              <span className="text-[var(--oc-muted3)]"> · {formatPhone(submitterPhone)}</span>
             ) : null}
           </div>
           {feedback.pageUrl ? (
             <div className="mt-1 truncate">
               Хуудас:{" "}
-              <span className="text-white/60 break-all">{feedback.pageUrl}</span>
+              <span className="text-[var(--oc-muted)] break-all">{feedback.pageUrl}</span>
             </div>
           ) : null}
           {feedback.userAgent ? (
-            <div className="mt-1 truncate text-xs text-white/30">
+            <div className="mt-1 truncate text-xs text-[var(--oc-muted3)]">
               {feedback.userAgent}
             </div>
           ) : null}
         </div>
 
-        <p className="mt-5 whitespace-pre-wrap rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 text-sm text-white/85">
+        <p className="mt-5 whitespace-pre-wrap rounded-xl border border-[var(--oc-line2)] bg-[var(--oc-panel2)] p-4 text-sm text-[var(--oc-ink2)]">
           {feedback.message}
         </p>
 
@@ -99,12 +99,12 @@ export default async function SystemFeedbackDetailPage({
             <img
               src={feedback.screenshotUrl}
               alt="Дэлгэцийн зураг"
-              className="max-h-64 rounded-xl border border-white/[0.08] object-contain"
+              className="max-h-64 rounded-xl border border-[var(--oc-line)] object-contain"
             />
           </a>
         ) : null}
 
-        <FeedbackThread messages={feedback.messages} />
+        <FeedbackThread messages={feedback.messages} tone="danger" />
 
         <FeedbackReplyForm id={feedback.id} />
 

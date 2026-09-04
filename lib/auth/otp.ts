@@ -66,16 +66,19 @@ const devOtpHolder = globalThis as unknown as {
 };
 
 function recordDevOtp(entry: DevOtpEntry): void {
-  if (process.env.NODE_ENV === "production") return;
   const list =
     devOtpHolder.__carcareDevOtps ?? (devOtpHolder.__carcareDevOtps = []);
   list.push(entry);
   if (list.length > DEV_OTP_LIMIT) list.splice(0, list.length - DEV_OTP_LIMIT);
 }
 
-/** Хөгжүүлэлтэд үүсгэсэн OTP кодуудын жагсаалт (шинэ нь эхэнд). Prod-д хоосон. */
+/**
+ * Сервер санах ойд (DB-д биш) хадгалсан сүүлийн OTP кодууд (шинэ нь эхэнд) —
+ * /system/otp-оор л харагдана (requireSuperAdmin). Prod-д ч ажиллана
+ * (олон instance-тай deploy бол зөвхөн тухайн процесс дээр үүссэн кодыг
+ * харуулна), сервер дахин ачаалахад арилна.
+ */
 export function getDevOtps(): DevOtpEntry[] {
-  if (process.env.NODE_ENV === "production") return [];
   return [...(devOtpHolder.__carcareDevOtps ?? [])].reverse();
 }
 
@@ -123,10 +126,11 @@ export async function issueOtp(
   const codeHash = hashCode(code);
   const expiresAt = new Date(Date.now() + OTP_MAX_AGE_SECONDS * 1000);
 
-  // Хөгжүүлэлтэд SMS хүргэхгүй / хүрэхгүй байж болзошгүй тул кодыг сервер
-  // console + /system/otp хуудсанд харуулна. Production-д ХЭЗЭЭ Ч хийхгүй.
+  // /system/otp хуудсанд (superadmin) харуулахын тулд санах ойд бүртгэнэ —
+  // prod-д ч хийнэ (support-д зориулав). console.info нь зөвхөн хөгжүүлэлтэд —
+  // production сервер логт кодыг бичихгүй.
+  recordDevOtp({ email, type: opts.type, code, createdAt: new Date(), expiresAt });
   if (process.env.NODE_ENV !== "production") {
-    recordDevOtp({ email, type: opts.type, code, createdAt: new Date(), expiresAt });
     console.info(`\n🔑 [OTP] ${opts.type} · ${email} → ${code}\n`);
   }
 
@@ -289,8 +293,8 @@ export async function issuePhoneOtp(
   const codeHash = hashCode(code);
   const expiresAt = new Date(Date.now() + OTP_MAX_AGE_SECONDS * 1000);
 
+  recordDevOtp({ phone, type: opts.type, code, createdAt: new Date(), expiresAt });
   if (process.env.NODE_ENV !== "production") {
-    recordDevOtp({ phone, type: opts.type, code, createdAt: new Date(), expiresAt });
     console.info(`\n🔑 [OTP] ${opts.type} · ${phone} → ${code}\n`);
   }
 

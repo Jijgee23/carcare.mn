@@ -49,7 +49,7 @@ export function RefundButton({
   return (
     <form action={formAction} className="flex flex-col gap-1.5 w-56">
       <input type="hidden" name="paymentId" value={paymentId} />
-      <p className="text-[10.5px] text-white/40">
+      <p className="text-[10.5px] text-[var(--oc-muted3)]">
         {paymentType === "CARD"
           ? "QPay-аар автоматаар буцаагдана."
           : "P2P (шилжүүлэг) — QPay API дэмждэггүй тул гараар буцаагаад л энд тэмдэглэнэ."}
@@ -59,7 +59,7 @@ export function RefundButton({
         required
         rows={2}
         placeholder="Буцаах шалтгаан..."
-        className="text-xs px-2 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-white/80 placeholder:text-white/25 resize-none focus:outline-none focus:border-red-500/40"
+        className="text-xs px-2 py-1.5 rounded-lg bg-[var(--oc-panel2)] border border-[var(--oc-line)] text-[var(--oc-ink2)] placeholder:text-[var(--oc-muted4)] resize-none focus:outline-none focus:border-red-500/40"
       />
       <div className="flex items-center gap-2">
         <button
@@ -72,7 +72,7 @@ export function RefundButton({
         <button
           type="button"
           onClick={() => setOpen(false)}
-          className="text-xs text-white/40 hover:text-white/70"
+          className="text-xs text-[var(--oc-muted3)] hover:text-[var(--oc-muted)]"
         >
           Цуцлах
         </button>

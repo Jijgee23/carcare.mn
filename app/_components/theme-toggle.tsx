@@ -54,7 +54,7 @@ export function ThemeToggle({
         onClick={toggle}
         aria-label={label}
         title={label}
-        className="p-2 rounded-lg text-white/60 hover:text-white hover:bg-white/[0.06] transition-colors"
+        className="p-2 rounded-lg text-[var(--oc-muted)] hover:text-[var(--oc-ink)] hover:bg-white/[0.06] transition-colors"
       >
         {ready ? (light ? MoonIcon : SunIcon) : SunIcon}
       </button>
@@ -66,9 +66,9 @@ export function ThemeToggle({
       type="button"
       onClick={toggle}
       aria-label={label}
-      className="w-full flex items-center gap-3 text-sm text-white/50 hover:text-white transition-colors px-3 py-2 rounded-xl hover:bg-white/[0.04] text-left"
+      className="w-full flex items-center gap-3 text-sm text-[var(--oc-muted)] hover:text-[var(--oc-ink)] transition-colors px-3 py-2 rounded-xl hover:bg-white/[0.04] text-left"
     >
-      <span className="text-white/40">
+      <span className="text-[var(--oc-muted3)]">
         {ready ? (light ? MoonIcon : SunIcon) : SunIcon}
       </span>
       {ready ? label : "Горим"}

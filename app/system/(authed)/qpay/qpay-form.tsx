@@ -9,7 +9,7 @@ import {
   Field,
   FormError,
   SubmitButton,
-} from "@/app/_components/auth-shell";
+} from "@/app/_components/landing-ops-ui";
 
 type Initial = {
   username: string;
@@ -64,7 +64,7 @@ export function QPaySettingsForm({ initial }: { initial: Initial }) {
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 text-xs"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--oc-muted4)] hover:text-[var(--oc-muted)] text-xs"
             >
               {showPassword ? "Нуух" : "Харах"}
             </button>
@@ -106,17 +106,17 @@ export function QPaySettingsForm({ initial }: { initial: Initial }) {
       </div>
 
       {initial.tokenExpiresAt ? (
-        <p className="text-xs text-white/40">
+        <p className="text-xs text-[var(--oc-muted3)]">
           Сүүлд токен дуусах:{" "}
           {new Date(initial.tokenExpiresAt).toLocaleString("mn-MN", { hour12: false })}
         </p>
       ) : (
-        <p className="text-xs text-white/40">
+        <p className="text-xs text-[var(--oc-muted3)]">
           Токен авагдаагүй — анхны invoice үүсэхэд автоматаар авна.
         </p>
       )}
 
-      <SubmitButton pending={pending}>Хадгалах</SubmitButton>
+      <SubmitButton pending={pending} tone="danger">Хадгалах</SubmitButton>
     </form>
   );
 }

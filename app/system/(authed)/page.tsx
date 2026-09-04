@@ -95,11 +95,11 @@ export default async function SystemOverviewPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2 glass rounded-2xl p-6">
+        <div className="lg:col-span-2 rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-6">
           <div className="flex items-center justify-between mb-5">
             <div>
-              <h2 className="font-semibold">Сүүлд бүртгүүлсэн</h2>
-              <p className="text-xs text-white/40 mt-0.5">
+              <h2 className="font-semibold text-[var(--oc-ink)]">Сүүлд бүртгүүлсэн</h2>
+              <p className="text-xs text-[var(--oc-muted3)] mt-0.5">
                 Шинээр нэгдсэн байгууллагууд
               </p>
             </div>
@@ -112,22 +112,22 @@ export default async function SystemOverviewPage() {
           </div>
 
           {recentTenants.length === 0 ? (
-            <p className="text-sm text-white/40 py-6 text-center">
+            <p className="text-sm text-[var(--oc-muted3)] py-6 text-center">
               Байгууллага бүртгүүлээгүй байна.
             </p>
           ) : (
-            <ul className="divide-y divide-white/[0.04]">
+            <ul className="divide-y divide-[var(--oc-line2)]">
               {recentTenants.map((t) => (
                 <li key={t.id}>
                   <Link
                     href={`/system/tenants/${t.id}`}
                     className="flex items-center gap-3 py-3 hover:bg-white/[0.02] -mx-2 px-2 rounded-lg transition-colors"
                   >
-                    <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-red-500/30 to-violet-500/30 flex items-center justify-center text-sm font-bold text-red-300 light:text-red-700 shrink-0">
+                    <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-red-500/30 to-red-600/20 flex items-center justify-center text-sm font-bold text-red-300 light:text-red-700 shrink-0">
                       {t.name[0]?.toUpperCase() ?? "?"}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-white/90 truncate">
+                      <div className="text-sm font-medium text-[var(--oc-ink2)] truncate">
                         {t.name}
                         {t.suspended ? (
                           <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 light:bg-amber-100 light:text-amber-700">
@@ -135,11 +135,11 @@ export default async function SystemOverviewPage() {
                           </span>
                         ) : null}
                       </div>
-                      <div className="text-xs text-white/30">
+                      <div className="text-xs text-[var(--oc-muted3)]">
                         #{t.registerNumber} · {t._count.users} ажилтан
                       </div>
                     </div>
-                    <span className="text-xs text-white/40 shrink-0">
+                    <span className="text-xs text-[var(--oc-muted3)] shrink-0">
                       {t.createdAt.toLocaleDateString("mn-MN")}
                     </span>
                   </Link>
@@ -150,9 +150,9 @@ export default async function SystemOverviewPage() {
         </div>
 
         <div className="flex flex-col gap-6">
-          <div className="glass rounded-2xl p-6">
-            <h2 className="font-semibold mb-1">Багцаар</h2>
-            <p className="text-xs text-white/40 mb-5">
+          <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-6">
+            <h2 className="font-semibold text-[var(--oc-ink)] mb-1">Багцаар</h2>
+            <p className="text-xs text-[var(--oc-muted3)] mb-5">
               Нийт {tenantCount} байгууллага
             </p>
             <div className="space-y-3">
@@ -162,12 +162,12 @@ export default async function SystemOverviewPage() {
                 return (
                   <div key={p}>
                     <div className="flex items-center justify-between text-sm mb-1.5">
-                      <span className="text-white/80">{p}</span>
-                      <span className="text-white/60">{count}</span>
+                      <span className="text-[var(--oc-ink2)]">{p}</span>
+                      <span className="text-[var(--oc-muted)]">{count}</span>
                     </div>
-                    <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-[var(--oc-line)] rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-gradient-to-r from-red-500 to-violet-500"
+                        className="h-full bg-gradient-to-r from-red-500 to-red-600"
                         style={{ width: `${pct}%` }}
                       />
                     </div>
@@ -177,29 +177,29 @@ export default async function SystemOverviewPage() {
             </div>
           </div>
 
-          <div className="glass rounded-2xl p-6 border border-emerald-500/20">
-            <div className="text-xs text-white/40 uppercase tracking-wider">
+          <div className="rounded-[10px] border border-[var(--oc-ok)]/20 bg-[var(--oc-panel)] p-6">
+            <div className="text-xs text-[var(--oc-muted3)] uppercase tracking-wider">
               Нийт орлого (платформ)
             </div>
-            <div className="mt-2 text-2xl sm:text-3xl font-bold gradient-text">
+            <div className="mt-2 text-2xl sm:text-3xl font-bold text-[var(--oc-ink)]">
               {formatTugrik(totalRevenue)}
             </div>
-            <p className="text-xs text-white/40 mt-2">
+            <p className="text-xs text-[var(--oc-muted3)] mt-2">
               Бүх байгууллагын дууссан захиалгын нийлбэр
             </p>
           </div>
 
           <Link
             href="/system/booking-revenue"
-            className="glass rounded-2xl p-6 border border-red-500/20 hover:border-red-500/40 transition-colors"
+            className="rounded-[10px] border border-red-500/20 bg-[var(--oc-panel)] hover:border-red-500/40 transition-colors p-6"
           >
-            <div className="text-xs text-white/40 uppercase tracking-wider">
+            <div className="text-xs text-[var(--oc-muted3)] uppercase tracking-wider">
               Цаг захиалгын орлого
             </div>
-            <div className="mt-2 text-2xl sm:text-3xl font-bold gradient-text">
+            <div className="mt-2 text-2xl sm:text-3xl font-bold text-[var(--oc-ink)]">
               {formatTugrik(bookingRevenue)}
             </div>
-            <p className="text-xs text-white/40 mt-2">
+            <p className="text-xs text-[var(--oc-muted3)] mt-2">
               Онлайн цаг захиалгаас хэрэглэгчээс авсан хураамжийн нийлбэр →
             </p>
           </Link>
@@ -222,18 +222,18 @@ function BigStat({
 }) {
   return (
     <div
-      className={`glass rounded-2xl p-5 ${
-        accent ? "border border-red-500/30" : ""
+      className={`rounded-[10px] border bg-[var(--oc-panel)] p-5 ${
+        accent ? "border-red-500/30" : "border-[var(--oc-line)]"
       }`}
     >
       <div
         className={`text-2xl sm:text-3xl font-bold ${
-          color ?? (accent ? "gradient-text" : "text-white")
+          color ?? (accent ? "text-red-400 light:text-red-600" : "text-[var(--oc-ink)]")
         }`}
       >
         {value}
       </div>
-      <div className="text-sm text-white/40 mt-1">{label}</div>
+      <div className="text-sm text-[var(--oc-muted3)] mt-1">{label}</div>
     </div>
   );
 }

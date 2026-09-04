@@ -30,12 +30,12 @@ export function PlanPriceMatrix({ prices }: { prices: PlanPriceMatrixRow[] }) {
   }
 
   return (
-    <div className="glass rounded-xl border border-white/[0.08] overflow-hidden">
-      <div className="px-4 py-3 border-b border-white/[0.06]">
-        <h2 className="font-semibold text-sm">Үнэ ({CURRENCY})</h2>
-        <p className="text-xs text-white/40 mt-0.5">
+    <div className="rounded-xl border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden">
+      <div className="px-4 py-3 border-b border-[var(--oc-line2)]">
+        <h2 className="font-semibold text-sm text-[var(--oc-ink)]">Үнэ ({CURRENCY})</h2>
+        <p className="text-xs text-[var(--oc-muted3)] mt-0.5">
           Багц × хугацаа. Утга оруулаад фокусаас гарах үед автоматаар хадгална.
-          <span className="text-white/30">
+          <span className="text-[var(--oc-muted3)]">
             {" "}
             FREE багц нь зөвхөн бүртгүүлэх үед 14 хоногийн туршилт — үнэ
             оруулдаггүй.
@@ -46,14 +46,14 @@ export function PlanPriceMatrix({ prices }: { prices: PlanPriceMatrixRow[] }) {
       <div className="overflow-auto">
         <table className="w-full text-sm min-w-[640px]">
           <thead>
-            <tr className="border-b border-white/[0.06] bg-white/[0.02]">
-              <th className="text-left text-xs text-white/40 font-medium px-4 py-2.5">
+            <tr className="border-b border-[var(--oc-line2)] bg-[var(--oc-panel2)]">
+              <th className="text-left text-xs text-[var(--oc-muted3)] font-medium px-4 py-2.5">
                 Багц
               </th>
               {PERIODS.map((p) => (
                 <th
                   key={p}
-                  className="text-left text-xs text-white/40 font-medium px-4 py-2.5"
+                  className="text-left text-xs text-[var(--oc-muted3)] font-medium px-4 py-2.5"
                 >
                   {BILLING_PERIOD_LABEL[p]}
                 </th>
@@ -64,9 +64,9 @@ export function PlanPriceMatrix({ prices }: { prices: PlanPriceMatrixRow[] }) {
             {PLANS.map((plan) => (
               <tr
                 key={plan}
-                className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02]"
+                className="border-b border-[var(--oc-line2)] last:border-0 hover:bg-white/[0.02]"
               >
-                <td className="px-4 py-3 text-white/90 font-medium align-top">
+                <td className="px-4 py-3 text-[var(--oc-ink2)] font-medium align-top">
                   {PLAN_LABEL[plan]}
                 </td>
                 {PERIODS.map((period) => {
@@ -138,7 +138,7 @@ function PriceCell({
         placeholder="0"
         className="compact-input !py-1 !text-sm w-full max-w-[8rem]"
       />
-      <label className="inline-flex items-center gap-1.5 cursor-pointer text-[11px] text-white/60">
+      <label className="inline-flex items-center gap-1.5 cursor-pointer text-[11px] text-[var(--oc-muted)]">
         <input
           type="checkbox"
           checked={isActive}
@@ -146,7 +146,7 @@ function PriceCell({
             setIsActive(e.target.checked);
           }}
           onBlur={save}
-          className="accent-violet-500"
+          className="accent-red-500"
         />
         Идэвхтэй
       </label>
@@ -160,7 +160,7 @@ function PriceCell({
       />
       <div className="text-[10px] h-3">
         {pending ? (
-          <span className="text-violet-300 light:text-violet-700">Хадгалж...</span>
+          <span className="text-red-300 light:text-red-700">Хадгалж...</span>
         ) : error ? (
           <span className="text-red-400 light:text-red-700">{error}</span>
         ) : savedAt ? (

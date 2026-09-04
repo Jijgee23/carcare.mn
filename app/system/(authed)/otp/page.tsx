@@ -4,7 +4,7 @@ import { requireSuperAdmin } from "@/lib/auth/system";
 import { getDevOtps, type OtpType } from "@/lib/auth/otp";
 
 export const metadata = {
-  title: "OTP кодууд (dev)",
+  title: "OTP кодууд",
 };
 
 // Шинэ код бүрт хуудас сэргээгдэх ёстой тул кэшлэхгүй.
@@ -21,7 +21,6 @@ const TYPE_LABEL: Record<OtpType, string> = {
 export default async function SystemOtpPage() {
   await requireSuperAdmin();
 
-  const isProd = process.env.NODE_ENV === "production";
   const otps = getDevOtps();
   const now = Date.now();
 
@@ -29,40 +28,31 @@ export default async function SystemOtpPage() {
     <div className="p-6 sm:p-8 max-w-4xl">
       <PageHeader
         title="OTP кодууд"
-        description="Хөгжүүлэлтэд SMS-гүйгээр нэвтрэхэд зориулсан. Зөвхөн санах ойд хадгалагдана (DB-д биш), сервер дахин ачаалахад арилна."
+        description="Хэрэглэгч/ажилтны SMS-ээр хүлээж авах ёстой кодыг олж чадаагүй үед (support) шалгах зориулалттай. Зөвхөн санах ойд хадгалагдана (DB-д биш), сервер дахин ачаалахад арилна."
         actions={
           <Link
             href="/system/otp"
-            className="text-sm bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.1] transition-colors px-4 py-2 rounded-lg font-medium"
+            className="text-sm border border-[var(--oc-line)] hover:border-[var(--oc-line2)] hover:bg-[var(--oc-panel2)] transition-colors px-4 py-2 rounded-lg font-medium text-[var(--oc-ink2)]"
           >
             ↻ Сэргээх
           </Link>
         }
       />
 
-      {isProd ? (
-        <div className="glass rounded-2xl p-8 border border-amber-500/20 text-center">
-          <p className="text-amber-300 font-medium">
-            Энэ хуудас зөвхөн хөгжүүлэлтэд (development) ажиллана.
-          </p>
-          <p className="text-sm text-white/40 mt-1">
-            Production-д OTP кодуудыг хэзээ ч хадгалж / харуулдаггүй.
-          </p>
-        </div>
-      ) : otps.length === 0 ? (
-        <div className="glass rounded-2xl p-8 border border-white/[0.08] text-center text-sm text-white/40">
+      {otps.length === 0 ? (
+        <div className="rounded-2xl border border-[var(--oc-line)] bg-[var(--oc-panel)] p-8 text-center text-sm text-[var(--oc-muted3)]">
           OTP код алга. Бүртгэл / нууц үг сэргээх үйлдэл хийгээд энэ хуудсыг
           сэргээнэ үү.
         </div>
       ) : (
-        <div className="glass rounded-2xl overflow-x-auto border border-white/[0.08]">
+        <div className="rounded-2xl border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-x-auto">
           <table className="w-full min-w-[640px]">
             <thead>
-              <tr className="border-b border-white/[0.06]">
+              <tr className="border-b border-[var(--oc-line2)]">
                 {["Код", "Төрөл", "Имэйл / Утас", "Үүссэн", "Төлөв"].map((h) => (
                   <th
                     key={h}
-                    className="text-left text-xs text-white/30 font-medium px-5 py-3"
+                    className="text-left text-xs text-[var(--oc-muted4)] font-medium px-5 py-3"
                   >
                     {h}
                   </th>
@@ -75,24 +65,24 @@ export default async function SystemOtpPage() {
                 return (
                   <tr
                     key={`${o.code}-${i}`}
-                    className="border-b border-white/[0.04] last:border-0"
+                    className="border-b border-[var(--oc-line2)] last:border-0"
                   >
                     <td className="px-5 py-4">
                       <span
                         className={`font-mono text-lg font-bold tracking-widest tabular-nums ${
-                          expired ? "text-white/30 line-through" : "text-emerald-300 light:text-emerald-700"
+                          expired ? "text-[var(--oc-muted3)] line-through" : "text-emerald-300 light:text-emerald-700"
                         }`}
                       >
                         {o.code}
                       </span>
                     </td>
-                    <td className="px-5 py-4 text-sm text-white/70">
+                    <td className="px-5 py-4 text-sm text-[var(--oc-muted)]">
                       {TYPE_LABEL[o.type]}
                     </td>
-                    <td className="px-5 py-4 text-sm text-white/70">
+                    <td className="px-5 py-4 text-sm text-[var(--oc-muted)]">
                       {o.email ?? o.phone}
                     </td>
-                    <td className="px-5 py-4 text-xs text-white/40">
+                    <td className="px-5 py-4 text-xs text-[var(--oc-muted3)]">
                       {o.createdAt.toLocaleTimeString("mn-MN", { hour12: false })}
                     </td>
                     <td className="px-5 py-4">

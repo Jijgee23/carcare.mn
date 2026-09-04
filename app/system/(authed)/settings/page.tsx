@@ -17,7 +17,7 @@ export default async function SystemSettingsPage() {
         title="Тохиргоо"
         description="Платформын сошиал холбоос болон цаг захиалгын хураамж."
       />
-      <div className="glass rounded-xl p-4 sm:p-5 border border-white/[0.08] max-w-xl">
+      <div className="rounded-xl border border-[var(--oc-line)] bg-[var(--oc-panel)] p-4 sm:p-5 max-w-xl">
         <SettingsForm initial={settings} />
       </div>
     </div>

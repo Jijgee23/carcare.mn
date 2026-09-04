@@ -1,3 +1,4 @@
+import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import {
   SystemMobileTopbar,
   SystemSidebar,
@@ -5,6 +6,19 @@ import {
 import { ToastProvider } from "@/app/_components/toast";
 import { WebPushToggle } from "@/app/_components/web-push";
 import { requireSuperAdmin } from "@/lib/auth/system";
+
+// Ops Console дизайны фонт — dashboard/account-той ижил механизм, зөвхөн
+// /system route бүлэгт scoped.
+const plexSans = IBM_Plex_Sans({
+  subsets: ["latin", "cyrillic"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-plex-sans",
+});
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin", "cyrillic"],
+  weight: ["400", "500", "600"],
+  variable: "--font-plex-mono",
+});
 
 export default async function SystemAdminLayout({
   children,
@@ -18,20 +32,21 @@ export default async function SystemAdminLayout({
 
   return (
     <ToastProvider>
-      <div className="min-h-screen bg-[var(--shell-bg-primary)] flex">
+      <div
+        className={`${plexSans.variable} ${plexMono.variable} landing-ops min-h-screen bg-[var(--oc-carbon)] flex`}
+      >
         <SystemSidebar
           adminName={adminName}
           adminEmail={admin.email}
           initials={initials}
         />
         <div className="app-content-offset flex-1 min-w-0 min-h-screen flex flex-col relative isolate">
-          <div aria-hidden className="shell-content-bg" />
           <SystemMobileTopbar adminName={adminName} initials={initials} />
-          <div className="px-6 sm:px-8 pt-6">
-            <section className="glass rounded-2xl p-4 flex items-center justify-between gap-3">
+          <div className="px-4 sm:px-6 lg:px-8 pt-3">
+            <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-3 flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-sm font-medium text-white/90">Push мэдэгдэл</div>
-                <div className="text-xs text-white/40">
+                <div className="text-sm font-medium text-[var(--oc-ink2)]">Push мэдэгдэл</div>
+                <div className="text-xs text-[var(--oc-muted3)]">
                   Шинэ байгууллага бүртгүүлэх зэрэг мэдэгдлийг энэ төхөөрөмж дээр авах.
                 </div>
               </div>

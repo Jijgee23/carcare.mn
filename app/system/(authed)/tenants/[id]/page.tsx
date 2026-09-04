@@ -133,8 +133,8 @@ export default async function SystemTenantDetailPage({
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 flex flex-col gap-6">
-          <section className="glass rounded-2xl p-6">
-            <h2 className="font-semibold mb-4">Үндсэн мэдээлэл</h2>
+          <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-6">
+            <h2 className="font-semibold text-[var(--oc-ink)] mb-4">Үндсэн мэдээлэл</h2>
             <dl className="grid sm:grid-cols-2 gap-4 text-sm">
               <Row label="Нэр" value={tenant.name} />
               <Row label="Регистр" value={tenant.registerNumber} />
@@ -152,24 +152,24 @@ export default async function SystemTenantDetailPage({
             </dl>
           </section>
 
-          <section className="glass rounded-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06]">
+          <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--oc-line2)]">
               <div>
-                <h2 className="font-semibold">Subscription түүх</h2>
-                <p className="text-xs text-white/40 mt-0.5">
+                <h2 className="font-semibold text-[var(--oc-ink)]">Subscription түүх</h2>
+                <p className="text-xs text-[var(--oc-muted3)] mt-0.5">
                   Нийт {subscriptions.length} бичлэг
                 </p>
               </div>
             </div>
             {subscriptions.length === 0 ? (
-              <div className="px-6 py-8 text-sm text-white/40 text-center">
+              <div className="px-6 py-8 text-sm text-[var(--oc-muted3)] text-center">
                 Subscription түүх алга.
               </div>
             ) : (
               <div className="overflow-auto">
                 <table className="w-full min-w-[680px]">
                   <thead>
-                    <tr className="border-b border-white/[0.06]">
+                    <tr className="border-b border-[var(--oc-line2)]">
                       {[
                         "Багц",
                         "Статус",
@@ -181,7 +181,7 @@ export default async function SystemTenantDetailPage({
                       ].map((h) => (
                         <th
                           key={h}
-                          className="text-left text-xs text-white/30 font-medium px-5 py-3"
+                          className="text-left text-xs text-[var(--oc-muted3)] font-medium px-5 py-3"
                         >
                           {h}
                         </th>
@@ -195,9 +195,9 @@ export default async function SystemTenantDetailPage({
                       return (
                         <tr
                           key={s.id}
-                          className="border-b border-white/[0.04] last:border-0"
+                          className="border-b border-[var(--oc-line2)] last:border-0"
                         >
-                          <td className="px-5 py-3 text-sm text-white/85">
+                          <td className="px-5 py-3 text-sm text-[var(--oc-ink2)]">
                             {PLAN_LABEL[s.plan]}
                           </td>
                           <td className="px-5 py-3">
@@ -207,20 +207,20 @@ export default async function SystemTenantDetailPage({
                               {SUBSCRIPTION_STATUS_LABEL[s.status]}
                             </span>
                           </td>
-                          <td className="px-5 py-3 text-xs text-white/60">
+                          <td className="px-5 py-3 text-xs text-[var(--oc-muted)]">
                             {s.startsAt.toLocaleDateString("mn-MN")}
                           </td>
-                          <td className="px-5 py-3 text-xs text-white/60">
+                          <td className="px-5 py-3 text-xs text-[var(--oc-muted)]">
                             {s.endsAt
                               ? s.endsAt.toLocaleDateString("mn-MN")
                               : "—"}
                           </td>
-                          <td className="px-5 py-3 text-xs text-white/80">
+                          <td className="px-5 py-3 text-xs text-[var(--oc-ink2)]">
                             {s.amount
                               ? formatTugrik(s.amount.toString())
                               : "—"}
                           </td>
-                          <td className="px-5 py-3 text-xs text-white/40">
+                          <td className="px-5 py-3 text-xs text-[var(--oc-muted3)]">
                             {s.createdBy
                               ? `${s.createdBy.firstName} ${s.createdBy.lastName}`
                               : "Систем"}
@@ -256,24 +256,24 @@ export default async function SystemTenantDetailPage({
             )}
           </section>
 
-          <section className="glass rounded-2xl p-6">
-            <h2 className="font-semibold mb-4">Админ (OWNER)</h2>
+          <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-6">
+            <h2 className="font-semibold text-[var(--oc-ink)] mb-4">Админ (OWNER)</h2>
             {tenant.users.length === 0 ? (
-              <p className="text-sm text-white/40">Админ алга байна.</p>
+              <p className="text-sm text-[var(--oc-muted3)]">Админ алга байна.</p>
             ) : (
-              <ul className="divide-y divide-white/[0.04]">
+              <ul className="divide-y divide-[var(--oc-line2)]">
                 {tenant.users.map((u) => (
                   <li key={u.id} className="py-3 first:pt-0 last:pb-0">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <div className="text-sm font-medium text-white/90">
+                        <div className="text-sm font-medium text-[var(--oc-ink2)]">
                           {u.lastName} {u.firstName}
                         </div>
-                        <div className="text-xs text-white/40">
+                        <div className="text-xs text-[var(--oc-muted3)]">
                           {u.email} · {u.phone}
                         </div>
                       </div>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/30 light:bg-violet-100 light:border-violet-300 light:text-violet-700">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-500/30 light:bg-red-100 light:border-red-300 light:text-red-700">
                         Админ
                       </span>
                     </div>
@@ -285,12 +285,12 @@ export default async function SystemTenantDetailPage({
         </div>
 
         <aside className="flex flex-col gap-6">
-          <section className="glass rounded-2xl p-5">
-            <h2 className="font-semibold mb-1 text-sm">Одоогийн багц</h2>
+          <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5">
+            <h2 className="font-semibold text-[var(--oc-ink)] mb-1 text-sm">Одоогийн багц</h2>
             {activeSub ? (
-              <div className="text-xs text-white/40 mb-4">
+              <div className="text-xs text-[var(--oc-muted3)] mb-4">
                 <div>
-                  <span className="text-white/70">
+                  <span className="text-[var(--oc-muted)]">
                     {PLAN_LABEL[activeSub.subscription.plan]}
                   </span>{" "}
                   ·{" "}
@@ -308,7 +308,7 @@ export default async function SystemTenantDetailPage({
                 ) : null}
               </div>
             ) : (
-              <p className="text-xs text-white/40 mb-4">Идэвхтэй багц алга.</p>
+              <p className="text-xs text-[var(--oc-muted3)] mb-4">Идэвхтэй багц алга.</p>
             )}
 
             {activeSub ? (
@@ -329,17 +329,17 @@ export default async function SystemTenantDetailPage({
                   defaultValue={14}
                   className="auth-input !py-1.5 !text-sm w-20"
                 />
-                <span className="text-xs text-white/40">хоног</span>
+                <span className="text-xs text-[var(--oc-muted3)]">хоног</span>
                 <button
                   type="submit"
-                  className="text-xs bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] px-3 py-1.5 rounded-lg transition-colors"
+                  className="text-xs bg-[var(--oc-panel2)] hover:bg-white/[0.08] border border-[var(--oc-line)] px-3 py-1.5 rounded-lg transition-colors text-[var(--oc-ink2)]"
                 >
                   Сунгах
                 </button>
               </form>
             ) : null}
 
-            <h3 className="text-xs uppercase tracking-wider text-white/40 mb-2">
+            <h3 className="font-plex-mono text-xs uppercase tracking-[0.1em] text-[var(--oc-muted3)] mb-2">
               Шинэ subscription
             </h3>
             <form action={createSubscriptionAction} className="space-y-2">
@@ -374,7 +374,7 @@ export default async function SystemTenantDetailPage({
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <div className="text-[10px] text-white/40">
+                <div className="text-[10px] text-[var(--oc-muted3)]">
                   Эхэлсэн
                   <DatePicker
                     name="startsAt"
@@ -382,7 +382,7 @@ export default async function SystemTenantDetailPage({
                     className="mt-1"
                   />
                 </div>
-                <div className="text-[10px] text-white/40">
+                <div className="text-[10px] text-[var(--oc-muted3)]">
                   Дуусах
                   <DatePicker name="endsAt" className="mt-1" />
                 </div>
@@ -402,7 +402,7 @@ export default async function SystemTenantDetailPage({
               />
               <button
                 type="submit"
-                className="w-full bg-violet-600 hover:bg-violet-500 transition-colors py-2 rounded-xl text-sm font-medium"
+                className="w-full bg-red-600 hover:bg-red-500 text-white transition-colors py-2 rounded-xl text-sm font-medium"
               >
                 Subscription нэмэх
               </button>
@@ -412,12 +412,12 @@ export default async function SystemTenantDetailPage({
           {tenant.suspended ? (
             <form
               action={activateTenantAction}
-              className="glass rounded-2xl p-5 border border-emerald-500/20"
+              className="rounded-[10px] border border-emerald-500/20 bg-[var(--oc-panel)] p-5"
             >
               <h2 className="font-semibold mb-1 text-sm text-emerald-300 light:text-emerald-700">
                 Сэргээх
               </h2>
-              <p className="text-xs text-white/40 mb-4">
+              <p className="text-xs text-[var(--oc-muted3)] mb-4">
                 Хэрэглэгчид нэвтэрч чадахгүй байна.
               </p>
               <input type="hidden" name="id" value={tenant.id} />
@@ -431,12 +431,12 @@ export default async function SystemTenantDetailPage({
           ) : (
             <form
               action={suspendTenantAction}
-              className="glass rounded-2xl p-5 border border-amber-500/20"
+              className="rounded-[10px] border border-amber-500/20 bg-[var(--oc-panel)] p-5"
             >
               <h2 className="font-semibold mb-1 text-sm text-amber-300 light:text-amber-700">
                 Түр зогсоох
               </h2>
-              <p className="text-xs text-white/40 mb-4">
+              <p className="text-xs text-[var(--oc-muted3)] mb-4">
                 Үйлчлүүлэгчид нэвтэрч чадахгүй болно. Өгөгдөл хадгалагдсаар үлдэнэ.
               </p>
               <input type="hidden" name="id" value={tenant.id} />
@@ -451,12 +451,12 @@ export default async function SystemTenantDetailPage({
 
           <form
             action={deleteTenantAction}
-            className="glass rounded-2xl p-5 border border-red-500/30"
+            className="rounded-[10px] border border-red-500/30 bg-[var(--oc-panel)] p-5"
           >
             <h2 className="font-semibold mb-1 text-sm text-red-300 light:text-red-700">
               Бүрэн устгах
             </h2>
-            <p className="text-xs text-white/40 mb-4">
+            <p className="text-xs text-[var(--oc-muted3)] mb-4">
               БҮХ өгөгдөл (захиалга, машин, сэлбэг, ажилтан) устана.
               Сэргээх боломжгүй. Доор байгууллагын нэрийг бичнэ үү:
             </p>
@@ -492,9 +492,9 @@ function Row({
 }) {
   return (
     <div>
-      <dt className="text-xs text-white/40">{label}</dt>
+      <dt className="text-xs text-[var(--oc-muted3)]">{label}</dt>
       <dd
-        className={`mt-0.5 text-white/80 ${mono ? "font-mono text-xs" : ""}`}
+        className={`mt-0.5 text-[var(--oc-ink2)] ${mono ? "font-mono text-xs" : ""}`}
       >
         {value}
       </dd>
@@ -515,18 +515,18 @@ function BigStat({
 }) {
   return (
     <div
-      className={`glass rounded-xl p-4 ${
-        accent ? "border border-red-500/30" : ""
+      className={`rounded-xl border bg-[var(--oc-panel)] p-4 ${
+        accent ? "border-red-500/30" : "border-[var(--oc-line)]"
       }`}
     >
       <div
         className={`text-xl font-bold ${
-          color ?? (accent ? "gradient-text" : "text-white")
+          color ?? (accent ? "text-red-400 light:text-red-600" : "text-[var(--oc-ink)]")
         }`}
       >
         {value}
       </div>
-      <div className="text-xs text-white/40 mt-1">{label}</div>
+      <div className="text-xs text-[var(--oc-muted3)] mt-1">{label}</div>
     </div>
   );
 }

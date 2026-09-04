@@ -18,7 +18,7 @@ export default async function SystemQPayPage() {
         title="QPay merchant тохиргоо"
         description="Платформын нэгдсэн QPay merchant дансны мэдээлэл. Бүх тенант энэ дансаар төлбөр төлнө."
       />
-      <div className="glass rounded-2xl p-6 sm:p-8 border border-white/[0.08]">
+      <div className="rounded-2xl border border-[var(--oc-line)] bg-[var(--oc-panel)] p-6 sm:p-8">
         <QPaySettingsForm
           initial={{
             username: settings?.username ?? "",

@@ -30,11 +30,11 @@ export function PlanLimitsManager({ limits }: { limits: PlanLimitRow[] }) {
   for (const l of limits) map.set(`${l.plan}:${l.code}`, l);
 
   return (
-    <div className="glass rounded-xl border border-white/[0.08] overflow-hidden">
-      <div className="px-4 py-3 border-b border-white/[0.06] flex items-center justify-between">
+    <div className="rounded-xl border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden">
+      <div className="px-4 py-3 border-b border-[var(--oc-line2)] flex items-center justify-between">
         <div>
-          <h2 className="font-semibold text-sm">Хязгаар (programmatic)</h2>
-          <p className="text-xs text-white/40 mt-0.5">
+          <h2 className="font-semibold text-sm text-[var(--oc-ink)]">Хязгаар (programmatic)</h2>
+          <p className="text-xs text-[var(--oc-muted3)] mt-0.5">
             Эдгээр утгуудыг програм автоматаар шалгана. COUNT — хоосон бол
             хязгааргүй. BOOLEAN — checkbox.
           </p>
@@ -45,7 +45,7 @@ export function PlanLimitsManager({ limits }: { limits: PlanLimitRow[] }) {
               <input type="hidden" name="plan" value={p} />
               <button
                 type="submit"
-                className="text-[11px] text-white/40 hover:text-white/70 px-2 py-1 rounded hover:bg-white/[0.04] transition-colors"
+                className="text-[11px] text-[var(--oc-muted3)] hover:text-[var(--oc-muted)] px-2 py-1 rounded hover:bg-white/[0.04] transition-colors"
                 title={`${PLAN_LABEL[p]}-ийг default утга руу буцаах`}
               >
                 ↻ {p}
@@ -58,14 +58,14 @@ export function PlanLimitsManager({ limits }: { limits: PlanLimitRow[] }) {
       <div className="overflow-auto">
         <table className="w-full text-sm min-w-[720px]">
           <thead>
-            <tr className="border-b border-white/[0.06] bg-white/[0.02]">
-              <th className="text-left text-xs text-white/40 font-medium px-4 py-2.5">
+            <tr className="border-b border-[var(--oc-line2)] bg-[var(--oc-panel2)]">
+              <th className="text-left text-xs text-[var(--oc-muted3)] font-medium px-4 py-2.5">
                 Хязгаар
               </th>
               {PLANS.map((p) => (
                 <th
                   key={p}
-                  className="text-left text-xs text-white/40 font-medium px-4 py-2.5"
+                  className="text-left text-xs text-[var(--oc-muted3)] font-medium px-4 py-2.5"
                 >
                   {PLAN_LABEL[p]}
                 </th>
@@ -78,14 +78,14 @@ export function PlanLimitsManager({ limits }: { limits: PlanLimitRow[] }) {
               return (
                 <tr
                   key={code}
-                  className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02]"
+                  className="border-b border-[var(--oc-line2)] last:border-0 hover:bg-white/[0.02]"
                 >
                   <td className="px-4 py-3 align-top">
-                    <div className="text-white/90 font-medium">{meta.label}</div>
-                    <div className="text-[11px] text-white/40 mt-0.5">
+                    <div className="text-[var(--oc-ink2)] font-medium">{meta.label}</div>
+                    <div className="text-[11px] text-[var(--oc-muted3)] mt-0.5">
                       {meta.description}
                     </div>
-                    <code className="text-[10px] text-violet-300/70 light:text-violet-700/80 mt-0.5 inline-block">
+                    <code className="text-[10px] text-red-300/70 light:text-red-700/80 mt-0.5 inline-block">
                       {code}
                     </code>
                   </td>
@@ -164,26 +164,26 @@ function LimitCell({
               setBoolValue(e.target.checked);
             }}
             onBlur={save}
-            className="accent-violet-500"
+            className="accent-red-500"
           />
-          <span className="text-xs text-white/70">
+          <span className="text-xs text-[var(--oc-muted)]">
             {boolValue ? "Нээлттэй" : "Хаалттай"}
           </span>
         </label>
       )}
-      <label className="inline-flex items-center gap-1.5 cursor-pointer text-[10px] text-white/40">
+      <label className="inline-flex items-center gap-1.5 cursor-pointer text-[10px] text-[var(--oc-muted3)]">
         <input
           type="checkbox"
           checked={highlighted}
           onChange={(e) => setHighlighted(e.target.checked)}
           onBlur={save}
-          className="accent-violet-500 scale-75"
+          className="accent-red-500 scale-75"
         />
         Тодруулах
       </label>
       <div className="text-[10px] h-3">
         {pending ? (
-          <span className="text-violet-300 light:text-violet-700">Хадгалж...</span>
+          <span className="text-red-300 light:text-red-700">Хадгалж...</span>
         ) : savedAt ? (
           <span className="text-emerald-400 light:text-emerald-700">✓ Хадгалав</span>
         ) : null}
