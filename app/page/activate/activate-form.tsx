@@ -1,12 +1,13 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { startTransition, useActionState, useState } from "react";
 import {
   type ActivateAccountState,
   activateAccountAction,
   requestActivationAction,
 } from "@/app/_actions/auth";
 import { Field, FormError, SubmitButton } from "@/app/_components/auth-shell";
+import { ResendOtpButton } from "@/app/_components/resend-otp-button";
 
 export function ActivateAccountForm() {
   const [requestState, requestAction, requestPending] = useActionState<
@@ -33,6 +34,8 @@ export function ActivateAccountForm() {
       formAction={activateAction}
       pending={activatePending}
       requestSuccessMessage={requestState?.message}
+      resendAction={requestAction}
+      resendPending={requestPending}
     />
   ) : (
     <RequestStep
@@ -84,6 +87,8 @@ function VerifyStep({
   formAction,
   pending,
   requestSuccessMessage,
+  resendAction,
+  resendPending,
 }: {
   email: string;
   maskedPhone: string;
@@ -91,6 +96,8 @@ function VerifyStep({
   formAction: (fd: FormData) => void;
   pending: boolean;
   requestSuccessMessage?: string;
+  resendAction: (fd: FormData) => void;
+  resendPending: boolean;
 }) {
   const fe = state?.fieldErrors ?? {};
   const [showPassword, setShowPassword] = useState(false);
@@ -133,6 +140,17 @@ function VerifyStep({
           placeholder="••••••"
         />
       </Field>
+
+      <ResendOtpButton
+        pending={resendPending}
+        onResend={() => {
+          setCode("");
+          const fd = new FormData();
+          fd.set("email", email);
+          startTransition(() => resendAction(fd));
+        }}
+        className="text-center text-xs text-violet-300 hover:text-violet-200 disabled:text-white/30 disabled:cursor-not-allowed transition-colors"
+      />
 
       <Field
         label="Нууц үг"

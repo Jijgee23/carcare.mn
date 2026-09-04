@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { startTransition, useActionState, useState } from "react";
 import {
   type ForgotPasswordState,
   requestPasswordResetAction,
@@ -12,6 +12,7 @@ import {
   FormError,
   SubmitButton,
 } from "@/app/_components/landing-ops-ui";
+import { ResendOtpButton } from "@/app/_components/resend-otp-button";
 
 export function ForgotPasswordForm() {
   const [requestState, requestAction, requestPending] = useActionState<
@@ -54,6 +55,8 @@ export function ForgotPasswordForm() {
       formAction={resetAction}
       pending={resetPending}
       requestSuccessMessage={requestState?.message}
+      resendAction={requestAction}
+      resendPending={requestPending}
     />
   ) : (
     <RequestStep
@@ -105,6 +108,8 @@ function VerifyStep({
   formAction,
   pending,
   requestSuccessMessage,
+  resendAction,
+  resendPending,
 }: {
   email: string;
   maskedPhone: string;
@@ -112,6 +117,8 @@ function VerifyStep({
   formAction: (fd: FormData) => void;
   pending: boolean;
   requestSuccessMessage?: string;
+  resendAction: (fd: FormData) => void;
+  resendPending: boolean;
 }) {
   const fe = state?.fieldErrors ?? {};
   const [showPassword, setShowPassword] = useState(false);
@@ -154,6 +161,16 @@ function VerifyStep({
           placeholder="••••••"
         />
       </Field>
+
+      <ResendOtpButton
+        pending={resendPending}
+        onResend={() => {
+          setCode("");
+          const fd = new FormData();
+          fd.set("email", email);
+          startTransition(() => resendAction(fd));
+        }}
+      />
 
       <Field
         label="Шинэ нууц үг"

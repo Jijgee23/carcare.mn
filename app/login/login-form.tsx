@@ -1,11 +1,12 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { startTransition, useActionState, useState } from "react";
 import {
   type AccountAuthState,
   accountLoginAction,
 } from "@/app/_actions/account-auth";
 import { Field, FormError, SubmitButton } from "@/app/_components/landing-ops-ui";
+import { ResendOtpButton } from "@/app/_components/resend-otp-button";
 
 export function AccountLoginForm() {
   const [state, formAction, pending] = useActionState<AccountAuthState, FormData>(
@@ -67,6 +68,15 @@ export function AccountLoginForm() {
             />
           </Field>
           <SubmitButton pending={pending}>Нэвтрэх →</SubmitButton>
+          <ResendOtpButton
+            pending={pending}
+            onResend={() => {
+              setCode("");
+              const fd = new FormData();
+              fd.set("phone", lockedPhone);
+              startTransition(() => formAction(fd));
+            }}
+          />
           <a
             href="/login"
             className="text-center text-xs text-[var(--oc-muted3)] hover:text-[var(--oc-accent-hi)] transition-colors"
