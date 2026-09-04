@@ -99,8 +99,16 @@ export async function Footer() {
       <LogoMarquee />
 
       <div className="border-t border-[var(--oc-line2)]">
-        <div className="max-w-[1240px] mx-auto px-4 sm:px-6 lg:px-8 py-[18px] font-plex-mono text-[12px] text-[var(--oc-muted4)]">
-          {CONTACT.copyright}
+        <div className="max-w-[1240px] mx-auto px-4 sm:px-6 lg:px-8 py-[18px] font-plex-mono text-[12px] text-[var(--oc-muted4)] text-center">
+          {CONTACT.copyright} Developed by{" "}
+          <a
+            href={CONTACT.developerUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-[var(--oc-accent)] underline underline-offset-2"
+          >
+            {CONTACT.developerName}
+          </a>
         </div>
       </div>
     </footer>

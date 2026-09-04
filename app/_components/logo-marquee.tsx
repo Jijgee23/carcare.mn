@@ -21,7 +21,7 @@ export async function LogoMarquee() {
   while (row.length < 10) row = row.concat(tenants);
 
   return (
-    <div className="max-w-7xl mx-auto mt-10 pt-8 border-t border-white/[0.04]">
+    <div className="max-w-7xl mx-auto my-10 pt-8 border-t border-white/[0.04]">
       <div className="text-center text-[11px] uppercase tracking-widest text-white/25 mb-5">
         Бүртгэлтэй байгууллагууд
       </div>

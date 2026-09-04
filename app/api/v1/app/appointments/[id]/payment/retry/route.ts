@@ -33,6 +33,7 @@ export async function POST(
       feeQpayInvoiceId: true,
       feeQrImage: true,
       feeQrText: true,
+      feeQpayUrls: true,
       feeUnderpaidAmount: true,
       payment: { select: { amount: true, currency: true } },
     },

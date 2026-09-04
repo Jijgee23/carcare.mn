@@ -71,10 +71,19 @@ async function refreshAccessToken(refreshTkn: string): Promise<TokenResult> {
   return saveTokens(await res.json());
 }
 
+export type QPayBankUrl = {
+  name: string;
+  name_mn: string;
+  logo: string;
+  description: string;
+  link: string;
+};
+
 export type QPayInvoiceCreated = {
   invoice_id: string;
   qr_text: string;
   qr_image: string; // base64 (without data: prefix)
+  urls?: QPayBankUrl[]; // банкны апп руу шилжих deep link-үүд
 };
 
 // QPay-ийн бодит enum: NEW (эхлэн, төлөгдөөгүй), PAID, FAILED, REFUNDED.

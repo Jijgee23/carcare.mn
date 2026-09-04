@@ -32,6 +32,7 @@ import {
   formatTugrik,
 } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
+import type { QPayBankUrl } from "@/lib/qpay-tenant";
 import { AddItemForm } from "./add-item-form";
 import { OrderItems } from "./order-items";
 import { PaymentControls } from "./payment-controls";
@@ -498,7 +499,9 @@ export default async function OrderDetailPage({
                       ? {
                           id: pendingOrderPayment.id,
                           qrImage: pendingOrderPayment.qrImage,
-                          qrText: pendingOrderPayment.qrText,
+                          urls: Array.isArray(pendingOrderPayment.qpayUrls)
+                            ? (pendingOrderPayment.qpayUrls as unknown as QPayBankUrl[])
+                            : [],
                           amount: pendingOrderPayment.amount.toString(),
                         }
                       : null

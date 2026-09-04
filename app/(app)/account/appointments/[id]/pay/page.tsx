@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAccount } from "@/lib/auth/account";
 import { prisma } from "@/lib/prisma";
+import type { QPayBankUrl } from "@/lib/qpay";
 import { AppointmentPaymentPanel } from "./payment-panel";
 
 export const metadata = {
@@ -57,7 +58,11 @@ export default async function AppointmentPayPage({
           amount={amount.toString()}
           currency={currency}
           qrImage={appt.feeQrImage}
-          qrText={appt.feeQrText}
+          urls={
+            Array.isArray(appt.feeQpayUrls)
+              ? (appt.feeQpayUrls as unknown as QPayBankUrl[])
+              : []
+          }
           underpaidAmount={appt.feeUnderpaidAmount?.toString() ?? null}
         />
       ) : (

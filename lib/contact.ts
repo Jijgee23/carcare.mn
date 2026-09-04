@@ -6,5 +6,7 @@ export const CONTACT = {
   phones: ["8870116399", "70126399", "91916549"],
   address:
     "Улаанбаатар хот, Чингэлтэй дүүрэг, 5-р хороо, Баянбогд плаза, 402 тоот",
-  copyright: "© 2021 он. infosystems.mn зохиогчийн эрхээр хамгаалагдсан.",
+  copyright: "© 2026 он. infosystems.mn зохиогчийн эрхээр хамгаалагдсан.",
+  developerUrl: "https://www.infosystems.mn",
+  developerName: "Infosystems LLC",
 } as const;

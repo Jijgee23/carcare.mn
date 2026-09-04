@@ -778,6 +778,7 @@ model SubscriptionPayment {
   qpayPaymentId String?
   qrImage       String? // base64 (data URL-руу хувиргаж харуулна)
   qrText        String? // deep link
+  qpayUrls      Json? // bank app deep links array
   paidAt        DateTime?
 
   // PAID болсон үед энэ payment-аас үүссэн subscription
@@ -1054,6 +1055,7 @@ model Appointment {
   feeQpayInvoiceId String?
   feeQrImage       String?
   feeQrText        String?
+  feeQpayUrls      Json? // bank app deep links array
 
   // QPay-аас "дутуу" (0 < төлсөн дүн < feeAmount) төлбөр илэрвэл тэмдэглэнэ
   // — Invoice ҮҮСГЭХГҮЙ (confirmAppointmentPayment), гагцхүү account/ажилтанд

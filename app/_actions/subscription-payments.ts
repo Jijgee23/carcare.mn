@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { Prisma } from "@/app/generated/prisma/client";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { QPayService } from "@/lib/qpay";
@@ -92,6 +93,7 @@ export async function createSubscriptionPaymentAction(
       qpayInvoiceId: inv.invoice_id,
       qrText: inv.qr_text,
       qrImage: inv.qr_image,
+      qpayUrls: inv.urls ?? Prisma.JsonNull,
     },
   });
 

@@ -98,6 +98,7 @@ export async function createOrderQPayInvoiceAction(
       qpayInvoiceId: inv.invoice_id,
       qrText: inv.qr_text,
       qrImage: inv.qr_image,
+      qpayUrls: inv.urls ?? Prisma.JsonNull,
     },
   });
 

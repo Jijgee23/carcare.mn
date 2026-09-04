@@ -6,7 +6,7 @@ import { formatWhen } from "@/lib/appointments";
 import { notifyStaff } from "@/lib/notifications";
 import { getPlatformSettings } from "@/lib/platform-settings";
 import { prisma } from "@/lib/prisma";
-import { QPayService } from "@/lib/qpay";
+import { QPayService, type QPayBankUrl } from "@/lib/qpay";
 import { getAppBaseUrl } from "@/lib/subscription-server";
 
 /**
@@ -36,6 +36,7 @@ export type AppointmentFeeInfo = {
   currency: string;
   qrImage: string | null;
   qrText: string | null;
+  urls: QPayBankUrl[];
   underpaidAmount: number | null;
 } | null;
 
@@ -51,6 +52,7 @@ export function serializeAppointmentFee(appt: {
   feeQpayInvoiceId: string | null;
   feeQrImage: string | null;
   feeQrText: string | null;
+  feeQpayUrls: Prisma.JsonValue | null;
   feeUnderpaidAmount: Prisma.Decimal | null;
   payment: { amount: Prisma.Decimal; currency: string } | null;
 }): AppointmentFeeInfo {
@@ -61,6 +63,7 @@ export function serializeAppointmentFee(appt: {
       currency: appt.payment.currency,
       qrImage: null,
       qrText: null,
+      urls: [],
       underpaidAmount: null,
     };
   }
@@ -68,6 +71,9 @@ export function serializeAppointmentFee(appt: {
 
   const amount = Number.parseFloat(appt.feeAmount.toString());
   const currency = appt.feeCurrency ?? BOOKING_FEE_CURRENCY;
+  const urls = Array.isArray(appt.feeQpayUrls)
+    ? (appt.feeQpayUrls as unknown as QPayBankUrl[])
+    : [];
 
   if (appt.feeUnderpaidAmount != null) {
     return {
@@ -76,6 +82,7 @@ export function serializeAppointmentFee(appt: {
       currency,
       qrImage: appt.feeQrImage,
       qrText: appt.feeQrText,
+      urls,
       underpaidAmount: Number.parseFloat(appt.feeUnderpaidAmount.toString()),
     };
   }
@@ -86,6 +93,7 @@ export function serializeAppointmentFee(appt: {
       currency,
       qrImage: appt.feeQrImage,
       qrText: appt.feeQrText,
+      urls,
       underpaidAmount: null,
     };
   }
@@ -96,6 +104,7 @@ export function serializeAppointmentFee(appt: {
     currency,
     qrImage: null,
     qrText: null,
+    urls: [],
     underpaidAmount: null,
   };
 }
@@ -124,6 +133,7 @@ async function requestFeeCheckout(
         feeQpayInvoiceId: null,
         feeQrImage: null,
         feeQrText: null,
+        feeQpayUrls: Prisma.JsonNull,
       },
     });
     return { ok: false, required: true, error: inv.error };
@@ -137,6 +147,7 @@ async function requestFeeCheckout(
       feeQpayInvoiceId: inv.invoice_id,
       feeQrText: inv.qr_text,
       feeQrImage: inv.qr_image,
+      feeQpayUrls: inv.urls ?? Prisma.JsonNull,
     },
   });
   return { ok: true, required: true };

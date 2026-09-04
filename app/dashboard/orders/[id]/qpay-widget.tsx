@@ -8,11 +8,12 @@ import {
   type OrderPaymentActionState,
 } from "@/app/_actions/order-payments";
 import { Btn } from "@/app/_components/landing-ops-ui";
+import type { QPayBankUrl } from "@/lib/qpay-tenant";
 
 export type PendingOrderPayment = {
   id: string;
   qrImage: string | null;
-  qrText: string | null;
+  urls: QPayBankUrl[];
   amount: string;
 };
 
@@ -133,13 +134,27 @@ function QRPanel({
         <div className="text-xs text-[var(--oc-muted3)]">QR үүсэхэд хүлээнэ үү...</div>
       )}
 
-      {pending.qrText ? (
-        <a
-          href={pending.qrText}
-          className="text-[11px] text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]"
-        >
-          Банкны апп нээх →
-        </a>
+      {pending.urls.length > 0 ? (
+        <div className="grid grid-cols-3 gap-2 w-full">
+          {pending.urls.map((bank) => (
+            <a
+              key={bank.link}
+              href={bank.link}
+              title={bank.name_mn || bank.name}
+              className="flex flex-col items-center gap-1.5 rounded-[8px] border border-[var(--oc-line2)] px-1.5 py-2 hover:border-[var(--oc-accent)]/50 hover:bg-[var(--oc-accent)]/[0.04] transition-colors"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={bank.logo}
+                alt={bank.name_mn || bank.name}
+                className="w-6 h-6 object-contain rounded shrink-0"
+              />
+              <span className="text-[9px] text-[var(--oc-muted3)] text-center leading-tight line-clamp-2">
+                {bank.name_mn || bank.name}
+              </span>
+            </a>
+          ))}
+        </div>
       ) : null}
 
       {msg ? (

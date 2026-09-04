@@ -6,7 +6,9 @@ import {
   retryAppointmentPaymentAction,
 } from "@/app/_actions/appointment-payments";
 import { Btn } from "@/app/_components/landing-ops-ui";
+import { QPayBankGrid } from "@/app/_components/qpay-bank-grid";
 import { useToast } from "@/app/_components/toast";
+import type { QPayBankUrl } from "@/lib/qpay";
 
 export function AppointmentPaymentPanel({
   appointmentId,
@@ -14,7 +16,7 @@ export function AppointmentPaymentPanel({
   amount,
   currency,
   qrImage,
-  qrText,
+  urls,
   underpaidAmount: initialUnderpaid,
 }: {
   appointmentId: string;
@@ -22,7 +24,7 @@ export function AppointmentPaymentPanel({
   amount: string;
   currency: string;
   qrImage: string | null;
-  qrText: string | null;
+  urls: QPayBankUrl[];
   underpaidAmount: string | null;
 }) {
   const toast = useToast();
@@ -79,7 +81,7 @@ export function AppointmentPaymentPanel({
   }
 
   return (
-    <div className="rounded-[10px] border border-[var(--oc-accent)]/25 bg-[var(--oc-accent)]/[0.05] p-6 flex flex-col items-center gap-4">
+    <div className="rounded-[10px] border border-[var(--oc-accent)]/25 bg-[var(--oc-accent)]/[0.05] p-6">
       <div className="text-center">
         <div className="font-plex-mono text-[10.5px] uppercase tracking-[0.1em] text-[var(--oc-muted3)]">
           Цаг захиалгын хураамж
@@ -91,7 +93,7 @@ export function AppointmentPaymentPanel({
       </div>
 
       {!paid && underpaidAmount != null ? (
-        <div className="bg-amber-500/10 border border-amber-500/25 text-amber-400 rounded-[10px] px-4 py-3 text-sm text-center">
+        <div className="mt-6 bg-amber-500/10 border border-amber-500/25 text-amber-400 rounded-[10px] px-4 py-3 text-sm text-center">
           Дутуу төлбөр ирсэн: {Number.parseFloat(underpaidAmount).toLocaleString("mn-MN")}₮
           / {Number.parseFloat(amount).toLocaleString("mn-MN")}₮. Үлдэгдлийг
           дахин уншуулж нөхнө үү.
@@ -99,11 +101,11 @@ export function AppointmentPaymentPanel({
       ) : null}
 
       {paid ? (
-        <div className="bg-[var(--oc-ok)]/15 border border-[var(--oc-ok)]/30 text-[var(--oc-ok)] rounded-[10px] px-4 py-3 text-sm">
+        <div className="mt-6 bg-[var(--oc-ok)]/15 border border-[var(--oc-ok)]/30 text-[var(--oc-ok)] rounded-[10px] px-4 py-3 text-sm text-center">
           Төлбөр амжилттай төлөгдсөн.
         </div>
       ) : failed ? (
-        <div className="flex flex-col items-center gap-3">
+        <div className="mt-6 flex flex-col items-center gap-3">
           <div className="bg-red-500/10 border border-red-500/25 text-red-400 rounded-[10px] px-4 py-3 text-sm text-center">
             Invoice үүсгэхэд алдаа гарсан байна.
           </div>
@@ -113,35 +115,34 @@ export function AppointmentPaymentPanel({
         </div>
       ) : qrImage ? (
         <>
-          <div className="bg-white p-3 rounded-[10px]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={`data:image/png;base64,${qrImage}`}
-              alt="QPay QR"
-              className="w-56 h-56 object-contain"
-            />
+          <div className="mt-6 grid gap-6 md:grid-cols-[auto_1fr]">
+            <div className="bg-white p-3 rounded-[10px] flex items-center justify-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`data:image/png;base64,${qrImage}`}
+                alt="QPay QR"
+                className="w-48 h-48 md:w-auto md:h-full aspect-square object-contain"
+              />
+            </div>
+
+            <div className="flex flex-col gap-4">
+              <QPayBankGrid urls={urls} />
+
+              <p className="text-xs text-[var(--oc-muted3)] text-center md:text-left">
+                Утсаараа банкны апп нээж QR-ыг уншуулна уу. Төлбөр төлөгдсөний
+                дараа доорх товчоор шалгана уу.
+              </p>
+            </div>
           </div>
 
-          {qrText ? (
-            <a
-              href={qrText}
-              className="text-xs text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]"
-            >
-              Банкны апп руу шилжих →
-            </a>
-          ) : null}
-
-          <p className="text-xs text-[var(--oc-muted3)] text-center max-w-xs">
-            Утсаараа банкны апп нээж QR-ыг уншуулна уу. Төлбөр төлөгдсөний
-            дараа доорх товчоор шалгана уу.
-          </p>
-
-          <Btn type="button" onClick={checkNow} disabled={checking}>
-            {checking ? "Шалгаж байна..." : "Төлбөр шалгах"}
-          </Btn>
+          <div className="mt-6 flex justify-center">
+            <Btn type="button" onClick={checkNow} disabled={checking}>
+              {checking ? "Шалгаж байна..." : "Төлбөр шалгах"}
+            </Btn>
+          </div>
         </>
       ) : (
-        <div className="text-sm text-[var(--oc-muted2)]">
+        <div className="mt-6 text-sm text-[var(--oc-muted2)] text-center">
           QR үүсэхэд хүлээнэ үү...
         </div>
       )}

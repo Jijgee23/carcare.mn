@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import type { QPayBankUrl } from "@/lib/qpay";
 import {
   PLAN_LABEL,
   SUBSCRIPTION_STATUS_BADGE,
@@ -108,7 +109,9 @@ export default async function SubscriptionPage() {
                   ? {
                       id: pendingPayment.id,
                       qrImage: pendingPayment.qrImage,
-                      qrText: pendingPayment.qrText,
+                      urls: Array.isArray(pendingPayment.qpayUrls)
+                        ? (pendingPayment.qpayUrls as unknown as QPayBankUrl[])
+                        : [],
                       amount: pendingPayment.amount.toString(),
                       currency: pendingPayment.currency,
                       plan: pendingPayment.plan,
