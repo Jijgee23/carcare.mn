@@ -51,3 +51,4 @@ next-env.d.ts
 # user-uploaded files (keep folder, ignore contents)
 /public/uploads/*
 !/public/uploads/.gitkeep
+image.png
