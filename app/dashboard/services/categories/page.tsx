@@ -65,7 +65,7 @@ export default async function CategoriesPage() {
           href="/dashboard/services/durations"
           className="shrink-0 text-[13px] text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors whitespace-nowrap mt-1"
         >
-          Салбарын хугацаа →
+          Ангиллын хугацаа →
         </Link>
       </div>
 

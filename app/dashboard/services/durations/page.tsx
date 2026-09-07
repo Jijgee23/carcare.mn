@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { BranchDurationsSection } from "../branch-durations-section";
 
 export const metadata = {
-  title: "Салбарын хугацаа",
+  title: "Ангиллын хугацаа",
 };
 
 export default async function BranchDurationsPage({
@@ -92,12 +92,12 @@ export default async function BranchDurationsPage({
           Үйлчилгээ
         </Link>
         <span>/</span>
-        <span className="text-[var(--oc-muted)]">Салбарын хугацаа</span>
+        <span className="text-[var(--oc-muted)]">Ангиллын хугацаа</span>
       </nav>
 
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">
-          Салбарын захиалгын хугацаа
+          Ангиллын захиалгын хугацаа
         </h1>
         <p className="text-sm text-[var(--oc-muted3)] mt-1">
           Онлайн захиалгын ангилал бүрийн үргэлжлэх хугацааг тухайн салбарт

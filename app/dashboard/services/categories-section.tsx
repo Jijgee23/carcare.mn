@@ -9,6 +9,8 @@ import {
 } from "@/app/_actions/categories";
 import { Field, FormError } from "@/app/_components/auth-shell";
 import { Btn, Chip, PlusIcon, TagChip } from "@/app/_components/landing-ops-ui";
+import { formatDuration } from "@/lib/category-duration";
+import { DurationHmInput } from "./duration-input";
 
 export type BranchOption = { id: string; name: string };
 
@@ -166,7 +168,7 @@ function ViewRow({
       </td>
       <td className="px-4 py-3 font-plex-mono text-xs text-[var(--oc-muted2)]">
         {category.durationMinutes != null ? (
-          `${category.durationMinutes} мин`
+          formatDuration(category.durationMinutes)
         ) : (
           <span className="text-[var(--oc-muted4)]" title="Тохируулаагүй — 30 мин">
             30 мин*
@@ -250,17 +252,16 @@ function EditRow({
               placeholder="Тайлбар"
               className={`auth-input ${fe.description ? "border-red-500/50" : ""}`}
             />
-            <input
-              name="durationMinutes"
-              type="number"
-              min={5}
-              max={600}
-              step={5}
-              defaultValue={category.durationMinutes ?? ""}
-              placeholder="Хугацаа (мин)"
-              title="Онлайн захиалгын үргэлжлэх хугацаа (минут). Хоосон бол 30."
-              className={`auth-input ${fe.durationMinutes ? "border-red-500/50" : ""}`}
-            />
+            <div
+              className="flex items-center px-1"
+              title="Онлайн захиалгын үргэлжлэх хугацаа. Хоосон бол 30 мин."
+            >
+              <DurationHmInput
+                defaultMinutes={category.durationMinutes}
+                invalid={!!fe.durationMinutes}
+                compact
+              />
+            </div>
             <label className="flex items-center gap-2 text-sm text-[var(--oc-ink2)] px-2">
               <input
                 type="checkbox"
@@ -349,23 +350,8 @@ function CreateForm({ branches }: { branches: BranchOption[] }) {
             className={`auth-input ${fe.description ? "border-red-500/50" : ""}`}
           />
         </Field>
-        <Field
-          label="Хугацаа"
-          htmlFor="cat-duration"
-          hint="мин, заавал биш"
-          error={fe.durationMinutes}
-        >
-          <input
-            id="cat-duration"
-            name="durationMinutes"
-            type="number"
-            min={5}
-            max={600}
-            step={5}
-            placeholder="30"
-            title="Онлайн захиалгын үргэлжлэх хугацаа (минут). Хоосон бол 30."
-            className={`auth-input ${fe.durationMinutes ? "border-red-500/50" : ""}`}
-          />
+        <Field label="Хугацаа" hint="заавал биш" error={fe.durationMinutes}>
+          <DurationHmInput defaultMinutes={null} invalid={!!fe.durationMinutes} />
         </Field>
         <label className="flex items-end gap-2 text-sm text-[var(--oc-ink2)] pb-2.5">
           <input

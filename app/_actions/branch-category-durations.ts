@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
 import { branchScopeId, hasPermission } from "@/lib/auth/roles";
+import { parseDurationInput } from "@/lib/category-duration";
 import { prisma } from "@/lib/prisma";
 
 export type BranchDurationActionState = {
@@ -59,9 +60,15 @@ export async function setBranchCategoryDurationAction(
 
   const categoryId = s(formData, "categoryId");
   const requestedBranchId = s(formData, "branchId");
-  const durationRaw = s(formData, "durationMinutes");
+  const durationParse = parseDurationInput(
+    s(formData, "durationHours"),
+    s(formData, "durationMinutes"),
+  );
 
   if (!categoryId) return { ok: false, message: "Ангилал заагаагүй байна." };
+  if (!durationParse.ok) {
+    return { ok: false, fieldErrors: { [categoryId]: durationParse.error } };
+  }
 
   const branchId = await resolveTargetBranchId(user, requestedBranchId);
   if (!branchId) {
@@ -76,7 +83,7 @@ export async function setBranchCategoryDurationAction(
   if (!category) return { ok: false, message: "Ангилал олдсонгүй." };
 
   // Хоосон → override устгах (default руу буцаах).
-  if (!durationRaw) {
+  if (durationParse.minutes == null) {
     await prisma.branchCategoryDuration.deleteMany({
       where: { branchId, categoryId },
     });
@@ -92,15 +99,7 @@ export async function setBranchCategoryDurationAction(
     return { ok: true, message: "Салбарын тохиргоо цэвэрлэгдэж, default руу буцлаа." };
   }
 
-  const n = Number(durationRaw);
-  if (!Number.isInteger(n) || n < 5 || n > 600) {
-    return {
-      ok: false,
-      fieldErrors: {
-        [categoryId]: "Хугацаа 5–600 минутын хооронд бүхэл тоо байна.",
-      },
-    };
-  }
+  const n = durationParse.minutes;
 
   await prisma.branchCategoryDuration.upsert({
     where: { branchId_categoryId: { branchId, categoryId } },

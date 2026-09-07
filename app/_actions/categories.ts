@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
+import { parseDurationInput } from "@/lib/category-duration";
 import { prisma } from "@/lib/prisma";
 
 export type CategoryActionState = {
@@ -49,19 +50,15 @@ function validate(fd: FormData): {
   if (description && description.length > 200)
     errors.description = "Тайлбар 200 тэмдэгтээс хэтрэхгүй.";
 
-  // Онлайн захиалгын үргэлжлэх хугацаа (default, минут). Хоосон → null (салбарын
-  // override, эсвэл платформын 30 мин руу шатлана — booking v2). 5–600-ийн
-  // хооронд бүхэл тоо.
-  const durationRaw = s(fd, "durationMinutes");
+  // Онлайн захиалгын үргэлжлэх хугацаа (default). Цаг+минут-аар оруулж, минут
+  // болгон хадгална. Хоосон → null (салбарын override, эсвэл 30 мин руу шатлана).
+  const durationParse = parseDurationInput(
+    s(fd, "durationHours"),
+    s(fd, "durationMinutes"),
+  );
   let durationMinutes: number | null = null;
-  if (durationRaw) {
-    const n = Number(durationRaw);
-    if (!Number.isInteger(n) || n < 5 || n > 600) {
-      errors.durationMinutes = "Хугацаа 5–600 минутын хооронд бүхэл тоо байна.";
-    } else {
-      durationMinutes = n;
-    }
-  }
+  if (durationParse.ok) durationMinutes = durationParse.minutes;
+  else errors.durationMinutes = durationParse.error;
 
   if (Object.keys(errors).length > 0) return { data: null, errors };
 

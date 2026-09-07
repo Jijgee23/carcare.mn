@@ -157,7 +157,7 @@ const navItems: NavItem[] = [
       },
       {
         href: "/dashboard/services/durations",
-        label: "Салбарын хугацаа",
+        label: "Ангиллын хугацаа",
         view: "services.duration",
       },
     ],
@@ -324,7 +324,7 @@ function SidebarNavList({
       : it;
   // Бүлэг нь өөрийн эрхээр, ЭСВЭЛ (эцгээс ӨӨР) тодорхой эрхтэй харагдах child-тай
   // бол харагдана — ингэснээр зөвхөн services.duration-той салбар-мастер "Үйлчилгээ"
-  // бүлгийг харж, доторх "Салбарын хугацаа" руу нэвтэрнэ (бусад child нуугдана).
+  // бүлгийг харж, доторх "Ангиллын хугацаа" руу нэвтэрнэ (бусад child нуугдана).
   const isVisible = (it: NavItem): boolean =>
     canSeeView(it.view, isOwner, permissions) ||
     (hasChildren(it) && it.children.some((c) => childVisible(it.view, c)));

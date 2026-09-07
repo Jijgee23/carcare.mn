@@ -7,6 +7,8 @@ import {
   setBranchCategoryDurationAction,
 } from "@/app/_actions/branch-category-durations";
 import { Btn } from "@/app/_components/landing-ops-ui";
+import { formatDuration } from "@/lib/category-duration";
+import { DurationHmInput } from "./duration-input";
 
 export type BranchDurationRow = {
   id: string;
@@ -75,13 +77,13 @@ export function BranchDurationsSection({
                 <th className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-4 py-2.5">
                   Ангилал
                 </th>
-                <th className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-4 py-2.5 w-28">
+                <th className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-4 py-2.5 w-32">
                   Нийтлэг
                 </th>
-                <th className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-4 py-2.5 w-28">
+                <th className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-4 py-2.5 w-32">
                   Одоо
                 </th>
-                <th className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-4 py-2.5 w-56">
+                <th className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-4 py-2.5 w-80">
                   Салбарын хугацаа
                 </th>
               </tr>
@@ -115,11 +117,11 @@ function DurationRow({
   return (
     <tr className="hover:bg-white/[0.02] transition-colors">
       <td className="px-4 py-3 text-[var(--oc-ink)]">{row.name}</td>
-      <td className="px-4 py-3 font-plex-mono text-xs text-[var(--oc-muted3)]">
-        {row.defaultMinutes != null ? `${row.defaultMinutes} мин` : "30 мин*"}
+      <td className="px-4 py-3 font-plex-mono text-xs text-[var(--oc-muted3)] whitespace-nowrap">
+        {row.defaultMinutes != null ? formatDuration(row.defaultMinutes) : "30 мин*"}
       </td>
-      <td className="px-4 py-3 font-plex-mono text-xs text-[var(--oc-muted2)]">
-        {row.effectiveMinutes} мин
+      <td className="px-4 py-3 font-plex-mono text-xs text-[var(--oc-muted2)] whitespace-nowrap">
+        {formatDuration(row.effectiveMinutes)}
         {row.overrideMinutes != null ? (
           <span className="ml-1 text-[var(--oc-accent-hi)]" title="Салбар-тусгай">
             •
@@ -127,27 +129,23 @@ function DurationRow({
         ) : null}
       </td>
       <td className="px-4 py-3">
-        <form action={formAction} className="flex items-center gap-2">
+        <form action={formAction} className="flex flex-col gap-1">
           <input type="hidden" name="categoryId" value={row.id} />
           {formBranchId ? (
             <input type="hidden" name="branchId" value={formBranchId} />
           ) : null}
-          <input
-            name="durationMinutes"
-            type="number"
-            min={5}
-            max={600}
-            step={5}
-            defaultValue={row.overrideMinutes ?? ""}
-            placeholder={
-              row.defaultMinutes != null ? String(row.defaultMinutes) : "30"
-            }
-            title="Хоосон орхиж хадгалбал салбарын тохиргоо цэвэрлэгдэж, default руу буцна."
-            className={`auth-input w-24 ${fieldError ? "border-red-500/50" : ""}`}
-          />
-          <Btn type="submit" disabled={pending} size="sm">
-            {pending ? "..." : "Хадгалах"}
-          </Btn>
+          <div className="flex items-center gap-2">
+            <div title="Хоосон орхиж хадгалбал салбарын тохиргоо цэвэрлэгдэж, default руу буцна.">
+              <DurationHmInput
+                defaultMinutes={row.overrideMinutes}
+                invalid={!!fieldError}
+                compact
+              />
+            </div>
+            <Btn type="submit" disabled={pending} size="sm">
+              {pending ? "..." : "Хадгалах"}
+            </Btn>
+          </div>
           {fieldError ? (
             <span className="text-red-400 text-xs light:text-red-600">
               {fieldError}
