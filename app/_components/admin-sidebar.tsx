@@ -32,6 +32,9 @@ function canSeeView(
   if (isOwner) return true;
   if (view === "owner") return false;
   if (view === "audit") return perms.includes("audit.view");
+  // Цэгтэй бол шууд permission code гэж үзнэ (ж: "services.duration") — CRUD-ийн
+  // `${view}.view` дүрэмд ордоггүй standalone эрхэд.
+  if (view.includes(".")) return perms.includes(view);
   return perms.includes(`${view}.view`);
 }
 
@@ -151,6 +154,11 @@ const navItems: NavItem[] = [
         href: "/dashboard/services/categories",
         label: "Ангилал",
         view: "owner",
+      },
+      {
+        href: "/dashboard/services/durations",
+        label: "Салбарын хугацаа",
+        view: "services.duration",
       },
     ],
   },
@@ -306,21 +314,22 @@ function SidebarNavList({
 }) {
   const pathname = usePathname();
   // Бүлгийн дотоод child-уудыг ч эрхээр нь шүүнэ (ж: "Ажлын ангилал" зөвхөн owner).
+  // Child-д тусдаа `view` заагаагүй бол ЭЦГИЙН `view`-г ӨВЛӨНӨ — эс бөгөөс эрхгүй
+  // child (ж: "Ажилтнууд") бүлгээ бүхэлд нь ил гаргаж, эрхгүй хуудас руу оруулна.
+  const childVisible = (parentView: string | undefined, c: NavLeaf): boolean =>
+    canSeeView(c.view ?? parentView, isOwner, permissions);
   const filterChildren = (it: NavItem): NavItem =>
     hasChildren(it)
-      ? {
-        ...it,
-        children: it.children.filter((c) =>
-          canSeeView(c.view, isOwner, permissions),
-        ),
-      }
+      ? { ...it, children: it.children.filter((c) => childVisible(it.view, c)) }
       : it;
-  const visibleNav = navItems
-    .filter((it) => canSeeView(it.view, isOwner, permissions))
-    .map(filterChildren);
-  const visibleSecondary = secondaryItems
-    .filter((it) => canSeeView(it.view, isOwner, permissions))
-    .map(filterChildren);
+  // Бүлэг нь өөрийн эрхээр, ЭСВЭЛ (эцгээс ӨӨР) тодорхой эрхтэй харагдах child-тай
+  // бол харагдана — ингэснээр зөвхөн services.duration-той салбар-мастер "Үйлчилгээ"
+  // бүлгийг харж, доторх "Салбарын хугацаа" руу нэвтэрнэ (бусад child нуугдана).
+  const isVisible = (it: NavItem): boolean =>
+    canSeeView(it.view, isOwner, permissions) ||
+    (hasChildren(it) && it.children.some((c) => childVisible(it.view, c)));
+  const visibleNav = navItems.filter(isVisible).map(filterChildren);
+  const visibleSecondary = secondaryItems.filter(isVisible).map(filterChildren);
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const hydratedRef = useRef(false);

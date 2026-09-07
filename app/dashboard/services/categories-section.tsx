@@ -19,6 +19,7 @@ export type CategoryRow = {
   isActive: boolean;
   servicesCount: number;
   branchIds: string[];
+  durationMinutes: number | null;
 };
 
 export function CategoriesSection({
@@ -51,6 +52,9 @@ export function CategoriesSection({
                 </th>
                 <th className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-4 py-2.5 w-20">
                   Үйлчилгээ
+                </th>
+                <th className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-4 py-2.5 w-28">
+                  Хугацаа
                 </th>
                 <th className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-4 py-2.5 w-28">
                   Төлөв
@@ -160,6 +164,15 @@ function ViewRow({
       <td className="px-4 py-3 font-plex-mono text-xs text-[var(--oc-muted2)]">
         {category.servicesCount}
       </td>
+      <td className="px-4 py-3 font-plex-mono text-xs text-[var(--oc-muted2)]">
+        {category.durationMinutes != null ? (
+          `${category.durationMinutes} мин`
+        ) : (
+          <span className="text-[var(--oc-muted4)]" title="Тохируулаагүй — 30 мин">
+            30 мин*
+          </span>
+        )}
+      </td>
       <td className="px-4 py-3">
         <Chip tone={category.isActive ? "ok" : "neutral"}>
           {category.isActive ? "Идэвхтэй" : "Идэвхгүй"}
@@ -216,12 +229,12 @@ function EditRow({
 
   return (
     <tr className="bg-[var(--oc-panel2)]">
-      <td colSpan={5} className="px-4 py-3">
+      <td colSpan={6} className="px-4 py-3">
         <form action={formAction} className="flex flex-col gap-3" noValidate>
           {state?.message && !state.ok ? (
             <FormError message={state.message} />
           ) : null}
-          <div className="grid gap-2 sm:grid-cols-[1fr_2fr_auto]">
+          <div className="grid gap-2 sm:grid-cols-[1fr_2fr_auto_auto]">
             <input
               name="name"
               type="text"
@@ -237,6 +250,17 @@ function EditRow({
               placeholder="Тайлбар"
               className={`auth-input ${fe.description ? "border-red-500/50" : ""}`}
             />
+            <input
+              name="durationMinutes"
+              type="number"
+              min={5}
+              max={600}
+              step={5}
+              defaultValue={category.durationMinutes ?? ""}
+              placeholder="Хугацаа (мин)"
+              title="Онлайн захиалгын үргэлжлэх хугацаа (минут). Хоосон бол 30."
+              className={`auth-input ${fe.durationMinutes ? "border-red-500/50" : ""}`}
+            />
             <label className="flex items-center gap-2 text-sm text-[var(--oc-ink2)] px-2">
               <input
                 type="checkbox"
@@ -250,6 +274,9 @@ function EditRow({
           {fe.name ? <p className="text-red-400 text-xs light:text-red-600">{fe.name}</p> : null}
           {fe.description ? (
             <p className="text-red-400 text-xs light:text-red-600">{fe.description}</p>
+          ) : null}
+          {fe.durationMinutes ? (
+            <p className="text-red-400 text-xs light:text-red-600">{fe.durationMinutes}</p>
           ) : null}
           <BranchPicker branches={branches} selected={category.branchIds} />
           <div className="flex gap-2 justify-end">
@@ -297,7 +324,7 @@ function CreateForm({ branches }: { branches: BranchOption[] }) {
         <FormError message={state.message} />
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-[1fr_2fr_auto_auto]">
+      <div className="grid gap-3 sm:grid-cols-[1fr_2fr_auto_auto_auto]">
         <Field label="Нэр" htmlFor="cat-name" error={fe.name}>
           <input
             id="cat-name"
@@ -320,6 +347,24 @@ function CreateForm({ branches }: { branches: BranchOption[] }) {
             type="text"
             placeholder="Энэ ангилалд хамаарах үйлчилгээний тайлбар"
             className={`auth-input ${fe.description ? "border-red-500/50" : ""}`}
+          />
+        </Field>
+        <Field
+          label="Хугацаа"
+          htmlFor="cat-duration"
+          hint="мин, заавал биш"
+          error={fe.durationMinutes}
+        >
+          <input
+            id="cat-duration"
+            name="durationMinutes"
+            type="number"
+            min={5}
+            max={600}
+            step={5}
+            placeholder="30"
+            title="Онлайн захиалгын үргэлжлэх хугацаа (минут). Хоосон бол 30."
+            className={`auth-input ${fe.durationMinutes ? "border-red-500/50" : ""}`}
           />
         </Field>
         <label className="flex items-end gap-2 text-sm text-[var(--oc-ink2)] pb-2.5">

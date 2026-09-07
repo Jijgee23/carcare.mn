@@ -32,6 +32,7 @@ export const ENTITY_TYPES = [
   "DiagnosticTemplate",
   "DiagnosticReport",
   "Appointment",
+  "BranchCategoryDuration",
 ] as const;
 
 export type EntityType = (typeof ENTITY_TYPES)[number];

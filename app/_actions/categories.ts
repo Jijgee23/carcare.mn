@@ -31,6 +31,7 @@ function validate(fd: FormData): {
     description: string | null;
     isActive: boolean;
     branchIds: string[];
+    durationMinutes: number | null;
   } | null;
   errors: Record<string, string>;
 } {
@@ -48,10 +49,30 @@ function validate(fd: FormData): {
   if (description && description.length > 200)
     errors.description = "Тайлбар 200 тэмдэгтээс хэтрэхгүй.";
 
+  // Онлайн захиалгын үргэлжлэх хугацаа (default, минут). Хоосон → null (салбарын
+  // override, эсвэл платформын 30 мин руу шатлана — booking v2). 5–600-ийн
+  // хооронд бүхэл тоо.
+  const durationRaw = s(fd, "durationMinutes");
+  let durationMinutes: number | null = null;
+  if (durationRaw) {
+    const n = Number(durationRaw);
+    if (!Number.isInteger(n) || n < 5 || n > 600) {
+      errors.durationMinutes = "Хугацаа 5–600 минутын хооронд бүхэл тоо байна.";
+    } else {
+      durationMinutes = n;
+    }
+  }
+
   if (Object.keys(errors).length > 0) return { data: null, errors };
 
   return {
-    data: { name, description: description || null, isActive, branchIds },
+    data: {
+      name,
+      description: description || null,
+      isActive,
+      branchIds,
+      durationMinutes,
+    },
     errors,
   };
 }
@@ -94,6 +115,7 @@ export async function createCategoryAction(
         name: data.name,
         description: data.description,
         isActive: data.isActive,
+        durationMinutes: data.durationMinutes,
         branches: { connect: branchIds.map((id) => ({ id })) },
       },
       select: { id: true },
@@ -157,6 +179,7 @@ export async function updateCategoryAction(
         name: data.name,
         description: data.description,
         isActive: data.isActive,
+        durationMinutes: data.durationMinutes,
         branches: { set: branchIds.map((bid) => ({ id: bid })) },
       },
     });
