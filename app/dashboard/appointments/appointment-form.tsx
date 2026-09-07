@@ -43,7 +43,8 @@ export function AppointmentForm({
   const [customerId, setCustomerId] = useState("");
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [selectedIso, setSelectedIso] = useState("");
-  const [categoryId, setCategoryId] = useState("");
+  // Booking v2: олон ангилал сонгож болно (customer-ийн урсгалтай адил).
+  const [categoryIds, setCategoryIds] = useState<string[]>([]);
 
   const fe = state?.fieldErrors ?? {};
   const selectedBranch = branches.find((b) => b.id === branchId);
@@ -58,7 +59,13 @@ export function AppointmentForm({
   function onBranchChange(v: string) {
     setBranchId(v);
     setSelectedIso("");
-    setCategoryId("");
+    setCategoryIds([]);
+  }
+
+  function toggleCategory(id: string, checked: boolean) {
+    setCategoryIds((prev) =>
+      checked ? [...prev, id] : prev.filter((x) => x !== id),
+    );
   }
 
   function onCustomerCreated(c: CreatedCustomer) {
@@ -76,6 +83,9 @@ export function AppointmentForm({
     >
       <FormError message={state?.message && !state.ok ? state.message : undefined} />
       <input type="hidden" name="requestedAt" value={selectedIso} />
+      {categoryIds.map((id) => (
+        <input key={id} type="hidden" name="categoryIds" value={id} />
+      ))}
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 items-start">
         {/* Зүүн багана: салбар, үйлчлүүлэгч, тэмдэглэл */}
@@ -95,21 +105,35 @@ export function AppointmentForm({
           {branchId && branchCategories.length > 0 ? (
             <Field
               label="Үйлчилгээний ангилал"
-              htmlFor="categoryId"
-              hint="заавал биш"
+              htmlFor="category-0"
+              hint="заавал биш, олон сонголт боломжтой"
               error={fe.categoryId}
             >
-              <Select
-                id="categoryId"
-                name="categoryId"
-                value={categoryId}
-                onChange={setCategoryId}
-                placeholder="— Сонгох —"
-                options={branchCategories.map((c) => ({
-                  value: c.id,
-                  label: c.name,
-                }))}
-              />
+              <div className="flex flex-wrap gap-2">
+                {branchCategories.map((c, i) => {
+                  const checked = categoryIds.includes(c.id);
+                  return (
+                    <label
+                      key={c.id}
+                      htmlFor={`category-${i}`}
+                      className={`px-3 py-1.5 rounded-lg border text-sm cursor-pointer transition-colors select-none ${
+                        checked
+                          ? "bg-violet-600 border-violet-500 text-white font-medium"
+                          : "border-white/[0.12] bg-white/[0.04] text-white/70 hover:border-violet-500/40"
+                      }`}
+                    >
+                      <input
+                        id={`category-${i}`}
+                        type="checkbox"
+                        className="sr-only"
+                        checked={checked}
+                        onChange={(e) => toggleCategory(c.id, e.target.checked)}
+                      />
+                      {c.name}
+                    </label>
+                  );
+                })}
+              </div>
             </Field>
           ) : null}
 

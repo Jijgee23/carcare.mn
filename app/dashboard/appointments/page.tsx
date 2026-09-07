@@ -95,6 +95,9 @@ export default async function AppointmentsPage({
         customer: { select: { fullName: true, phone: true } },
         branch: { select: { name: true } },
         category: { select: { name: true } },
+        // Booking v2: олон ангилал (categories) — хуучин ганц category нь
+        // энэ migration-ийн өмнөх мөрүүдэд fallback хэвээр үлдэнэ.
+        categories: { select: { category: { select: { name: true } } } },
         serviceOrder: { select: { id: true, number: true } },
       },
     }),
@@ -192,6 +195,14 @@ export default async function AppointmentsPage({
                     apptPhone && displayName !== formatPhone(apptPhone)
                       ? formatPhone(apptPhone)
                       : null;
+                  // Booking v2: олон ангилал сонгосон бол бүгдийг нь харуулна;
+                  // энэ migration-ийн өмнөх мөрүүд дээр `categories` хоосон тул
+                  // хуучин ганц `category`-руу fallback хийнэ.
+                  const categoryNames = a.categories.length
+                    ? a.categories.map((c) => c.category.name)
+                    : a.category
+                      ? [a.category.name]
+                      : [];
                   return (
                     <tr
                       key={a.id}
@@ -209,9 +220,9 @@ export default async function AppointmentsPage({
                       </td>
                       <td className="px-5 py-4 text-sm text-[var(--oc-muted2)]">
                         {a.branch.name}
-                        {a.category ? (
+                        {categoryNames.length ? (
                           <span className="block text-xs text-[var(--oc-muted3)] mt-0.5">
-                            {a.category.name}
+                            {categoryNames.join(", ")}
                           </span>
                         ) : null}
                       </td>

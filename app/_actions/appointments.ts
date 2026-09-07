@@ -421,20 +421,24 @@ export async function registerAppointmentByStaff(
     };
   }
 
-  // Ангилал — заавал биш; салбарт хамаарах (эсвэл салбаргүй) идэвхтэйг л авна.
-  let categoryId: string | null = s(formData, "categoryId") || null;
-  if (categoryId) {
-    const cat = await prisma.category.findFirst({
+  // Ангилал (booking v2 — олон сонголт) — заавал биш; салбарт хамаарах (эсвэл
+  // салбаргүй) идэвхтэйг л авна (`createAppointment`-тэй адил дүрэм).
+  const requestedCategoryIds = [...new Set(formData.getAll("categoryIds").map(String).filter(Boolean))];
+  let validCategoryIds: string[] = [];
+  if (requestedCategoryIds.length) {
+    const cats = await prisma.category.findMany({
       where: {
-        id: categoryId,
+        id: { in: requestedCategoryIds },
         tenantId: user.tenantId,
         isActive: true,
         OR: [{ branches: { some: { id: branchId } } }, { branches: { none: {} } }],
       },
       select: { id: true },
     });
-    if (!cat) categoryId = null;
+    validCategoryIds = cats.map((c) => c.id);
   }
+  // Ганц `categoryId` back-compat-д — эхний хүчинтэй ангилал.
+  const categoryId: string | null = validCategoryIds[0] ?? null;
 
   const created = await prisma.appointment.create({
     data: {
@@ -443,6 +447,9 @@ export async function registerAppointmentByStaff(
       customerId,
       accountId: null,
       categoryId,
+      categories: validCategoryIds.length
+        ? { create: validCategoryIds.map((id) => ({ categoryId: id })) }
+        : undefined,
       requestedAt: requestedAt!,
       note: note || null,
       status: "CONFIRMED",
