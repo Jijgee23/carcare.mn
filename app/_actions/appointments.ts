@@ -478,8 +478,17 @@ export async function registerAppointmentByStaff(
   redirect("/dashboard/appointments");
 }
 
-async function authorizeStaff(branchId?: string) {
-  const user = await requireUser();
+/**
+ * `requireUser()`-ийг ЗААВАЛ эхлээд (энэ appointment-ийг Prisma-аар
+ * татахаас ӨМНӨ) дуудаж tenant context тохируулсан байх ёстой — эс бөгөөс
+ * "Tenant context тохируулагдаагүй" алдаа шидэгдэнэ (харах: lib/prisma.ts).
+ * Тиймээс энэ функц context тохируулахгүй, зөвхөн аль хэдийн resolve
+ * хийсэн `user`-ийг branchId-тэй нь харьцуулж шалгана.
+ */
+async function assertStaffScope(
+  user: Awaited<ReturnType<typeof requireUser>>,
+  branchId?: string,
+) {
   if (!canEdit(user, "appointments")) {
     throw new Error("Танд цаг захиалга удирдах эрх байхгүй.");
   }
@@ -488,7 +497,6 @@ async function authorizeStaff(branchId?: string) {
     throw new Error("Зөвхөн өөрийн салбарын цаг захиалгыг удирдана.");
   }
   await assertActiveSubscription(user.tenantId);
-  return user;
 }
 
 /**
@@ -504,6 +512,15 @@ export async function confirmAppointment(
   const id = s(formData, "id");
   if (!id) return { ok: false, message: "Буруу хүсэлт." };
 
+  // Tenant context-ийг ЗААВАЛ эхлээд (доорх Prisma дуудлагаас өмнө)
+  // тохируулна — эс бөгөөс "Tenant context тохируулагдаагүй" алдаа шидэгдэнэ.
+  let user;
+  try {
+    user = await requireUser();
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
+
   const appt = await prisma.appointment.findUnique({
     where: { id },
     include: {
@@ -513,9 +530,8 @@ export async function confirmAppointment(
   });
   if (!appt) return { ok: false, message: "Цаг захиалга олдсонгүй." };
 
-  let user;
   try {
-    user = await authorizeStaff(appt.branchId);
+    await assertStaffScope(user, appt.branchId);
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
   }
@@ -605,6 +621,15 @@ export async function rejectAppointment(
   const id = s(formData, "id");
   if (!id) return { ok: false, message: "Буруу хүсэлт." };
 
+  // Tenant context-ийг ЗААВАЛ эхлээд (доорх Prisma дуудлагаас өмнө)
+  // тохируулна — эс бөгөөс "Tenant context тохируулагдаагүй" алдаа шидэгдэнэ.
+  let user;
+  try {
+    user = await requireUser();
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
+
   const appt = await prisma.appointment.findUnique({
     where: { id },
     select: {
@@ -617,9 +642,8 @@ export async function rejectAppointment(
   });
   if (!appt) return { ok: false, message: "Цаг захиалга олдсонгүй." };
 
-  let user;
   try {
-    user = await authorizeStaff(appt.branchId);
+    await assertStaffScope(user, appt.branchId);
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
   }
@@ -681,15 +705,23 @@ export async function markAppointmentNoShow(
   const id = s(formData, "id");
   if (!id) return { ok: false, message: "Буруу хүсэлт." };
 
+  // Tenant context-ийг ЗААВАЛ эхлээд (доорх Prisma дуудлагаас өмнө)
+  // тохируулна — эс бөгөөс "Tenant context тохируулагдаагүй" алдаа шидэгдэнэ.
+  let user;
+  try {
+    user = await requireUser();
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
+
   const appt = await prisma.appointment.findUnique({
     where: { id },
     select: { id: true, tenantId: true, branchId: true, status: true },
   });
   if (!appt) return { ok: false, message: "Цаг захиалга олдсонгүй." };
 
-  let user;
   try {
-    user = await authorizeStaff(appt.branchId);
+    await assertStaffScope(user, appt.branchId);
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
   }
