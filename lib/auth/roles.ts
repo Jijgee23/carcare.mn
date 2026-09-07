@@ -98,6 +98,41 @@ export function canChooseAllBranches(user: {
 }
 
 /**
+ * Ажилтны сонгож болох салбаруудын id-нүүд — тогтмол `branchId` + нэмэлт
+ * `assignableBranchIds` (өмнө нь зөвхөн "Хариуцах мастер" сонголтод
+ * ашиглагддаг байсан ч, олон салбарт дамжиж ажилладаг ажилтныг илэрхийлдэг
+ * тул нэвтрэх үеийн ажиллах салбар сонгуулахад ч ашиглана). Owner-д
+ * хамаарахгүй (owner тенантын БҮХ салбарыг сонгож болно — харах
+ * app/page/choose-branch/page.tsx). Давхардлыг арилгана.
+ */
+export function eligibleBranchIds(user: {
+  branchId: string | null;
+  assignableBranchIds: string[];
+}): string[] {
+  const ids = new Set<string>();
+  if (user.branchId) ids.add(user.branchId);
+  for (const id of user.assignableBranchIds) ids.add(id);
+  return [...ids];
+}
+
+/**
+ * Нэвтрэх үед JWT-д шигтгэх эхлэлийн `workingBranchId` (harах:
+ * lib/auth/session.ts). Owner эсвэл 2+ салбарт ажилладаг ажилтныг
+ * тодорхойгүй үлдээж (undefined) — proxy.ts-ийн middleware дараагийн
+ * /dashboard хүсэлт дээр /page/choose-branch руу чиглүүлнэ. Яг 1 сонголттой
+ * ажилтныг шууд тэр салбарт нь оноож, сонгуулах шаардлагагүй болгоно.
+ */
+export function seedWorkingBranchId(user: {
+  isOwner: boolean;
+  branchId: string | null;
+  assignableBranchIds: string[];
+}): string | undefined {
+  if (user.isOwner) return undefined;
+  const eligible = eligibleBranchIds(user);
+  return eligible.length === 1 ? eligible[0] : undefined;
+}
+
+/**
  * Web dashboard-ийн жагсаалт/үүсгэлтийн scope — session-д нэвтрэх үедээ
  * сонгосон ажиллах салбар (`workingBranchId`, harах: lib/auth/session.ts)
  * дээр суурилна. `branchScopeId`-ээс ялгаатай нь: энд isOwner эсэх биш,

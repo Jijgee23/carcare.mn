@@ -41,7 +41,7 @@ import { StatusControls } from "./status-controls";
 import { OrderForm } from "../order-form";
 
 export const metadata = {
-  title: "Захиалгын дэлгэрэнгүй",
+  title: "Засварын хуудасны дэлгэрэнгүй",
 };
 
 export default async function OrderDetailPage({
@@ -65,7 +65,10 @@ export default async function OrderDetailPage({
         ...(scopeBranchId ? { branchId: scopeBranchId } : {}),
       },
       include: {
-        items: { orderBy: { createdAt: "asc" } },
+        items: {
+          orderBy: { createdAt: "asc" },
+          include: { cancelledBy: { select: { firstName: true, lastName: true } } },
+        },
         customer: { select: { id: true, fullName: true, phone: true } },
         vehicle: {
           select: {
@@ -202,7 +205,7 @@ export default async function OrderDetailPage({
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
       <nav className="flex items-center gap-1.5 text-[13px] text-[var(--oc-muted3)] mb-3">
         <Link href="/dashboard/orders" className="hover:text-[var(--oc-accent-hi)] transition-colors">
-          Захиалгууд
+          Засварын хуудас
         </Link>
         <span>/</span>
         <span className="text-[var(--oc-muted)]">#{order.number}</span>
@@ -211,7 +214,7 @@ export default async function OrderDetailPage({
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">
-            Захиалга #{order.number}
+            Засварын хуудас #{order.number}
           </h1>
           <p className="text-sm text-[var(--oc-muted3)] mt-1">
             {customerLabel(order.customer)} · {order.vehicle.plate}
@@ -279,6 +282,11 @@ export default async function OrderDetailPage({
                   quantity: it.quantity.toString(),
                   unitPrice: it.unitPrice.toString(),
                   total: it.total.toString(),
+                  status: it.status,
+                  cancelledAt: it.cancelledAt?.toISOString() ?? null,
+                  cancelledByName: it.cancelledBy
+                    ? `${it.cancelledBy.lastName} ${it.cancelledBy.firstName}`
+                    : null,
                 }))}
                 canEdit={isEditable && canEditOrder}
               />
@@ -324,7 +332,7 @@ export default async function OrderDetailPage({
                         ) : (
                           <span className="shrink-0 text-[11px] text-[var(--oc-muted4)]">
                             {status === "SCHEDULED"
-                              ? "Захиалга эхэлсний дараа"
+                              ? "Засварын хуудас эхэлсний дараа"
                               : "—"}
                           </span>
                         )}
@@ -395,7 +403,7 @@ export default async function OrderDetailPage({
 
           {isEditable && canEditOrder ? (
             <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-4 sm:p-5">
-              <h2 className="font-semibold text-[var(--oc-ink)] mb-5">Захиалгын мэдээлэл</h2>
+              <h2 className="font-semibold text-[var(--oc-ink)] mb-5">Засварын хуудасны мэдээлэл</h2>
               <OrderForm
                 initial={{
                   id: order.id,
@@ -474,7 +482,7 @@ export default async function OrderDetailPage({
             </dl>
             {order.isPostpaid ? (
               <p className="text-xs text-sky-400/90 light:text-sky-700 mb-4 -mt-1">
-                Дараа төлбөрт захиалга — төлбөрийг гэрээгээр нэгтгэн төлнө.
+                Дараа төлбөрт засварын хуудас — төлбөрийг гэрээгээр нэгтгэн төлнө.
               </p>
             ) : null}
             {canEditPayments ? (
@@ -585,11 +593,11 @@ export default async function OrderDetailPage({
                 Аюултай бүс
               </h2>
               <p className="text-xs text-[var(--oc-muted3)] mb-4">
-                Захиалгыг устгасны дараа сэргээх боломжгүй.
+                Засварын хуудсыг устгасны дараа сэргээх боломжгүй.
               </p>
               <input type="hidden" name="id" value={order.id} />
               <Btn type="submit" variant="danger" className="w-full">
-                Захиалгыг устгах
+                Засварын хуудсыг устгах
               </Btn>
             </form>
           ) : null}

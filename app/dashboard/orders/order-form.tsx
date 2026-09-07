@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
 import {
   type OrderActionState,
   createOrderAction,
@@ -124,6 +124,17 @@ export function OrderForm({
   const showDiagnostics = allowDiagnosticEdit && diagnosticTemplates.length > 0;
 
   const fe = state?.fieldErrors ?? {};
+
+  // Шинэ захиалгад "одоо" гэсэн анхны утгыг зөвхөн client дээр mount-ын дараа
+  // тавина (server/client hydration-ий хооронд минут шилжвэл текст зөрж,
+  // hydration mismatch өгдөг байсан тул render дундаа `new Date()` дуудахгүй).
+  const [autoScheduledAt, setAutoScheduledAt] = useState<Date | null>(
+    () => initial?.scheduledAt ?? null,
+  );
+  useEffect(() => {
+    if (!isEdit && !initial?.scheduledAt) setAutoScheduledAt(new Date());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const customerById = useMemo(
     () => new Map(customers.map((c) => [c.id, c])),
@@ -332,12 +343,11 @@ export function OrderForm({
           className={FIELD_MW}
         >
           <DatePicker
+            key={autoScheduledAt ? "seeded" : "empty"}
             id="scheduledAt"
             name="scheduledAt"
             withTime
-            defaultValue={toLocalDatetimeInput(
-              initial?.scheduledAt ?? (isEdit ? null : new Date()),
-            )}
+            defaultValue={toLocalDatetimeInput(autoScheduledAt)}
             error={Boolean(fe.scheduledAt)}
           />
         </Field>
@@ -345,7 +355,7 @@ export function OrderForm({
 
       {vehicles.find((v) => v.id === vehicleId)?.isPostpaid ? (
         <div className="rounded-lg border border-sky-500/25 bg-sky-500/[0.08] px-4 py-2.5 text-xs text-sky-300 light:text-sky-700 max-w-2xl">
-          Энэ машин <strong>дараа төлбөрт</strong> нөхцөлтэй — захиалга «Дараа
+          Энэ машин <strong>дараа төлбөрт</strong> нөхцөлтэй — засварын хуудас «Дараа
           төлбөрт» түүхэнд бүртгэгдэж, төлбөрийг нэгтгэн төлнө.
         </div>
       ) : null}
@@ -388,7 +398,7 @@ export function OrderForm({
           ))}
           <div className="text-sm font-medium text-[var(--oc-ink2)]">Оношилгоо</div>
           <p className="text-xs text-[var(--oc-muted3)] -mt-1">
-            Хийх оношилгоог товлоно (бөглөхгүй). Захиалга эхэлсний дараа бөглөнө.
+            Хийх оношилгоог товлоно (бөглөхгүй). Засварын хуудас эхэлсний дараа бөглөнө.
           </p>
           <div className="flex flex-col gap-3 mt-1">
             {DIAGNOSTIC_TYPES.map((tp) => {
@@ -433,7 +443,7 @@ export function OrderForm({
           ← Буцах
         </BtnLink>
         <Btn type="submit" disabled={pending}>
-          {pending ? "..." : isEdit ? "Хадгалах" : "Захиалга үүсгэх"}
+          {pending ? "..." : isEdit ? "Хадгалах" : "Засварын хуудас үүсгэх"}
         </Btn>
       </div>
     </form>

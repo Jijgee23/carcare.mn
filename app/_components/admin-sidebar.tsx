@@ -95,7 +95,7 @@ const navItems: NavItem[] = [
   {
     href: "/dashboard/orders",
     view: "orders",
-    label: "Захиалга",
+    label: "Засварын хуудас",
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M9 11l3 3L22 4" />
@@ -103,7 +103,7 @@ const navItems: NavItem[] = [
       </svg>
     ),
     children: [
-      { href: "/dashboard/orders", label: "Бүх захиалга", exact: true },
+      { href: "/dashboard/orders", label: "Бүх засварын хуудас", exact: true },
       { href: "/dashboard/orders/postpaid", label: "Дараа төлбөрт" },
     ],
   },

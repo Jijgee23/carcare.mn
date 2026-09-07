@@ -17,7 +17,7 @@ export default async function TenantQPayPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">QPay тохиргоо</h1>
         <p className="text-sm text-[var(--oc-muted3)] mt-1">
-          Захиалгын төлбөрийг QPay-ээр авах merchant credentials.
+          Засварын хуудасны төлбөрийг QPay-ээр авах merchant credentials.
         </p>
       </div>
 

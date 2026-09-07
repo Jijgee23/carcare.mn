@@ -44,7 +44,7 @@ export function Hero() {
             Автосервисийн ажлыг <span className="text-[var(--oc-accent)]">нэг урсгал</span> болгоно.
           </h1>
           <p className="mt-6 max-w-[520px] text-lg leading-relaxed text-[var(--oc-muted)] text-pretty">
-            carservice нь засварын газруудад захиалга, ажлын хуваарь, нөөц, тайланг; жолоочид цаг
+            carservice нь засварын газруудад засварын хуудас, ажлын хуваарь, нөөц, тайланг; жолоочид цаг
             товлолт, засварын түүхийг нэг платформ дээр нэгтгэдэг.
           </p>
           <div className="mt-9 flex flex-col sm:flex-row gap-3">

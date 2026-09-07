@@ -6,8 +6,9 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@/app/generated/prisma/client";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import {
-  branchScopeId,
   canChooseAllBranches,
+  eligibleBranchIds,
+  seedWorkingBranchId,
 } from "@/lib/auth/roles";
 import {
   clearSessionCookie,
@@ -607,16 +608,17 @@ export async function signInAction(
     null;
   const session = await createUserSession({ userId: user.id, userAgent: ua, ip });
 
-  // Тогтмол салбартай (branchScopeId!=null) ажилтан шууд тэр салбартаа
-  // ажилладаг гэж тооцно (сонгуулах шаардлагагүй). Owner/тогтмол салбаргүй
-  // ажилтныг undefined-ээр үлдээж, дараагийн /dashboard хүсэлт дээр
-  // proxy.ts /page/choose-branch руу чиглүүлнэ (харах: lib/auth/roles.ts).
+  // Яг НЭГ сонголттой (branchId + assignableBranchIds) ажилтан шууд тэр
+  // салбартаа ажилладаг гэж тооцно (сонгуулах шаардлагагүй). Owner/2+
+  // салбарт ажилладаг ажилтныг undefined-ээр үлдээж, дараагийн /dashboard
+  // хүсэлт дээр proxy.ts /page/choose-branch руу чиглүүлнэ (харах:
+  // lib/auth/roles.ts seedWorkingBranchId).
   const token = await signSession({
     userId: user.id,
     tenantId: user.tenantId,
     isOwner: user.isOwner,
     sid: session.id,
-    workingBranchId: branchScopeId(user) ?? undefined,
+    workingBranchId: seedWorkingBranchId(user),
   });
   await setSessionCookie(token);
 
@@ -995,7 +997,7 @@ export async function activateAccountAction(
     tenantId: user.tenantId,
     isOwner: user.isOwner,
     sid: session.id,
-    workingBranchId: branchScopeId(user) ?? undefined,
+    workingBranchId: seedWorkingBranchId(user),
   });
   await setSessionCookie(token);
 
@@ -1012,8 +1014,10 @@ export async function activateAccountAction(
 }
 
 // ---- CHOOSE WORKING BRANCH -------------------------------------------------
-// Owner/тогтмол салбаргүй ажилтан нэвтрэх бүрдээ ажиллах салбараа (эсвэл "Бүх
-// салбар") сонгоно. proxy.ts-ийн middleware workingBranchId байхгүй session-г
+// Owner, эсвэл 2 ба түүнээс дээш салбарт ажилладаг ажилтан (branchId +
+// assignableBranchIds — харах lib/auth/roles.ts eligibleBranchIds) нэвтрэх
+// бүрдээ ажиллах салбараа (owner/тогтмол салбаргүй бол "Бүх салбар" ч)
+// сонгоно. proxy.ts-ийн middleware workingBranchId байхгүй session-г
 // /page/choose-branch руу чиглүүлдэг (харах: lib/auth/session.ts, proxy.ts).
 
 export type ChooseBranchState = {
@@ -1037,7 +1041,12 @@ export async function chooseBranchAction(
 
   const user = await prisma.user.findUnique({
     where: { id: session.userId },
-    select: { isOwner: true, branchId: true, tenantId: true },
+    select: {
+      isOwner: true,
+      branchId: true,
+      assignableBranchIds: true,
+      tenantId: true,
+    },
   });
   if (!user) redirect("/page/login");
   setTenantContext(user.tenantId);
@@ -1054,6 +1063,15 @@ export async function chooseBranchAction(
       select: { id: true },
     });
     if (!branch) return { ok: false, message: "Сонгосон салбар олдсонгүй." };
+
+    // Owner эсвэл тогтмол салбаргүй ч нэмэлт сонголтгүй ("Бүх салбар"-аар
+    // хамрагдсан) ажилтан ямар ч тенантын салбарыг сонгож болно. 2+ салбарт
+    // ажилладаг (эсвэл цор ганц branchId-тай) ажилтныг зөвхөн ӨӨРИЙН
+    // eligibleBranchIds жагсаалтад хязгаарлана.
+    const eligible = eligibleBranchIds(user);
+    if (!user.isOwner && eligible.length > 0 && !eligible.includes(branch.id)) {
+      return { ok: false, message: "Танд энэ салбарыг сонгох эрх байхгүй." };
+    }
     workingBranchId = branch.id;
   }
 

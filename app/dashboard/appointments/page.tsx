@@ -254,7 +254,7 @@ export default async function AppointmentsPage({
                                 size="sm"
                                 className="whitespace-nowrap"
                               >
-                                Захиалга үүсгэх →
+                                Засварын хуудас үүсгэх →
                               </BtnLink>
                               <AppointmentNoShowButton appointmentId={a.id} />
                             </>

@@ -56,7 +56,7 @@ export default async function EditCustomerPage({
         <div>
           <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">{customerLabel(customer)}</h1>
           <p className="text-sm text-[var(--oc-muted3)] mt-1">
-            {customer.phone} · {customer._count.serviceOrders} захиалга
+            {customer.phone} · {customer._count.serviceOrders} засварын хуудас
           </p>
         </div>
         <div className="flex items-center gap-2">

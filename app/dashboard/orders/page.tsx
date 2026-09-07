@@ -33,7 +33,7 @@ import { prisma } from "@/lib/prisma";
 import { OrderRow } from "./order-row";
 
 export const metadata = {
-  title: "Захиалга",
+  title: "Засварын хуудас",
 };
 
 export default async function OrdersPage({
@@ -173,12 +173,12 @@ export default async function OrdersPage({
   return (
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
       <PageHeader
-        title="Захиалга"
+        title="Засварын хуудас"
         description="Бүх ажил, статус, орлогын бүртгэл"
         actions={
           canAdd ? (
             <AddLinkButton href="/dashboard/orders/new">
-              Захиалга үүсгэх
+              Засварын хуудас үүсгэх
             </AddLinkButton>
           ) : null
         }
@@ -279,15 +279,15 @@ export default async function OrdersPage({
       <div className="glass rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
         <div className="px-4 py-2.5 border-b border-white/[0.06] flex items-center">
           <div className="ml-auto text-xs text-white/30 light:text-slate-500">
-            {filteredTotal} захиалга
+            {filteredTotal} засварын хуудас
           </div>
         </div>
 
         {orders.length === 0 ? (
           <div className="px-5 py-16 text-center text-white/40 text-sm flex-1">
             {status
-              ? "Энэ статуст захиалга алга."
-              : "Захиалга алга байна. Эхний захиалгаа үүсгээрэй."}
+              ? "Энэ статуст засварын хуудас алга."
+              : "Засварын хуудас алга байна. Эхний засварын хуудсаа үүсгээрэй."}
           </div>
         ) : (
           <div className="overflow-auto flex-1 min-h-0">

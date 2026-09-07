@@ -7,7 +7,7 @@ import { Eyebrow, StatusPill } from "./landing-ops-ui";
 // декоратив панел (designs/tenant_login.png лавлагаа). Бодит өгөгдөл биш,
 // зөвхөн системийн мэдрэмж өгөх зорилготой чимэглэл.
 const STATS = [
-  { label: "Өнөөдрийн захиалга", value: "24" },
+  { label: "Өнөөдрийн засварын хуудас", value: "24" },
   { label: "Ашиглалттай талбай", value: "6/8" },
   { label: "Дундаж хугацаа", value: "41", unit: "мин" },
 ];
@@ -56,7 +56,7 @@ function ConsolePanel() {
       <div className="relative flex-1 overflow-y-auto px-8 py-9">
         <Eyebrow>Засварын газрын консол</Eyebrow>
         <h1 className="mt-4 text-[34px] xl:text-[40px] font-semibold leading-[1.1] tracking-[-0.03em] text-[var(--oc-ink)] text-balance">
-          Захиалга, талбай, мастер — <span className="text-[var(--oc-muted)]">нэг консолоос.</span>
+          Засварын хуудас, талбай, мастер — <span className="text-[var(--oc-muted)]">нэг консолоос.</span>
         </h1>
         <p className="mt-4 max-w-md text-[15px] leading-relaxed text-[var(--oc-muted)]">
           Цаг товлолт, ажлын урсгал, сэлбэгийн нөөц, орлогын тайлан. Салбар бүрийн ачаалал

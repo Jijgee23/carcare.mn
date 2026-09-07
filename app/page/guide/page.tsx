@@ -104,8 +104,8 @@ export default function GuidePage() {
               хязгаарлах.
             </li>
             <li>
-              <span className="text-white/80">Захиалга удирдах:</span> бүх
-              захиалга, дараа төлбөрт захиалгыг нэг дороос харах, удирдах.
+              <span className="text-white/80">Засварын хуудас удирдах:</span> бүх
+              засварын хуудас, дараа төлбөрт засварын хуудсыг нэг дороос харах, удирдах.
             </li>
             <li>
               <span className="text-white/80">Цаг захиалга удирдах:</span>{" "}

@@ -91,7 +91,7 @@ export default async function ReportsPage({
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">Тайлан</h1>
         <p className="text-sm text-[var(--oc-muted3)] mt-1">
-          {range.label} · {completedCount} дууссан захиалга · {totalInRange} нийт
+          {range.label} · {completedCount} дууссан засварын хуудас · {totalInRange} нийт
         </p>
       </div>
 
@@ -125,7 +125,7 @@ export default async function ReportsPage({
 
       <StatGrid cols={4}>
         <BigStat label="Нийт орлого" value={formatTugrik(totalRevenue)} tone="accent" />
-        <StatCell label="Дууссан захиалга" value={completedCount} />
+        <StatCell label="Дууссан засварын хуудас" value={completedCount} />
         <BigStat label="Дундаж дүн" value={formatTugrik(avgTicket)} />
         <StatCell label="Идэвхтэй" value={activeCount} />
       </StatGrid>
@@ -133,7 +133,7 @@ export default async function ReportsPage({
       <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-6 mb-6">
         <h2 className="font-semibold text-[var(--oc-ink)] mb-1">Орлогын хандлага</h2>
         <p className="text-xs text-[var(--oc-muted3)] mb-2">
-          {range.label} — дууссан захиалгын өдөр тутмын орлого.
+          {range.label} — дууссан засварын хуудасны өдөр тутмын орлого.
         </p>
         <IncomeChart
           points={income.points}
@@ -145,7 +145,7 @@ export default async function ReportsPage({
         <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-6">
           <h2 className="font-semibold text-[var(--oc-ink)] mb-1">Орлого — ажил vs сэлбэг</h2>
           <p className="text-xs text-[var(--oc-muted3)] mb-5">
-            Дууссан захиалгын мөрүүдийн хуваарилалт.
+            Дууссан засварын хуудасны мөрүүдийн хуваарилалт.
           </p>
           <div className="space-y-4">
             {kindRows.map((r) => (
@@ -172,8 +172,8 @@ export default async function ReportsPage({
         </section>
 
         <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-6">
-          <h2 className="font-semibold text-[var(--oc-ink)] mb-1">Захиалгын статус</h2>
-          <p className="text-xs text-[var(--oc-muted3)] mb-5">Сонгосон хугацааны нийт захиалга.</p>
+          <h2 className="font-semibold text-[var(--oc-ink)] mb-1">Засварын хуудасны статус</h2>
+          <p className="text-xs text-[var(--oc-muted3)] mb-5">Сонгосон хугацааны нийт засварын хуудас.</p>
           <div className="space-y-2">
             {statusRows.map((s) => (
               <div key={s.status} className="flex items-center gap-3">
@@ -198,7 +198,7 @@ export default async function ReportsPage({
 
         <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-6">
           <h2 className="font-semibold text-[var(--oc-ink)] mb-1">Салбараар</h2>
-          <p className="text-xs text-[var(--oc-muted3)] mb-5">Орлого ба захиалгын тоо.</p>
+          <p className="text-xs text-[var(--oc-muted3)] mb-5">Орлого ба засварын хуудасны тоо.</p>
           {branchRows.length === 0 ? (
             <p className="text-sm text-[var(--oc-muted3)] py-4 text-center">Өгөгдөл алга.</p>
           ) : (
@@ -231,7 +231,7 @@ export default async function ReportsPage({
 
         <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-6">
           <h2 className="font-semibold text-[var(--oc-ink)] mb-1">Мастер / Менежер</h2>
-          <p className="text-xs text-[var(--oc-muted3)] mb-5">Хариуцсан захиалгын орлого.</p>
+          <p className="text-xs text-[var(--oc-muted3)] mb-5">Хариуцсан засварын хуудасны орлого.</p>
           {techRows.length === 0 ? (
             <p className="text-sm text-[var(--oc-muted3)] py-4 text-center">Өгөгдөл алга.</p>
           ) : (
@@ -284,7 +284,7 @@ export default async function ReportsPage({
                         {c.name}
                       </div>
                       <div className="text-xs text-[var(--oc-muted4)]">
-                        {c.count} захиалга
+                        {c.count} засварын хуудас
                       </div>
                     </div>
                     <span className="font-plex-mono text-sm text-[var(--oc-ink2)] shrink-0">

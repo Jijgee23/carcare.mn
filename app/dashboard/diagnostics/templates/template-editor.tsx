@@ -299,7 +299,7 @@ export function TemplateEditor({
           <Field
             label="Үнэ (₮)"
             htmlFor="price"
-            hint="захиалгад автоматаар буух"
+            hint="засварын хуудсанд автоматаар буух"
             error={fe.price}
             className="max-w-xs"
           >
@@ -316,7 +316,7 @@ export function TemplateEditor({
           <Field
             label="Дундаж хугацаа (минут)"
             htmlFor="durationMin"
-            hint="захиалгын тооцоо"
+            hint="засварын хуудасны тооцоо"
             error={fe.durationMin}
             className="max-w-xs"
           >
@@ -384,7 +384,7 @@ export function TemplateEditor({
             onChange={(e) => setIsActive(e.target.checked)}
             className="accent-[var(--oc-accent)]"
           />
-          Идэвхтэй (захиалга дээр сонгох боломжтой)
+          Идэвхтэй (засварын хуудсан дээр сонгох боломжтой)
         </label>
         </div>
       </SectionPanel>

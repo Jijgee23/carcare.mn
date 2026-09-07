@@ -47,6 +47,9 @@ const ORDER_DETAIL_SELECT = {
       unitPrice: true,
       total: true,
       serviceId: true,
+      status: true,
+      cancelledAt: true,
+      cancelledById: true,
     },
   },
   reports: {
@@ -77,7 +80,7 @@ export async function GET(
     select: ORDER_DETAIL_SELECT,
   });
 
-  if (!order) return jsonError(404, "Захиалга олдсонгүй.");
+  if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
   return jsonOk({ order });
 }
 
@@ -102,11 +105,11 @@ export async function PATCH(
     },
     select: { id: true, status: true, startedAt: true },
   });
-  if (!order) return jsonError(404, "Захиалга олдсонгүй.");
+  if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
   if (isOrderLocked(order.status as OrderStatus)) {
     return jsonError(
       422,
-      "Дууссан / цуцлагдсан захиалгын мэдээллийг засах боломжгүй.",
+      "Дууссан / цуцлагдсан засварын хуудасны мэдээллийг засах боломжгүй.",
     );
   }
 

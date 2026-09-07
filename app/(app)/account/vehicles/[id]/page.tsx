@@ -159,7 +159,7 @@ export default async function AccountVehiclePage({
       {/* Захиалгууд (бүх tenant) */}
       <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--oc-line)]">
-          <h2 className="font-semibold">Үйлчилгээний захиалга</h2>
+          <h2 className="font-semibold">Засварын хуудас</h2>
           <span className="text-xs text-[var(--oc-muted3)]">{orders.length}</span>
         </div>
         {orders.length === 0 ? (

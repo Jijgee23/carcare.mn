@@ -111,7 +111,7 @@ export async function POST(req: Request) {
         branchId: true,
       },
     });
-    if (!order) return jsonError(404, "Захиалга олдсонгүй.");
+    if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
     finalCustomerId = order.customerId;
     finalVehicleId = order.vehicleId;
     finalBranchId = order.branchId;

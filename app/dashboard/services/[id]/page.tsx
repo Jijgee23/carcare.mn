@@ -168,7 +168,7 @@ export default async function EditServicePage({
                 </div>
               )}
               <div>
-                <dt className="text-xs text-[var(--oc-muted3)]">Захиалгад орсон</dt>
+                <dt className="text-xs text-[var(--oc-muted3)]">Засварын хуудсанд орсон</dt>
                 <dd className="mt-0.5 font-plex-mono text-[var(--oc-ink2)]">{svc._count.items} удаа</dd>
               </div>
               <div>
@@ -184,7 +184,7 @@ export default async function EditServicePage({
             <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-4 sm:p-5">
               <h2 className="font-semibold text-[var(--oc-ink)] mb-1">Орлого / Зарлага</h2>
               <p className="text-xs text-[var(--oc-muted3)] mb-4">
-                Гараар тохируулах. Захиалгад ашиглавал автоматаар хасагдана.
+                Гараар тохируулах. Засварын хуудсанд ашиглавал автоматаар хасагдана.
               </p>
               <StockAdjustForm
                 serviceId={svc.id}

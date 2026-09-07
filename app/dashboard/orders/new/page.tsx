@@ -12,7 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { ORDER_FORM_ID, OrderForm } from "../order-form";
 
 export const metadata = {
-  title: "Шинэ захиалга",
+  title: "Шинэ засварын хуудас",
 };
 
 export default async function NewOrderPage({
@@ -115,14 +115,14 @@ export default async function NewOrderPage({
       <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
         <nav className="flex items-center gap-1.5 text-[13px] text-[var(--oc-muted3)] mb-3">
           <Link href="/dashboard/orders" className="hover:text-[var(--oc-accent-hi)] transition-colors">
-            Захиалгууд
+            Засварын хуудас
           </Link>
           <span>/</span>
-          <span className="text-[var(--oc-muted)]">Шинэ захиалга</span>
+          <span className="text-[var(--oc-muted)]">Шинэ засварын хуудас</span>
         </nav>
-        <h1 className="text-2xl font-semibold text-[var(--oc-ink)] mb-6">Шинэ захиалга</h1>
+        <h1 className="text-2xl font-semibold text-[var(--oc-ink)] mb-6">Шинэ засварын хуудас</h1>
         <div className="rounded-[10px] border border-[var(--oc-accent)]/30 bg-[var(--oc-panel)] p-5 text-sm text-[var(--oc-ink2)]">
-          Захиалга үүсгэхийн тулд эхлээд{" "}
+          Засварын хуудас үүсгэхийн тулд эхлээд{" "}
           <Link
             href="/dashboard/branches/new"
             className="text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] underline"
@@ -139,17 +139,17 @@ export default async function NewOrderPage({
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
       <nav className="flex items-center gap-1.5 text-[13px] text-[var(--oc-muted3)] mb-3">
         <Link href="/dashboard/orders" className="hover:text-[var(--oc-accent-hi)] transition-colors">
-          Захиалгууд
+          Засварын хуудас
         </Link>
         <span>/</span>
-        <span className="text-[var(--oc-muted)]">Шинэ захиалга</span>
+        <span className="text-[var(--oc-muted)]">Шинэ засварын хуудас</span>
       </nav>
 
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">Шинэ захиалга</h1>
+          <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">Шинэ засварын хуудас</h1>
           <p className="text-sm text-[var(--oc-muted3)] mt-1">
-            Үйлчилгээний захиалгын үндсэн мэдээллийг оруулна уу. Ажил, сэлбэгийн мөрийг дараа нь нэмнэ.
+            Засварын хуудасны үндсэн мэдээллийг оруулна уу. Ажил, сэлбэгийн мөрийг дараа нь нэмнэ.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -157,7 +157,7 @@ export default async function NewOrderPage({
             ← Буцах
           </BtnLink>
           <Btn type="submit" form={ORDER_FORM_ID}>
-            Захиалга үүсгэх
+            Засварын хуудас үүсгэх
           </Btn>
         </div>
       </div>

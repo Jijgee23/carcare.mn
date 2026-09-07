@@ -102,7 +102,7 @@ export default async function BranchesPage({
         <StatCell label="Нийт салбар" value={totalBranches} />
         <StatCell label="Идэвхтэй" value={activeBranches} tone="ok" />
         <StatCell label="Ажилтан" value={totalStaff} />
-        <StatCell label="Нээлттэй захиалга" value={openOrders} tone="accent" />
+        <StatCell label="Нээлттэй засварын хуудас" value={openOrders} tone="accent" />
       </StatGrid>
 
       {totalBranches === 0 ? (
@@ -155,7 +155,7 @@ export default async function BranchesPage({
                       "Ажиллах өдөр",
                       "Утас",
                       "Ажилтан",
-                      "Захиалга",
+                      "Засварын хуудас",
                       "Үйлдэл",
                     ].map((h) => (
                       <th
@@ -242,7 +242,7 @@ export default async function BranchesPage({
               {branches.length} / {filteredTotal} харагдаж байна
             </span>
             <span>
-              Нийт ажилтан {totalStaff} · Нээлттэй захиалга {openOrders}
+              Нийт ажилтан {totalStaff} · Нээлттэй засварын хуудас {openOrders}
             </span>
           </div>
           <Pagination page={meta.page} totalPages={meta.totalPages} total={meta.total} />

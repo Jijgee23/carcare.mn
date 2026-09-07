@@ -94,7 +94,7 @@ export default async function SystemVehiclesPage({
                     "Өнгө",
                     "Эзэмшигч",
                     "Байгууллага",
-                    "Захиалга",
+                    "Засварын хуудас",
                     "Бүртгүүлсэн",
                   ].map((h) => (
                     <th

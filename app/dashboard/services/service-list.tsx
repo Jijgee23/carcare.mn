@@ -192,7 +192,7 @@ export async function ServiceList({
                                 className="text-xs text-red-400 hover:text-red-300 light:text-red-600 light:hover:text-red-700 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-red-500/10"
                                 title={
                                   svc._count.items > 0
-                                    ? "Захиалгад ашиглагдсан тул архивлагдана"
+                                    ? "Засварын хуудсанд ашиглагдсан тул архивлагдана"
                                     : "Устгана"
                                 }
                               >

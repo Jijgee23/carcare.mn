@@ -3,11 +3,11 @@ import { getApiAccountFromRequest } from "@/lib/auth/account-api-token";
 import { prisma } from "@/lib/prisma";
 import { ownedVehicleIdsForAccount } from "@/lib/vehicles";
 
-// GET /api/v1/app/orders/[id] — нэг захиалгын дэлгэрэнгүй + хавсаргасан
+// GET /api/v1/app/orders/[id] — нэг засварын хуудасны дэлгэрэнгүй + хавсаргасан
 // оношилгооны тайлангуудын БҮРЭН бөглөлт (template.schema-тай хамт, апп талд
 // шууд харуулахад зориулав). Зөвшөөрөл: account/history веб хуудастай ижил —
-// захиалга account-тай холбоотой Customer-ийнх ЭСВЭЛ эзэмшлийн машины
-// захиалга байх ёстой.
+// засварын хуудас account-тай холбоотой Customer-ийнх ЭСВЭЛ эзэмшлийн машины
+// засварын хуудас байх ёстой.
 export async function GET(
   req: Request,
   ctx: { params: Promise<{ id: string }> },
@@ -53,6 +53,7 @@ export async function GET(
           quantity: true,
           unitPrice: true,
           total: true,
+          status: true,
         },
       },
       reports: {
@@ -70,7 +71,7 @@ export async function GET(
       },
     },
   });
-  if (!order) return jsonError(404, "Захиалга олдсонгүй.");
+  if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
 
   const { reports, ...rest } = order;
   return jsonOk({

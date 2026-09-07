@@ -96,11 +96,11 @@ export async function POST(req: Request) {
   if (Object.keys(fieldErrors).length)
     return jsonError(422, "Хүсэлт буруу.", { fieldErrors });
 
-  // Салбараар хязгаарлагдсан ажилтан зөвхөн өөрийн салбарт захиалга үүсгэнэ.
+  // Салбараар хязгаарлагдсан ажилтан зөвхөн өөрийн салбарт засварын хуудас үүсгэнэ.
   const scope = branchScopeId(auth.user);
   if (scope && branchId !== scope) {
     return jsonError(422, "Хүсэлт буруу.", {
-      fieldErrors: { branchId: "Зөвхөн өөрийн салбарт захиалга үүсгэх боломжтой." },
+      fieldErrors: { branchId: "Зөвхөн өөрийн салбарт засварын хуудас үүсгэх боломжтой." },
     });
   }
 

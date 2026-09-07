@@ -233,11 +233,11 @@ Res: 200 { "paid": false, "underpaidAmount": null, "message": null }  // хар�
       </Section>
 
       {/* --- Үйлчилгээний түүх --- */}
-      <Section title="5. Үйлчилгээний түүх (захиалга + оношилгоо)">
+      <Section title="5. Үйлчилгээний түүх (засварын хуудас + оношилгоо)">
         <p className="text-sm text-[var(--oc-muted)] -mt-2">
           Хэрэглэгчийн (бүх байгууллага дамнасан) хийгдсэн үйлчилгээний
           жагсаалт — эзэмшлийн машин (баталгаажсан утсаар холбогдсон) болон
-          account-тай холбоотой Customer-ийн захиалгууд. Захиалга бүрт
+          account-тай холбоотой Customer-ийн засварын хуудсууд. Засварын хуудас бүрт
           хавсаргасан оношилгооны тайлан (
           <code className="font-plex-mono text-[var(--oc-muted2)]">
             reports
@@ -271,7 +271,7 @@ Res: 200 { "paid": false, "underpaidAmount": null, "message": null }  // хар�
           method="GET"
           path="/api/v1/app/orders/[id]"
           auth="bearer"
-          title="Нэг захиалгын дэлгэрэнгүй — хийгдсэн ажил/сэлбэгийн мөрүүд, мөн хавсаргасан оношилгооны тайлангуудын БҮРЭН бөглөлт (templateSchema-тай хамт, шууд харуулахад бэлэн)."
+          title="Нэг засварын хуудасны дэлгэрэнгүй — хийгдсэн ажил/сэлбэгийн мөрүүд, мөн хавсаргасан оношилгооны тайлангуудын БҮРЭН бөглөлт (templateSchema-тай хамт, шууд харуулахад бэлэн)."
         >
           <Code>{`Res: 200 { "order": {
   "id": "...", "number": 1042, "status": "COMPLETED", "paymentStatus": "PAID",
@@ -281,7 +281,8 @@ Res: 200 { "paid": false, "underpaidAmount": null, "message": null }  // хар�
   "branch": { "name": "Үндсэн салбар", "phone": "70110000" },
   "vehicle": { "plate": "1234УБА", "make": "Toyota", "model": "Prius", "year": 2018 },
   "items": [{ "id": "...", "kind": "LABOR", "description": "Тосны солилт",
-              "quantity": "1", "unitPrice": "50000", "total": "50000" }],
+              "quantity": "1", "unitPrice": "50000", "total": "50000",
+              "status": "PENDING|IN_PROGRESS|COMPLETED|CANCELLED" }],
   "reports": [{
     "id": "...", "type": "POST_SERVICE", "templateName": "Үйлчилгээний дараах шалгалт",
     "templateSchema": { "sections": [{ "id": "...", "title": "...", "items": [
@@ -293,7 +294,7 @@ Res: 200 { "paid": false, "underpaidAmount": null, "message": null }  // хар�
     "createdAt": "..."
   }]
 } }
-404 { "error": "Захиалга олдсонгүй." }`}</Code>
+404 { "error": "Засварын хуудас олдсонгүй." }`}</Code>
         </Endpoint>
       </Section>
 

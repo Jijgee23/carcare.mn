@@ -283,7 +283,7 @@ export default async function EditEmployeePage({
               Ажилтныг устгах
             </h2>
             <p className="text-xs text-[var(--oc-muted3)] mb-3">
-              Захиалгатай холбоотой бол устгах боломжгүй — оронд нь идэвхгүй
+              Засварын хуудастай холбоотой бол устгах боломжгүй — оронд нь идэвхгүй
               болгож болно.
             </p>
             <DeleteEmployeeButton

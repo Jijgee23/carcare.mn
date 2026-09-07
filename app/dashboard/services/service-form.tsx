@@ -378,7 +378,7 @@ export function ServiceForm({
           onChange={(e) => setIsActive(e.target.checked)}
           className="accent-[var(--oc-accent)]"
         />
-        Идэвхтэй (захиалга дээр сонгох боломжтой)
+        Идэвхтэй (засварын хуудсан дээр сонгох боломжтой)
       </label>
 
       <div className="flex gap-2 pt-3 border-t border-[var(--oc-line2)]">

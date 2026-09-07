@@ -191,7 +191,7 @@ export default async function VehiclesPage({
                     "Дугаар",
                     "Эзэмшигч",
                     "Гүйлт",
-                    "Захиалга",
+                    "Засварын хуудас",
                     "",
                   ].map((h) => (
                     <th

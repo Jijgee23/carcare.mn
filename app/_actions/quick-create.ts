@@ -96,7 +96,7 @@ export async function quickCreateCustomerAction(input: {
     entity: "Customer",
     entityId: created.id,
     action: "CREATE",
-    summary: `${fullName || normalizedPhone} (захиалгаас түргэн)`,
+    summary: `${fullName || normalizedPhone} (засварын хуудаснаас түргэн)`,
     after: { fullName, phone: normalizedPhone, email, note },
   });
 
@@ -215,7 +215,7 @@ export async function quickCreateVehicleAction(input: {
     entity: "Vehicle",
     entityId: created.id,
     action: "CREATE",
-    summary: `${plate} · ${make} ${model} (захиалгаас түргэн)`,
+    summary: `${plate} · ${make} ${model} (засварын хуудаснаас түргэн)`,
     after: { plate, make, model, year, fuelType, customerId },
   });
 

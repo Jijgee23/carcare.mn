@@ -197,7 +197,7 @@ export async function deleteCustomerAction(formData: FormData): Promise<void> {
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") {
       throw new Error(
-        "Энэ үйлчлүүлэгчтэй холбоотой захиалга байгаа тул устгах боломжгүй.",
+        "Энэ үйлчлүүлэгчтэй холбоотой засварын хуудас байгаа тул устгах боломжгүй.",
       );
     }
     throw e;

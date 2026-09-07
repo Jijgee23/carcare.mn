@@ -1,11 +1,19 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { removeOrderItemAction } from "@/app/_actions/orders";
+import {
+  cancelOrderItemAction,
+  changeOrderItemStatusAction,
+} from "@/app/_actions/orders";
 import {
   ITEM_KIND_LABEL,
-  type ItemKind,
+  SERVICE_ITEM_STATUS_BADGE,
+  SERVICE_ITEM_STATUS_LABEL,
+  SERVICE_ITEM_STATUS_TRANSITIONS,
   formatTugrik,
+  isServiceItemCancellable,
+  type ItemKind,
+  type ServiceItemStatus,
 } from "@/lib/orders";
 
 // Захиалгын мөр — серверээс plain string-ээр дамжина (Decimal биш).
@@ -16,6 +24,9 @@ export type OrderItemLite = {
   quantity: string;
   unitPrice: string;
   total: string;
+  status: string;
+  cancelledAt: string | null;
+  cancelledByName: string | null;
 };
 
 // Харуулах дараалал: Ажил → Оношилгоо → Сэлбэг → Хураамж
@@ -26,10 +37,32 @@ function qtyText(q: string): string {
   return Number.isFinite(n) ? n.toLocaleString("mn-MN") : q;
 }
 
+function fmtDateTime(iso: string): string {
+  const d = new Date(iso);
+  return Number.isFinite(d.getTime())
+    ? d.toLocaleString("mn-MN", { hour12: false })
+    : iso;
+}
+
+// Цуцлагдаагүй мөрийн дараагийн (цуцлахаас өөр) явц — байхгүй бол терминал.
+function nextStatus(status: ServiceItemStatus): ServiceItemStatus | null {
+  const next = SERVICE_ITEM_STATUS_TRANSITIONS[status].find(
+    (s) => s !== "CANCELLED",
+  );
+  return next ?? null;
+}
+
+const NEXT_STATUS_ACTION_LABEL: Partial<Record<ServiceItemStatus, string>> = {
+  IN_PROGRESS: "Эхлүүлэх",
+  COMPLETED: "Дуусгах",
+};
+
 /**
  * Үйлчилгээний мөрүүдийг төрлөөр нь tab болгож харуулна. "Бүгд" tab дээр
  * төрөл тус бүрийн жижиг гарчигтайгаар, тодорхой tab дээр зөвхөн тухайн
  * төрлийн мөрүүдийг харуулна. Доор төрөл бүрийн дэд дүн + нийт дүн.
+ * Мөр бүр явцтай (хүлээгдэж буй/эхэлсэн/дууссан/цуцлагдсан) — цуцлагдсан мөр
+ * УСТГАГДАХГҮЙ, харагдана (харин дүнд орохгүй) — цуцалсан хүн/огноог хадгална.
  */
 export function OrderItems({
   items,
@@ -41,7 +74,8 @@ export function OrderItems({
   const groups = KIND_ORDER.map((kind) => {
     const list = items.filter((i) => i.kind === kind);
     const subtotal = list.reduce(
-      (acc, i) => acc + (Number.parseFloat(i.total) || 0),
+      (acc, i) =>
+        acc + (i.status === "CANCELLED" ? 0 : Number.parseFloat(i.total) || 0),
       0,
     );
     return { kind, items: list, subtotal };
@@ -90,7 +124,7 @@ export function OrderItems({
               Нэгж үнэ
             </th>
             <th className="text-right font-medium px-5 py-2 w-32">Дүн</th>
-            {canEdit ? <th className="w-9" aria-label="Үйлдэл" /> : null}
+            {canEdit ? <th className="w-20" aria-label="Үйлдэл" /> : null}
           </tr>
         </thead>
         <tbody className="divide-y divide-[var(--oc-line)]">
@@ -114,56 +148,97 @@ export function OrderItems({
                   </td>
                 </tr>
               ) : null}
-              {g.items.map((it) => (
-                <tr
-                  key={it.id}
-                  className="hover:bg-white/[0.02] transition-colors"
-                >
-                  <td className="px-5 py-2.5 text-[var(--oc-ink)]">
-                    {it.description}
-                    {/* Нарийн дэлгэцэд тоо×үнэ нэрийн доор */}
-                    <span className="sm:hidden block font-plex-mono text-xs text-[var(--oc-muted3)] tabular-nums mt-0.5">
-                      {qtyText(it.quantity)} × {formatTugrik(it.unitPrice)}
-                    </span>
-                  </td>
-                  <td className="hidden sm:table-cell px-2 py-2.5 text-right font-plex-mono text-[var(--oc-muted2)] tabular-nums whitespace-nowrap">
-                    {qtyText(it.quantity)}
-                  </td>
-                  <td className="hidden sm:table-cell px-2 py-2.5 text-right font-plex-mono text-[var(--oc-muted2)] tabular-nums whitespace-nowrap">
-                    {formatTugrik(it.unitPrice)}
-                  </td>
-                  <td className="px-5 py-2.5 text-right font-plex-mono font-semibold text-[var(--oc-ink)] tabular-nums whitespace-nowrap">
-                    {formatTugrik(it.total)}
-                  </td>
-                  {canEdit ? (
-                    <td className="pr-3 py-2.5 text-right">
-                      <form action={removeOrderItemAction}>
-                        <input type="hidden" name="itemId" value={it.id} />
-                        <button
-                          type="submit"
-                          aria-label={`"${it.description}" мөрийг устгах`}
-                          title="Мөр устгах"
-                          className="w-7 h-7 rounded-lg inline-flex items-center justify-center text-[var(--oc-muted4)] hover:text-red-400 hover:bg-red-500/10 light:hover:text-red-600 transition-colors"
+              {g.items.map((it) => {
+                const status = it.status as ServiceItemStatus;
+                const cancelled = status === "CANCELLED";
+                const upcoming = nextStatus(status);
+                return (
+                  <tr
+                    key={it.id}
+                    className="hover:bg-white/[0.02] transition-colors"
+                  >
+                    <td
+                      className={`px-5 py-2.5 border-l-[3px] ${ITEM_KIND_ROW_BORDER[g.kind]} ${cancelled ? "opacity-50" : "text-[var(--oc-ink)]"}`}
+                    >
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={cancelled ? "line-through" : ""}>
+                          {it.description}
+                        </span>
+                        <span
+                          className={`shrink-0 font-plex-mono text-[9px] px-1.5 py-0.5 rounded-full ${SERVICE_ITEM_STATUS_BADGE[status]}`}
                         >
-                          <svg
-                            width="13"
-                            height="13"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2.5"
-                            strokeLinecap="round"
-                            aria-hidden="true"
-                          >
-                            <path d="M18 6 6 18" />
-                            <path d="m6 6 12 12" />
-                          </svg>
-                        </button>
-                      </form>
+                          {SERVICE_ITEM_STATUS_LABEL[status]}
+                        </span>
+                      </div>
+                      {cancelled && it.cancelledAt ? (
+                        <div className="text-[11px] text-[var(--oc-muted3)] mt-0.5">
+                          Цуцалсан: {it.cancelledByName ?? "—"} ·{" "}
+                          {fmtDateTime(it.cancelledAt)}
+                        </div>
+                      ) : null}
+                      {/* Нарийн дэлгэцэд тоо×үнэ нэрийн доор */}
+                      <span className="sm:hidden block font-plex-mono text-xs text-[var(--oc-muted3)] tabular-nums mt-0.5">
+                        {qtyText(it.quantity)} × {formatTugrik(it.unitPrice)}
+                      </span>
                     </td>
-                  ) : null}
-                </tr>
-              ))}
+                    <td className="hidden sm:table-cell px-2 py-2.5 text-right font-plex-mono text-[var(--oc-muted2)] tabular-nums whitespace-nowrap">
+                      {qtyText(it.quantity)}
+                    </td>
+                    <td className="hidden sm:table-cell px-2 py-2.5 text-right font-plex-mono text-[var(--oc-muted2)] tabular-nums whitespace-nowrap">
+                      {formatTugrik(it.unitPrice)}
+                    </td>
+                    <td
+                      className={`px-5 py-2.5 text-right font-plex-mono font-semibold tabular-nums whitespace-nowrap ${cancelled ? "opacity-50 line-through" : "text-[var(--oc-ink)]"}`}
+                    >
+                      {formatTugrik(it.total)}
+                    </td>
+                    {canEdit ? (
+                      <td className="pr-3 py-2.5">
+                        <div className="flex items-center justify-end gap-1">
+                          {upcoming ? (
+                            <form action={changeOrderItemStatusAction}>
+                              <input type="hidden" name="itemId" value={it.id} />
+                              <input type="hidden" name="status" value={upcoming} />
+                              <button
+                                type="submit"
+                                title={NEXT_STATUS_ACTION_LABEL[upcoming]}
+                                className="whitespace-nowrap px-2 py-1 rounded-lg text-[11px] font-medium text-[var(--oc-accent)] hover:bg-[var(--oc-accent)]/10 transition-colors"
+                              >
+                                {NEXT_STATUS_ACTION_LABEL[upcoming]}
+                              </button>
+                            </form>
+                          ) : null}
+                          {isServiceItemCancellable(status) ? (
+                            <form action={cancelOrderItemAction}>
+                              <input type="hidden" name="itemId" value={it.id} />
+                              <button
+                                type="submit"
+                                aria-label={`"${it.description}" мөрийг цуцлах`}
+                                title="Цуцлах"
+                                className="w-7 h-7 shrink-0 rounded-lg inline-flex items-center justify-center text-[var(--oc-muted4)] hover:text-red-400 hover:bg-red-500/10 light:hover:text-red-600 transition-colors"
+                              >
+                                <svg
+                                  width="13"
+                                  height="13"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2.5"
+                                  strokeLinecap="round"
+                                  aria-hidden="true"
+                                >
+                                  <path d="M18 6 6 18" />
+                                  <path d="m6 6 12 12" />
+                                </svg>
+                              </button>
+                            </form>
+                          ) : null}
+                        </div>
+                      </td>
+                    ) : null}
+                  </tr>
+                );
+              })}
             </Fragment>
           ))}
         </tbody>
@@ -239,4 +314,13 @@ const ITEM_KIND_DOT: Record<ItemKind, string> = {
   DIAGNOSTIC: "bg-violet-400",
   PART: "bg-amber-400",
   FEE: "bg-zinc-400",
+};
+
+// Мөр бүрийн зүүн талын өнгөт хүрээ — "Бүгд" tab дээр ажил/оношилгоо/сэлбэг
+// мөрүүдийг нэг харцаар ялгаж харуулна (badge-ийн өнгөтэй адил).
+const ITEM_KIND_ROW_BORDER: Record<ItemKind, string> = {
+  LABOR: "border-l-blue-500/60",
+  DIAGNOSTIC: "border-l-violet-500/60",
+  PART: "border-l-amber-500/60",
+  FEE: "border-l-zinc-500/60",
 };

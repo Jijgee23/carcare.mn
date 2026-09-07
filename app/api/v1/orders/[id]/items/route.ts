@@ -59,11 +59,11 @@ export async function POST(
     where: { id, tenantId, ...(scope ? { branchId: scope } : {}) },
     select: { id: true, status: true },
   });
-  if (!order) return jsonError(404, "Захиалга олдсонгүй.");
+  if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
   if (isOrderLocked(order.status as OrderStatus)) {
     return jsonError(
       422,
-      "Дууссан эсвэл цуцлагдсан захиалганд мөр нэмэх боломжгүй.",
+      "Дууссан эсвэл цуцлагдсан засварын хуудсанд мөр нэмэх боломжгүй.",
     );
   }
 
@@ -183,6 +183,7 @@ export async function POST(
           unitPrice: true,
           total: true,
           serviceId: true,
+          status: true,
         },
       });
 
@@ -225,16 +226,16 @@ export async function POST(
             entity: "Service",
             entityId: serviceId,
             action: "STOCK_CHANGE",
-            summary: `-${quantity!.toString()} (захиалга #${order.id})`,
+            summary: `-${quantity!.toString()} (засварын хуудас #${order.id})`,
             after: { delta: `-${quantity!.toString()}`, reason: "ORDER_ITEM_ADD" },
           },
           tx,
         );
       }
 
-      // Нийт дүнг бүх мөрөөс дахин тооцох (мөн транзакц дотор)
+      // Нийт дүнг бүх мөрөөс дахин тооцох (мөн транзакц дотор; цуцлагдсан мөр орохгүй)
       const items = await tx.serviceItem.findMany({
-        where: { orderId: order.id },
+        where: { orderId: order.id, status: { not: "CANCELLED" } },
         select: { total: true },
       });
       const newTotal = items.reduce(

@@ -89,7 +89,7 @@ export default async function SystemOverviewPage() {
           value={userCount.toLocaleString("mn-MN")}
         />
         <BigStat
-          label="Дуусгасан захиалга"
+          label="Дуусгасан засварын хуудас"
           value={orderCount.toLocaleString("mn-MN")}
         />
       </div>
@@ -185,7 +185,7 @@ export default async function SystemOverviewPage() {
               {formatTugrik(totalRevenue)}
             </div>
             <p className="text-xs text-[var(--oc-muted3)] mt-2">
-              Бүх байгууллагын дууссан захиалгын нийлбэр
+              Бүх байгууллагын дууссан засварын хуудасны нийлбэр
             </p>
           </div>
 

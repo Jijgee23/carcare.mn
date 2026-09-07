@@ -2,7 +2,7 @@ import { Container } from "./landing-ops-ui";
 
 const STATS = [
   { value: "100+", label: "Сервис төв" },
-  { value: "5,000+", label: "Захиалга / сар" },
+  { value: "5,000+", label: "Засварын хуудас / сар" },
   { value: "30+", label: "Машины марк" },
   { value: "4.9★", label: "Дундаж үнэлгээ" },
 ];

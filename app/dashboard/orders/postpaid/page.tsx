@@ -141,7 +141,7 @@ export default async function PostpaidOrdersPage({
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
       <PageHeader
         title="Дараа төлбөрт"
-        description="Гэрээт (дараа төлбөрт) машинуудын захиалгын түүх, тооцоо"
+        description="Гэрээт (дараа төлбөрт) машинуудын засварын хуудасны түүх, тооцоо"
       />
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
@@ -151,7 +151,7 @@ export default async function PostpaidOrdersPage({
           color="text-white"
         />
         <StatCard
-          label="Нийт захиалга"
+          label="Нийт засварын хуудас"
           value={String(grandOrders)}
           color="text-sky-400 light:text-sky-600"
         />
@@ -202,7 +202,7 @@ export default async function PostpaidOrdersPage({
                       "Машин",
                       "Дугаар",
                       "Эзэмшигч",
-                      "Захиалга",
+                      "Засварын хуудас",
                       "Нийт дүн",
                       "Төлсөн",
                       "Үлдэгдэл",
@@ -269,11 +269,11 @@ export default async function PostpaidOrdersPage({
             </div>
           </div>
 
-          {/* Захиалгын түүх */}
+          {/* Засварын хуудасны түүх */}
           <div className="glass rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
             <div className="px-5 py-3 border-b border-white/[0.06] flex flex-wrap items-center gap-2">
               <h2 className="font-semibold text-sm mr-2">
-                Захиалгын түүх
+                Засварын хуудасны түүх
                 {selectedVehicle ? (
                   <span className="text-white/40 font-normal">
                     {" "}
@@ -306,13 +306,13 @@ export default async function PostpaidOrdersPage({
                 paramNames={["vehicleId", "paymentStatus", "dateFrom", "dateTo"]}
               />
               <div className="ml-auto text-xs text-white/30 light:text-slate-500">
-                {filteredTotal} захиалга
+                {filteredTotal} засварын хуудас
               </div>
             </div>
 
             {orders.length === 0 ? (
               <div className="px-5 py-16 text-center text-white/40 text-sm">
-                Шүүлтүүрт тохирох захиалга алга.
+                Шүүлтүүрт тохирох засварын хуудас алга.
               </div>
             ) : (
               <div className="overflow-auto flex-1 min-h-0">

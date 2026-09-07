@@ -99,7 +99,7 @@ export default async function CustomersPage({
                       "Утас",
                       "Имэйл",
                       "Машин",
-                      "Захиалга",
+                      "Засварын хуудас",
                       "Огноо",
                       "Үйлдэл",
                     ].map((h) => (

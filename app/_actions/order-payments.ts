@@ -38,15 +38,15 @@ export async function createOrderQPayInvoiceAction(
   }
 
   const orderId = s(formData, "orderId");
-  if (!orderId) return { ok: false, message: "Захиалга шаардлагатай." };
+  if (!orderId) return { ok: false, message: "Засварын хуудас шаардлагатай." };
 
   const order = await prisma.serviceOrder.findFirst({
     where: { id: orderId, tenantId: user.tenantId },
     include: { customer: { select: { fullName: true, phone: true } } },
   });
-  if (!order) return { ok: false, message: "Захиалга олдсонгүй." };
+  if (!order) return { ok: false, message: "Засварын хуудас олдсонгүй." };
   if (order.paymentStatus === "PAID") {
-    return { ok: false, message: "Захиалга бүрэн төлөгдсөн." };
+    return { ok: false, message: "Засварын хуудас бүрэн төлөгдсөн." };
   }
 
   const total = order.totalAmount ?? new Prisma.Decimal(0);
@@ -81,7 +81,7 @@ export async function createOrderQPayInvoiceAction(
     tenantId: user.tenantId,
     senderInvoiceNo: payment.id,
     invoiceReceiverCode: order.customer.fullName || order.customer.phone,
-    invoiceDescription: `Захиалга #${order.number}`,
+    invoiceDescription: `Засварын хуудас #${order.number}`,
     amount: Number.parseFloat(remaining.toString()),
   });
   if ("error" in inv) {

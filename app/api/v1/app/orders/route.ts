@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { ownedVehicleIdsForAccount } from "@/lib/vehicles";
 
 // GET /api/v1/app/orders — миний үйлчилгээний түүх (auth, бүх байгууллага
-// дамнасан). Захиалга бүрт хавсаргасан оношилгооны тайлангийн товч жагсаалт
+// дамнасан). Засварын хуудас бүрт хавсаргасан оношилгооны тайлангийн товч жагсаалт
 // (reports) хавсарна — дэлгэрэнгүй бөглөлтийг [id] дуудлагаас авна.
 export async function GET(req: Request) {
   const account = await getApiAccountFromRequest(req);

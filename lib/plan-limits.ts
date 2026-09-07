@@ -71,14 +71,14 @@ export const PLAN_LIMIT_META: Record<
     sortOrder: 50,
   },
   daily_orders: {
-    label: "Өдрийн захиалга",
-    description: "Нэг өдөрт үүсгэх захиалгын тоо",
+    label: "Өдрийн засварын хуудас",
+    description: "Нэг өдөрт үүсгэх засварын хуудасны тоо",
     kind: "COUNT",
     sortOrder: 60,
   },
   max_active_orders: {
-    label: "Идэвхтэй захиалга",
-    description: "Дуусаагүй (SCHEDULED/IN_PROGRESS/WAITING_PARTS) захиалгын тоо",
+    label: "Идэвхтэй засварын хуудас",
+    description: "Дуусаагүй (SCHEDULED/IN_PROGRESS/WAITING_PARTS) засварын хуудасны тоо",
     kind: "COUNT",
     sortOrder: 70,
   },

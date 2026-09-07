@@ -148,7 +148,7 @@ export function TenantQPayForm({ initial }: { initial: Initial | null }) {
         <div className="flex-1">
           <div className="text-sm font-medium text-[var(--oc-ink2)]">Идэвхтэй</div>
           <div className="text-xs text-[var(--oc-muted3)] mt-0.5">
-            Захиалгад QPay QR үүсгэх боломжтой болно. Идэвхгүй болговол одоо
+            Засварын хуудсанд QPay QR үүсгэх боломжтой болно. Идэвхгүй болговол одоо
             байгаа QR-ууд хэвээр, шинээр үүсгэхгүй.
           </div>
         </div>

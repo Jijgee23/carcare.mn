@@ -11,6 +11,8 @@ export type AuditAction =
   | "ITEM_ADDED"
   | "ITEM_REMOVED"
   | "ITEM_UPDATED"
+  | "ITEM_CANCELLED"
+  | "ITEM_STATUS_CHANGE"
   | "LOGIN"
   | "LOGOUT"
   | "OTHER";

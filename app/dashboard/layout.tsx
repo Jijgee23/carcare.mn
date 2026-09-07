@@ -104,7 +104,7 @@ export default async function DashboardLayout({
               <div className="min-w-0">
                 <div className="text-sm font-medium text-[var(--oc-ink2)]">Push мэдэгдэл</div>
                 <div className="text-xs text-[var(--oc-muted3)]">
-                  Захиалга, цаг захиалгын мэдэгдлийг энэ төхөөрөмж дээр авах.
+                  Засварын хуудас, цаг захиалгын мэдэгдлийг энэ төхөөрөмж дээр авах.
                 </div>
               </div>
               <WebPushToggle target="user" />

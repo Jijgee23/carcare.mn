@@ -156,7 +156,7 @@ export default async function VehicleDetailPage({
           {/* Захиалгууд */}
           <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--oc-line)]">
-              <h2 className="font-semibold text-[var(--oc-ink)] text-sm">Захиалгууд</h2>
+              <h2 className="font-semibold text-[var(--oc-ink)] text-sm">Засварын хуудас</h2>
               <div className="flex items-center gap-3">
                 <span className="font-plex-mono text-xs text-[var(--oc-muted3)]">{orders.length}</span>
                 {orders.length > 0 ? (
@@ -171,7 +171,7 @@ export default async function VehicleDetailPage({
             </div>
             {orders.length === 0 ? (
               <div className="px-5 py-8 text-center text-sm text-[var(--oc-muted3)]">
-                Энэ машинд захиалга байхгүй байна.
+                Энэ машинд засварын хуудас байхгүй байна.
               </div>
             ) : (
               <ul className="divide-y divide-[var(--oc-line)]">

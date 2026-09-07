@@ -119,9 +119,9 @@ export function StatusControls({
                     </svg>
                   </div>
                   <div className="min-w-0">
-                    <h3 className="font-semibold text-white">Захиалга цуцлах уу?</h3>
+                    <h3 className="font-semibold text-white">Засварын хуудас цуцлах уу?</h3>
                     <p className="mt-1 text-sm text-white/50">
-                      Энэ үйлдлийг буцаах боломжгүй. Захиалгыг цуцлахдаа итгэлтэй
+                      Энэ үйлдлийг буцаах боломжгүй. Засварын хуудсыг цуцлахдаа итгэлтэй
                       байна уу?
                     </p>
                   </div>

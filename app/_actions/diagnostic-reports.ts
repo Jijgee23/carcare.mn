@@ -75,20 +75,20 @@ export async function createReportAction(
         branchId: true,
       },
     });
-    if (!order) return { ok: false, message: "Захиалга олдсонгүй." };
+    if (!order) return { ok: false, message: "Засварын хуудас олдсонгүй." };
 
-    // Захиалга эхэлсний дараа л оношилгоо бөглөнө.
+    // Засварын хуудас эхэлсний дараа л оношилгоо бөглөнө.
     const status = order.status as OrderStatus;
     if (isOrderLocked(status)) {
       return {
         ok: false,
-        message: "Дууссан / цуцлагдсан захиалгад оношилгоо бөглөх боломжгүй.",
+        message: "Дууссан / цуцлагдсан засварын хуудсанд оношилгоо бөглөх боломжгүй.",
       };
     }
     if (!canFillDiagnostics(status)) {
       return {
         ok: false,
-        message: "Захиалга эхлээгүй байна. Эхлүүлсний дараа оношилгоо бөглөнө.",
+        message: "Засварын хуудас эхлээгүй байна. Эхлүүлсний дараа оношилгоо бөглөнө.",
       };
     }
 
@@ -201,7 +201,7 @@ export async function createReportAction(
     entity: "DiagnosticReport",
     entityId: reportId,
     action: "CREATE",
-    summary: `${template.name}${orderId ? ` · захиалга #${orderId}` : ""}`,
+    summary: `${template.name}${orderId ? ` · засварын хуудас #${orderId}` : ""}`,
     after: { templateId: template.id, orderId, customerId, vehicleId, branchId },
   });
 
@@ -238,7 +238,7 @@ export async function deleteReportAction(formData: FormData): Promise<void> {
     entity: "DiagnosticReport",
     entityId: report.id,
     action: "DELETE",
-    summary: report.orderId ? `захиалга #${report.orderId}` : null,
+    summary: report.orderId ? `засварын хуудас #${report.orderId}` : null,
   });
 
   revalidatePath("/dashboard/diagnostics/reports");

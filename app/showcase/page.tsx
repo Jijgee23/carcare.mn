@@ -66,7 +66,7 @@ export default function ShowcasePage() {
               Тайлан
             </button>
             <button className="glow-btn rounded-xl bg-gradient-to-r from-violet-600 to-indigo-500 px-4 py-2 text-sm font-medium text-white transition-transform hover:scale-[1.03]">
-              + Шинэ захиалга
+              + Шинэ засварын хуудас
             </button>
           </div>
         </header>
@@ -74,7 +74,7 @@ export default function ShowcasePage() {
         {/* 1 · KPI зурвас — дээд талын 4 тэнцүү нүд */}
         <div className="grid grid-cols-2 gap-4 sm:gap-5 lg:grid-cols-4">
           <StatCell
-            label="Идэвхтэй захиалга"
+            label="Идэвхтэй засварын хуудас"
             value="42"
             accent="violet"
             delta="+6"
@@ -170,7 +170,7 @@ export default function ShowcasePage() {
             <ul className="flex flex-1 flex-col justify-between gap-3">
               <Activity
                 tone="emerald"
-                title="Захиалга #2041 дууслаа"
+                title="Засварын хуудас #2041 дууслаа"
                 meta="Сансар салбар · 14 минутын өмнө"
                 amount="₮245,000"
               />
@@ -182,13 +182,13 @@ export default function ShowcasePage() {
               <Activity
                 tone="blue"
                 title="Төлбөр баталгаажлаа (QPay)"
-                meta="Захиалга #2039 · 1 цагийн өмнө"
+                meta="Засварын хуудас #2039 · 1 цагийн өмнө"
                 amount="₮512,000"
               />
               <Activity
                 tone="amber"
                 title="Сэлбэг хүлээгдэж байна"
-                meta="Захиалга #2037 · 2 цагийн өмнө"
+                meta="Засварын хуудас #2037 · 2 цагийн өмнө"
               />
             </ul>
           </Cell>

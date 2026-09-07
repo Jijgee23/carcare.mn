@@ -405,7 +405,7 @@ export async function deleteBranchAction(formData: FormData): Promise<void> {
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") {
       throw new Error(
-        "Энэ салбар захиалга/ажилтантай холбогдсон тул устгах боломжгүй.",
+        "Энэ салбар засварын хуудас/ажилтантай холбогдсон тул устгах боломжгүй.",
       );
     }
     throw e;

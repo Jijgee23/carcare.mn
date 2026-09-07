@@ -88,7 +88,7 @@ function QRPanel({
       if (res.paid) {
         setPaid(true);
         stopRef.current = true;
-        setMsg("Төлбөр амжилттай — захиалга шинэчилнэ...");
+        setMsg("Төлбөр амжилттай — засварын хуудас шинэчилнэ...");
         setTimeout(() => window.location.reload(), 1500);
       } else if (!res.ok && res.message) {
         setMsg(res.message);

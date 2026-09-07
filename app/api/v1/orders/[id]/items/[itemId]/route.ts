@@ -11,8 +11,10 @@ import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
 import {
   ITEM_KINDS,
   isOrderLocked,
+  isServiceItemCancellable,
   type ItemKind,
   type OrderStatus,
+  type ServiceItemStatus,
 } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
 
@@ -56,9 +58,9 @@ export async function PATCH(
     where: { id, tenantId, ...(scope ? { branchId: scope } : {}) },
     select: { id: true, status: true },
   });
-  if (!order) return jsonError(404, "Захиалга олдсонгүй.");
+  if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
   if (isOrderLocked(order.status as OrderStatus)) {
-    return jsonError(422, "Дууссан эсвэл цуцлагдсан захиалгын мөрийг засах боломжгүй.");
+    return jsonError(422, "Дууссан эсвэл цуцлагдсан засварын хуудасны мөрийг засах боломжгүй.");
   }
 
   const item = await prisma.serviceItem.findFirst({
@@ -70,10 +72,14 @@ export async function PATCH(
       quantity: true,
       unitPrice: true,
       serviceId: true,
+      status: true,
       service: { select: { type: true, stock: true } },
     },
   });
   if (!item) return jsonError(404, "Мөр олдсонгүй.");
+  if (item.status === "CANCELLED") {
+    return jsonError(422, "Цуцлагдсан мөрийг засах боломжгүй.");
+  }
 
   let body: unknown;
   try {
@@ -134,6 +140,7 @@ export async function PATCH(
           unitPrice: true,
           total: true,
           serviceId: true,
+          status: true,
         },
       });
 
@@ -176,7 +183,7 @@ export async function PATCH(
             entity: "Service",
             entityId: item.serviceId,
             action: "STOCK_CHANGE",
-            summary: `${qtyDelta.gt(0) ? "-" : "+"}${qtyDelta.abs().toString()} (захиалга засварласан)`,
+            summary: `${qtyDelta.gt(0) ? "-" : "+"}${qtyDelta.abs().toString()} (засварын хуудас засварласан)`,
             after: { delta: qtyDelta.toString(), reason: "ORDER_ITEM_UPDATE" },
           },
           tx,
@@ -184,7 +191,7 @@ export async function PATCH(
       }
 
       const items = await tx.serviceItem.findMany({
-        where: { orderId: order.id },
+        where: { orderId: order.id, status: { not: "CANCELLED" } },
         select: { total: true },
       });
       const orderTotal = items.reduce(
@@ -210,7 +217,7 @@ export async function PATCH(
   return jsonOk({ item: updatedItem });
 }
 
-// ─── DELETE — мөр устгах ──────────────────────────────────────────────────────
+// ─── DELETE — мөр цуцлах (УСТГАХГҮЙ, түүхийг хадгална) ────────────────────────
 
 export async function DELETE(
   req: Request,
@@ -231,9 +238,9 @@ export async function DELETE(
     where: { id, tenantId, ...(scope ? { branchId: scope } : {}) },
     select: { id: true, status: true },
   });
-  if (!order) return jsonError(404, "Захиалга олдсонгүй.");
+  if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
   if (isOrderLocked(order.status as OrderStatus)) {
-    return jsonError(422, "Дууссан эсвэл цуцлагдсан захиалганаас мөр устгах боломжгүй.");
+    return jsonError(422, "Дууссан эсвэл цуцлагдсан засварын хуудасны мөрийг цуцлах боломжгүй.");
   }
 
   const item = await prisma.serviceItem.findFirst({
@@ -242,15 +249,26 @@ export async function DELETE(
       id: true,
       serviceId: true,
       quantity: true,
+      status: true,
       service: { select: { type: true } },
     },
   });
   if (!item) return jsonError(404, "Мөр олдсонгүй.");
+  if (!isServiceItemCancellable(item.status as ServiceItemStatus)) {
+    return jsonError(422, "Энэ мөрийг цуцлах боломжгүй.");
+  }
 
   const restoreStock = Boolean(item.serviceId && item.service?.type === "GOODS");
 
   await prisma.$transaction(async (tx) => {
-    await tx.serviceItem.delete({ where: { id: item.id } });
+    await tx.serviceItem.update({
+      where: { id: item.id },
+      data: {
+        status: "CANCELLED",
+        cancelledAt: new Date(),
+        cancelledById: auth.user.id,
+      },
+    });
 
     await logAudit(
       {
@@ -258,8 +276,8 @@ export async function DELETE(
         userId: auth.user.id,
         entity: "ServiceOrder",
         entityId: order.id,
-        action: "ITEM_REMOVED",
-        summary: `removed item ${item.id}`,
+        action: "ITEM_CANCELLED",
+        summary: `cancelled item ${item.id}`,
         before: {
           itemId: item.id,
           serviceId: item.serviceId,
@@ -281,15 +299,15 @@ export async function DELETE(
           entity: "Service",
           entityId: item.serviceId,
           action: "STOCK_CHANGE",
-          summary: `+${item.quantity.toString()} (мөр устгасан)`,
-          after: { delta: `+${item.quantity.toString()}`, reason: "ORDER_ITEM_REMOVE" },
+          summary: `+${item.quantity.toString()} (мөр цуцалсан)`,
+          after: { delta: `+${item.quantity.toString()}`, reason: "ORDER_ITEM_CANCEL" },
         },
         tx,
       );
     }
 
     const items = await tx.serviceItem.findMany({
-      where: { orderId: order.id },
+      where: { orderId: order.id, status: { not: "CANCELLED" } },
       select: { total: true },
     });
     const newTotal = items.reduce(

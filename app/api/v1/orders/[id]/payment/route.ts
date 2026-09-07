@@ -81,7 +81,7 @@ export async function PATCH(
     },
     select: { id: true, totalAmount: true, paymentStatus: true },
   });
-  if (!order) return jsonError(404, "Захиалга олдсонгүй.");
+  if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
 
   let body: unknown;
   try {

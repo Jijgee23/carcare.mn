@@ -115,6 +115,7 @@ model User {
   assignedOrders        ServiceOrder[]       @relation("AssignedTo")
   diagnosticTemplates   DiagnosticTemplate[] @relation("DiagnosticTemplateCreatedBy")
   diagnosticReports     DiagnosticReport[]   @relation("DiagnosticReportFilledBy")
+  cancelledServiceItems ServiceItem[]        @relation("ServiceItemCancelledBy")
   refreshTokens         RefreshToken[]
   sessions              UserSession[]
   devices               Device[]
@@ -423,12 +424,16 @@ enum PaymentStatus {
 // --- ServiceItem (line item) ----------------------------------------------
 
 model ServiceItem {
-  id          String   @id @default(cuid())
+  id          String            @id @default(cuid())
   kind        ItemKind
   description String
-  quantity    Decimal  @default(1) @db.Decimal(12, 3)
-  unitPrice   Decimal  @db.Decimal(12, 2)
-  total       Decimal  @db.Decimal(12, 2)
+  quantity    Decimal           @default(1) @db.Decimal(12, 3)
+  unitPrice   Decimal           @db.Decimal(12, 2)
+  total       Decimal           @db.Decimal(12, 2)
+  // Мөрийн явц: хүлээгдэж буй → эхэлсэн → дууссан, эсвэл цуцлагдсан (харах:
+  // доорхи cancelledAt/cancelledById). Захиалгын нийт дүн (ServiceOrder.
+  // totalAmount) CANCELLED мөрийн total-ыг ХАСЧ тооцно.
+  status      ServiceItemStatus @default(PENDING)
 
   orderId String
   order   ServiceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -436,10 +441,18 @@ model ServiceItem {
   serviceId String?
   service   Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
 
+  // Цуцлагдсан түүх — мөрийг устгахгүй, зөвхөн CANCELLED болгож хэн/хэзээ
+  // цуцалсныг хадгална.
+  cancelledAt   DateTime?
+  cancelledById String?
+  cancelledBy   User?     @relation("ServiceItemCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([orderId])
   @@index([serviceId])
+  @@index([status])
 }
 
 enum ItemKind {
@@ -447,6 +460,13 @@ enum ItemKind {
   DIAGNOSTIC
   PART
   FEE
+}
+
+enum ServiceItemStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
 }
 
 // --- Service (Үйлчилгээ — Ажил/Оношилгоо/Сэлбэг-Бараа нэгдсэн каталог) ---
@@ -1446,6 +1466,8 @@ enum AuditAction {
   ITEM_ADDED
   ITEM_REMOVED
   ITEM_UPDATED
+  ITEM_CANCELLED
+  ITEM_STATUS_CHANGE
   LOGIN
   LOGOUT
   OTHER

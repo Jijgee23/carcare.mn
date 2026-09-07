@@ -9,7 +9,7 @@ export const RESOURCES = [
   { key: "vehicles", label: "Тээврийн хэрэгсэл", group: "Үндсэн" },
   { key: "services", label: "Үйлчилгээ/Бараа", group: "Үндсэн" },
   { key: "diagnostics", label: "Оношилгооны загвар", group: "Үндсэн" },
-  { key: "orders", label: "Захиалга", group: "Захиалга" },
+  { key: "orders", label: "Засварын хуудас", group: "Захиалга" },
   { key: "appointments", label: "Цаг захиалга", group: "Захиалга" },
   { key: "payments", label: "Төлбөр", group: "Захиалга" },
 ] as const;
@@ -72,8 +72,8 @@ export const PERMISSIONS: readonly PermissionDef[] = [
   ...buildCrudPermissions(),
   {
     code: "orders.assignable",
-    label: "Захиалгад хариуцагч болох",
-    description: "Захиалгын хариуцагч болгож сонгох боломжтой ажилтан.",
+    label: "Засварын хуудсанд хариуцагч болох",
+    description: "Засварын хуудасны хариуцагч болгож сонгох боломжтой ажилтан.",
     group: "Захиалга",
   },
   {

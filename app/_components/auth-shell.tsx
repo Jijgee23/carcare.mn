@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { Brand } from "./brand";
 
 const HIGHLIGHTS = [
-  "Захиалга, машины түүх — нэг дороос",
+  "Засварын хуудас, машины түүх — нэг дороос",
   "Онлайн цаг захиалга, SMS сануулга",
   "Бодит цагийн тайлан, нөөц хяналт",
 ];
@@ -47,7 +47,7 @@ function BrandPanel() {
           Сервисээ <span className="gradient-text">ухаалгаар</span> удирдаарай
         </h2>
         <p className="mt-3.5 text-white/65 leading-relaxed">
-          Захиалга, цаг товлолт, тайлан — авто үйлчилгээний бүх ажиллагаа нэг дороос.
+          Засварын хуудас, цаг товлолт, тайлан — авто үйлчилгээний бүх ажиллагаа нэг дороос.
         </p>
 
         <ul className="mt-7 space-y-3.5">
@@ -70,7 +70,7 @@ function BrandPanel() {
           className="mt-8 rounded-2xl border border-white/15 bg-white/[0.07] backdrop-blur p-4 shadow-2xl shadow-black/30"
         >
           <div className="flex items-center justify-between text-xs mb-3">
-            <span className="font-semibold text-white/80">Өнөөдрийн захиалгууд</span>
+            <span className="font-semibold text-white/80">Өнөөдрийн засварын хуудсууд</span>
             <span className="flex items-center gap-1.5 text-emerald-300">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
               3 идэвхтэй

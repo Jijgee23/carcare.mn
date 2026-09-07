@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import { TenantAuthShellWide } from "@/app/_components/tenant-auth-shell";
 import { requireUser } from "@/lib/auth";
-import { canChooseAllBranches } from "@/lib/auth/roles";
+import { canChooseAllBranches, eligibleBranchIds } from "@/lib/auth/roles";
 import { prisma } from "@/lib/prisma";
 import { ChooseBranchForm } from "./choose-branch-form";
 
@@ -23,12 +23,13 @@ export const metadata = {
 
 export const dynamic = "force-dynamic";
 
-// Нэвтэрсний дараа (owner эсвэл тогтмол салбаргүй ажилтан) ажиллах салбараа
-// сонгуулах хуудас. proxy.ts-ийн middleware workingBranchId байхгүй session-г
-// эндрүү чиглүүлдэг; сонгосны дараа /dashboard-д харагдах "ажиллаж байна"
-// баннер, жагсаалт/тайлангийн scope, шинэ захиалга/цагийн анхны салбар бүгд
-// энд сонгосон утгаас хамаарна (харах: lib/auth/roles.ts workingBranchScopeId,
-// app/_actions/auth.ts chooseBranchAction).
+// Нэвтэрсний дараа (owner, эсвэл 2 ба түүнээс дээш салбарт ажилладаг ажилтан)
+// ажиллах салбараа сонгуулах хуудас. proxy.ts-ийн middleware workingBranchId
+// байхгүй session-г эндрүү чиглүүлдэг; сонгосны дараа /dashboard-д харагдах
+// "ажиллаж байна" баннер, жагсаалт/тайлангийн scope, шинэ захиалга/цагийн
+// анхны салбар бүгд энд сонгосон утгаас хамаарна (харах:
+// lib/auth/roles.ts workingBranchScopeId, app/_actions/auth.ts
+// chooseBranchAction).
 export default async function ChooseBranchPage({
   searchParams,
 }: {
@@ -42,8 +43,20 @@ export default async function ChooseBranchPage({
   const { next: nextRaw } = await searchParams;
   const next = nextRaw && nextRaw.startsWith("/") ? nextRaw : "/dashboard";
 
+  // Owner эсвэл тогтмол салбаргүй ч нэмэлт сонголтгүй ("Бүх салбар"-аар
+  // хамрагдсан) ажилтанд тенантын БҮХ идэвхтэй салбарыг харуулна. 2+
+  // салбарт ажилладаг ажилтанд зөвхөн ӨӨРИЙН eligible жагсаалтыг харуулна
+  // (харах: lib/auth/roles.ts eligibleBranchIds, chooseBranchAction).
+  const allowAllBranches = canChooseAllBranches(user);
+  const eligible = eligibleBranchIds(user);
+  const restrictToEligible = !user.isOwner && eligible.length > 0;
+
   const branches = await prisma.branch.findMany({
-    where: { tenantId: user.tenantId, isActive: true },
+    where: {
+      tenantId: user.tenantId,
+      isActive: true,
+      ...(restrictToEligible ? { id: { in: eligible } } : {}),
+    },
     orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
     select: {
       id: true,
@@ -55,8 +68,6 @@ export default async function ChooseBranchPage({
       closeTime: true,
     },
   });
-
-  const allowAllBranches = canChooseAllBranches(user);
 
   return (
     <div className={`${plexSans.variable} ${plexMono.variable}`}>

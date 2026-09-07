@@ -83,7 +83,7 @@ export default async function ReportsListPage({
                     "Машин",
                     "Салбар",
                     "Бөглөсөн",
-                    "Захиалга",
+                    "Засварын хуудас",
                   ].map((h) => (
                     <th
                       key={h}

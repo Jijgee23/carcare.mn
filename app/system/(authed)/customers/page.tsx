@@ -89,7 +89,7 @@ export default async function SystemCustomersPage({
                     "Утас",
                     "Байгууллага",
                     "Машин",
-                    "Захиалга",
+                    "Засварын хуудас",
                     "Аккаунт",
                     "Бүртгүүлсэн",
                   ].map((h) => (

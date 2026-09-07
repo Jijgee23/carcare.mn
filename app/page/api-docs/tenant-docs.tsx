@@ -176,9 +176,9 @@ Res:  201 { "vehicle": { "id": "...", "plate": "...", "vin": "...", "make": "...
         </Endpoint>
       </Section>
 
-      {/* --- Захиалга --- */}
-      <Section title="5. Захиалга">
-        <Endpoint method="GET" path="/api/v1/orders" auth="bearer" bearerLabel={BEARER} tags={["branch-scoped"]} title="Захиалгын жагсаалт (статус/салбар/машин/харилцагчаар шүүлт).">
+      {/* --- Засварын хуудас --- */}
+      <Section title="5. Засварын хуудас">
+        <Endpoint method="GET" path="/api/v1/orders" auth="bearer" bearerLabel={BEARER} tags={["branch-scoped"]} title="Засварын хуудасны жагсаалт (статус/салбар/машин/харилцагчаар шүүлт).">
           <Code>{`Query: ?status=&branchId=&vehicleId=&customerId=&page=&pageSize=
 Res: 200 { "orders": [{ "id": "...", "number": "...", "status": "...", "paymentStatus": "...",
   "scheduledAt": "...", "startedAt": "...", "completedAt": "...", "totalAmount": 0, "paidAmount": 0,
@@ -186,68 +186,71 @@ Res: 200 { "orders": [{ "id": "...", "number": "...", "status": "...", "paymentS
   "pagination": {...} }`}</Code>
         </Endpoint>
 
-        <Endpoint method="POST" path="/api/v1/orders" auth="bearer" bearerLabel={BEARER} tags={["Эрх: orders.create", "Багц идэвхтэй байх шаардлагатай"]} title="Шинэ захиалга үүсгэх.">
+        <Endpoint method="POST" path="/api/v1/orders" auth="bearer" bearerLabel={BEARER} tags={["Эрх: orders.create", "Багц идэвхтэй байх шаардлагатай"]} title="Шинэ засварын хуудас үүсгэх.">
           <Code>{`Req:  { "branchId": "...", "customerId": "...", "vehicleId": "...", "assignedToId": "...", "scheduledAt": "...", "notes": "..." }
 Res:  201 { "order": {...} }
 422  { "error": "Хүсэлт буруу.", "fieldErrors": { "branchId": "...", "customerId": "...", "vehicleId": "..." } }
-422  { "error": "Хүсэлт буруу.", "fieldErrors": { "branchId": "Зөвхөн өөрийн салбарт захиалга үүсгэх боломжтой." } }
-500  { "error": "Захиалгын дугаар үүсгэж чадсангүй. Дахин оролдоно уу." }`}</Code>
+422  { "error": "Хүсэлт буруу.", "fieldErrors": { "branchId": "Зөвхөн өөрийн салбарт засварын хуудас үүсгэх боломжтой." } }
+500  { "error": "Засварын хуудасны дугаар үүсгэж чадсангүй. Дахин оролдоно уу." }`}</Code>
         </Endpoint>
 
-        <Endpoint method="GET" path="/api/v1/orders/[id]" auth="bearer" bearerLabel={BEARER} tags={["branch-scoped"]} title="Захиалгын дэлгэрэнгүй (мөрүүд + оношилгооны тайлан хамт).">
+        <Endpoint method="GET" path="/api/v1/orders/[id]" auth="bearer" bearerLabel={BEARER} tags={["branch-scoped"]} title="Засварын хуудасны дэлгэрэнгүй (мөрүүд + оношилгооны тайлан хамт).">
           <Code>{`Res: 200 { "order": { ...list-ийн талбарууд, "paidAt", "updatedAt",
-  "items": [{ "id": "...", "kind": "...", "description": "...", "quantity": 1, "unitPrice": 0, "total": 0, "serviceId": "..." }],
+  "items": [{ "id": "...", "kind": "...", "description": "...", "quantity": 1, "unitPrice": 0, "total": 0, "serviceId": "...",
+    "status": "PENDING|IN_PROGRESS|COMPLETED|CANCELLED", "cancelledAt": "..."|null, "cancelledById": "..."|null }],
   "reports": [{ "id": "...", "createdAt": "...", "template": { "id": "...", "name": "...", "type": "..." } }] } }
-404 { "error": "Захиалга олдсонгүй." }`}</Code>
+404 { "error": "Засварын хуудас олдсонгүй." }`}</Code>
         </Endpoint>
 
-        <Endpoint method="PATCH" path="/api/v1/orders/[id]" auth="bearer" bearerLabel={BEARER} tags={["Эрх: orders.edit", "Багц идэвхтэй байх шаардлагатай"]} title="Захиалгын статус/тэмдэглэл/хариуцагч засах — зөвшөөрөгдсөн шилжилтээр л статус солигдоно.">
+        <Endpoint method="PATCH" path="/api/v1/orders/[id]" auth="bearer" bearerLabel={BEARER} tags={["Эрх: orders.edit", "Багц идэвхтэй байх шаардлагатай"]} title="Засварын хуудасны статус/тэмдэглэл/хариуцагч засах — зөвшөөрөгдсөн шилжилтээр л статус солигдоно.">
           <Code>{`Req:  { "status": "IN_PROGRESS", "notes": "...", "assignedToId": "..." }  // бүгд заавал биш
 Res:  200 { "order": {...} }
-404  { "error": "Захиалга олдсонгүй." }
-422  { "error": "Дууссан / цуцлагдсан захиалгын мэдээллийг засах боломжгүй." }
+404  { "error": "Засварын хуудас олдсонгүй." }
+422  { "error": "Дууссан / цуцлагдсан засварын хуудасны мэдээллийг засах боломжгүй." }
 422  { "error": "\\"PENDING\\" статусаас \\"COMPLETED\\" руу шилжих боломжгүй." }`}</Code>
         </Endpoint>
 
-        <Endpoint method="POST" path="/api/v1/orders/[id]/items" auth="bearer" bearerLabel={BEARER} tags={["Эрх: orders.edit", "Багц идэвхтэй байх шаардлагатай"]} title="Захиалгад ажил/сэлбэг/оношилгооны мөр нэмэх (каталогоос үнэ/нэр автоматаар татагдана).">
+        <Endpoint method="POST" path="/api/v1/orders/[id]/items" auth="bearer" bearerLabel={BEARER} tags={["Эрх: orders.edit", "Багц идэвхтэй байх шаардлагатай"]} title="Засварын хуудсанд ажил/сэлбэг/оношилгооны мөр нэмэх (каталогоос үнэ/нэр автоматаар татагдана).">
           <Code>{`Req:  { "serviceId": "..." | "diagnosticTemplateId": "...", "kind": "LABOR|DIAGNOSTIC|PART|FEE", "description": "...", "quantity": 1, "unitPrice": 0 }
-Res:  201 { "item": { "id": "...", "kind": "...", "description": "...", "quantity": 1, "unitPrice": 0, "total": 0, "serviceId": "..." } }
-404  { "error": "Захиалга олдсонгүй." }
-422  { "error": "Дууссан эсвэл цуцлагдсан захиалганд мөр нэмэх боломжгүй." }
+Res:  201 { "item": { "id": "...", "kind": "...", "description": "...", "quantity": 1, "unitPrice": 0, "total": 0, "serviceId": "...", "status": "PENDING" } }
+404  { "error": "Засварын хуудас олдсонгүй." }
+422  { "error": "Дууссан эсвэл цуцлагдсан засварын хуудсанд мөр нэмэх боломжгүй." }
 422  { "error": "Хүсэлт буруу.", "fieldErrors": { "quantity": "Үлдэгдэл хүрэхгүй байна." } }`}</Code>
         </Endpoint>
 
-        <Endpoint method="PATCH" path="/api/v1/orders/[id]/items/[itemId]" auth="bearer" bearerLabel={BEARER} tags={["Эрх: orders.edit", "Багц идэвхтэй байх шаардлагатай"]} title="Захиалгын мөр засах.">
+        <Endpoint method="PATCH" path="/api/v1/orders/[id]/items/[itemId]" auth="bearer" bearerLabel={BEARER} tags={["Эрх: orders.edit", "Багц идэвхтэй байх шаардлагатай"]} title="Засварын хуудасны мөр засах.">
           <Code>{`Req:  { "kind": "...", "description": "...", "quantity": 1, "unitPrice": 0 }  // бүгд заавал биш
 Res:  200 { "item": {...} }
-404  { "error": "Захиалга олдсонгүй." } | { "error": "Мөр олдсонгүй." }
-422  { "error": "Дууссан эсвэл цуцлагдсан захиалгын мөрийг засах боломжгүй." }`}</Code>
+404  { "error": "Засварын хуудас олдсонгүй." } | { "error": "Мөр олдсонгүй." }
+422  { "error": "Дууссан эсвэл цуцлагдсан засварын хуудасны мөрийг засах боломжгүй." }
+422  { "error": "Цуцлагдсан мөрийг засах боломжгүй." }`}</Code>
         </Endpoint>
 
-        <Endpoint method="DELETE" path="/api/v1/orders/[id]/items/[itemId]" auth="bearer" bearerLabel={BEARER} tags={["Эрх: orders.edit", "Багц идэвхтэй байх шаардлагатай"]} title="Захиалгын мөр устгах (сэлбэгийн үлдэгдэл сэргэнэ, нийт дүн дахин тооцогдоно).">
+        <Endpoint method="DELETE" path="/api/v1/orders/[id]/items/[itemId]" auth="bearer" bearerLabel={BEARER} tags={["Эрх: orders.edit", "Багц идэвхтэй байх шаардлагатай"]} title="Засварын хуудасны мөр цуцлах (УСТГАХГҮЙ — түүх, цуцалсан хэрэглэгч хадгалагдана; сэлбэгийн үлдэгдэл сэргэнэ, нийт дүн дахин тооцогдоно).">
           <Code>{`Res: 200 { "ok": true }
-404 { "error": "Захиалга олдсонгүй." } | { "error": "Мөр олдсонгүй." }
-422 { "error": "Дууссан эсвэл цуцлагдсан захиалганаас мөр устгах боломжгүй." }`}</Code>
+404 { "error": "Засварын хуудас олдсонгүй." } | { "error": "Мөр олдсонгүй." }
+422 { "error": "Дууссан эсвэл цуцлагдсан засварын хуудасны мөрийг цуцлах боломжгүй." }
+422 { "error": "Энэ мөрийг цуцлах боломжгүй." }`}</Code>
         </Endpoint>
 
-        <Endpoint method="PATCH" path="/api/v1/orders/[id]/payment" auth="bearer" bearerLabel={BEARER} tags={["Эрх: payments.edit", "Багц идэвхтэй байх шаардлагатай"]} title="Захиалгын төлбөрийн төлөв шинэчлэх (бэлнээр төлсөн гэх мэт).">
+        <Endpoint method="PATCH" path="/api/v1/orders/[id]/payment" auth="bearer" bearerLabel={BEARER} tags={["Эрх: payments.edit", "Багц идэвхтэй байх шаардлагатай"]} title="Засварын хуудасны төлбөрийн төлөв шинэчлэх (бэлнээр төлсөн гэх мэт).">
           <Code>{`Req:  { "paymentStatus": "UNPAID" | "PARTIAL" | "PAID", "paidAmount": 0 }  // PARTIAL үед paidAmount заавал
 Res:  200 { "order": {...} }
-404  { "error": "Захиалга олдсонгүй." }
+404  { "error": "Засварын хуудас олдсонгүй." }
 422  { "error": "Төлбөрийн төлөв буруу." }
 422  { "error": "Хагас төлбөрийн дүнг зөв оруулна уу." }
 422  { "error": "Төлсөн дүн нийт дүнгээс их байж болохгүй." }`}</Code>
         </Endpoint>
 
-        <Endpoint method="GET" path="/api/v1/orders/[id]/qpay" auth="bearer" bearerLabel={BEARER} title="Захиалгын идэвхтэй QPay нэхэмжлэхийг харах.">
+        <Endpoint method="GET" path="/api/v1/orders/[id]/qpay" auth="bearer" bearerLabel={BEARER} title="Засварын хуудасны идэвхтэй QPay нэхэмжлэхийг харах.">
           <Code>{`Res: 200 { "qpayEnabled": true, "pending": { "id": "...", "qrImage": "...", "qrText": "...", "amount": "0", "urls": [...] } | null }
-404 { "error": "Захиалга олдсонгүй." }`}</Code>
+404 { "error": "Засварын хуудас олдсонгүй." }`}</Code>
         </Endpoint>
 
-        <Endpoint method="POST" path="/api/v1/orders/[id]/qpay" auth="bearer" bearerLabel={BEARER} tags={["Эрх: payments.create"]} title="Захиалгад QPay нэхэмжлэх үүсгэх (үлдэгдэл дүнгээр).">
+        <Endpoint method="POST" path="/api/v1/orders/[id]/qpay" auth="bearer" bearerLabel={BEARER} tags={["Эрх: payments.create"]} title="Засварын хуудсанд QPay нэхэмжлэх үүсгэх (үлдэгдэл дүнгээр).">
           <Code>{`Res: 200 { "payment": { "id": "...", "qrImage": "...", "qrText": "...", "amount": "0", "urls": [...] } }
-404 { "error": "Захиалга олдсонгүй." }
-422 { "error": "Захиалга бүрэн төлөгдсөн." } | { "error": "Үлдэгдэл байхгүй." }
+404 { "error": "Засварын хуудас олдсонгүй." }
+422 { "error": "Засварын хуудас бүрэн төлөгдсөн." } | { "error": "Үлдэгдэл байхгүй." }
 502 { "error": "<qpay провайдерын алдаа>" }`}</Code>
         </Endpoint>
 
@@ -368,7 +371,7 @@ Res: 200 { "reports": [{ "id": "...", "createdAt": "...", "templateVersion": 1, 
 Res:  201 { "report": { "id": "...", "createdAt": "...", "templateVersion": 1, "orderId": "...", "customerId": "...", "vehicleId": "...", "branchId": "..." } }
 400  { "error": "Multipart form-data илгээнэ үү (зураг хавсаргах боломжтой)." }
 403  { "error": "Зөвхөн өөрийн салбарт оношилгоо бүртгэх боломжтой." }
-404  { "error": "Загвар олдсонгүй." } | { "error": "Захиалга олдсонгүй." }
+404  { "error": "Загвар олдсонгүй." } | { "error": "Засварын хуудас олдсонгүй." }
 422  { "error": "customerId, vehicleId, branchId шаардлагатай (эсвэл orderId илгээнэ үү)." }`}</Code>
         </Endpoint>
 
@@ -463,7 +466,7 @@ Res: 200 { "vehicle": {...}, "owner": null, "source": "global" }
               ["422", "Валидацийн алдаа (fieldErrors-тэй)"],
               ["423", "Хэт олон буруу оролдлогоор түгжигдсэн"],
               ["429", "Rate limit хэтэрсэн"],
-              ["500", "Дотоод алдаа (ж: захиалгын дугаар үүсгэлт)"],
+              ["500", "Дотоод алдаа (ж: засварын хуудасны дугаар үүсгэлт)"],
               ["502", "Гадаад үйлчилгээ (HUR/QPay) алдаа"],
             ].map(([code, label]) => (
               <div key={code} className="flex items-center gap-2">

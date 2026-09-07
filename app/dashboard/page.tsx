@@ -201,7 +201,7 @@ export default async function DashboardPage({
 
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-line)] lg:grid-cols-3 xl:grid-cols-6">
         <StatCard
-          label="Идэвхтэй захиалга"
+          label="Идэвхтэй засварын хуудас"
           value={openOrderCount}
           href="/dashboard/orders"
           trend={orderTrend}
@@ -314,7 +314,7 @@ export default async function DashboardPage({
             <div className="grid sm:grid-cols-2 gap-3">
               <QuickAction
                 href="/dashboard/orders/new"
-                title="Шинэ захиалга авах"
+                title="Шинэ засварын хуудас авах"
                 desc="Үйлчилгээний ажлыг бүртгэж эхлэх"
               />
               <QuickAction

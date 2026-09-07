@@ -91,6 +91,51 @@ export const ITEM_KIND_BADGE: Record<ItemKind, string> = {
   FEE: "bg-zinc-500/15 text-zinc-300 border border-zinc-500/25 light:bg-zinc-100 light:border-zinc-300 light:text-zinc-600",
 };
 
+// --- Мөрийн (ажил/оношилгоо/сэлбэг) явц ------------------------------------
+
+export const SERVICE_ITEM_STATUSES = [
+  "PENDING",
+  "IN_PROGRESS",
+  "COMPLETED",
+  "CANCELLED",
+] as const;
+export type ServiceItemStatus = (typeof SERVICE_ITEM_STATUSES)[number];
+
+export const SERVICE_ITEM_STATUS_LABEL: Record<ServiceItemStatus, string> = {
+  PENDING: "Хүлээгдэж буй",
+  IN_PROGRESS: "Эхэлсэн",
+  COMPLETED: "Дууссан",
+  CANCELLED: "Цуцлагдсан",
+};
+
+export const SERVICE_ITEM_STATUS_BADGE: Record<ServiceItemStatus, string> = {
+  PENDING:
+    "bg-white/[0.06] text-[var(--oc-muted2)] border border-[var(--oc-line2)] light:bg-zinc-100 light:border-zinc-300 light:text-zinc-600",
+  IN_PROGRESS:
+    "bg-sky-500/15 text-sky-300 border border-sky-500/25 light:bg-sky-100 light:border-sky-300 light:text-sky-700",
+  COMPLETED:
+    "bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700",
+  CANCELLED:
+    "bg-red-500/10 text-red-400 border border-red-500/20 light:bg-red-100 light:border-red-300 light:text-red-700",
+};
+
+// Ажилтны хийж болох шилжилт. Цуцлах (CANCELLED)-ыг тусдаа cancel action-аар
+// хийдэг тул энд ормогц (хэн/хэзээ цуцалсныг заавал хадгална).
+export const SERVICE_ITEM_STATUS_TRANSITIONS: Record<
+  ServiceItemStatus,
+  ServiceItemStatus[]
+> = {
+  PENDING: ["IN_PROGRESS", "CANCELLED"],
+  IN_PROGRESS: ["COMPLETED", "CANCELLED"],
+  COMPLETED: [],
+  CANCELLED: [],
+};
+
+// Мөрийг цуцлах боломжтой эсэх (эцсийн — дууссан/цуцлагдсан мөрийг цуцлахгүй).
+export function isServiceItemCancellable(status: ServiceItemStatus): boolean {
+  return status === "PENDING" || status === "IN_PROGRESS";
+}
+
 export function formatTugrik(amount: number | string | null | undefined): string {
   if (amount == null) return "—";
   const n = typeof amount === "string" ? Number.parseFloat(amount) : amount;

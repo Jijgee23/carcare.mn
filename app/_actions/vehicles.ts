@@ -434,7 +434,7 @@ export async function deleteVehicleAction(formData: FormData): Promise<void> {
   ]);
   if (orderCount > 0 || reportCount > 0) {
     throw new Error(
-      "Энэ машинтай холбоотой захиалга байгаа тул устгах боломжгүй.",
+      "Энэ машинтай холбоотой засварын хуудас байгаа тул устгах боломжгүй.",
     );
   }
 

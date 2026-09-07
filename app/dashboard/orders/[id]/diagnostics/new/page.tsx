@@ -66,7 +66,7 @@ export default async function NewReportPage({
       <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
         <PageHeader
           title="Оношилгоо бөглөх"
-          description={`Захиалга #${order.number} · ${order.vehicle.plate}`}
+          description={`Засварын хуудас #${order.number} · ${order.vehicle.plate}`}
         />
         <DiagnosticForm
           orderId={orderId}
@@ -90,7 +90,7 @@ export default async function NewReportPage({
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
       <PageHeader
         title="Оношилгооны загвар сонгох"
-        description={`Захиалга #${order.number} · ${order.vehicle.plate}`}
+        description={`Засварын хуудас #${order.number} · ${order.vehicle.plate}`}
       />
 
       <p className="text-sm text-white/40 -mt-2 mb-4">
@@ -118,7 +118,7 @@ export default async function NewReportPage({
           href={backHref}
           className="text-sm text-white/50 hover:text-white/80"
         >
-          ← Захиалга руу буцах
+          ← Засварын хуудас руу буцах
         </Link>
       </div>
     </div>

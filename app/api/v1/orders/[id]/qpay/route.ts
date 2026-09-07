@@ -52,7 +52,7 @@ export async function GET(
     },
     select: { id: true },
   });
-  if (!order) return jsonError(404, "Захиалга олдсонгүй.");
+  if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
 
   const [qpayConfig, pending] = await Promise.all([
     prisma.tenantQPaySettings.findUnique({
@@ -113,9 +113,9 @@ export async function POST(
     },
     include: { customer: { select: { fullName: true, phone: true } } },
   });
-  if (!order) return jsonError(404, "Захиалга олдсонгүй.");
+  if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
   if (order.paymentStatus === "PAID") {
-    return jsonError(422, "Захиалга бүрэн төлөгдсөн.");
+    return jsonError(422, "Засварын хуудас бүрэн төлөгдсөн.");
   }
 
   const total = order.totalAmount ?? new Prisma.Decimal(0);
@@ -169,7 +169,7 @@ export async function POST(
     senderInvoiceNo: payment.id,
     invoiceReceiverCode:
       order.customer.fullName || order.customer.phone,
-    invoiceDescription: `Захиалга #${order.number}`,
+    invoiceDescription: `Засварын хуудас #${order.number}`,
     amount: Number.parseFloat(remaining.toString()),
   });
 

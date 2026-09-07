@@ -11,10 +11,13 @@ import {
   ITEM_KINDS,
   ORDER_STATUS_TRANSITIONS,
   PAYMENT_STATUSES,
+  SERVICE_ITEM_STATUS_TRANSITIONS,
   isOrderLocked,
+  isServiceItemCancellable,
   type ItemKind,
   type OrderStatus,
   type PaymentStatus,
+  type ServiceItemStatus,
 } from "@/lib/orders";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { enforceCountLimit } from "@/lib/plan-limits-server";
@@ -48,7 +51,7 @@ async function authorize(action: "create" | "edit" | "delete") {
         ? canEdit(user, "orders")
         : canDelete(user, "orders");
   if (!ok) {
-    throw new Error("Танд захиалгад энэ үйлдэл хийх эрх байхгүй.");
+    throw new Error("Танд засварын хуудсанд энэ үйлдэл хийх эрх байхгүй.");
   }
   await assertActiveSubscription(user.tenantId);
   return user;
@@ -88,8 +91,9 @@ async function nextOrderNumber(tenantId: string): Promise<string> {
 }
 
 async function recomputeTotal(orderId: string): Promise<void> {
+  // Цуцлагдсан (CANCELLED) мөрийг нийт дүнд оруулахгүй.
   const items = await prisma.serviceItem.findMany({
-    where: { orderId },
+    where: { orderId, status: { not: "CANCELLED" } },
     select: { total: true },
   });
   const total = items.reduce(
@@ -225,7 +229,7 @@ export async function createOrderAction(
   if (scope && data.branchId !== scope) {
     return {
       ok: false,
-      fieldErrors: { branchId: "Зөвхөн өөрийн салбарт захиалга үүсгэх боломжтой." },
+      fieldErrors: { branchId: "Зөвхөн өөрийн салбарт засварын хуудас үүсгэх боломжтой." },
     };
   }
 
@@ -295,7 +299,7 @@ export async function createOrderAction(
   }
 
   if (!createdId) {
-    return { ok: false, message: "Захиалгын дугаар үүсгэж чадсангүй. Дахин оролдоно уу." };
+    return { ok: false, message: "Засварын хуудасны дугаар үүсгэж чадсангүй. Дахин оролдоно уу." };
   }
 
   // Сонгосон оношилгоонуудыг товлоно (бөглөхгүй — захиалга эхэлсний дараа бөглөнө).
@@ -319,7 +323,7 @@ export async function createOrderAction(
     entity: "ServiceOrder",
     entityId: createdId,
     action: "CREATE",
-    summary: "Захиалга үүсгэсэн",
+    summary: "Засварын хуудас үүсгэсэн",
     after: {
       branchId: data.branchId,
       customerId: data.customerId,
@@ -381,7 +385,7 @@ export async function updateOrderAction(
   if (scope && data.branchId !== scope) {
     return {
       ok: false,
-      fieldErrors: { branchId: "Зөвхөн өөрийн салбарын захиалгыг засах боломжтой." },
+      fieldErrors: { branchId: "Зөвхөн өөрийн салбарын засварын хуудсыг засах боломжтой." },
     };
   }
   const scopedOrderWhere = {
@@ -395,12 +399,12 @@ export async function updateOrderAction(
     select: { status: true },
   });
   if (!existing) {
-    return { ok: false, message: "Захиалга олдсонгүй." };
+    return { ok: false, message: "Засварын хуудас олдсонгүй." };
   }
   if (isOrderLocked(existing.status as OrderStatus)) {
     return {
       ok: false,
-      message: "Дууссан / цуцлагдсан захиалгын мэдээллийг засаж болохгүй.",
+      message: "Дууссан / цуцлагдсан засварын хуудасны мэдээллийг засаж болохгүй.",
     };
   }
 
@@ -411,7 +415,7 @@ export async function updateOrderAction(
       data: { ...data, isPostpaid: vehicleIsPostpaid },
     });
     if (updated.count === 0) {
-      return { ok: false, message: "Захиалга олдсонгүй." };
+      return { ok: false, message: "Засварын хуудас олдсонгүй." };
     }
   } catch (e) {
     return {
@@ -450,7 +454,7 @@ export async function updateOrderAction(
     entity: "ServiceOrder",
     entityId: id,
     action: "UPDATE",
-    summary: "Захиалгын мэдээлэл шинэчлэв",
+    summary: "Засварын хуудасны мэдээлэл шинэчлэв",
     after: {
       branchId: data.branchId,
       customerId: data.customerId,
@@ -462,7 +466,7 @@ export async function updateOrderAction(
 
   revalidatePath("/dashboard/orders");
   revalidatePath(`/dashboard/orders/${id}`);
-  return { ok: true, message: "Захиалга шинэчлэгдлээ." };
+  return { ok: true, message: "Засварын хуудас шинэчлэгдлээ." };
 }
 
 // --- STATUS CHANGE --------------------------------------------------------
@@ -485,7 +489,7 @@ export async function changeOrderStatusAction(
     where: { id, tenantId: user.tenantId },
     select: { id: true, status: true },
   });
-  if (!order) return { ok: false, message: "Захиалга олдсонгүй." };
+  if (!order) return { ok: false, message: "Засварын хуудас олдсонгүй." };
 
   const allowed = ORDER_STATUS_TRANSITIONS[order.status as OrderStatus];
   if (!allowed?.includes(next)) {
@@ -501,7 +505,7 @@ export async function changeOrderStatusAction(
       return {
         ok: false,
         message:
-          "Бөглөгдөөгүй оношилгоо байна. Бүх оношилгоог бөглөсний дараа захиалгыг дуусгана уу.",
+          "Бөглөгдөөгүй оношилгоо байна. Бүх оношилгоог бөглөсний дараа засварын хуудсыг дуусгана уу.",
       };
     }
   }
@@ -573,9 +577,9 @@ export async function addOrderDiagnosticAction(
     },
     select: { id: true, status: true },
   });
-  if (!order) return { status: "error", message: "Захиалга олдсонгүй." };
+  if (!order) return { status: "error", message: "Засварын хуудас олдсонгүй." };
   if (isOrderLocked(order.status as OrderStatus)) {
-    return { status: "error", message: "Дууссан / цуцлагдсан захиалга." };
+    return { status: "error", message: "Дууссан / цуцлагдсан засварын хуудас." };
   }
 
   const tpl = await prisma.diagnosticTemplate.findFirst({
@@ -690,7 +694,7 @@ export async function deleteOrderAction(formData: FormData): Promise<void> {
   });
   if (hasPaidPayment) {
     throw new Error(
-      "Энэ захиалгад төлбөр төлөгдсөн тул устгах боломжгүй.",
+      "Энэ засварын хуудсанд төлбөр төлөгдсөн тул устгах боломжгүй.",
     );
   }
 
@@ -823,11 +827,11 @@ export async function addOrderItemAction(
     where: { id: orderId, tenantId: user.tenantId },
     select: { id: true, status: true },
   });
-  if (!order) return { ok: false, message: "Захиалга олдсонгүй." };
+  if (!order) return { ok: false, message: "Засварын хуудас олдсонгүй." };
   if (isOrderLocked(order.status as OrderStatus)) {
     return {
       ok: false,
-      message: "Дууссан / цуцлагдсан захиалгад мөр нэмж болохгүй.",
+      message: "Дууссан / цуцлагдсан засварын хуудсанд мөр нэмж болохгүй.",
     };
   }
 
@@ -880,7 +884,7 @@ export async function addOrderItemAction(
           entity: "Service",
           entityId: serviceId,
           action: "STOCK_CHANGE",
-          summary: `-${quantity!.toString()} (захиалга #${orderId})`,
+          summary: `-${quantity!.toString()} (засварын хуудас #${orderId})`,
           after: { delta: `-${quantity!.toString()}`, reason: "ORDER_ITEM_ADD" },
         },
         tx,
@@ -897,7 +901,14 @@ export async function addOrderItemAction(
   return { ok: true };
 }
 
-export async function removeOrderItemAction(formData: FormData): Promise<void> {
+/**
+ * Мөрийг цуцлана — УСТГАХГҮЙ, зөвхөн CANCELLED болгож хэн/хэзээ цуцалснаа
+ * хадгална (түүх хадгалагдана). GOODS бол нөөцийг буцаана, нийт дүнг
+ * цуцлагдсаныг эс тооцож дахин бодно.
+ */
+export async function cancelOrderItemAction(
+  formData: FormData,
+): Promise<void> {
   const user = await authorize("edit");
   const itemId = s(formData, "itemId");
   if (!itemId) return;
@@ -909,27 +920,38 @@ export async function removeOrderItemAction(formData: FormData): Promise<void> {
       orderId: true,
       serviceId: true,
       quantity: true,
+      status: true,
       service: { select: { type: true } },
       order: { select: { status: true } },
     },
   });
   if (!item) return;
   if (isOrderLocked(item.order.status as OrderStatus)) {
-    throw new Error("Дууссан захиалгын мөрийг устгаж болохгүй.");
+    throw new Error("Дууссан засварын хуудасны мөрийг цуцлаж болохгүй.");
+  }
+  if (!isServiceItemCancellable(item.status as ServiceItemStatus)) {
+    throw new Error("Энэ мөрийг цуцлах боломжгүй.");
   }
 
   const restoreStock = item.serviceId && item.service?.type === "GOODS";
 
   await prisma.$transaction(async (tx) => {
-    await tx.serviceItem.delete({ where: { id: item.id } });
+    await tx.serviceItem.update({
+      where: { id: item.id },
+      data: {
+        status: "CANCELLED",
+        cancelledAt: new Date(),
+        cancelledById: user.id,
+      },
+    });
     await logAudit(
       {
         tenantId: user.tenantId,
         userId: user.id,
         entity: "ServiceOrder",
         entityId: item.orderId,
-        action: "ITEM_REMOVED",
-        summary: `removed item ${item.id}`,
+        action: "ITEM_CANCELLED",
+        summary: `цуцалсан мөр ${item.id}`,
         before: {
           itemId: item.id,
           serviceId: item.serviceId,
@@ -950,10 +972,10 @@ export async function removeOrderItemAction(formData: FormData): Promise<void> {
           entity: "Service",
           entityId: item.serviceId,
           action: "STOCK_CHANGE",
-          summary: `+${item.quantity.toString()} (мөр устгасан)`,
+          summary: `+${item.quantity.toString()} (мөр цуцлагдсан)`,
           after: {
             delta: `+${item.quantity.toString()}`,
-            reason: "ORDER_ITEM_REMOVE",
+            reason: "ORDER_ITEM_CANCEL",
           },
         },
         tx,
@@ -967,4 +989,52 @@ export async function removeOrderItemAction(formData: FormData): Promise<void> {
     revalidatePath("/dashboard/services", "layout");
     revalidatePath(`/dashboard/services/${item.serviceId}`);
   }
+}
+
+/**
+ * Мөрийн явцыг шилжүүлнэ (хүлээгдэж буй → эхэлсэн → дууссан). Цуцлахыг энд
+ * зөвшөөрөхгүй — тусдаа cancelOrderItemAction-оор (хэн/хэзээг заавал хадгална).
+ */
+export async function changeOrderItemStatusAction(
+  formData: FormData,
+): Promise<void> {
+  const user = await authorize("edit");
+  const itemId = s(formData, "itemId");
+  const next = s(formData, "status") as ServiceItemStatus;
+  if (!itemId || !next || next === "CANCELLED") return;
+
+  const item = await prisma.serviceItem.findFirst({
+    where: { id: itemId, order: { tenantId: user.tenantId } },
+    select: {
+      id: true,
+      orderId: true,
+      status: true,
+      order: { select: { status: true } },
+    },
+  });
+  if (!item) return;
+  if (isOrderLocked(item.order.status as OrderStatus)) {
+    throw new Error("Дууссан засварын хуудасны мөрийн явцыг өөрчлөх боломжгүй.");
+  }
+  const allowed = SERVICE_ITEM_STATUS_TRANSITIONS[item.status as ServiceItemStatus];
+  if (!allowed.includes(next)) {
+    throw new Error("Энэ явц руу шилжих боломжгүй.");
+  }
+
+  await prisma.serviceItem.update({
+    where: { id: item.id },
+    data: { status: next },
+  });
+  await logAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    entity: "ServiceOrder",
+    entityId: item.orderId,
+    action: "ITEM_STATUS_CHANGE",
+    summary: `${item.status} → ${next} (мөр ${item.id})`,
+    before: { status: item.status },
+    after: { status: next },
+  });
+
+  revalidatePath(`/dashboard/orders/${item.orderId}`);
 }

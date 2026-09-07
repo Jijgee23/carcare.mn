@@ -220,7 +220,7 @@ export function BranchForm({
               Үндсэн салбар
             </div>
             <div className="text-xs text-[var(--oc-muted3)] mt-0.5">
-              Захиалга анхдагчаар энэ салбарт хуваарилагдана.
+              Засварын хуудас анхдагчаар энэ салбарт хуваарилагдана.
             </div>
           </div>
         </label>

@@ -27,6 +27,8 @@ const ACTION_LABEL: Record<string, string> = {
   ITEM_ADDED: "Мөр нэмсэн",
   ITEM_REMOVED: "Мөр устгасан",
   ITEM_UPDATED: "Мөр зассан",
+  ITEM_CANCELLED: "Мөр цуцалсан",
+  ITEM_STATUS_CHANGE: "Мөрийн явц",
   LOGIN: "Нэвтэрсэн",
   LOGOUT: "Гарсан",
   OTHER: "Бусад",
@@ -42,13 +44,15 @@ const ACTION_TONE: Record<string, ChipTone> = {
   ITEM_ADDED: "ok",
   ITEM_REMOVED: "danger",
   ITEM_UPDATED: "accent",
+  ITEM_CANCELLED: "danger",
+  ITEM_STATUS_CHANGE: "accent",
   LOGIN: "neutral",
   LOGOUT: "neutral",
   OTHER: "neutral",
 };
 
 const ENTITY_LABEL: Record<EntityType, string> = {
-  ServiceOrder: "Захиалга",
+  ServiceOrder: "Засварын хуудас",
   Service: "Үйлчилгээ",
   Customer: "Үйлчлүүлэгч",
   Vehicle: "Машин",
@@ -165,7 +169,7 @@ export default async function AuditLogPage({
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">Аудит лог</h1>
         <p className="text-sm text-[var(--oc-muted3)] mt-1">
-          Тенант доторх чухал үйлдлийн түүх — захиалгын статус, төлбөр, нөөц, мөр нэмэх/устгах.
+          Тенант доторх чухал үйлдлийн түүх — засварын хуудасны статус, төлбөр, нөөц, мөр нэмэх/устгах.
         </p>
       </div>
 

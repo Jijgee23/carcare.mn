@@ -475,7 +475,7 @@ export async function deleteEmployeeAction(formData: FormData): Promise<void> {
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") {
       throw new Error(
-        "Энэ ажилтан захиалгатай холбоотой тул устгах боломжгүй.",
+        "Энэ ажилтан засварын хуудастай холбоотой тул устгах боломжгүй.",
       );
     }
     throw e;

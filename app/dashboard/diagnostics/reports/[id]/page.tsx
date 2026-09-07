@@ -135,7 +135,7 @@ export default async function ReportDetailPage({
             : "—"}
         </Row>
         {report.order ? (
-          <Row label="Захиалга">
+          <Row label="Засварын хуудас">
             <Link
               href={`/dashboard/orders/${report.order.id}`}
               className="text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]"

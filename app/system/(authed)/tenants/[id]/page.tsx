@@ -118,7 +118,7 @@ export default async function SystemTenantDetailPage({
         <BigStat label="Үйлчлүүлэгч" value={tenant._count.customers} />
         <BigStat label="Машин" value={tenant._count.tenantVehicles} />
         <BigStat label="Үйлчилгээ" value={tenant._count.services} />
-        <BigStat label="Захиалга" value={tenant._count.serviceOrders} />
+        <BigStat label="Засварын хуудас" value={tenant._count.serviceOrders} />
         <BigStat
           label="Дуусгасан"
           value={revenueAgg._count._all}
@@ -457,7 +457,7 @@ export default async function SystemTenantDetailPage({
               Бүрэн устгах
             </h2>
             <p className="text-xs text-[var(--oc-muted3)] mb-4">
-              БҮХ өгөгдөл (захиалга, машин, сэлбэг, ажилтан) устана.
+              БҮХ өгөгдөл (засварын хуудас, машин, сэлбэг, ажилтан) устана.
               Сэргээх боломжгүй. Доор байгууллагын нэрийг бичнэ үү:
             </p>
             <input type="hidden" name="id" value={tenant.id} />
