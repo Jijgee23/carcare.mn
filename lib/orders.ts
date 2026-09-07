@@ -119,21 +119,16 @@ export const SERVICE_ITEM_STATUS_BADGE: Record<ServiceItemStatus, string> = {
     "bg-red-500/10 text-red-400 border border-red-500/20 light:bg-red-100 light:border-red-300 light:text-red-700",
 };
 
-// Ажилтны хийж болох шилжилт. Цуцлах (CANCELLED)-ыг тусдаа cancel action-аар
-// хийдэг тул энд ормогц (хэн/хэзээ цуцалсныг заавал хадгална).
-export const SERVICE_ITEM_STATUS_TRANSITIONS: Record<
-  ServiceItemStatus,
-  ServiceItemStatus[]
-> = {
-  PENDING: ["IN_PROGRESS", "CANCELLED"],
-  IN_PROGRESS: ["COMPLETED", "CANCELLED"],
-  COMPLETED: [],
-  CANCELLED: [],
-};
-
 // Мөрийг цуцлах боломжтой эсэх (эцсийн — дууссан/цуцлагдсан мөрийг цуцлахгүй).
 export function isServiceItemCancellable(status: ServiceItemStatus): boolean {
   return status === "PENDING" || status === "IN_PROGRESS";
+}
+
+// Мөрийн явцыг (хүлээгдэж буй/эхэлсэн/дууссан хооронд) чөлөөтэй, дурын
+// дарааллаар өөрчилж болно — ганцхан нөхцөл: одоогийн явц ЦУЦЛАГДСАН биш байх
+// ёстой (цуцлахыг тусдаа cancel action-аар хийдэг тул энд зөвшөөрөхгүй).
+export function canChangeServiceItemStatus(status: ServiceItemStatus): boolean {
+  return status !== "CANCELLED";
 }
 
 export function formatTugrik(amount: number | string | null | undefined): string {

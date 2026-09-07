@@ -7,7 +7,6 @@ import {
   canCreate,
   workingBranchScopeId,
 } from "@/lib/auth/roles";
-import { type DiagnosticType } from "@/lib/diagnostics";
 import { prisma } from "@/lib/prisma";
 import { ORDER_FORM_ID, OrderForm } from "../order-form";
 
@@ -51,8 +50,7 @@ export default async function NewOrderPage({
         }
       : undefined;
 
-  const [branches, customers, vehicles, technicians, diagnosticTemplates] =
-    await Promise.all([
+  const [branches, customers, vehicles, technicians] = await Promise.all([
     prisma.branch.findMany({
       where: {
         tenantId: user.tenantId,
@@ -102,11 +100,6 @@ export default async function NewOrderPage({
         isOwner: true,
         role: { select: { name: true } },
       },
-    }),
-    prisma.diagnosticTemplate.findMany({
-      where: { tenantId: user.tenantId, isActive: true },
-      orderBy: [{ type: "asc" }, { name: "asc" }],
-      select: { id: true, name: true, type: true },
     }),
   ]);
 
@@ -170,11 +163,6 @@ export default async function NewOrderPage({
           customers={customers}
           vehicles={vehicles}
           technicians={technicians}
-          diagnosticTemplates={diagnosticTemplates.map((t) => ({
-            id: t.id,
-            name: t.name,
-            type: t.type as DiagnosticType,
-          }))}
         />
       </div>
     </div>

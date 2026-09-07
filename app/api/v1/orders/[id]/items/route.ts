@@ -97,6 +97,24 @@ export async function POST(
         fieldErrors: { diagnosticTemplateId: "Оношилгоо олдсонгүй." },
       });
     }
+    // Ижил оношилгоо нэг захиалгад давхардаж болохгүй (цуцлагдсан мөрийг
+    // тооцохгүй — цуцалсан бол дахин нэмэх боломжтой).
+    const dup = await prisma.serviceItem.findFirst({
+      where: {
+        orderId: order.id,
+        kind: "DIAGNOSTIC",
+        diagnosticTemplateId: tpl.id,
+        status: { not: "CANCELLED" },
+      },
+      select: { id: true },
+    });
+    if (dup) {
+      return jsonError(422, "Хүсэлт буруу.", {
+        fieldErrors: {
+          diagnosticTemplateId: `«${tpl.name}» энэ засварын хуудаст аль хэдийн нэмэгдсэн байна.`,
+        },
+      });
+    }
     kind = "DIAGNOSTIC";
     if (!description) description = tpl.name;
     if (!unitPrice) unitPrice = tpl.price ?? new Prisma.Decimal(0);
@@ -174,6 +192,7 @@ export async function POST(
           unitPrice: unitPrice!,
           total,
           serviceId,
+          diagnosticTemplateId: templateIdRaw || null,
         },
         select: {
           id: true,

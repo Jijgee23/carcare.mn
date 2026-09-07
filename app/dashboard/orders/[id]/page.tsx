@@ -57,7 +57,7 @@ export default async function OrderDetailPage({
   const scopeBranchId = workingBranchScopeId(user);
   const { id } = await params;
 
-  const [order, branches, customers, vehicles, technicians, services, reports, activeTemplateCount, diagnosticTemplates] = await Promise.all([
+  const [order, branches, customers, vehicles, technicians, services, reports, diagnosticTemplates] = await Promise.all([
     prisma.serviceOrder.findFirst({
       where: {
         id,
@@ -67,7 +67,10 @@ export default async function OrderDetailPage({
       include: {
         items: {
           orderBy: { createdAt: "asc" },
-          include: { cancelledBy: { select: { firstName: true, lastName: true } } },
+          include: {
+            cancelledBy: { select: { firstName: true, lastName: true } },
+            diagnosticTemplate: { select: { type: true } },
+          },
         },
         customer: { select: { id: true, fullName: true, phone: true } },
         vehicle: {
@@ -81,10 +84,6 @@ export default async function OrderDetailPage({
         },
         branch: { select: { name: true } },
         assignedTo: { select: { firstName: true, lastName: true } },
-        plannedDiagnostics: {
-          orderBy: { createdAt: "asc" },
-          include: { template: { select: { id: true, name: true, type: true } } },
-        },
       },
     }),
     prisma.branch.findMany({
@@ -163,9 +162,6 @@ export default async function OrderDetailPage({
         filledBy: { select: { firstName: true, lastName: true } },
       },
     }),
-    prisma.diagnosticTemplate.count({
-      where: { tenantId: user.tenantId, isActive: true },
-    }),
     prisma.diagnosticTemplate.findMany({
       where: { tenantId: user.tenantId, isActive: true },
       orderBy: { name: "asc" },
@@ -199,7 +195,34 @@ export default async function OrderDetailPage({
   const allowedTransitions = ORDER_STATUS_TRANSITIONS[status];
   const isEditable = status !== "COMPLETED" && status !== "CANCELLED";
   const diagnosticsFillable = canFillDiagnostics(status);
-  const plannedDiagnostics = order.plannedDiagnostics;
+
+  // Гүйцэтгэлийн прогресс: цуцлагдаагүй мөрүүдээс хэд нь дууссан вэ.
+  // Зөвхөн хуудас эхэлсэн (IN_PROGRESS/WAITING_PARTS) үед харуулна.
+  const orderStarted = diagnosticsFillable;
+  const activeItems = order.items.filter((it) => it.status !== "CANCELLED");
+  const completedItemsCount = activeItems.filter(
+    (it) => it.status === "COMPLETED",
+  ).length;
+  const progressPercent =
+    activeItems.length > 0
+      ? Math.round((completedItemsCount / activeItems.length) * 100)
+      : 0;
+
+  // Оношилгоо (kind=DIAGNOSTIC) мөрүүд: тайлан хараахан бөглөгдөөгүй нь
+  // "Оношилгооны хуудас" жагсаалтад "Бөглөх" хэлбэрээр гарна; бөглөгдсөн нь
+  // (diagnosticReportId бий) доор жагсаасан `reports`-тэй давхацна.
+  const diagnosticItems = activeItems.filter((it) => it.kind === "DIAGNOSTIC");
+  const unfilledDiagnosticItems = diagnosticItems.filter(
+    (it) => !it.diagnosticReportId,
+  );
+  const filledDiagnosticCount = diagnosticItems.length - unfilledDiagnosticItems.length;
+  // Ижил оношилгоо нэг засварын хуудсанд давхардаж болохгүй тул аль хэдийн
+  // нэмэгдсэн загваруудыг "+ Мөр нэмэх" сонголтоос хасна.
+  const usedDiagnosticTemplateIds = new Set(
+    diagnosticItems
+      .map((it) => it.diagnosticTemplateId)
+      .filter((id): id is string => Boolean(id)),
+  );
 
   return (
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
@@ -248,18 +271,14 @@ export default async function OrderDetailPage({
               <div>
                 <h2 className="font-semibold text-[var(--oc-ink)]">Үйлчилгээ</h2>
                 <p className="text-xs text-[var(--oc-muted3)] mt-0.5">
-                  {order.items.length} үйлчилгээ · {reports.length}/
-                  {plannedDiagnostics.length + reports.length} оношилгоо · нийт{" "}
+                  {order.items.length} үйлчилгээ · {filledDiagnosticCount}/
+                  {diagnosticItems.length} оношилгоо · нийт{" "}
                   <strong className="font-plex-mono text-[var(--oc-ink)]">
                     {formatTugrik(order.totalAmount?.toString() ?? "0")}
                   </strong>
                 </p>
               </div>
-              {diagnosticsFillable && activeTemplateCount > 0 ? (
-                <BtnLink href={`/dashboard/orders/${order.id}/diagnostics/new`} size="sm" className="shrink-0">
-                  + Шинэ оношилгоо
-                </BtnLink>
-              ) : activeTemplateCount === 0 && canEditOrder ? (
+              {diagnosticTemplates.length === 0 && canEditOrder ? (
                 <Link
                   href="/dashboard/services/diagnostics/new"
                   className="shrink-0 text-xs text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]"
@@ -268,6 +287,33 @@ export default async function OrderDetailPage({
                 </Link>
               ) : null}
             </div>
+
+            {orderStarted && activeItems.length > 0 ? (
+              <div className="px-5 py-3 border-b border-[var(--oc-line)]">
+                <div className="flex items-center justify-between gap-3 mb-1.5">
+                  <span className="text-xs text-[var(--oc-muted3)]">
+                    Гүйцэтгэл · {completedItemsCount}/{activeItems.length} дууссан
+                  </span>
+                  <span
+                    className={`font-plex-mono text-xs font-semibold tabular-nums ${
+                      progressPercent >= 100
+                        ? "text-emerald-400 light:text-emerald-600"
+                        : "text-[var(--oc-accent)]"
+                    }`}
+                  >
+                    {progressPercent}%
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-[width] duration-300 ${
+                      progressPercent >= 100 ? "bg-emerald-500" : "bg-[var(--oc-accent)]"
+                    }`}
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+              </div>
+            ) : null}
 
             {order.items.length === 0 ? (
               <div className="px-5 py-10 text-center text-sm text-[var(--oc-muted3)]">
@@ -292,29 +338,33 @@ export default async function OrderDetailPage({
               />
             )}
 
-            {/* Оношилгооны хуудас — товлосон (Бөглөх) ба бөглөгдсөн тайлан */}
-            {plannedDiagnostics.length > 0 || reports.length > 0 ? (
+            {/* Оношилгооны хуудас — цуцлагдаагүй ч бөглөгдөөгүй DIAGNOSTIC мөр (Бөглөх) ба бөглөгдсөн тайлан */}
+            {unfilledDiagnosticItems.length > 0 || reports.length > 0 ? (
               <div className="border-t border-[var(--oc-line)]">
                 <div className="px-5 py-2 font-plex-mono text-[10.5px] font-medium uppercase tracking-[0.08em] text-[var(--oc-muted3)] bg-[var(--oc-panel2)]">
                   Оношилгооны хуудас
                 </div>
                 <div className="divide-y divide-[var(--oc-line)]">
-                  {plannedDiagnostics.map((p) => {
-                    const tp = p.template.type as DiagnosticType;
+                  {unfilledDiagnosticItems.map((it) => {
+                    const tp = it.diagnosticTemplate?.type as
+                      | DiagnosticType
+                      | undefined;
                     return (
                       <div
-                        key={p.id}
+                        key={it.id}
                         className="flex items-center justify-between gap-3 px-5 py-3"
                       >
                         <div className="flex items-center gap-3">
-                          <span
-                            className={`text-[10px] px-2 py-0.5 rounded-full ${DIAGNOSTIC_TYPE_BADGE[tp]}`}
-                          >
-                            {DIAGNOSTIC_TYPE_LABEL[tp]}
-                          </span>
+                          {tp ? (
+                            <span
+                              className={`text-[10px] px-2 py-0.5 rounded-full ${DIAGNOSTIC_TYPE_BADGE[tp]}`}
+                            >
+                              {DIAGNOSTIC_TYPE_LABEL[tp]}
+                            </span>
+                          ) : null}
                           <div>
                             <div className="text-sm text-[var(--oc-ink)]">
-                              {p.template.name}
+                              {it.description}
                             </div>
                             <div className="text-xs text-amber-400/80 light:text-amber-700">
                               Бөглөгдөөгүй
@@ -323,7 +373,7 @@ export default async function OrderDetailPage({
                         </div>
                         {diagnosticsFillable ? (
                           <BtnLink
-                            href={`/dashboard/orders/${order.id}/diagnostics/new?templateId=${p.template.id}`}
+                            href={`/dashboard/orders/${order.id}/diagnostics/new?itemId=${it.id}`}
                             size="sm"
                             className="shrink-0"
                           >
@@ -390,12 +440,14 @@ export default async function OrderDetailPage({
                     laborCategoryId: s.categoryId,
                     laborCategoryName: s.category?.name ?? null,
                   }))}
-                  diagnosticTemplates={diagnosticTemplates.map((t) => ({
-                    id: t.id,
-                    name: t.name,
-                    price: t.price?.toString() ?? "0",
-                    durationMin: t.durationMin,
-                  }))}
+                  diagnosticTemplates={diagnosticTemplates
+                    .filter((t) => !usedDiagnosticTemplateIds.has(t.id))
+                    .map((t) => ({
+                      id: t.id,
+                      name: t.name,
+                      price: t.price?.toString() ?? "0",
+                      durationMin: t.durationMin,
+                    }))}
                 />
               </div>
             ) : null}
@@ -418,15 +470,6 @@ export default async function OrderDetailPage({
                 customers={customers}
                 vehicles={vehicles}
                 technicians={technicians}
-                diagnosticTemplates={diagnosticTemplates.map((t) => ({
-                  id: t.id,
-                  name: t.name,
-                  type: t.type as DiagnosticType,
-                }))}
-                initialDiagnosticTemplateIds={plannedDiagnostics.map(
-                  (p) => p.template.id,
-                )}
-                allowDiagnosticEdit={status === "SCHEDULED"}
                 backHref="/dashboard/orders"
               />
             </section>

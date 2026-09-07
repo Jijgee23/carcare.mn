@@ -2,7 +2,12 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { userRoleLabel, workingBranchScopeId } from "@/lib/auth/roles";
 import { prisma } from "@/lib/prisma";
-import { formatTugrik } from "@/lib/orders";
+import {
+  ORDER_STATUS_BADGE,
+  ORDER_STATUS_LABEL,
+  formatTugrik,
+  type OrderStatus,
+} from "@/lib/orders";
 import { DatePicker } from "@/app/_components/date-picker";
 import { Sparkline } from "@/app/_components/sparkline";
 import { IncomeBarChart } from "./income-bar-chart";
@@ -28,18 +33,6 @@ export const metadata = {
 function incomeRangeHref(key: IncomeRangeKey): string {
   return key === "week" ? "/dashboard" : `/dashboard?range=${key}`;
 }
-
-type JobStatus = "IN_PROGRESS" | "WAITING_PARTS" | "SCHEDULED";
-const JOB_STATUS_LABEL: Record<JobStatus, string> = {
-  IN_PROGRESS: "Явцтай",
-  WAITING_PARTS: "Хүлээгдэж",
-  SCHEDULED: "Товлосон",
-};
-const JOB_STATUS_STYLE: Record<JobStatus, string> = {
-  IN_PROGRESS: "bg-[var(--oc-accent)]/15 text-[var(--oc-accent)]",
-  WAITING_PARTS: "bg-white/[0.06] text-[var(--oc-muted)]",
-  SCHEDULED: "bg-white/[0.06] text-[var(--oc-muted)]",
-};
 
 export default async function DashboardPage({
   searchParams,
@@ -82,7 +75,7 @@ export default async function DashboardPage({
     vehicleDates,
     branchDates,
     employeeDates,
-    activeJobs,
+    recentlyUpdatedOrders,
   ] = await Promise.all([
     prisma.branch.count({ where: { tenantId: user.tenantId } }),
     prisma.user.count({ where: { tenantId: user.tenantId } }),
@@ -155,23 +148,17 @@ export default async function DashboardPage({
       select: { createdAt: true },
     }),
     prisma.serviceOrder.findMany({
-      where: {
-        tenantId: user.tenantId,
-        ...orderBranchFilter,
-        status: { in: ["IN_PROGRESS", "WAITING_PARTS", "SCHEDULED"] },
-      },
-      orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
-      take: 6,
+      where: { tenantId: user.tenantId, ...orderBranchFilter },
+      orderBy: { updatedAt: "desc" },
+      take: 5,
       select: {
         id: true,
+        number: true,
         status: true,
+        updatedAt: true,
+        customer: { select: { fullName: true } },
         vehicle: { select: { plate: true } },
-        assignedTo: { select: { firstName: true, lastName: true } },
-        items: {
-          orderBy: { createdAt: "asc" },
-          take: 1,
-          select: { description: true },
-        },
+        items: { select: { status: true } },
       },
     }),
   ]);
@@ -337,42 +324,80 @@ export default async function DashboardPage({
 
           <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden">
             <div className="flex items-center justify-between px-5 sm:px-6 lg:px-8 py-4 border-b border-[var(--oc-line)]">
-              <h2 className="font-semibold text-[var(--oc-ink)]">Явцтай ажил</h2>
-              <span className="font-plex-mono text-[11px] text-[var(--oc-muted3)]">
-                {activeJobs.length} идэвхтэй
-              </span>
+              <h2 className="font-semibold text-[var(--oc-ink)]">Сүүлд шинэчлэгдсэн</h2>
+              <Link
+                href="/dashboard/orders"
+                className="font-plex-mono text-[11px] text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors"
+              >
+                Бүгдийг үзэх →
+              </Link>
             </div>
-            {activeJobs.length === 0 ? (
+            {recentlyUpdatedOrders.length === 0 ? (
               <p className="text-sm text-[var(--oc-muted3)] py-8 text-center">
-                Одоогоор идэвхтэй ажил алга.
+                Засварын хуудас алга байна.
               </p>
             ) : (
               <div className="divide-y divide-[var(--oc-line)]">
-                {activeJobs.map((job) => {
-                  const status = job.status as JobStatus;
-                  const master = job.assignedTo
-                    ? `${job.assignedTo.lastName} ${job.assignedTo.firstName}`
-                    : "Хариуцагчгүй";
+                {recentlyUpdatedOrders.map((o) => {
+                  const status = o.status as OrderStatus;
+                  const activeItems = o.items.filter(
+                    (it) => it.status !== "CANCELLED",
+                  );
+                  const completedCount = activeItems.filter(
+                    (it) => it.status === "COMPLETED",
+                  ).length;
+                  const percent =
+                    activeItems.length > 0
+                      ? Math.round((completedCount / activeItems.length) * 100)
+                      : 0;
                   return (
                     <Link
-                      key={job.id}
-                      href={`/dashboard/orders/${job.id}`}
-                      className="flex items-center gap-4 px-5 sm:px-6 lg:px-8 py-3.5 text-[13px] hover:bg-white/[0.02] transition-colors"
+                      key={o.id}
+                      href={`/dashboard/orders/${o.id}`}
+                      className="block px-5 sm:px-6 lg:px-8 py-3.5 text-[13px] hover:bg-white/[0.02] transition-colors"
                     >
-                      <span className="font-plex-mono text-[var(--oc-ink2)] shrink-0 w-[92px]">
-                        {job.vehicle?.plate ?? "—"}
-                      </span>
-                      <span className="text-[var(--oc-muted2)] flex-1 min-w-0 truncate">
-                        {job.items[0]?.description ?? "—"}
-                      </span>
-                      <span className="hidden sm:inline text-[var(--oc-muted3)] shrink-0 max-w-[9rem] truncate">
-                        {master}
-                      </span>
-                      <span
-                        className={`shrink-0 rounded px-2 py-0.5 font-plex-mono text-[11px] ${JOB_STATUS_STYLE[status]}`}
-                      >
-                        {JOB_STATUS_LABEL[status]}
-                      </span>
+                      <div className="flex items-center gap-4">
+                        <span className="font-plex-mono text-[var(--oc-ink2)] shrink-0 w-14">
+                          #{o.number}
+                        </span>
+                        <span className="text-[var(--oc-muted2)] flex-1 min-w-0 truncate">
+                          {o.customer.fullName}
+                          <span className="text-[var(--oc-muted4)]"> · {o.vehicle.plate}</span>
+                        </span>
+                        <span
+                          className={`hidden sm:inline shrink-0 rounded-full px-2 py-0.5 font-plex-mono text-[11px] ${ORDER_STATUS_BADGE[status]}`}
+                        >
+                          {ORDER_STATUS_LABEL[status]}
+                        </span>
+                        <span className="font-plex-mono text-[var(--oc-muted3)] text-xs shrink-0 w-[7.5rem] text-right">
+                          {o.updatedAt.toLocaleString("mn-MN", {
+                            month: "short",
+                            day: "2-digit",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: false,
+                          })}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <div className="flex-1 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-[width] duration-300 ${
+                              percent >= 100 ? "bg-emerald-500" : "bg-[var(--oc-accent)]"
+                            }`}
+                            style={{ width: `${percent}%` }}
+                          />
+                        </div>
+                        <span
+                          className={`font-plex-mono text-[11px] tabular-nums shrink-0 w-9 text-right ${
+                            percent >= 100
+                              ? "text-emerald-400 light:text-emerald-600"
+                              : "text-[var(--oc-muted3)]"
+                          }`}
+                        >
+                          {percent}%
+                        </span>
+                      </div>
                     </Link>
                   );
                 })}

@@ -392,11 +392,10 @@ model ServiceOrder {
   assignedToId String?
   assignedTo   User?   @relation("AssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
 
-  items              ServiceItem[]
-  reports            DiagnosticReport[]
-  plannedDiagnostics OrderDiagnostic[]
-  payments           OrderPayment[]
-  appointment        Appointment?
+  items       ServiceItem[]
+  reports     DiagnosticReport[]
+  payments    OrderPayment[]
+  appointment Appointment?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -441,6 +440,16 @@ model ServiceItem {
   serviceId String?
   service   Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
 
+  // Оношилгооны загвараас үүссэн мөр (kind=DIAGNOSTIC) хаанаас гаралтайг мөн
+  // бөглөгдсөн тайлантай бол аль тайлантайгаа холбоно (DiagnosticReport). Энэ
+  // хоёр талбар нь урьд тусдаа OrderDiagnostic (товлосон, үнэгүй) моделийг
+  // ServiceItem-тэй нэгтгэсний үр дүн — "Оношилгоо" (үнэтэй мөр) ба
+  // "Оношилгооны хуудас" (бөглөх ёстой тайлан) нэг мөрийн 2 тал болно.
+  diagnosticTemplateId String?
+  diagnosticTemplate   DiagnosticTemplate? @relation(fields: [diagnosticTemplateId], references: [id], onDelete: SetNull)
+  diagnosticReportId   String?             @unique
+  diagnosticReport     DiagnosticReport?   @relation(fields: [diagnosticReportId], references: [id], onDelete: SetNull)
+
   // Цуцлагдсан түүх — мөрийг устгахгүй, зөвхөн CANCELLED болгож хэн/хэзээ
   // цуцалсныг хадгална.
   cancelledAt   DateTime?
@@ -453,6 +462,7 @@ model ServiceItem {
   @@index([orderId])
   @@index([serviceId])
   @@index([status])
+  @@index([diagnosticTemplateId])
 }
 
 enum ItemKind {
@@ -543,8 +553,8 @@ model DiagnosticTemplate {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  reports       DiagnosticReport[]
-  plannedOrders OrderDiagnostic[]
+  reports    DiagnosticReport[]
+  orderItems ServiceItem[]
 
   @@index([tenantId, type, isActive])
   @@index([categoryId])
@@ -589,6 +599,10 @@ model DiagnosticReport {
   filledById String?
   filledBy   User?   @relation("DiagnosticReportFilledBy", fields: [filledById], references: [id], onDelete: SetNull)
 
+  // Энэ тайланг бөглөхөд зориулж захиалгад нэмсэн үйлчилгээний мөр (байвал) —
+  // ServiceItem талд байгаа diagnosticReportId-ийн эсрэг тал.
+  serviceItem ServiceItem?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -600,23 +614,6 @@ model DiagnosticReport {
   @@index([templateId])
 }
 
-// --- OrderDiagnostic (захиалгад товлосон, бөглөгдөөгүй оношилгоо) ---------
-// Захиалга үүсгэх үед оношилгоо нэмбэл энд бүртгэгдэнэ (бөглөхгүй). Захиалга
-// эхэлсний дараа бөглөж DiagnosticReport үүсгэхэд тухайн мөр устгагдана.
-model OrderDiagnostic {
-  id String @id @default(cuid())
-
-  orderId String
-  order   ServiceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
-
-  templateId String
-  template   DiagnosticTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-
-  @@unique([orderId, templateId])
-  @@index([orderId])
-}
 
 // --- Category (үйлчилгээний ангилал — Ажил/Оношилгоо/Сэлбэг бүгдэд) -------
 // Урьд "ажлын ангилал" байсныг өргөтгөж бүх төрлийн Service-д ашиглана.

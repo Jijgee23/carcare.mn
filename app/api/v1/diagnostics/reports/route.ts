@@ -80,6 +80,7 @@ export async function POST(req: Request) {
   const vehicleId = str(formData, "vehicleId");
   const branchId = str(formData, "branchId");
   const orderId = str(formData, "orderId");
+  const itemId = str(formData, "itemId");
   const mileageStr = str(formData, "mileageAtReport");
   const notes = str(formData, "notes");
 
@@ -115,6 +116,25 @@ export async function POST(req: Request) {
     finalCustomerId = order.customerId;
     finalVehicleId = order.vehicleId;
     finalBranchId = order.branchId;
+
+    if (itemId) {
+      const item = await prisma.serviceItem.findFirst({
+        where: {
+          id: itemId,
+          orderId,
+          kind: "DIAGNOSTIC",
+          status: { not: "CANCELLED" },
+          diagnosticReportId: null,
+        },
+        select: { id: true },
+      });
+      if (!item) {
+        return jsonError(
+          422,
+          "Оношилгооны мөр олдсонгүй эсвэл аль хэдийн бөглөгдсөн байна.",
+        );
+      }
+    }
   }
 
   if (!finalCustomerId || !finalVehicleId || !finalBranchId) {
@@ -199,6 +219,15 @@ export async function POST(req: Request) {
       branchId: true,
     },
   });
+
+  // Захиалгын аль ServiceItem(kind=DIAGNOSTIC) мөрийг энэ тайлан гүйцээж
+  // байгааг заасан бол тухайн мөрийг тайлантай холбож, дууссан гэж тооцно.
+  if (itemId) {
+    await prisma.serviceItem.update({
+      where: { id: itemId },
+      data: { diagnosticReportId: report.id, status: "COMPLETED" },
+    });
+  }
 
   return jsonOk({ report }, { status: 201 });
 }

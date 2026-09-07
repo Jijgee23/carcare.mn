@@ -30,6 +30,9 @@ function s(fd: FormData, key: string): string {
 /**
  * formData дотор:
  *   templateId, orderId? — байх ёстой
+ *   itemId? — захиалгын аль ServiceItem(kind=DIAGNOSTIC) мөрийг энэ тайлан
+ *     гүйцээж байгааг заана (өгвөл: тухайн мөрийг тайлантай холбож, статусыг
+ *     дууссан болгоно)
  *   customerId, vehicleId, branchId — orderId байхгүй бол заавал
  *   mileageAtReport?, notes?
  *   data[*][value|note], photos[*][], signatures[*], signature
@@ -42,6 +45,7 @@ export async function createReportAction(
 
   const templateId = s(formData, "templateId");
   const orderId = s(formData, "orderId");
+  const itemId = s(formData, "itemId");
   let customerId = s(formData, "customerId");
   let vehicleId = s(formData, "vehicleId");
   let branchId = s(formData, "branchId");
@@ -95,6 +99,25 @@ export async function createReportAction(
     customerId = order.customerId;
     vehicleId = order.vehicleId;
     branchId = order.branchId;
+
+    if (itemId) {
+      const item = await prisma.serviceItem.findFirst({
+        where: {
+          id: itemId,
+          orderId: order.id,
+          kind: "DIAGNOSTIC",
+          status: { not: "CANCELLED" },
+          diagnosticReportId: null,
+        },
+        select: { id: true },
+      });
+      if (!item) {
+        return {
+          ok: false,
+          message: "Оношилгооны мөр олдсонгүй эсвэл аль хэдийн бөглөгдсөн байна.",
+        };
+      }
+    }
   }
 
   if (!customerId || !vehicleId || !branchId) {
@@ -187,11 +210,12 @@ export async function createReportAction(
     };
   }
 
-  // Захиалгад товлосон байсан бол тухайн оношилгоог бөглөгдсөн гэж тооцоод
-  // plan мөрийг устгана (товлогдсон → бөглөгдсөн тайлан болж шилжинэ).
-  if (orderId) {
-    await prisma.orderDiagnostic.deleteMany({
-      where: { orderId, templateId: template.id },
+  // Захиалгын аль ServiceItem(kind=DIAGNOSTIC) мөрийг энэ тайлан гүйцээж
+  // байгааг заасан бол тухайн мөрийг тайлантай холбож, дууссан гэж тооцно.
+  if (itemId) {
+    await prisma.serviceItem.update({
+      where: { id: itemId },
+      data: { diagnosticReportId: reportId, status: "COMPLETED" },
     });
   }
 
@@ -230,7 +254,23 @@ export async function deleteReportAction(formData: FormData): Promise<void> {
     throw new Error("Танд устгах эрх байхгүй.");
   }
 
-  await prisma.diagnosticReport.delete({ where: { id: report.id } });
+  // Энэ тайланг гүйцээж байсан ServiceItem-ийг олж, тайлан устгагдсаны дараа
+  // (FK-ийн SET NULL-аар diagnosticReportId нь автоматаар хоослогдоно) статусыг
+  // нь бөглөх хүлээгдэж буй болгож буцаана.
+  const linkedItem = await prisma.serviceItem.findUnique({
+    where: { diagnosticReportId: report.id },
+    select: { id: true },
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.diagnosticReport.delete({ where: { id: report.id } });
+    if (linkedItem) {
+      await tx.serviceItem.update({
+        where: { id: linkedItem.id },
+        data: { status: "PENDING" },
+      });
+    }
+  });
 
   await logAudit({
     tenantId: user.tenantId,

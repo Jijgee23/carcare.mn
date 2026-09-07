@@ -7,16 +7,22 @@ import {
 } from "@/app/_actions/orders";
 import {
   ITEM_KIND_LABEL,
+  SERVICE_ITEM_STATUSES,
   SERVICE_ITEM_STATUS_BADGE,
   SERVICE_ITEM_STATUS_LABEL,
-  SERVICE_ITEM_STATUS_TRANSITIONS,
+  canChangeServiceItemStatus,
   formatTugrik,
   isServiceItemCancellable,
   type ItemKind,
   type ServiceItemStatus,
 } from "@/lib/orders";
 
-// Захиалгын мөр — серверээс plain string-ээр дамжина (Decimal биш).
+// Цуцлахаас бусад бүх явц — чөлөөтэй сонгож болно.
+const CHANGEABLE_STATUSES = SERVICE_ITEM_STATUSES.filter(
+  (s) => s !== "CANCELLED",
+);
+
+// Засварын хуудасны мөр — серверээс plain string-ээр дамжина (Decimal биш).
 export type OrderItemLite = {
   id: string;
   kind: string;
@@ -37,25 +43,18 @@ function qtyText(q: string): string {
   return Number.isFinite(n) ? n.toLocaleString("mn-MN") : q;
 }
 
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : String(n);
+}
+
+// Intl.toLocaleString("mn-MN") ашиглахгүй — зарим орчинд (client дээр
+// mn-MN locale өгөгдөл байхгүй бол) server/client өөр форматтай гарч
+// hydration mismatch өгдөг. Гараар форматлавал аль ч орчинд ижил байна.
 function fmtDateTime(iso: string): string {
   const d = new Date(iso);
-  return Number.isFinite(d.getTime())
-    ? d.toLocaleString("mn-MN", { hour12: false })
-    : iso;
+  if (!Number.isFinite(d.getTime())) return iso;
+  return `${d.getFullYear()}.${pad2(d.getMonth() + 1)}.${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
-
-// Цуцлагдаагүй мөрийн дараагийн (цуцлахаас өөр) явц — байхгүй бол терминал.
-function nextStatus(status: ServiceItemStatus): ServiceItemStatus | null {
-  const next = SERVICE_ITEM_STATUS_TRANSITIONS[status].find(
-    (s) => s !== "CANCELLED",
-  );
-  return next ?? null;
-}
-
-const NEXT_STATUS_ACTION_LABEL: Partial<Record<ServiceItemStatus, string>> = {
-  IN_PROGRESS: "Эхлүүлэх",
-  COMPLETED: "Дуусгах",
-};
 
 /**
  * Үйлчилгээний мөрүүдийг төрлөөр нь tab болгож харуулна. "Бүгд" tab дээр
@@ -124,7 +123,7 @@ export function OrderItems({
               Нэгж үнэ
             </th>
             <th className="text-right font-medium px-5 py-2 w-32">Дүн</th>
-            {canEdit ? <th className="w-20" aria-label="Үйлдэл" /> : null}
+            {canEdit ? <th className="w-32" aria-label="Үйлдэл" /> : null}
           </tr>
         </thead>
         <tbody className="divide-y divide-[var(--oc-line)]">
@@ -151,7 +150,6 @@ export function OrderItems({
               {g.items.map((it) => {
                 const status = it.status as ServiceItemStatus;
                 const cancelled = status === "CANCELLED";
-                const upcoming = nextStatus(status);
                 return (
                   <tr
                     key={it.id}
@@ -195,17 +193,22 @@ export function OrderItems({
                     {canEdit ? (
                       <td className="pr-3 py-2.5">
                         <div className="flex items-center justify-end gap-1">
-                          {upcoming ? (
+                          {canChangeServiceItemStatus(status) ? (
                             <form action={changeOrderItemStatusAction}>
                               <input type="hidden" name="itemId" value={it.id} />
-                              <input type="hidden" name="status" value={upcoming} />
-                              <button
-                                type="submit"
-                                title={NEXT_STATUS_ACTION_LABEL[upcoming]}
-                                className="whitespace-nowrap px-2 py-1 rounded-lg text-[11px] font-medium text-[var(--oc-accent)] hover:bg-[var(--oc-accent)]/10 transition-colors"
+                              <select
+                                name="status"
+                                defaultValue={status}
+                                title="Явц өөрчлөх"
+                                onChange={(e) => e.currentTarget.form?.requestSubmit()}
+                                className="compact-input !py-1 !px-1.5 !text-[11px] !rounded-lg max-w-[6.5rem]"
                               >
-                                {NEXT_STATUS_ACTION_LABEL[upcoming]}
-                              </button>
+                                {CHANGEABLE_STATUSES.map((s) => (
+                                  <option key={s} value={s}>
+                                    {SERVICE_ITEM_STATUS_LABEL[s]}
+                                  </option>
+                                ))}
+                              </select>
                             </form>
                           ) : null}
                           {isServiceItemCancellable(status) ? (

@@ -26,12 +26,14 @@ import {
 
 export function DiagnosticForm({
   orderId,
+  itemId,
   templateId,
   templateName,
   schema,
   backHref,
 }: {
   orderId: string;
+  itemId?: string;
   templateId: string;
   templateName: string;
   schema: TemplateSchema;
@@ -75,6 +77,7 @@ export function DiagnosticForm({
       noValidate
     >
       <input type="hidden" name="orderId" value={orderId} />
+      {itemId ? <input type="hidden" name="itemId" value={itemId} /> : null}
       <input type="hidden" name="templateId" value={templateId} />
 
       <FormError message={state?.message} />
