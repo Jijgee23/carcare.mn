@@ -60,6 +60,10 @@ export function buildDaySlots(opts: {
   capacity: number;
   taken: Date[]; // тухайн өдрийн PENDING/CONFIRMED цагуудын requestedAt
   now: Date;
+  // Захиалгын нийт үргэлжлэх хугацаа (booking v2 — сонгосон ангилалуудын нийлбэр).
+  // Slot-ийн АЛХАМ нь slotMinutes хэвээр; энэ нь зөвхөн "хаах цагт багтах уу"
+  // хилд нөлөөлнө. null/0 бол slotMinutes-тэй тэнцүү (хуучин зан төлөв).
+  appointmentMinutes?: number;
 }): DayAvailability {
   if (!opts.open) return { open: false, reason: "Энэ өдөр амарна.", slots: [] };
 
@@ -72,11 +76,16 @@ export function buildDaySlots(opts: {
   const [y, m, d] = opts.dateStr.split("-").map(Number);
   const slotMin = opts.slotMinutes > 0 ? opts.slotMinutes : DEFAULT_SLOT_MINUTES;
   const cap = opts.capacity > 0 ? opts.capacity : DEFAULT_SLOT_CAPACITY;
+  // Захиалга багтах ёстой урт — хаах цагийн хилд ашиглана.
+  const apptMin =
+    opts.appointmentMinutes && opts.appointmentMinutes > 0
+      ? opts.appointmentMinutes
+      : slotMin;
   const takenMs = opts.taken.map((t) => t.getTime());
   const nowMs = opts.now.getTime();
 
   const slots: DaySlot[] = [];
-  for (let start = openMin; start + slotMin <= closeMin; start += slotMin) {
+  for (let start = openMin; start + apptMin <= closeMin; start += slotMin) {
     const slotStart = new Date(y, m - 1, d, Math.floor(start / 60), start % 60);
     const startMs = slotStart.getTime();
     const endMs = startMs + slotMin * 60000;

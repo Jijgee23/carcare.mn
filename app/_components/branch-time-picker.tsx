@@ -1,11 +1,24 @@
 "use client";
 
-import { useRef, useState } from "react";
+import {
+  forwardRef,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import { getBranchDaySlots } from "@/app/_actions/appointments";
 import { BookingCalendar } from "@/app/_components/booking-calendar";
 import type { DayAvailability } from "@/lib/appointment-slots";
 import { todayKey } from "@/lib/appointments-calendar";
 import type { Weekday } from "@/lib/branches";
+
+/** Гаднаас (categoryIds солигдоход) дуудах имплиэйтив API. */
+export type BranchTimePickerHandle = {
+  // `nextCategoryIds`-г ЗААВАЛ дамжуулна: parent-ийн setState батчлагдсан тул
+  // энэ дуудлагын үед props хараахан шинэчлэгдээгүй байж болзошгүй — closure
+  // дэх хуучин `categoryIds` prop-оор биш, шинэ утгаар л дуудна.
+  reload: (nextCategoryIds: string[]) => void;
+};
 
 /**
  * Салбар + өдөр + боломжит цагийн сонгогч. Хэрэглэгчийн захиалга болон ажилтны
@@ -13,20 +26,25 @@ import type { Weekday } from "@/lib/branches";
  * эцэг grid-д шууд багана болж байрлана.
  *
  * Салбар солих үед `key={branchId}`-ээр remount хийж дотоод төлвийг тэглэнэ.
+ * `categoryIds` өөрчлөгдөхөд (ижил салбар дээр) эцэг компонент `ref.reload()`-ийг
+ * шууд (event handler-аас) дуудаж, огноог хэвээр үлдээгээд зөвхөн боломжит
+ * цагийг дахин татна — booking v2: сонгосон ангиллуудын нийт хугацаа
+ * өөрчлөгдөж болно. (Effect дотор шууд setState дуудахаас зайлсхийв.)
  */
-export function BranchTimePicker({
-  branchId,
-  openWeekdays,
-  value,
-  onChange,
-  error,
-}: {
-  branchId: string;
-  openWeekdays?: Weekday[];
-  value: string; // сонгосон цагийн ISO
-  onChange: (iso: string) => void;
-  error?: string;
-}) {
+export const BranchTimePicker = forwardRef<
+  BranchTimePickerHandle,
+  {
+    branchId: string;
+    categoryIds?: string[];
+    openWeekdays?: Weekday[];
+    value: string; // сонгосон цагийн ISO
+    onChange: (iso: string) => void;
+    error?: string;
+  }
+>(function BranchTimePicker(
+  { branchId, categoryIds = [], openWeekdays, value, onChange, error },
+  ref,
+) {
   const [date, setDate] = useState("");
   const [availability, setAvailability] = useState<DayAvailability | null>(null);
   const [loadingSlots, setLoadingSlots] = useState(false);
@@ -41,7 +59,7 @@ export function BranchTimePicker({
     const id = ++reqIdRef.current;
     setLoadingSlots(true);
     try {
-      const res = await getBranchDaySlots(branchId, d);
+      const res = await getBranchDaySlots(branchId, d, categoryIds);
       if (id === reqIdRef.current) setAvailability(res);
     } catch {
       if (id === reqIdRef.current) setAvailability(null);
@@ -55,6 +73,25 @@ export function BranchTimePicker({
     onChange(""); // өдөр солиход сонгосон цагийг цэвэрлэнэ
     void loadSlots(d);
   }
+
+  useImperativeHandle(ref, () => ({
+    reload: (nextCategoryIds: string[]) => {
+      if (!date || !branchId) return;
+      onChange(""); // хугацаа өөрчлөгдсөн тул өмнөх сонголт хүчингүй болж болзошгүй
+      const id = ++reqIdRef.current;
+      setLoadingSlots(true);
+      getBranchDaySlots(branchId, date, nextCategoryIds)
+        .then((res) => {
+          if (id === reqIdRef.current) setAvailability(res);
+        })
+        .catch(() => {
+          if (id === reqIdRef.current) setAvailability(null);
+        })
+        .finally(() => {
+          if (id === reqIdRef.current) setLoadingSlots(false);
+        });
+    },
+  }));
 
   return (
     <>
@@ -127,4 +164,4 @@ export function BranchTimePicker({
       </div>
     </>
   );
-}
+});

@@ -8,6 +8,7 @@ import { assertActiveSubscription } from "@/lib/subscription-server";
 import { canCreate, canEdit, workingBranchScopeId } from "@/lib/auth/roles";
 import { formatWhen, resolveCustomerForAccount } from "@/lib/appointments";
 import { ensureAppointmentFeeCheckout } from "@/lib/appointment-payments";
+import { resolveBranchCategoryDurations } from "@/lib/category-duration";
 import { ensureTenantVehicle } from "@/lib/vehicles";
 import {
   DEFAULT_SLOT_CAPACITY,
@@ -38,10 +39,16 @@ function s(fd: FormData, key: string): string {
 /**
  * Тухайн салбар + өдрийн (YYYY-MM-DD) цагийн нүхнүүдийг буцаана — захиалгатай
  * (завгүй) болон сул цагуудтай. Хэрэглэгчийн booking-form-оос дуудна.
+ *
+ * Booking v2: `categoryIds` (заавал биш) өгвөл захиалгын нийт үргэлжлэх
+ * хугацааг (branch override ?? category default ?? 30) тэдгээрийн нийлбэрээр
+ * тооцож, slot-ийн "хаах цагт багтах уу" хилд ашиглана (mobile-ийн
+ * `/branches/[branchId]/availability` endpoint-той адил дүрэм).
  */
 export async function getBranchDaySlots(
   branchId: string,
   dateStr: string,
+  categoryIds: string[] = [],
 ): Promise<DayAvailability> {
   // Нэвтрээгүй зочид ч дуудах нийтэд нээлттэй action (booking-form-оос) тул
   // bypass ашиглана — org/[slug]/page.tsx-ийн адил зарчим.
@@ -82,16 +89,21 @@ export async function getBranchDaySlots(
 
   const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60000);
-  const taken = open
-    ? await prisma.appointment.findMany({
-        where: {
-          branchId,
-          status: { in: ["PENDING", "CONFIRMED"] },
-          requestedAt: { gte: dayStart, lt: dayEnd },
-        },
-        select: { requestedAt: true },
-      })
-    : [];
+  const [taken, resolved] = await Promise.all([
+    open
+      ? prisma.appointment.findMany({
+          where: {
+            branchId,
+            status: { in: ["PENDING", "CONFIRMED"] },
+            requestedAt: { gte: dayStart, lt: dayEnd },
+          },
+          select: { requestedAt: true },
+        })
+      : Promise.resolve([]),
+    categoryIds.length > 0
+      ? resolveBranchCategoryDurations(prisma, branchId, categoryIds)
+      : Promise.resolve(null),
+  ]);
 
   return buildDaySlots({
     dateStr,
@@ -102,6 +114,7 @@ export async function getBranchDaySlots(
     capacity: branch.slotCapacity ?? DEFAULT_SLOT_CAPACITY,
     taken: taken.map((t) => t.requestedAt),
     now: new Date(),
+    appointmentMinutes: resolved?.totalMinutes,
   });
 }
 
@@ -218,21 +231,26 @@ export async function createAppointment(
     }
   }
 
-  // Ангилал сонгосон бол тухайн салбарт хамаарах (эсвэл салбаргүй=бүгдэд)
-  // идэвхтэй ангилал мөн эсэхийг шалгана. Заавал биш тул тохирохгүй бол үл хэрэгснэ.
-  let categoryId: string | null = s(formData, "categoryId") || null;
-  if (categoryId) {
-    const cat = await prisma.category.findFirst({
+  // Ангилал (booking v2 — олон сонголт): салбарт хамаарах (эсвэл
+  // салбаргүй=бүгдэд) идэвхтэй ангилал мөн эсэхийг шалгана. Заавал биш тул
+  // тохирохгүй/өөр тенантын id-г чимээгүй хасна (`/api/v1/app/appointments`
+  // POST-той адил дүрэм).
+  const requestedCategoryIds = [...new Set(formData.getAll("categoryIds").map(String).filter(Boolean))];
+  let validCategoryIds: string[] = [];
+  if (requestedCategoryIds.length) {
+    const cats = await prisma.category.findMany({
       where: {
-        id: categoryId,
+        id: { in: requestedCategoryIds },
         tenantId: branch.tenantId,
         isActive: true,
         OR: [{ branches: { some: { id: branch.id } } }, { branches: { none: {} } }],
       },
       select: { id: true },
     });
-    if (!cat) categoryId = null;
+    validCategoryIds = cats.map((c) => c.id);
   }
+  // Ганц `categoryId` back-compat-д — эхний хүчинтэй ангилал.
+  const categoryId: string | null = validCategoryIds[0] ?? null;
 
   const created = await prisma.appointment.create({
     data: {
@@ -241,6 +259,9 @@ export async function createAppointment(
       accountId: account.id,
       accountVehicleId,
       categoryId,
+      categories: validCategoryIds.length
+        ? { create: validCategoryIds.map((id) => ({ categoryId: id })) }
+        : undefined,
       requestedAt: requestedAt!,
       note: note || null,
       status: "PENDING",

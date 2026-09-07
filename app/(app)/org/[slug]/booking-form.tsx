@@ -1,31 +1,38 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import type { CreatedAccountVehicle } from "@/app/_actions/account-vehicles";
 import {
   type AppointmentActionState,
   createAppointment,
 } from "@/app/_actions/appointments";
 import { Field, FormError } from "@/app/_components/auth-shell";
-import { BranchTimePicker } from "@/app/_components/branch-time-picker";
+import {
+  BranchTimePicker,
+  type BranchTimePickerHandle,
+} from "@/app/_components/branch-time-picker";
 import { Select } from "@/app/_components/select";
 import type { Weekday } from "@/lib/branches";
+import { formatDuration } from "@/lib/category-duration";
 import { InlineAccountVehicleForm } from "@/app/(app)/account/inline-account-vehicle-form";
 
-type Branch = { id: string; name: string; openWeekdays: Weekday[] };
+type Category = { id: string; name: string; durationMinutes: number };
+type Branch = {
+  id: string;
+  name: string;
+  openWeekdays: Weekday[];
+  categories: Category[];
+};
 // id нь global Vehicle id (AccountVehicle link биш).
 type Vehicle = { id: string; plate: string; make: string; model: string };
-type Category = { id: string; name: string; branchIds: string[] };
 
 export function BookingForm({
   branches,
   vehicles: initialVehicles,
-  categories,
   initialBranchId = "",
 }: {
   branches: Branch[];
   vehicles: Vehicle[];
-  categories: Category[];
   initialBranchId?: string;
 }) {
   const [state, formAction, pending] = useActionState<
@@ -34,30 +41,66 @@ export function BookingForm({
   >(createAppointment, null);
   const fe = state?.fieldErrors ?? {};
 
+  // Booking v2 — category-first: эхлээд үйлчилгээгээ сонгоно (заавал биш),
+  // дараа нь тэдгээрийг БҮГДийг нь санал болгодог салбарууд л сонгогдоно.
+  // Аль замаар ирсэн ч (discover-с тодорхой салбар сонгож орж ирсэн) энэ
+  // салбар шууд идэвхтэй хэвээр — ангилал сонгох нь блоклохгүй, зөвхөн
+  // БУСАД салбарыг харьцуулах/шүүх зорилготой (mobile-тай адил шийдвэр).
   const [branchId, setBranchId] = useState(
     initialBranchId || (branches.length === 1 ? branches[0].id : ""),
   );
+  const [categoryIds, setCategoryIds] = useState<string[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>(initialVehicles);
   const [vehicleId, setVehicleId] = useState(
     initialVehicles.length === 1 ? initialVehicles[0].id : "",
   );
   const [showVehForm, setShowVehForm] = useState(false);
   const [selectedIso, setSelectedIso] = useState("");
-  const [categoryId, setCategoryId] = useState("");
+  const timePickerRef = useRef<BranchTimePickerHandle>(null);
 
   const selectedBranch = branches.find((b) => b.id === branchId);
 
-  // Сонгосон салбарт хамаарах ангилал (салбаргүй ангилал бүх салбарт).
-  const branchCategories = branchId
-    ? categories.filter(
-        (c) => c.branchIds.length === 0 || c.branchIds.includes(branchId),
-      )
-    : [];
+  // Байгууллагын БҮХ салбарт байгаа ангиллууд (давхардалгүй, нэрээр эрэмбэлэгдсэн).
+  const allCategories = (() => {
+    const byId = new Map<string, Category>();
+    for (const b of branches) for (const c of b.categories) byId.set(c.id, c);
+    return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+  })();
+
+  // Сонгосон ангилал БҮГДийг санал болгодог салбарууд (АНД) — ангилал огт
+  // сонгоогүй бол БҮХ салбар (`every` хоосон массив дээр үнэн).
+  const compatibleBranches = branches.filter((b) =>
+    categoryIds.every((id) => b.categories.some((c) => c.id === id)),
+  );
+
+  const selectedDurationMinutes = (selectedBranch?.categories ?? [])
+    .filter((c) => categoryIds.includes(c.id))
+    .reduce((sum, c) => sum + c.durationMinutes, 0);
+
+  function toggleCategory(id: string, checked: boolean) {
+    const next = checked
+      ? [...categoryIds, id]
+      : categoryIds.filter((x) => x !== id);
+    setCategoryIds(next);
+    // Идэвхтэй салбар цаашид тохирохгүй бол — ганц тохирох салбар үлдсэн бол
+    // автоматаар түүнийг сонгоно, эс бөгөөс дахин сонгуулахаар хоослоно.
+    const compatible = branches.filter((b) =>
+      next.every((cid) => b.categories.some((c) => c.id === cid)),
+    );
+    if (!compatible.some((b) => b.id === branchId)) {
+      // Салбар өөрчлөгдөнө (эсвэл хоослогдоно) — `key={branchId}`-ээр
+      // remount хийгдэж дотоод төлөв (огноо гэх мэт) аль хэдийн цэвэрлэгдэнэ,
+      // тул reload дуудах шаардлагагүй (хуучин instance дээр дуудвал
+      // unmount-ийн дараах setState анхааруулга үүсгэнэ).
+      setBranchId(compatible.length === 1 ? compatible[0].id : "");
+    } else {
+      timePickerRef.current?.reload(next);
+    }
+  }
 
   function onBranchChange(v: string) {
     setBranchId(v);
     setSelectedIso("");
-    setCategoryId(""); // салбар солихед ангиллын жагсаалт өөрчлөгдөнө
   }
 
   function onVehCreated(v: CreatedAccountVehicle) {
@@ -73,42 +116,79 @@ export function BookingForm({
     <form action={formAction} className="flex flex-col gap-5" noValidate>
       <FormError message={state?.message && !state.ok ? state.message : undefined} />
       <input type="hidden" name="requestedAt" value={selectedIso} />
+      {categoryIds.map((id) => (
+        <input key={id} type="hidden" name="categoryIds" value={id} />
+      ))}
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 items-start">
-        {/* Зүүн багана: салбар, машин, тэмдэглэл */}
+        {/* Зүүн багана: ангилал, салбар, машин, тэмдэглэл */}
         <div className="flex flex-col gap-4">
-          <Field label="Салбар" htmlFor="branchId" error={fe.branchId}>
-            <Select
-              id="branchId"
-              name="branchId"
-              required
-              value={branchId}
-              onChange={onBranchChange}
-              error={fe.branchId}
-              options={branches.map((b) => ({ value: b.id, label: b.name }))}
-            />
-          </Field>
-
-          {branchId && branchCategories.length > 0 ? (
-            <Field
-              label="Үйлчилгээний ангилал"
-              htmlFor="categoryId"
-              hint="заавал биш"
-              error={fe.categoryId}
-            >
-              <Select
-                id="categoryId"
-                name="categoryId"
-                value={categoryId}
-                onChange={setCategoryId}
-                placeholder="— Сонгох —"
-                options={branchCategories.map((c) => ({
-                  value: c.id,
-                  label: c.name,
-                }))}
-              />
+          {allCategories.length > 0 ? (
+            <Field label="Үйлчилгээ" htmlFor="category-0" hint="заавал биш">
+              <div className="flex flex-col gap-2">
+                {categoryIds.length > 0 ? (
+                  <p className="text-xs text-white/40">
+                    Нийт ойролцоогоор {formatDuration(selectedDurationMinutes)}
+                  </p>
+                ) : null}
+                <div className="flex flex-wrap gap-2">
+                  {allCategories.map((c, i) => {
+                    const checked = categoryIds.includes(c.id);
+                    return (
+                      <label
+                        key={c.id}
+                        htmlFor={`category-${i}`}
+                        className={`px-3 py-1.5 rounded-lg border text-sm cursor-pointer transition-colors select-none ${
+                          checked
+                            ? "bg-violet-600 border-violet-500 text-white font-medium"
+                            : "border-white/[0.12] bg-white/[0.04] text-white/70 hover:border-violet-500/40"
+                        }`}
+                      >
+                        <input
+                          id={`category-${i}`}
+                          type="checkbox"
+                          className="sr-only"
+                          checked={checked}
+                          onChange={(e) => toggleCategory(c.id, e.target.checked)}
+                        />
+                        {c.name}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
             </Field>
           ) : null}
+
+          {/* Дэвийн шийдвэрээр: ангилал сонгогдоогүй бол салбар сонгох
+              хэсгийг нуана — эхлээд орж ирсэн салбар (initialBranchId эсвэл
+              цорын ганц салбар) хэвээрээ идэвхтэй хэрэглэгдэнэ. */}
+          {branches.length > 1 && categoryIds.length > 0 ? (
+            <Field label="Салбар" htmlFor="branchId" error={fe.branchId}>
+              {compatibleBranches.length === 0 ? (
+                <p className="text-xs text-red-400 light:text-red-600">
+                  Сонгосон бүх үйлчилгээг нэгэн зэрэг санал болгодог салбар
+                  алга байна. Үйлчилгээнийхээ сонголтоо өөрчилнө үү.
+                </p>
+              ) : (
+                <Select
+                  id="branchId"
+                  name="branchId"
+                  required
+                  value={branchId}
+                  onChange={onBranchChange}
+                  error={fe.branchId}
+                  placeholder="— Сонгох —"
+                  options={compatibleBranches.map((b) => ({
+                    value: b.id,
+                    label: b.name,
+                  }))}
+                />
+              )}
+            </Field>
+          ) : (
+            <input type="hidden" name="branchId" value={branchId} />
+          )}
 
           <Field
             label="Машин"
@@ -167,6 +247,7 @@ export function BookingForm({
         <BranchTimePicker
           key={branchId || "none"}
           branchId={branchId}
+          categoryIds={categoryIds}
           openWeekdays={selectedBranch?.openWeekdays}
           value={selectedIso}
           onChange={setSelectedIso}
@@ -176,7 +257,7 @@ export function BookingForm({
 
       <button
         type="submit"
-        disabled={pending || !selectedIso}
+        disabled={pending || !selectedIso || !branchId}
         className="self-start bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all px-6 py-2.5 rounded-xl font-medium text-sm"
       >
         {pending ? "..." : "Цаг захиалах"}

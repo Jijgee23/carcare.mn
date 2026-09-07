@@ -23,8 +23,9 @@ export async function GET(req: Request) {
       requestedAt: true,
       note: true,
       tenant: { select: { name: true, slug: true } },
-      branch: { select: { name: true } },
+      branch: { select: { id: true, name: true } },
       category: { select: { name: true } },
+      categories: { select: { category: { select: { id: true, name: true } } } },
       accountVehicle: { select: { vehicle: { select: { plate: true } } } },
       feeAmount: true,
       feeCurrency: true,
@@ -46,6 +47,8 @@ export async function GET(req: Request) {
     tenant: a.tenant,
     branch: a.branch,
     category: a.category,
+    // Олон-ангилалт захиалга (booking v2). `category` (ганц) back-compat-д үлдэв.
+    categories: a.categories.map((c) => c.category),
     accountVehicle: a.accountVehicle
       ? { plate: a.accountVehicle.vehicle.plate }
       : null,
@@ -71,6 +74,7 @@ export async function POST(req: Request) {
     requestedAt?: unknown;
     accountVehicleId?: unknown;
     categoryId?: unknown;
+    categoryIds?: unknown;
     note?: unknown;
   };
   const branchId = typeof b.branchId === "string" ? b.branchId.trim() : "";
@@ -82,6 +86,13 @@ export async function POST(req: Request) {
       : null;
   const categoryIdRaw =
     typeof b.categoryId === "string" && b.categoryId ? b.categoryId : null;
+  // Олон ангилал (booking v2). Ганц `categoryId`-тэй нэгтгэж, давхардлыг арилгана.
+  const categoryIdsRaw = Array.isArray(b.categoryIds)
+    ? b.categoryIds.filter((x): x is string => typeof x === "string" && !!x)
+    : [];
+  const requestedCategoryIds = [
+    ...new Set([...(categoryIdRaw ? [categoryIdRaw] : []), ...categoryIdsRaw]),
+  ];
 
   if (!branchId) return jsonError(400, "branchId шаардлагатай.");
   const when = new Date(requestedRaw);
@@ -121,19 +132,22 @@ export async function POST(req: Request) {
   }
 
   // Ангилал — заавал биш; салбарт хамаарах (эсвэл салбаргүй) идэвхтэйг л авна.
-  let categoryId: string | null = categoryIdRaw;
-  if (categoryId) {
-    const cat = await prisma.category.findFirst({
+  // Буруу/өөр тенантын id-г чимээгүй хасна (энэ салбарт санал болгож буйг л авна).
+  let validCategoryIds: string[] = [];
+  if (requestedCategoryIds.length) {
+    const cats = await prisma.category.findMany({
       where: {
-        id: categoryId,
+        id: { in: requestedCategoryIds },
         tenantId: branch.tenantId,
         isActive: true,
         OR: [{ branches: { some: { id: branch.id } } }, { branches: { none: {} } }],
       },
       select: { id: true },
     });
-    if (!cat) categoryId = null;
+    validCategoryIds = cats.map((c) => c.id);
   }
+  // Ганц `categoryId` back-compat-д — эхний хүчинтэй ангилал.
+  const categoryId: string | null = validCategoryIds[0] ?? null;
 
   const appt = await prisma.appointment.create({
     data: {
@@ -142,6 +156,9 @@ export async function POST(req: Request) {
       accountId: account.id,
       accountVehicleId,
       categoryId,
+      categories: validCategoryIds.length
+        ? { create: validCategoryIds.map((id) => ({ categoryId: id })) }
+        : undefined,
       requestedAt: when,
       note: note || null,
       status: "PENDING",

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getAccount } from "@/lib/auth/account";
 import { openWeekdaysOf } from "@/lib/branches";
+import { resolveCategoryDurationMinutes } from "@/lib/category-duration";
 import { prisma } from "@/lib/prisma";
 import { setBypassContext } from "@/lib/tenant-context";
 import { BookingForm } from "./booking-form";
@@ -101,26 +102,53 @@ export default async function OrgPage({
       : "";
 
   const account = await getAccount();
-  const [vehicles, categories] = await Promise.all([
+  const branchIds = org.branches.map((b) => b.id);
+  const [vehicles, categoryRows, overrides] = await Promise.all([
     // Хэрэглэгчийн бүх машин — өөрөө нэмсэн (AccountVehicle) дээр нэмээд
     // сервисүүдэд бүртгэлтэй, энэ хэрэглэгчид холбогдсон машинууд
     // (/account/vehicles хуудастай ижил логик). Утга нь global Vehicle id.
     account ? loadAccountVehicles(account.id, account.phone) : Promise.resolve([]),
-    // Идэвхтэй ангилал + аль салбарт хамаарах (хоосон бол бүх салбарт).
-    prisma.category
-      .findMany({
-        where: { tenantId: org.id, isActive: true },
-        orderBy: { name: "asc" },
-        select: { id: true, name: true, branches: { select: { id: true } } },
-      })
-      .then((rows) =>
-        rows.map((c) => ({
+    // Идэвхтэй ангилал + аль салбарт хамаарах (хоосон бол бүх салбарт) +
+    // tenant-ийн default хугацаа (booking v2, `/api/v1/app/orgs/[slug]`-тэй адил).
+    prisma.category.findMany({
+      where: { tenantId: org.id, isActive: true },
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        name: true,
+        durationMinutes: true,
+        branches: { select: { id: true } },
+      },
+    }),
+    // Салбар-тусгай хугацааны override-ууд.
+    branchIds.length > 0
+      ? prisma.branchCategoryDuration.findMany({
+          where: { branchId: { in: branchIds } },
+          select: { branchId: true, categoryId: true, durationMinutes: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  const overrideKey = (branchId: string, categoryId: string) => `${branchId}:${categoryId}`;
+  const overrideByKey = new Map(
+    overrides.map((o) => [overrideKey(o.branchId, o.categoryId), o.durationMinutes]),
+  );
+  // Салбар бүрд: тухайн салбарт хамаарах ангилалуудыг шийдэгдсэн хугацаатай нь
+  // (branch override ?? category default ?? 30).
+  const branchCategories = new Map(
+    org.branches.map((b) => [
+      b.id,
+      categoryRows
+        .filter((c) => c.branches.length === 0 || c.branches.some((cb) => cb.id === b.id))
+        .map((c) => ({
           id: c.id,
           name: c.name,
-          branchIds: c.branches.map((b) => b.id),
+          durationMinutes: resolveCategoryDurationMinutes({
+            branchOverride: overrideByKey.get(overrideKey(b.id, c.id)) ?? null,
+            categoryDefault: c.durationMinutes,
+          }),
         })),
-      ),
-  ]);
+    ]),
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -164,9 +192,9 @@ export default async function OrgPage({
                 id: b.id,
                 name: b.name,
                 openWeekdays: openWeekdaysOf(b),
+                categories: branchCategories.get(b.id) ?? [],
               }))}
               vehicles={vehicles}
-              categories={categories}
               initialBranchId={initialBranchId}
             />
           ) : (
