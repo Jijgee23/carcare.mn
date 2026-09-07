@@ -8,14 +8,17 @@ import { assertActiveSubscription } from "@/lib/subscription-server";
 import { canCreate, canEdit, workingBranchScopeId } from "@/lib/auth/roles";
 import { formatWhen, resolveCustomerForAccount } from "@/lib/appointments";
 import { ensureAppointmentFeeCheckout } from "@/lib/appointment-payments";
-import { resolveBranchCategoryDurations } from "@/lib/category-duration";
+import {
+  isSlotAvailable,
+  resolveBranchCategoryDurations,
+  resolveTakenAppointmentIntervals,
+} from "@/lib/category-duration";
 import { ensureTenantVehicle } from "@/lib/vehicles";
 import {
   DEFAULT_SLOT_CAPACITY,
   DEFAULT_SLOT_MINUTES,
   type DayAvailability,
   buildDaySlots,
-  isSlotAvailable,
   weekdayFromDate,
 } from "@/lib/appointment-slots";
 import { logAudit } from "@/lib/audit";
@@ -89,7 +92,8 @@ export async function getBranchDaySlots(
 
   const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60000);
-  const [taken, resolved] = await Promise.all([
+  const slotMin = branch.slotMinutes ?? DEFAULT_SLOT_MINUTES;
+  const [takenRows, resolved] = await Promise.all([
     open
       ? prisma.appointment.findMany({
           where: {
@@ -97,22 +101,35 @@ export async function getBranchDaySlots(
             status: { in: ["PENDING", "CONFIRMED"] },
             requestedAt: { gte: dayStart, lt: dayEnd },
           },
-          select: { requestedAt: true },
+          select: {
+            requestedAt: true,
+            categoryId: true,
+            categories: { select: { categoryId: true } },
+          },
         })
       : Promise.resolve([]),
     categoryIds.length > 0
       ? resolveBranchCategoryDurations(prisma, branchId, categoryIds)
       : Promise.resolve(null),
   ]);
+  // Захиалга бүрийн ЖИНХЭНЭ эзэлж буй хугацаа (эхлэх цаг + өөрийнх нь
+  // үргэлжлэх хугацаа) — эрт эхэлсэн урт захиалга дараагийн slot-уудыг
+  // "сул" мэт үзүүлэхээс сэргийлнэ.
+  const taken = await resolveTakenAppointmentIntervals(
+    prisma,
+    branchId,
+    takenRows,
+    slotMin,
+  );
 
   return buildDaySlots({
     dateStr,
     open,
     openTime,
     closeTime,
-    slotMinutes: branch.slotMinutes ?? DEFAULT_SLOT_MINUTES,
+    slotMinutes: slotMin,
     capacity: branch.slotCapacity ?? DEFAULT_SLOT_CAPACITY,
-    taken: taken.map((t) => t.requestedAt),
+    taken,
     now: new Date(),
     appointmentMinutes: resolved?.totalMinutes,
   });
@@ -185,8 +202,34 @@ export async function createAppointment(
     };
   }
 
-  // Сонгосон цаг хараахан дүүрээгүй эсэхийг шалгана (давхар захиалга).
-  if (!(await isSlotAvailable(prisma, branch.id, requestedAt!))) {
+  // Ангилал (booking v2 — олон сонголт): салбарт хамаарах (эсвэл
+  // салбаргүй=бүгдэд) идэвхтэй ангилал мөн эсэхийг шалгана. Заавал биш тул
+  // тохирохгүй/өөр тенантын id-г чимээгүй хасна (`/api/v1/app/appointments`
+  // POST-той адил дүрэм). Доорх давхцлын шалгалтад ШИНЭ захиалгын жинхэнэ
+  // хугацааг мэдэх шаардлагатай тул isSlotAvailable-аас ӨМНӨ шийднэ.
+  const requestedCategoryIds = [...new Set(formData.getAll("categoryIds").map(String).filter(Boolean))];
+  let validCategoryIds: string[] = [];
+  if (requestedCategoryIds.length) {
+    const cats = await prisma.category.findMany({
+      where: {
+        id: { in: requestedCategoryIds },
+        tenantId: branch.tenantId,
+        isActive: true,
+        OR: [{ branches: { some: { id: branch.id } } }, { branches: { none: {} } }],
+      },
+      select: { id: true },
+    });
+    validCategoryIds = cats.map((c) => c.id);
+  }
+  // Ганц `categoryId` back-compat-д — эхний хүчинтэй ангилал.
+  const categoryId: string | null = validCategoryIds[0] ?? null;
+  const { totalMinutes: newDurationMinutes } = validCategoryIds.length
+    ? await resolveBranchCategoryDurations(prisma, branch.id, validCategoryIds)
+    : { totalMinutes: 0 };
+
+  // Сонгосон цаг хараахан дүүрээгүй эсэхийг шалгана (давхар захиалга) —
+  // ШИНЭ захиалгын жинхэнэ хугацааг дамжуулж overlap-аар шалгана.
+  if (!(await isSlotAvailable(prisma, branch.id, requestedAt!, newDurationMinutes))) {
     return {
       ok: false,
       fieldErrors: {
@@ -230,27 +273,6 @@ export async function createAppointment(
       accountVehicleId = created.id;
     }
   }
-
-  // Ангилал (booking v2 — олон сонголт): салбарт хамаарах (эсвэл
-  // салбаргүй=бүгдэд) идэвхтэй ангилал мөн эсэхийг шалгана. Заавал биш тул
-  // тохирохгүй/өөр тенантын id-г чимээгүй хасна (`/api/v1/app/appointments`
-  // POST-той адил дүрэм).
-  const requestedCategoryIds = [...new Set(formData.getAll("categoryIds").map(String).filter(Boolean))];
-  let validCategoryIds: string[] = [];
-  if (requestedCategoryIds.length) {
-    const cats = await prisma.category.findMany({
-      where: {
-        id: { in: requestedCategoryIds },
-        tenantId: branch.tenantId,
-        isActive: true,
-        OR: [{ branches: { some: { id: branch.id } } }, { branches: { none: {} } }],
-      },
-      select: { id: true },
-    });
-    validCategoryIds = cats.map((c) => c.id);
-  }
-  // Ганц `categoryId` back-compat-д — эхний хүчинтэй ангилал.
-  const categoryId: string | null = validCategoryIds[0] ?? null;
 
   const created = await prisma.appointment.create({
     data: {
@@ -412,17 +434,10 @@ export async function registerAppointmentByStaff(
     return { ok: false, fieldErrors: { customerId: "Үйлчлүүлэгч олдсонгүй." } };
   }
 
-  if (!(await isSlotAvailable(prisma, branchId, requestedAt!))) {
-    return {
-      ok: false,
-      fieldErrors: {
-        requestedAt: "Энэ цаг дүүрсэн байна. Өөр цаг сонгоно уу.",
-      },
-    };
-  }
-
   // Ангилал (booking v2 — олон сонголт) — заавал биш; салбарт хамаарах (эсвэл
-  // салбаргүй) идэвхтэйг л авна (`createAppointment`-тэй адил дүрэм).
+  // салбаргүй) идэвхтэйг л авна (`createAppointment`-тэй адил дүрэм). Доорх
+  // давхцлын шалгалтад ШИНЭ захиалгын жинхэнэ хугацааг мэдэх шаардлагатай тул
+  // isSlotAvailable-аас ӨМНӨ шийднэ.
   const requestedCategoryIds = [...new Set(formData.getAll("categoryIds").map(String).filter(Boolean))];
   let validCategoryIds: string[] = [];
   if (requestedCategoryIds.length) {
@@ -439,6 +454,18 @@ export async function registerAppointmentByStaff(
   }
   // Ганц `categoryId` back-compat-д — эхний хүчинтэй ангилал.
   const categoryId: string | null = validCategoryIds[0] ?? null;
+  const { totalMinutes: newDurationMinutes } = validCategoryIds.length
+    ? await resolveBranchCategoryDurations(prisma, branchId, validCategoryIds)
+    : { totalMinutes: 0 };
+
+  if (!(await isSlotAvailable(prisma, branchId, requestedAt!, newDurationMinutes))) {
+    return {
+      ok: false,
+      fieldErrors: {
+        requestedAt: "Энэ цаг дүүрсэн байна. Өөр цаг сонгоно уу.",
+      },
+    };
+  }
 
   const created = await prisma.appointment.create({
     data: {

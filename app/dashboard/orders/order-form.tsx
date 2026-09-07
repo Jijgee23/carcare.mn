@@ -39,6 +39,7 @@ type Vehicle = {
   model: string;
   customerId: string | null;
   isPostpaid?: boolean;
+  isAccountVehicle?: boolean;
 };
 type Tech = {
   id: string;
@@ -286,10 +287,15 @@ export function OrderForm({
                     !customerId && owner
                       ? `${v.make} ${v.model} · ${customerLabel(owner)}`
                       : `${v.make} ${v.model}`;
+                  const hint = v.isAccountVehicle
+                    ? `${base} · Хэрэглэгчийн бүртгэлээс — энэ хуудастай холбоно`
+                    : v.isPostpaid
+                      ? `${base} · Дараа төлбөрт`
+                      : base;
                   return {
                     value: v.id,
                     label: v.plate,
-                    hint: v.isPostpaid ? `${base} · Дараа төлбөрт` : base,
+                    hint,
                   };
                 })}
               />

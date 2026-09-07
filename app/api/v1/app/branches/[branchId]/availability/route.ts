@@ -5,7 +5,10 @@ import {
   DEFAULT_SLOT_MINUTES,
   weekdayFromDate,
 } from "@/lib/appointment-slots";
-import { resolveBranchCategoryDurations } from "@/lib/category-duration";
+import {
+  resolveBranchCategoryDurations,
+  resolveTakenAppointmentIntervals,
+} from "@/lib/category-duration";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { isFeatureEnabled } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
@@ -89,8 +92,21 @@ export async function GET(
       status: { in: ["PENDING", "CONFIRMED"] },
       requestedAt: { gte: dayStart, lt: dayEnd },
     },
-    select: { requestedAt: true },
+    select: {
+      requestedAt: true,
+      categoryId: true,
+      categories: { select: { categoryId: true } },
+    },
   });
+  // Захиалга бүрийн ЖИНХЭНЭ эзэлж буй хугацаа (эхлэх цаг + өөрийнх нь
+  // үргэлжлэх хугацаа) — эрт эхэлсэн урт захиалга дараагийн slot-уудыг
+  // "сул" мэт үзүүлэхээс сэргийлнэ.
+  const taken = await resolveTakenAppointmentIntervals(
+    prisma,
+    branch.id,
+    takenRows,
+    slotMin,
+  );
 
   const availability = buildDaySlots({
     dateStr,
@@ -99,7 +115,7 @@ export async function GET(
     closeTime,
     slotMinutes: slotMin,
     capacity: branch.slotCapacity ?? DEFAULT_SLOT_CAPACITY,
-    taken: takenRows.map((r) => r.requestedAt),
+    taken,
     now: new Date(),
     appointmentMinutes,
   });

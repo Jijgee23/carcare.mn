@@ -1,5 +1,5 @@
 import type { PrismaTransactionClient } from "@/lib/prisma";
-import { DEFAULT_SLOT_MINUTES } from "@/lib/appointment-slots";
+import { DEFAULT_SLOT_CAPACITY, DEFAULT_SLOT_MINUTES } from "@/lib/appointment-slots";
 
 // Ангилалд хугацаа тохируулаагүй үеийн эцсийн fallback (минут). Slot-ийн
 // анхдагч урттай санаатай нийцүүлэв — booking v2-ийн шатлал:
@@ -140,4 +140,109 @@ export async function resolveBranchCategoryDurations(
 
   const totalMinutes = perCategory.reduce((sum, c) => sum + c.minutes, 0);
   return { perCategory, totalMinutes };
+}
+
+/** Аль хэдийн авсан нэг захиалгын минимум мэдээлэл — хугацааг шийдэхэд хэрэгтэй. */
+export type TakenAppointmentRow = {
+  requestedAt: Date;
+  categoryId: string | null;
+  categories: { categoryId: string }[];
+};
+
+/**
+ * Аль хэдийн авсан (PENDING/CONFIRMED) захиалгуудын ЖИНХЭНЭ эзэлж буй
+ * хугацааны интервал (эхлэх цаг + өөрийнх нь нийт үргэлжлэх хугацаа) —
+ * `resolveBranchCategoryDurations`-ыг нэг л удаа (бүх захиалгын бүх
+ * ангиллын id-г нэгтгэж) дуудна. Ангилалгүй захиалга (хуучин өгөгдөл эсвэл
+ * ямар ч ангилал сонгоогүй) `fallbackMinutes`-ийг (ихэвчлэн салбарын slot
+ * урт) авна.
+ */
+export async function resolveTakenAppointmentIntervals(
+  client: PrismaTransactionClient,
+  branchId: string,
+  appointments: TakenAppointmentRow[],
+  fallbackMinutes: number,
+): Promise<{ start: Date; durationMinutes: number }[]> {
+  const categoryIdsOf = (a: TakenAppointmentRow) =>
+    a.categories.length
+      ? a.categories.map((c) => c.categoryId)
+      : a.categoryId
+        ? [a.categoryId]
+        : [];
+  const allCategoryIds = [
+    ...new Set(appointments.flatMap(categoryIdsOf)),
+  ];
+  const { perCategory } = allCategoryIds.length
+    ? await resolveBranchCategoryDurations(client, branchId, allCategoryIds)
+    : { perCategory: [] };
+  const minutesById = new Map(perCategory.map((c) => [c.categoryId, c.minutes]));
+
+  return appointments.map((a) => {
+    const ids = categoryIdsOf(a);
+    const total = ids.reduce((sum, id) => sum + (minutesById.get(id) ?? 0), 0);
+    return {
+      start: a.requestedAt,
+      durationMinutes: total > 0 ? total : fallbackMinutes,
+    };
+  });
+}
+
+/**
+ * Сервер тал — тухайн цаг (slot) хараахан дүүрээгүй эсэхийг шалгана
+ * (давхар захиалгаас сэргийлнэ). `durationMinutes` — ШИНЭ захиалгын өөрийнх нь
+ * нийт үргэлжлэх хугацаа (сонгосон ангиллуудын нийлбэр); өгөгдөөгүй бол
+ * салбарын slot урттай тэнцүү гэж үзнэ.
+ *
+ * Overlap-based: зөвхөн `when`-тэй ижил слот-ийн НАРИЙН цонхонд эхэлсэн
+ * захиалгыг биш, харин `[when, when+durationMinutes)`-той ЯМАРЧ цаг хугацаа
+ * давхцаж буй (тэдгээрийн ӨӨРИЙНХ нь хугацаагаар) захиалгыг тоолно — эс
+ * бөгөөс эрт эхэлсэн урт захиалга дараагийн цагуудыг "сул" мэт үзүүлж,
+ * давхар захиалга үүсгэдэг байсан (жишээ: 12:00 + 120 мин захиалгатай ч
+ * 12:30 "сул" гэж харагдаж, дахин захиалагдах боломжтой байсан).
+ */
+export async function isSlotAvailable(
+  client: PrismaTransactionClient,
+  branchId: string,
+  when: Date,
+  durationMinutes?: number,
+): Promise<boolean> {
+  const branch = await client.branch.findUnique({
+    where: { id: branchId },
+    select: { slotMinutes: true, slotCapacity: true },
+  });
+  const slotMin = branch?.slotMinutes ?? DEFAULT_SLOT_MINUTES;
+  const cap = branch?.slotCapacity ?? DEFAULT_SLOT_CAPACITY;
+  const newDuration =
+    durationMinutes && durationMinutes > 0 ? durationMinutes : slotMin;
+  const newStartMs = when.getTime();
+  const newEndMs = newStartMs + newDuration * 60000;
+
+  // Тухайн өдрийн БҮХ идэвхтэй захиалгыг авна (зөвхөн `when`-ий орчмынхыг биш) —
+  // эрт эхэлсэн ч урт хугацаатай захиалга хожуу цагтай давхцаж болно.
+  const dayStart = new Date(when.getFullYear(), when.getMonth(), when.getDate());
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60000);
+  const candidates = await client.appointment.findMany({
+    where: {
+      branchId,
+      status: { in: ["PENDING", "CONFIRMED"] },
+      requestedAt: { gte: dayStart, lt: dayEnd },
+    },
+    select: {
+      requestedAt: true,
+      categoryId: true,
+      categories: { select: { categoryId: true } },
+    },
+  });
+  const intervals = await resolveTakenAppointmentIntervals(
+    client,
+    branchId,
+    candidates,
+    slotMin,
+  );
+  const count = intervals.filter(
+    (iv) =>
+      iv.start.getTime() < newEndMs &&
+      iv.start.getTime() + iv.durationMinutes * 60000 > newStartMs,
+  ).length;
+  return count < cap;
 }
