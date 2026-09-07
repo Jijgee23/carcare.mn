@@ -333,7 +333,9 @@ export default async function OrderDetailPage({
                   cancelledByName: it.cancelledBy
                     ? `${it.cancelledBy.lastName} ${it.cancelledBy.firstName}`
                     : null,
+                  diagnosticReportId: it.diagnosticReportId,
                 }))}
+                orderId={order.id}
                 canEdit={isEditable && canEditOrder}
               />
             )}

@@ -132,7 +132,6 @@ export async function checkOrderQPayPaymentAction(
 
   const payment = await prisma.orderPayment.findFirst({
     where: { id: paymentId, tenantId: user.tenantId },
-    include: { order: true },
   });
   if (!payment) return { ok: false, paid: false, message: "Төлбөр олдсонгүй." };
   if (payment.status === "PAID") {
@@ -182,9 +181,16 @@ export async function checkOrderQPayPaymentAction(
         },
       });
 
-      // Захиалгын paidAmount/paymentStatus-ийг шинэчлэх
-      const total = payment.order.totalAmount ?? new Prisma.Decimal(0);
-      const prevPaid = payment.order.paidAmount ?? new Prisma.Decimal(0);
+      // Захиалгын paidAmount/paymentStatus-ийг шинэчлэх — гаднаас уншсан
+      // (HTTP round-trip-ийн өмнөх) хуучин утга биш, транзакц дотор дахин
+      // уншсан шинэ утгаас тооцно (зэрэгцээ бэлнээр төлсөн зэрэг өөрчлөлт
+      // алдагдахаас сэргийлнэ).
+      const freshOrder = await tx.serviceOrder.findUniqueOrThrow({
+        where: { id: payment.orderId },
+        select: { totalAmount: true, paidAmount: true },
+      });
+      const total = freshOrder.totalAmount ?? new Prisma.Decimal(0);
+      const prevPaid = freshOrder.paidAmount ?? new Prisma.Decimal(0);
       const newPaid = prevPaid.plus(payment.amount);
       const nextStatus = newPaid.gte(total) ? "PAID" : "PARTIAL";
 

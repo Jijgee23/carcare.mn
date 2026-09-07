@@ -113,7 +113,7 @@ export default async function OrdersPage({
     await Promise.all([
     prisma.serviceOrder.findMany({
       where,
-      orderBy: [{ scheduledAt: "desc" }, { createdAt: "desc" }],
+      orderBy: { createdAt: "desc" },
       skip,
       take,
       include: {

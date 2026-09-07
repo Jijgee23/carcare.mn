@@ -22,7 +22,7 @@ import {
 } from "@/lib/orders";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { enforceCountLimit } from "@/lib/plan-limits-server";
-import { prisma } from "@/lib/prisma";
+import { prisma, type PrismaTransactionClient } from "@/lib/prisma";
 
 export type OrderActionState = {
   ok: boolean;
@@ -71,9 +71,16 @@ async function nextOrderNumber(tenantId: string): Promise<string> {
   return String(lastNum + 1).padStart(5, "0");
 }
 
-async function recomputeTotal(orderId: string): Promise<void> {
+// `client` заавал биш — өгөгдөөгүй бол суурь prisma ашиглана. Мөр
+// нэмэх/цуцлах $transaction-ы дотроос `tx`-ээ дамжуулж дуудна, ингэснээр
+// нийт дүнг дахин тооцох нь мөрийн бичилттэй ижил транзакцад орж, зэрэгцээ
+// мөр өөрчлөлт хоорондоо уралдаж (race) хуучин снапшот дээр бичихээс сэргийлнэ.
+async function recomputeTotal(
+  orderId: string,
+  client: PrismaTransactionClient | typeof prisma = prisma,
+): Promise<void> {
   // Цуцлагдсан (CANCELLED) мөрийг нийт дүнд оруулахгүй.
-  const items = await prisma.serviceItem.findMany({
+  const items = await client.serviceItem.findMany({
     where: { orderId, status: { not: "CANCELLED" } },
     select: { total: true },
   });
@@ -81,7 +88,7 @@ async function recomputeTotal(orderId: string): Promise<void> {
     (acc, it) => acc.plus(it.total),
     new Prisma.Decimal(0),
   );
-  await prisma.serviceOrder.update({
+  await client.serviceOrder.update({
     where: { id: orderId },
     data: { totalAmount: total },
   });
@@ -797,9 +804,10 @@ export async function addOrderItemAction(
         tx,
       );
     }
+
+    await recomputeTotal(orderId, tx);
   });
 
-  await recomputeTotal(orderId);
   revalidatePath(`/dashboard/orders/${orderId}`);
   if (serviceId) {
     revalidatePath("/dashboard/services", "layout");
@@ -888,9 +896,10 @@ export async function cancelOrderItemAction(
         tx,
       );
     }
+
+    await recomputeTotal(item.orderId, tx);
   });
 
-  await recomputeTotal(item.orderId);
   revalidatePath(`/dashboard/orders/${item.orderId}`);
   if (item.serviceId) {
     revalidatePath("/dashboard/services", "layout");
@@ -917,7 +926,9 @@ export async function changeOrderItemStatusAction(
     select: {
       id: true,
       orderId: true,
+      kind: true,
       status: true,
+      diagnosticReportId: true,
       order: { select: { status: true } },
     },
   });
@@ -927,6 +938,11 @@ export async function changeOrderItemStatusAction(
   }
   if (!canChangeServiceItemStatus(item.status as ServiceItemStatus)) {
     throw new Error("Цуцлагдсан мөрийн явцыг өөрчлөх боломжгүй.");
+  }
+  // Оношилгоо бөглөгдсөнөөр (тайлантай холбогдсоноор) л дууссан гэж тооцно —
+  // энэ мөрийн явцыг гараар шууд "дуусгах" боломжгүй, бусад төрөл чөлөөтэй.
+  if (next === "COMPLETED" && item.kind === "DIAGNOSTIC" && !item.diagnosticReportId) {
+    throw new Error("Оношилгоог эхлээд бөглөнө үү.");
   }
 
   await prisma.serviceItem.update({

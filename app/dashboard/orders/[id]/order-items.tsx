@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Fragment, useState } from "react";
 import {
   cancelOrderItemAction,
@@ -33,6 +34,7 @@ export type OrderItemLite = {
   status: string;
   cancelledAt: string | null;
   cancelledByName: string | null;
+  diagnosticReportId: string | null;
 };
 
 // Харуулах дараалал: Ажил → Оношилгоо → Сэлбэг → Хураамж
@@ -65,9 +67,11 @@ function fmtDateTime(iso: string): string {
  */
 export function OrderItems({
   items,
+  orderId,
   canEdit,
 }: {
   items: OrderItemLite[];
+  orderId: string;
   canEdit: boolean;
 }) {
   const groups = KIND_ORDER.map((kind) => {
@@ -150,6 +154,11 @@ export function OrderItems({
               {g.items.map((it) => {
                 const status = it.status as ServiceItemStatus;
                 const cancelled = status === "CANCELLED";
+                const needsReport =
+                  it.kind === "DIAGNOSTIC" && !it.diagnosticReportId;
+                const rowStatuses = needsReport
+                  ? CHANGEABLE_STATUSES.filter((s) => s !== "COMPLETED")
+                  : CHANGEABLE_STATUSES;
                 return (
                   <tr
                     key={it.id}
@@ -203,13 +212,22 @@ export function OrderItems({
                                 onChange={(e) => e.currentTarget.form?.requestSubmit()}
                                 className="compact-input !py-1 !px-1.5 !text-[11px] !rounded-lg max-w-[6.5rem]"
                               >
-                                {CHANGEABLE_STATUSES.map((s) => (
+                                {rowStatuses.map((s) => (
                                   <option key={s} value={s}>
                                     {SERVICE_ITEM_STATUS_LABEL[s]}
                                   </option>
                                 ))}
                               </select>
                             </form>
+                          ) : null}
+                          {needsReport && !cancelled ? (
+                            <Link
+                              href={`/dashboard/orders/${orderId}/diagnostics/new?itemId=${it.id}`}
+                              title="Оношилгоог эхлээд бөглөнө үү."
+                              className="whitespace-nowrap px-2 py-1 rounded-lg text-[11px] font-medium text-[var(--oc-accent)] hover:bg-[var(--oc-accent)]/10 transition-colors"
+                            >
+                              Бөглөх
+                            </Link>
                           ) : null}
                           {isServiceItemCancellable(status) ? (
                             <form action={cancelOrderItemAction}>

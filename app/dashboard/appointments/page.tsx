@@ -87,7 +87,7 @@ export default async function AppointmentsPage({
   const [appointments, filteredTotal, branches] = await Promise.all([
     prisma.appointment.findMany({
       where,
-      orderBy: [{ requestedAt: "asc" }, { createdAt: "desc" }],
+      orderBy: { createdAt: "desc" },
       skip,
       take,
       include: {
