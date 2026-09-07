@@ -200,6 +200,7 @@ model Branch {
   auditLogs         AuditLog[]
   appointments      Appointment[]
   categories        Category[] // олон-олон: энэ салбарт санал болгох ангилалууд
+  categoryDurations BranchCategoryDuration[] // ангилал бүрийн салбар-тусгай хугацаа
 
   @@index([tenantId])
 }
@@ -608,6 +609,11 @@ model Category {
   description String?
   isActive    Boolean @default(true)
 
+  // Онлайн захиалгын slot урт тооцоход хэрэглэх tenant-ийн default үргэлжлэх
+  // хугацаа (минут). null бол BranchCategoryDuration override, эсвэл түүнгүй бол
+  // платформын 30 мин руу шатлан буурна (override ?? durationMinutes ?? 30).
+  durationMinutes Int?
+
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -616,12 +622,55 @@ model Category {
   services            Service[]
   diagnosticTemplates DiagnosticTemplate[]
   appointments        Appointment[]
+  appointmentLinks    AppointmentCategory[]    // олон-ангилалт захиалгын M2M холбоос
+  branchDurations     BranchCategoryDuration[] // салбар-тусгай хугацааны override-ууд
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([tenantId, name])
   @@index([tenantId, isActive])
+}
+
+// --- AppointmentCategory (Appointment ↔ Category M2M холбоос) -------------
+// Нэг захиалга олон үйлчилгээний ангилал хамарна. Explicit join model —
+// ирээдүйд мөр тус бүрд тухайн үед quote хийсэн хугацаа/үнэ зэргийг snapshot
+// хийх боломжтой (implicit M2M-д боломжгүй).
+model AppointmentCategory {
+  appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  // Restrict — захиалгын түүхийг хамгаалж, ашиглагдаж буй ангиллыг hard-delete
+  // хийхээс сэргийлнэ (ангилал ердийн үед isActive=false-оор soft-delete хийгддэг).
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+
+  @@id([appointmentId, categoryId])
+  @@index([categoryId])
+}
+
+// --- BranchCategoryDuration (ангилал бүрийн салбар-тусгай хугацааны override)
+// Онлайн захиалгын slot урт: override ?? Category.durationMinutes ?? 30 (минут).
+// Салбар-мастер ЗӨВХӨН өөрийн салбарын мөрийг засварлана (endpoint дээр actor-ийн
+// branchId-аар force хийж хамгаална). Тенант админ бүх салбарынхыг засна.
+// Тусдаа override хүснэгт — одоо байгаа Branch↔Category гишүүнчлэлийн implicit
+// M2M join-д хүрэлгүйгээр нэмэгдэнэ.
+model BranchCategoryDuration {
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  durationMinutes Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([branchId, categoryId])
+  @@index([categoryId])
 }
 
 // --- Unit (хэмжих нэгж — ширхэг, цаг, литр, г.м.) -------------------------
@@ -1027,8 +1076,15 @@ model Appointment {
   accountVehicle   AccountVehicle? @relation(fields: [accountVehicleId], references: [id], onDelete: SetNull)
 
   // Онлайн захиалгад хэрэглэгчийн сонгосон үйлчилгээний ангилал (заавал биш).
+  // DEPRECATED (2026-09-07, booking v2): олон ангилал `categories`
+  // (AppointmentCategory) руу шилжсэн. Хуучин мөр болон phone-in-тэй нийцтэй
+  // байлгах үүднээс ХАДГАЛАВ — backfill-ийн дараа шинэ код `categories`-г
+  // уншина. Дараагийн цэвэрлэгээгээр устгана (энэ migration-д УСТГАХГҮЙ).
   categoryId String?
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  // Олон-ангилалт захиалга — сонгосон бүх үйлчилгээний ангилал (M2M).
+  categories AppointmentCategory[]
 
   // Баталгаажуулахад тенантын Vehicle руу snapshot хийгдсэн машин.
   vehicleId String?
