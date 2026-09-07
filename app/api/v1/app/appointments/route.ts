@@ -27,6 +27,26 @@ export async function GET(req: Request) {
       category: { select: { name: true } },
       categories: { select: { category: { select: { id: true, name: true } } } },
       accountVehicle: { select: { vehicle: { select: { plate: true } } } },
+      // A confirmed appointment may already have a ServiceOrder. Keep the
+      // customer's appointment detail useful without exposing staff-only
+      // fields; progress is read-only and scoped by the appointment account.
+      serviceOrder: {
+        select: {
+          id: true,
+          number: true,
+          status: true,
+          startedAt: true,
+          completedAt: true,
+          items: {
+            orderBy: { createdAt: "asc" },
+            select: {
+              id: true,
+              description: true,
+              status: true,
+            },
+          },
+        },
+      },
       feeAmount: true,
       feeCurrency: true,
       feeQpayInvoiceId: true,
@@ -51,6 +71,16 @@ export async function GET(req: Request) {
     categories: a.categories.map((c) => c.category),
     accountVehicle: a.accountVehicle
       ? { plate: a.accountVehicle.vehicle.plate }
+      : null,
+    serviceOrder: a.serviceOrder
+      ? {
+          id: a.serviceOrder.id,
+          number: a.serviceOrder.number,
+          status: a.serviceOrder.status,
+          startedAt: a.serviceOrder.startedAt,
+          completedAt: a.serviceOrder.completedAt,
+          items: a.serviceOrder.items,
+        }
       : null,
     payment: serializeAppointmentFee(a),
   }));
