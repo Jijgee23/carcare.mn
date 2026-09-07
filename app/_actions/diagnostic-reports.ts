@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
-import { branchScopeId } from "@/lib/auth/roles";
+import { workingBranchScopeId } from "@/lib/auth/roles";
 import { canDelete as canDeletePerm } from "@/lib/auth/roles";
 import {
   type ReportEntry,
@@ -57,7 +57,7 @@ export async function createReportAction(
   if (!template) return { ok: false, message: "Загвар олдсонгүй." };
 
   // Салбараар хязгаарлагдсан ажилтан зөвхөн өөрийн салбарт оношилгоо хийнэ.
-  const scope = branchScopeId(user);
+  const scope = workingBranchScopeId(user);
 
   // orderId өгөгдсөн бол захиалгаас customer/vehicle/branch-г өвлөнө
   if (orderId) {

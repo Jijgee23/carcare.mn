@@ -4,7 +4,7 @@ import { deleteReportAction } from "@/app/_actions/diagnostic-reports";
 import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
 import { AdvancedPDFButton } from "./pdf-generator";
 import { requireUser } from "@/lib/auth";
-import { branchScopeId } from "@/lib/auth/roles";
+import { workingBranchScopeId } from "@/lib/auth/roles";
 import { customerLabel } from "@/lib/customers";
 import {
   DIAGNOSTIC_TYPE_BADGE,
@@ -28,7 +28,7 @@ export default async function ReportDetailPage({
 }) {
   const user = await requireUser();
   const { id } = await params;
-  const scopeBranchId = branchScopeId(user);
+  const scopeBranchId = workingBranchScopeId(user);
 
   const report = await prisma.diagnosticReport.findFirst({
     where: {

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
 import { requireUser } from "@/lib/auth";
-import { branchScopeId, canCreate } from "@/lib/auth/roles";
+import { canCreate, workingBranchScopeId } from "@/lib/auth/roles";
 import { openWeekdaysOf } from "@/lib/branches";
 import { prisma } from "@/lib/prisma";
 import { APPOINTMENT_FORM_ID, AppointmentForm } from "../appointment-form";
@@ -14,7 +14,7 @@ export const metadata = {
 export default async function NewAppointmentPage() {
   const user = await requireUser();
   if (!canCreate(user, "appointments")) redirect("/dashboard/appointments");
-  const scopeBranchId = branchScopeId(user);
+  const scopeBranchId = workingBranchScopeId(user);
 
   const [branches, customers, categories] = await Promise.all([
     prisma.branch.findMany({

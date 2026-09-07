@@ -34,6 +34,15 @@ export async function proxy(req: NextRequest) {
       url.searchParams.set("next", pathname);
       return NextResponse.redirect(url);
     }
+    // Тухайн нэвтрэлтэд ажиллах салбараа хараахан сонгоогүй бол (owner /
+    // тогтмол салбаргүй ажилтан) — сонгуулах хуудас руу. `page.tsx`-ийг л
+    // хамгаалдаг layout-аас ялгаатай, энд route.ts (export г.м.) ч хамрагдана.
+    if (!session.workingBranchId) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/page/choose-branch";
+      url.searchParams.set("next", pathname);
+      return NextResponse.redirect(url);
+    }
     return NextResponse.next();
   }
 

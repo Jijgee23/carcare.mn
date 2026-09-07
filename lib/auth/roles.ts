@@ -1,3 +1,4 @@
+import { ALL_BRANCHES } from "./session";
 import type { PermissionCode, ResourceKey } from "./permissions";
 
 // User-ийн эрхийн шалгалтын minimal shape — Prisma user object эсвэл API
@@ -81,6 +82,40 @@ export function branchScopeId(user: {
   branchId: string | null;
 }): string | null {
   return !user.isOwner && user.branchId ? user.branchId : null;
+}
+
+/**
+ * Тухайн хэрэглэгч нэвтрэх үедээ "Бүх салбар" сонгох боломжтой эсэх — admin
+ * (isOwner) эсвэл тогтмол салбар оноогоогүй (branchId == null) ажилтан.
+ * `branchScopeId`-ийн адил чиглэсэн нөхцөл — өөрөөр хэлбэл branchScopeId
+ * null буцаадаг тохиолдол бүрд л "Бүх салбар" сонголт харагдана.
+ */
+export function canChooseAllBranches(user: {
+  isOwner: boolean;
+  branchId: string | null;
+}): boolean {
+  return user.isOwner || !user.branchId;
+}
+
+/**
+ * Web dashboard-ийн жагсаалт/үүсгэлтийн scope — session-д нэвтрэх үедээ
+ * сонгосон ажиллах салбар (`workingBranchId`, harах: lib/auth/session.ts)
+ * дээр суурилна. `branchScopeId`-ээс ялгаатай нь: энд isOwner эсэх биш,
+ * тухайн НЭВТРЭЛТЭД юу сонгосон нь л чухал (owner ч тодорхой салбар сонговол
+ * хязгаарлагдана). "Бүх салбар" (ALL_BRANCHES) сонгосон бол null (branchScopeId
+ * owner-ийн хувьд null буцаадагтай адил) — өөрчлөлт шаардлагагүйгээр одоо
+ * байгаа `scope ? {...} : {}` where-clause-уудтай шууд нийцнэ.
+ *
+ * ЗӨВХӨН web dashboard-д (session/cookie auth) ашиглана. Мобайл tenant-staff
+ * API (requireApiUser/api-token, session-гүй) `branchScopeId`-ийг хэвээр
+ * ашиглана — үүнийг ОРЛУУЛАХГҮЙ.
+ */
+export function workingBranchScopeId(user: {
+  workingBranchId?: string;
+}): string | null {
+  return user.workingBranchId && user.workingBranchId !== ALL_BRANCHES
+    ? user.workingBranchId
+    : null;
 }
 
 /**

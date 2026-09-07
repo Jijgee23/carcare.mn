@@ -12,7 +12,7 @@ import { Pagination } from "@/app/_components/pagination";
 import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { customerLabel } from "@/lib/customers";
 import { requireUser } from "@/lib/auth";
-import { branchScopeId, canView } from "@/lib/auth/roles";
+import { canView, workingBranchScopeId } from "@/lib/auth/roles";
 import {
   ORDER_STATUS_BADGE,
   ORDER_STATUS_LABEL,
@@ -51,7 +51,7 @@ export default async function PostpaidOrdersPage({
   } = await searchParams;
 
   // Салбараар хязгаарлагдсан ажилтан зөвхөн өөрийн салбарын захиалгыг харна.
-  const scopeBranchId = branchScopeId(user);
+  const scopeBranchId = workingBranchScopeId(user);
   const orderScope: Prisma.ServiceOrderWhereInput = {
     tenantId: user.tenantId,
     isPostpaid: true,

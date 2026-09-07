@@ -70,7 +70,7 @@ export function IncomeBarChart({ points }: { points: IncomePoint[] }) {
               <div
                 title={`${p.label}: ${formatTugrik(p.value)}`}
                 className={`w-full rounded-sm transition-colors ${
-                  active ? "bg-[var(--oc-accent)]" : "bg-[var(--oc-panel2)]"
+                  active ? "bg-[var(--oc-accent)]" : "bg-[var(--oc-accent)]/20"
                 }`}
                 style={{ height: `${pct}%`, minHeight: 4 }}
               />

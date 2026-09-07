@@ -4,8 +4,8 @@ import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
 import { requireUser } from "@/lib/auth";
 import {
   ORDER_ASSIGNABLE_WHERE,
-  branchScopeId,
   canCreate,
+  workingBranchScopeId,
 } from "@/lib/auth/roles";
 import { type DiagnosticType } from "@/lib/diagnostics";
 import { prisma } from "@/lib/prisma";
@@ -29,16 +29,17 @@ export default async function NewOrderPage({
 }) {
   const user = await requireUser();
   if (!canCreate(user, "orders")) redirect("/dashboard/orders");
-  const scopeBranchId = branchScopeId(user);
+  const scopeBranchId = workingBranchScopeId(user);
 
   const sp = await searchParams;
-  // Цаг захиалгаас ирсэн prefill (customer/branch/цаг). Ямар нэг утга байвал
-  // OrderForm-д initial дамжуулна — vehicle-ийг ажилтан сонгоно.
+  // Цаг захиалгаас ирсэн prefill (customer/branch/цаг), эсвэл ажиллах
+  // салбар тодорхой бол (scopeBranchId) — түүнийг Салбар талбарт автоматаар
+  // бөглөнө ("Бүх салбар" сонгосон owner-д prefill хийхгүй, гараар сонгоно).
   const prefillScheduled = sp.scheduledAt ? new Date(sp.scheduledAt) : null;
   const initial =
-    sp.customerId || sp.branchId || sp.scheduledAt || sp.note
+    sp.customerId || sp.branchId || sp.scheduledAt || sp.note || scopeBranchId
       ? {
-          branchId: sp.branchId ?? "",
+          branchId: sp.branchId ?? scopeBranchId ?? "",
           customerId: sp.customerId ?? "",
           vehicleId: sp.vehicleId ?? "",
           assignedToId: null,

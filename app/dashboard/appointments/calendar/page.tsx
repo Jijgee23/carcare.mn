@@ -13,7 +13,7 @@ import {
   resolveCalendar,
 } from "@/lib/appointments-calendar";
 import { requireUser } from "@/lib/auth";
-import { branchScopeId, canView } from "@/lib/auth/roles";
+import { canView, workingBranchScopeId } from "@/lib/auth/roles";
 import { customerLabel } from "@/lib/customers";
 import { prisma } from "@/lib/prisma";
 
@@ -43,7 +43,7 @@ export default async function AppointmentsCalendarPage({
 
   const sp = await searchParams;
   const cal = resolveCalendar(sp);
-  const scopeBranchId = branchScopeId(user);
+  const scopeBranchId = workingBranchScopeId(user);
   const branchId = scopeBranchId ?? (sp.branchId || "");
 
   const where: Prisma.AppointmentWhereInput = {

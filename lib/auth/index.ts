@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { setBypassContext, setTenantContext } from "@/lib/tenant-context";
 import { checkUserActive } from "./active";
 import { clearSessionCookie, getSessionCookie } from "./cookies";
-import { verifySession, type SessionPayload } from "./session";
+import { ALL_BRANCHES, verifySession, type SessionPayload } from "./session";
 import { validateUserSession } from "./user-session";
 
 export type { SessionPayload } from "./session";
@@ -71,5 +71,20 @@ export const requireUser = cache(async () => {
     redirect("/page/login");
   }
   setTenantContext(user.tenantId);
-  return user;
+
+  // Тухайн нэвтрэлтэд сонгосон ажиллах салбарыг тодруулна (harах:
+  // lib/auth/session.ts). Жинхэнэ Branch.id бол нэрийг нь татаж баннерт
+  // ашиглана; устгагдсан/идэвхгүй болсон бол "сонгоогүй" мэт үзнэ (proxy.ts-ийн
+  // middleware дараагийн хүсэлт дээр дахин сонгуулна).
+  let workingBranch: { id: string; name: string } | null = null;
+  let workingBranchId = session.workingBranchId;
+  if (workingBranchId && workingBranchId !== ALL_BRANCHES) {
+    workingBranch = await prisma.branch.findFirst({
+      where: { id: workingBranchId, tenantId: user.tenantId, isActive: true },
+      select: { id: true, name: true },
+    });
+    if (!workingBranch) workingBranchId = undefined;
+  }
+
+  return { ...user, workingBranchId, workingBranch };
 });

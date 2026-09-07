@@ -4,11 +4,20 @@ export const SESSION_COOKIE_NAME = "carcare_session";
 const ALG = "HS256";
 export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30 хоног
 
+// Хэрэглэгч тухайн нэвтрэлтдээ "Бүх салбар" сонгосон гэдгийг илэрхийлэх sentinel
+// (жинхэнэ Branch.id биш). Зөвхөн isOwner эсвэл branchId=null хэрэглэгчид л
+// сонгох боломжтой (харах: lib/auth/roles.ts canChooseAllBranches).
+export const ALL_BRANCHES = "ALL" as const;
+
 export type SessionPayload = {
   userId: string;
   tenantId: string;
   isOwner: boolean;
   sid?: string; // UserSession id — төхөөрөмж/revoke хөтлөлтөд (хуучин token-д байхгүй)
+  // Тухайн нэвтрэлтэд сонгосон ажиллах салбар — жинхэнэ Branch.id, ALL_BRANCHES,
+  // эсвэл undefined ("хараахан сонгоогүй", хуучин token-д ч байхгүй). Зөвхөн
+  // логин бүрт шинээр тогтоогдоно — өөр салбар сонгохын тулд дахин нэвтрэх ёстой.
+  workingBranchId?: string;
 };
 
 function getSecret(): Uint8Array {
@@ -42,6 +51,10 @@ export async function verifySession(
       tenantId: payload.tenantId,
       isOwner: Boolean(payload.isOwner),
       sid: typeof payload.sid === "string" ? payload.sid : undefined,
+      workingBranchId:
+        typeof payload.workingBranchId === "string"
+          ? payload.workingBranchId
+          : undefined,
     };
   } catch {
     return null;

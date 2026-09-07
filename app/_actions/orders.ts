@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
-import { branchScopeId, canCreate, canDelete, canEdit } from "@/lib/auth/roles";
+import { canCreate, canDelete, canEdit, workingBranchScopeId } from "@/lib/auth/roles";
 import { assertActiveSubscription } from "@/lib/subscription-server";
 import {
   ITEM_KINDS,
@@ -221,7 +221,7 @@ export async function createOrderAction(
   }
 
   // Салбараар хязгаарлагдсан ажилтан зөвхөн өөрийн салбарт захиалга үүсгэнэ.
-  const scope = branchScopeId(user);
+  const scope = workingBranchScopeId(user);
   if (scope && data.branchId !== scope) {
     return {
       ok: false,
@@ -377,7 +377,7 @@ export async function updateOrderAction(
 
   // Салбараар хязгаарлагдсан ажилтан өөр салбарын захиалгыг засах / өөр
   // салбар руу шилжүүлэх боломжгүй.
-  const scope = branchScopeId(user);
+  const scope = workingBranchScopeId(user);
   if (scope && data.branchId !== scope) {
     return {
       ok: false,
@@ -564,7 +564,7 @@ export async function addOrderDiagnosticAction(
     return { status: "error", message: "Буруу хүсэлт." };
   }
 
-  const scope = branchScopeId(user);
+  const scope = workingBranchScopeId(user);
   const order = await prisma.serviceOrder.findFirst({
     where: {
       id: orderId,

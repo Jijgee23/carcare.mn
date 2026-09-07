@@ -6,12 +6,17 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@/app/generated/prisma/client";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import {
+  branchScopeId,
+  canChooseAllBranches,
+} from "@/lib/auth/roles";
+import {
   clearSessionCookie,
   setSessionCookie,
 } from "@/lib/auth/cookies";
+import { getSession } from "@/lib/auth";
 import { issueOtp, revokeAllOtps, verifyOtp } from "@/lib/auth/otp";
 import { revokeAllForUser } from "@/lib/auth/refresh-token";
-import { signSession } from "@/lib/auth/session";
+import { ALL_BRANCHES, signSession } from "@/lib/auth/session";
 import { notifySuperAdmins } from "@/lib/notifications";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
 import {
@@ -602,11 +607,16 @@ export async function signInAction(
     null;
   const session = await createUserSession({ userId: user.id, userAgent: ua, ip });
 
+  // Тогтмол салбартай (branchScopeId!=null) ажилтан шууд тэр салбартаа
+  // ажилладаг гэж тооцно (сонгуулах шаардлагагүй). Owner/тогтмол салбаргүй
+  // ажилтныг undefined-ээр үлдээж, дараагийн /dashboard хүсэлт дээр
+  // proxy.ts /page/choose-branch руу чиглүүлнэ (харах: lib/auth/roles.ts).
   const token = await signSession({
     userId: user.id,
     tenantId: user.tenantId,
     isOwner: user.isOwner,
     sid: session.id,
+    workingBranchId: branchScopeId(user) ?? undefined,
   });
   await setSessionCookie(token);
 
@@ -985,6 +995,7 @@ export async function activateAccountAction(
     tenantId: user.tenantId,
     isOwner: user.isOwner,
     sid: session.id,
+    workingBranchId: branchScopeId(user) ?? undefined,
   });
   await setSessionCookie(token);
 
@@ -998,4 +1009,62 @@ export async function activateAccountAction(
   });
 
   redirect("/dashboard");
+}
+
+// ---- CHOOSE WORKING BRANCH -------------------------------------------------
+// Owner/тогтмол салбаргүй ажилтан нэвтрэх бүрдээ ажиллах салбараа (эсвэл "Бүх
+// салбар") сонгоно. proxy.ts-ийн middleware workingBranchId байхгүй session-г
+// /page/choose-branch руу чиглүүлдэг (харах: lib/auth/session.ts, proxy.ts).
+
+export type ChooseBranchState = {
+  ok: boolean;
+  message?: string;
+} | null;
+
+export async function chooseBranchAction(
+  _prev: ChooseBranchState,
+  formData: FormData,
+): Promise<ChooseBranchState> {
+  const branchId = getStr(formData, "branchId");
+  const nextRaw = getStr(formData, "next");
+  const next = nextRaw.startsWith("/") ? nextRaw : "/dashboard";
+  if (!branchId) return { ok: false, message: "Салбараа сонгоно уу." };
+
+  // Session/tenant хараахан бүрэн тогтоогоогүй үе тул bypass-аар эхэлнэ.
+  setBypassContext();
+  const session = await getSession();
+  if (!session) redirect("/page/login");
+
+  const user = await prisma.user.findUnique({
+    where: { id: session.userId },
+    select: { isOwner: true, branchId: true, tenantId: true },
+  });
+  if (!user) redirect("/page/login");
+  setTenantContext(user.tenantId);
+
+  let workingBranchId: string;
+  if (branchId === ALL_BRANCHES) {
+    if (!canChooseAllBranches(user)) {
+      return { ok: false, message: "Танд «Бүх салбар» сонгох эрх байхгүй." };
+    }
+    workingBranchId = ALL_BRANCHES;
+  } else {
+    const branch = await prisma.branch.findFirst({
+      where: { id: branchId, tenantId: user.tenantId, isActive: true },
+      select: { id: true },
+    });
+    if (!branch) return { ok: false, message: "Сонгосон салбар олдсонгүй." };
+    workingBranchId = branch.id;
+  }
+
+  const token = await signSession({
+    userId: session.userId,
+    tenantId: session.tenantId,
+    isOwner: session.isOwner,
+    sid: session.sid,
+    workingBranchId,
+  });
+  await setSessionCookie(token);
+
+  redirect(next);
 }

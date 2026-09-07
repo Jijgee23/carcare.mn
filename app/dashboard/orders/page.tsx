@@ -12,7 +12,7 @@ import { Pagination } from "@/app/_components/pagination";
 import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { customerLabel } from "@/lib/customers";
 import { requireUser } from "@/lib/auth";
-import { branchScopeId, canCreate, canView } from "@/lib/auth/roles";
+import { canCreate, canView, workingBranchScopeId } from "@/lib/auth/roles";
 import { redirect } from "next/navigation";
 import {
   ITEM_KIND_BADGE,
@@ -74,7 +74,7 @@ export default async function OrdersPage({
       : null;
 
   // Салбараар хязгаарлагдсан ажилтан зөвхөн өөрийн салбарын захиалгыг харна.
-  const scopeBranchId = branchScopeId(user);
+  const scopeBranchId = workingBranchScopeId(user);
 
   const where: Prisma.ServiceOrderWhereInput = {
     tenantId: user.tenantId,

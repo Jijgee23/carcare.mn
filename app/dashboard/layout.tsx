@@ -8,6 +8,7 @@ import { SubscriptionGuard } from "@/app/_components/subscription-guard";
 import { ToastProvider } from "@/app/_components/toast";
 import { WebPushToggle } from "@/app/_components/web-push";
 import { requireUser } from "@/lib/auth";
+import { ALL_BRANCHES } from "@/lib/auth/session";
 import { prisma } from "@/lib/prisma";
 import { getSubscriptionState } from "@/lib/subscription-server";
 
@@ -68,6 +69,27 @@ export default async function DashboardLayout({
             notificationUnread={unreadNotifications}
           />
           <SubscriptionGuard locked={subState.locked} isOwner={user.isOwner} />
+          <div className="px-4 sm:px-6 lg:px-8 pt-3">
+            <div className="rounded-[10px] border border-[var(--oc-accent)]/25 bg-[var(--oc-accent)]/[0.06] px-4 py-2.5 text-sm text-[var(--oc-ink2)]">
+              {user.workingBranchId === ALL_BRANCHES ? (
+                <>
+                  {user.firstName}, та өнөөдөр{" "}
+                  <span className="font-semibold text-[var(--oc-accent)]">
+                    БҮХ САЛБАРЫГ
+                  </span>{" "}
+                  хараад байна.
+                </>
+              ) : user.workingBranch ? (
+                <>
+                  {user.firstName}, та өнөөдөр{" "}
+                  <span className="font-semibold text-[var(--oc-accent)]">
+                    {user.workingBranch.name}
+                  </span>{" "}
+                  салбарт ажиллаж байна.
+                </>
+              ) : null}
+            </div>
+          </div>
           <SubscriptionBanner
             locked={subState.locked}
             isTrial={subState.active?.isTrial ?? false}

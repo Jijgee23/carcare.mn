@@ -2,11 +2,10 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Prisma } from "@/app/generated/prisma/client";
 import {
-  confirmAppointment,
-  markAppointmentNoShow,
-  rejectAppointment,
-} from "@/app/_actions/appointments";
-import { AddLinkButton, Btn, BtnLink } from "@/app/_components/landing-ops-ui";
+  AppointmentConfirmReject,
+  AppointmentNoShowButton,
+} from "./appointment-row-actions";
+import { AddLinkButton, BtnLink } from "@/app/_components/landing-ops-ui";
 import { FilterSelect, ResetFilters, SearchBox } from "@/app/_components/list-filters";
 import { EmptyState } from "@/app/_components/page-header";
 import { Pagination } from "@/app/_components/pagination";
@@ -17,7 +16,7 @@ import {
   type AppointmentStatus,
 } from "@/lib/appointments";
 import { requireUser } from "@/lib/auth";
-import { branchScopeId, canCreate, canEdit, canView } from "@/lib/auth/roles";
+import { canCreate, canEdit, canView, workingBranchScopeId } from "@/lib/auth/roles";
 import { customerLabel } from "@/lib/customers";
 import { formatPhone } from "@/lib/phone";
 import { buildMeta, getPageInfo } from "@/lib/pagination";
@@ -68,7 +67,7 @@ export default async function AppointmentsPage({
       ? (statusParam as AppointmentStatus)
       : null;
 
-  const scopeBranchId = branchScopeId(user);
+  const scopeBranchId = workingBranchScopeId(user);
 
   const where: Prisma.AppointmentWhereInput = {
     tenantId: user.tenantId,
@@ -243,26 +242,7 @@ export default async function AppointmentsPage({
                           ) : null}
 
                           {canRespond && a.status === "PENDING" ? (
-                            <>
-                              <form action={confirmAppointment}>
-                                <input type="hidden" name="id" value={a.id} />
-                                <button
-                                  type="submit"
-                                  className="text-xs px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 light:bg-emerald-100 light:hover:bg-emerald-200 light:border-emerald-300 light:text-emerald-700 font-medium transition-colors"
-                                >
-                                  Батлах
-                                </button>
-                              </form>
-                              <form action={rejectAppointment}>
-                                <input type="hidden" name="id" value={a.id} />
-                                <button
-                                  type="submit"
-                                  className="text-xs px-3 py-1.5 rounded-lg border border-red-500/25 bg-red-500/10 hover:bg-red-500/20 text-red-400 light:text-red-700 font-medium transition-colors"
-                                >
-                                  Татгалзах
-                                </button>
-                              </form>
-                            </>
+                            <AppointmentConfirmReject appointmentId={a.id} />
                           ) : null}
 
                           {canRespond &&
@@ -276,12 +256,7 @@ export default async function AppointmentsPage({
                               >
                                 Захиалга үүсгэх →
                               </BtnLink>
-                              <form action={markAppointmentNoShow}>
-                                <input type="hidden" name="id" value={a.id} />
-                                <Btn type="submit" variant="ghost" size="sm">
-                                  Ирээгүй
-                                </Btn>
-                              </form>
+                              <AppointmentNoShowButton appointmentId={a.id} />
                             </>
                           ) : null}
                         </div>

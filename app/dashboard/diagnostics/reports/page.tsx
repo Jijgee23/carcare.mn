@@ -4,7 +4,7 @@ import { EmptyState } from "@/app/_components/page-header";
 import { Pagination } from "@/app/_components/pagination";
 import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { requireUser } from "@/lib/auth";
-import { branchScopeId } from "@/lib/auth/roles";
+import { workingBranchScopeId } from "@/lib/auth/roles";
 import { customerLabel } from "@/lib/customers";
 import {
   DIAGNOSTIC_TYPE_BADGE,
@@ -25,7 +25,7 @@ export default async function ReportsListPage({
   const user = await requireUser();
 
   const { page: pageParam } = await searchParams;
-  const scopeBranchId = branchScopeId(user);
+  const scopeBranchId = workingBranchScopeId(user);
   const where = {
     tenantId: user.tenantId,
     ...(scopeBranchId ? { branchId: scopeBranchId } : {}),

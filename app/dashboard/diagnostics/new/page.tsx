@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
-import { branchScopeId } from "@/lib/auth/roles";
+import { workingBranchScopeId } from "@/lib/auth/roles";
 import {
   type DiagnosticType,
   type TemplateSchema,
@@ -15,7 +15,7 @@ export const metadata = {
 
 export default async function NewDiagnosticPage() {
   const user = await requireUser();
-  const scopeBranchId = branchScopeId(user);
+  const scopeBranchId = workingBranchScopeId(user);
 
   const [branches, customers, vehicles, templates] = await Promise.all([
     prisma.branch.findMany({
@@ -91,7 +91,7 @@ export default async function NewDiagnosticPage() {
         customers={customers}
         vehicles={vehicles}
         templates={templatesPrepared}
-        defaultBranchId={user.branchId}
+        defaultBranchId={scopeBranchId}
       />
     </div>
   );

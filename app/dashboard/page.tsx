@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
-import { branchScopeId, userRoleLabel } from "@/lib/auth/roles";
+import { userRoleLabel, workingBranchScopeId } from "@/lib/auth/roles";
 import { prisma } from "@/lib/prisma";
 import { formatTugrik } from "@/lib/orders";
 import { DatePicker } from "@/app/_components/date-picker";
@@ -64,7 +64,7 @@ export default async function DashboardPage({
   };
 
   // Салбараар хязгаарлагдсан ажилтны хувьд захиалга/орлогын тоог салбараар нь шүүнэ.
-  const scopeBranchId = branchScopeId(user);
+  const scopeBranchId = workingBranchScopeId(user);
   const orderBranchFilter = scopeBranchId ? { branchId: scopeBranchId } : {};
 
   const [
@@ -251,11 +251,10 @@ export default async function DashboardPage({
             {income.changePct != null ? (
               <div
                 title="Өмнөх ижил урттай үетэй харьцуулав"
-                className={`mt-1.5 inline-flex items-center gap-1 font-plex-mono text-xs font-medium px-2 py-0.5 rounded-full ${
-                  incomeUp
-                    ? "bg-[var(--oc-ok)]/15 text-[var(--oc-ok)]"
-                    : "bg-red-500/15 text-red-300 light:text-red-700"
-                }`}
+                className={`mt-1.5 inline-flex items-center gap-1 font-plex-mono text-xs font-medium px-2 py-0.5 rounded-full ${incomeUp
+                  ? "bg-[var(--oc-ok)]/15 text-[var(--oc-ok)]"
+                  : "bg-red-500/15 text-red-300 light:text-red-700"
+                  }`}
               >
                 <span>{incomeUp ? "▲" : "▼"}</span>
                 <span className="tabular-nums">
@@ -274,11 +273,10 @@ export default async function DashboardPage({
               <Link
                 key={q.key}
                 href={incomeRangeHref(q.key)}
-                className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${
-                  active
-                    ? "bg-[var(--oc-accent)]/15 text-[var(--oc-accent)] border border-[var(--oc-accent)]/30"
-                    : "text-[var(--oc-muted3)] hover:text-[var(--oc-ink2)] border border-[var(--oc-line)] hover:border-[var(--oc-line2)]"
-                }`}
+                className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${active
+                  ? "bg-[var(--oc-accent)]/15 text-[var(--oc-accent)] border border-[var(--oc-accent)]/30"
+                  : "text-[var(--oc-muted3)] hover:text-[var(--oc-ink2)] border border-[var(--oc-line)] hover:border-[var(--oc-line2)]"
+                  }`}
               >
                 {q.label}
               </Link>
@@ -298,7 +296,7 @@ export default async function DashboardPage({
             />
             <button
               type="submit"
-              className="text-xs bg-[var(--oc-accent)] hover:bg-[var(--oc-accent-hi)] transition-colors px-3 py-1.5 rounded-lg font-medium text-[var(--oc-on-accent)] shrink-0 w-full sm:w-auto"
+              className="text-xs bg-[var(--oc-accent)] hover:bg-[var(--oc-accent-hi)] transition-colors px-5 py-3 text-left text-sm rounded-lg font-medium text-[var(--oc-on-accent)] shrink-0 w-full sm:w-auto"
             >
               Шүүх
             </button>
@@ -397,11 +395,10 @@ export default async function DashboardPage({
               <div className="flex items-center justify-between">
                 <span className="text-[var(--oc-muted3)]">Багц</span>
                 <span
-                  className={`font-plex-mono text-xs px-2.5 py-1 rounded-full ${
-                    activeSub
-                      ? SUBSCRIPTION_STATUS_BADGE[activeSub.subscription.status]
-                      : "bg-[var(--oc-accent)]/15 text-[var(--oc-accent)] border border-[var(--oc-accent)]/30"
-                  }`}
+                  className={`font-plex-mono text-xs px-2.5 py-1 rounded-full ${activeSub
+                    ? SUBSCRIPTION_STATUS_BADGE[activeSub.subscription.status]
+                    : "bg-[var(--oc-accent)]/15 text-[var(--oc-accent)] border border-[var(--oc-accent)]/30"
+                    }`}
                 >
                   {activeSub
                     ? PLAN_LABEL[activeSub.subscription.plan]
@@ -417,11 +414,10 @@ export default async function DashboardPage({
                   <span className="text-[var(--oc-ink2)] text-right">
                     {activeSub.expiresAt.toLocaleDateString("mn-MN")}
                     <span
-                      className={`block text-[10px] ${
-                        activeSub.daysLeft <= 3
-                          ? "text-red-300 light:text-red-700"
-                          : "text-[var(--oc-muted3)]"
-                      }`}
+                      className={`block text-[10px] ${activeSub.daysLeft <= 3
+                        ? "text-red-300 light:text-red-700"
+                        : "text-[var(--oc-muted3)]"
+                        }`}
                     >
                       {formatDaysLeft(activeSub.daysLeft)}
                     </span>
@@ -471,13 +467,12 @@ function StatCard({
         {pct != null ? (
           <span
             title="Сүүлийн 7 хоногийг өмнөх 7 хоногтой харьцуулав"
-            className={`shrink-0 inline-flex items-center gap-0.5 font-plex-mono text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
-              dir === "up"
-                ? "bg-[var(--oc-ok)]/15 text-[var(--oc-ok)]"
-                : dir === "down"
-                  ? "bg-red-500/15 text-red-300 light:text-red-700"
-                  : "bg-white/[0.06] text-[var(--oc-muted3)]"
-            }`}
+            className={`shrink-0 inline-flex items-center gap-0.5 font-plex-mono text-[10px] font-medium px-1.5 py-0.5 rounded-full ${dir === "up"
+              ? "bg-[var(--oc-ok)]/15 text-[var(--oc-ok)]"
+              : dir === "down"
+                ? "bg-red-500/15 text-red-300 light:text-red-700"
+                : "bg-white/[0.06] text-[var(--oc-muted3)]"
+              }`}
           >
             <span>{dir === "up" ? "▲" : dir === "down" ? "▼" : "—"}</span>
             <span className="tabular-nums">{Math.abs(pct).toFixed(0)}%</span>

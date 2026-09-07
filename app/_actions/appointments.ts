@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { requireAccount } from "@/lib/auth/account";
 import { requireUser } from "@/lib/auth";
 import { assertActiveSubscription } from "@/lib/subscription-server";
-import { branchScopeId, canCreate, canEdit } from "@/lib/auth/roles";
+import { canCreate, canEdit, workingBranchScopeId } from "@/lib/auth/roles";
 import { formatWhen, resolveCustomerForAccount } from "@/lib/appointments";
 import { ensureAppointmentFeeCheckout } from "@/lib/appointment-payments";
 import { ensureTenantVehicle } from "@/lib/vehicles";
@@ -368,7 +368,7 @@ export async function registerAppointmentByStaff(
   }
   if (Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors };
 
-  const scope = branchScopeId(user);
+  const scope = workingBranchScopeId(user);
   if (scope && branchId !== scope) {
     return {
       ok: false,
@@ -455,7 +455,7 @@ async function authorizeStaff(branchId?: string) {
   if (!canEdit(user, "appointments")) {
     throw new Error("Танд цаг захиалга удирдах эрх байхгүй.");
   }
-  const scope = branchScopeId(user);
+  const scope = workingBranchScopeId(user);
   if (scope && branchId && branchId !== scope) {
     throw new Error("Зөвхөн өөрийн салбарын цаг захиалгыг удирдана.");
   }
@@ -469,9 +469,12 @@ async function authorizeStaff(branchId?: string) {
  *   - appointment-ийг CONFIRMED болгож, тухайн Customer-той холбоно
  * Захиалга (ServiceOrder) нь дараа нь order урсгалаар үүснэ.
  */
-export async function confirmAppointment(formData: FormData): Promise<void> {
+export async function confirmAppointment(
+  _prev: AppointmentActionState,
+  formData: FormData,
+): Promise<AppointmentActionState> {
   const id = s(formData, "id");
-  if (!id) return;
+  if (!id) return { ok: false, message: "Буруу хүсэлт." };
 
   const appt = await prisma.appointment.findUnique({
     where: { id },
@@ -480,57 +483,75 @@ export async function confirmAppointment(formData: FormData): Promise<void> {
       accountVehicle: { select: { vehicleId: true } },
     },
   });
-  if (!appt) return;
+  if (!appt) return { ok: false, message: "Цаг захиалга олдсонгүй." };
 
-  const user = await authorizeStaff(appt.branchId);
-  if (user.tenantId !== appt.tenantId) return;
-  if (appt.status !== "PENDING") return;
+  let user;
+  try {
+    user = await authorizeStaff(appt.branchId);
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
+  if (user.tenantId !== appt.tenantId) {
+    return { ok: false, message: "Танд энэ цагийг удирдах эрх байхгүй." };
+  }
+  if (appt.status !== "PENDING") {
+    return { ok: false, message: "Энэ цаг аль хэдийн хариу авсан байна." };
+  }
   // Онлайн захиалгад Account заавал байна (phone-in нь CONFIRMED-ээр үүсдэг тул
   // энд хүрэхгүй). Account байхгүй бол resolve хийх боломжгүй.
-  if (!appt.account) return;
+  if (!appt.account) {
+    return { ok: false, message: "Энэ цагт хэрэглэгчийн мэдээлэл алга." };
+  }
   const account = appt.account;
   const accountVehicle = appt.accountVehicle;
 
-  await prisma.$transaction(async (tx) => {
-    const customerId = await resolveCustomerForAccount(
-      tx,
-      appt.tenantId,
-      account,
-    );
-    // Хэрэглэгч машинаа сонгосон бол тенантад TenantVehicle link үүсгэнэ.
-    let vehicleId: string | null = null;
-    if (accountVehicle) {
-      vehicleId = accountVehicle.vehicleId;
-      await ensureTenantVehicle(tx, {
-        tenantId: appt.tenantId,
-        vehicleId,
-        customerId,
+  try {
+    await prisma.$transaction(async (tx) => {
+      const customerId = await resolveCustomerForAccount(
+        tx,
+        appt.tenantId,
+        account,
+      );
+      // Хэрэглэгч машинаа сонгосон бол тенантад TenantVehicle link үүсгэнэ.
+      let vehicleId: string | null = null;
+      if (accountVehicle) {
+        vehicleId = accountVehicle.vehicleId;
+        await ensureTenantVehicle(tx, {
+          tenantId: appt.tenantId,
+          vehicleId,
+          customerId,
+        });
+      }
+      await tx.appointment.update({
+        where: { id: appt.id },
+        data: {
+          status: "CONFIRMED",
+          customerId,
+          vehicleId,
+          respondedAt: new Date(),
+          respondedById: user.id,
+        },
       });
-    }
-    await tx.appointment.update({
-      where: { id: appt.id },
-      data: {
-        status: "CONFIRMED",
-        customerId,
-        vehicleId,
-        respondedAt: new Date(),
-        respondedById: user.id,
-      },
+      await logAudit(
+        {
+          tenantId: appt.tenantId,
+          userId: user.id,
+          branchId: appt.branchId,
+          entity: "Appointment",
+          entityId: appt.id,
+          action: "STATUS_CHANGE",
+          summary: "Цаг баталгаажуулсан",
+          after: { status: "CONFIRMED", customerId, vehicleId },
+        },
+        tx,
+      );
     });
-    await logAudit(
-      {
-        tenantId: appt.tenantId,
-        userId: user.id,
-        branchId: appt.branchId,
-        entity: "Appointment",
-        entityId: appt.id,
-        action: "STATUS_CHANGE",
-        summary: "Цаг баталгаажуулсан",
-        after: { status: "CONFIRMED", customerId, vehicleId },
-      },
-      tx,
-    );
-  });
+  } catch (e) {
+    return {
+      ok: false,
+      message: e instanceof Error ? e.message : "Баталгаажуулахад алдаа гарлаа.",
+    };
+  }
 
   // Мэдэгдэл (DB + push). Алдаа гарвал confirm-ийг тасалдуулахгүй.
   try {
@@ -545,12 +566,16 @@ export async function confirmAppointment(formData: FormData): Promise<void> {
 
   revalidatePath("/dashboard/appointments");
   revalidatePath("/account");
+  return { ok: true, message: "Цаг баталгаажлаа." };
 }
 
 /** Ажилтан цаг татгалзах. */
-export async function rejectAppointment(formData: FormData): Promise<void> {
+export async function rejectAppointment(
+  _prev: AppointmentActionState,
+  formData: FormData,
+): Promise<AppointmentActionState> {
   const id = s(formData, "id");
-  if (!id) return;
+  if (!id) return { ok: false, message: "Буруу хүсэлт." };
 
   const appt = await prisma.appointment.findUnique({
     where: { id },
@@ -562,30 +587,46 @@ export async function rejectAppointment(formData: FormData): Promise<void> {
       accountId: true,
     },
   });
-  if (!appt) return;
+  if (!appt) return { ok: false, message: "Цаг захиалга олдсонгүй." };
 
-  const user = await authorizeStaff(appt.branchId);
-  if (user.tenantId !== appt.tenantId) return;
-  if (appt.status !== "PENDING") return;
+  let user;
+  try {
+    user = await authorizeStaff(appt.branchId);
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
+  if (user.tenantId !== appt.tenantId) {
+    return { ok: false, message: "Танд энэ цагийг удирдах эрх байхгүй." };
+  }
+  if (appt.status !== "PENDING") {
+    return { ok: false, message: "Энэ цаг аль хэдийн хариу авсан байна." };
+  }
 
-  await prisma.appointment.update({
-    where: { id: appt.id },
-    data: {
-      status: "REJECTED",
-      respondedAt: new Date(),
-      respondedById: user.id,
-    },
-  });
-  await logAudit({
-    tenantId: appt.tenantId,
-    userId: user.id,
-    branchId: appt.branchId,
-    entity: "Appointment",
-    entityId: appt.id,
-    action: "STATUS_CHANGE",
-    summary: "Цаг татгалзсан",
-    after: { status: "REJECTED" },
-  });
+  try {
+    await prisma.appointment.update({
+      where: { id: appt.id },
+      data: {
+        status: "REJECTED",
+        respondedAt: new Date(),
+        respondedById: user.id,
+      },
+    });
+    await logAudit({
+      tenantId: appt.tenantId,
+      userId: user.id,
+      branchId: appt.branchId,
+      entity: "Appointment",
+      entityId: appt.id,
+      action: "STATUS_CHANGE",
+      summary: "Цаг татгалзсан",
+      after: { status: "REJECTED" },
+    });
+  } catch (e) {
+    return {
+      ok: false,
+      message: e instanceof Error ? e.message : "Татгалзахад алдаа гарлаа.",
+    };
+  }
 
   // Онлайн захиалга (Account-той) бол хэрэглэгчид мэдэгдэнэ.
   if (appt.accountId) {
@@ -601,37 +642,58 @@ export async function rejectAppointment(formData: FormData): Promise<void> {
   }
 
   revalidatePath("/dashboard/appointments");
+  return { ok: true, message: "Цаг татгалзлаа." };
 }
 
 /** Ажилтан "ирээгүй" гэж тэмдэглэх (зөвхөн CONFIRMED-аас). */
-export async function markAppointmentNoShow(formData: FormData): Promise<void> {
+export async function markAppointmentNoShow(
+  _prev: AppointmentActionState,
+  formData: FormData,
+): Promise<AppointmentActionState> {
   const id = s(formData, "id");
-  if (!id) return;
+  if (!id) return { ok: false, message: "Буруу хүсэлт." };
 
   const appt = await prisma.appointment.findUnique({
     where: { id },
     select: { id: true, tenantId: true, branchId: true, status: true },
   });
-  if (!appt) return;
+  if (!appt) return { ok: false, message: "Цаг захиалга олдсонгүй." };
 
-  const user = await authorizeStaff(appt.branchId);
-  if (user.tenantId !== appt.tenantId) return;
-  if (appt.status !== "CONFIRMED") return;
+  let user;
+  try {
+    user = await authorizeStaff(appt.branchId);
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
+  if (user.tenantId !== appt.tenantId) {
+    return { ok: false, message: "Танд энэ цагийг удирдах эрх байхгүй." };
+  }
+  if (appt.status !== "CONFIRMED") {
+    return { ok: false, message: "Энэ цагийг тэмдэглэх боломжгүй." };
+  }
 
-  await prisma.appointment.update({
-    where: { id: appt.id },
-    data: { status: "NO_SHOW" },
-  });
-  await logAudit({
-    tenantId: appt.tenantId,
-    userId: user.id,
-    branchId: appt.branchId,
-    entity: "Appointment",
-    entityId: appt.id,
-    action: "STATUS_CHANGE",
-    summary: "Цагт ирээгүй гэж тэмдэглэв",
-    after: { status: "NO_SHOW" },
-  });
+  try {
+    await prisma.appointment.update({
+      where: { id: appt.id },
+      data: { status: "NO_SHOW" },
+    });
+    await logAudit({
+      tenantId: appt.tenantId,
+      userId: user.id,
+      branchId: appt.branchId,
+      entity: "Appointment",
+      entityId: appt.id,
+      action: "STATUS_CHANGE",
+      summary: "Цагт ирээгүй гэж тэмдэглэв",
+      after: { status: "NO_SHOW" },
+    });
+  } catch (e) {
+    return {
+      ok: false,
+      message: e instanceof Error ? e.message : "Тэмдэглэхэд алдаа гарлаа.",
+    };
+  }
 
   revalidatePath("/dashboard/appointments");
+  return { ok: true, message: "Ирээгүй гэж тэмдэглэлээ." };
 }

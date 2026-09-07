@@ -5,10 +5,10 @@ import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
 import { requireUser } from "@/lib/auth";
 import {
   ORDER_ASSIGNABLE_WHERE,
-  branchScopeId,
   canDelete,
   canEdit,
   canView,
+  workingBranchScopeId,
 } from "@/lib/auth/roles";
 import { redirect } from "next/navigation";
 import {
@@ -54,7 +54,7 @@ export default async function OrderDetailPage({
   const canEditOrder = canEdit(user, "orders");
   const canDeleteOrder = canDelete(user, "orders");
   const canEditPayments = canEdit(user, "payments");
-  const scopeBranchId = branchScopeId(user);
+  const scopeBranchId = workingBranchScopeId(user);
   const { id } = await params;
 
   const [order, branches, customers, vehicles, technicians, services, reports, activeTemplateCount, diagnosticTemplates] = await Promise.all([

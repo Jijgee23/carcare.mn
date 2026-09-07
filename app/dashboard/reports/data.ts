@@ -1,5 +1,5 @@
 import type { requireUser } from "@/lib/auth";
-import { branchScopeId } from "@/lib/auth/roles";
+import { workingBranchScopeId } from "@/lib/auth/roles";
 import { customerLabel } from "@/lib/customers";
 import {
   ITEM_KIND_LABEL,
@@ -95,7 +95,7 @@ export async function loadReportData(
   user: Awaited<ReturnType<typeof requireUser>>,
   range: Range,
 ): Promise<ReportData> {
-  const scopeBranchId = branchScopeId(user);
+  const scopeBranchId = workingBranchScopeId(user);
   const branchFilter = scopeBranchId ? { branchId: scopeBranchId } : {};
 
   const completedWhere = {
