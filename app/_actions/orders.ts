@@ -23,6 +23,7 @@ import {
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { enforceCountLimit } from "@/lib/plan-limits-server";
 import { prisma, type PrismaTransactionClient } from "@/lib/prisma";
+import { ensureTenantVehicle } from "@/lib/vehicles";
 
 export type OrderActionState = {
   ok: boolean;
@@ -144,9 +145,13 @@ function parseOrderInput(fd: FormData): {
   };
 }
 
-async function validateRefs(tenantId: string, data: OrderInput) {
+async function validateRefs(
+  tenantId: string,
+  data: OrderInput,
+  appointmentId: string | null,
+) {
   const errors: Record<string, string> = {};
-  const [branch, customer, vehicle, assignee] = await Promise.all([
+  const [branch, customer, vehicle, assignee, appointment] = await Promise.all([
     data.branchId
       ? prisma.branch.findFirst({
           where: { id: data.branchId, tenantId },
@@ -173,19 +178,71 @@ async function validateRefs(tenantId: string, data: OrderInput) {
           select: { id: true },
         })
       : Promise.resolve(null),
+    appointmentId
+      ? prisma.appointment.findFirst({
+          where: { id: appointmentId, tenantId },
+          select: {
+            id: true,
+            customerId: true,
+            accountId: true,
+            vehicleId: true,
+            serviceOrderId: true,
+          },
+        })
+      : Promise.resolve(null),
   ]);
 
   if (data.branchId && !branch) errors.branchId = "Салбар олдсонгүй.";
   if (data.customerId && !customer) errors.customerId = "Үйлчлүүлэгч олдсонгүй.";
-  if (data.vehicleId && !vehicle) errors.vehicleId = "Машин олдсонгүй.";
   if (data.assignedToId && !assignee) errors.assignedToId = "Ажилтан олдсонгүй.";
+
+  if (appointmentId && !appointment) {
+    errors.appointmentId = "Цаг захиалга олдсонгүй.";
+  } else if (appointmentId && appointment?.serviceOrderId) {
+    errors.appointmentId = "Энэ цаг захиалгад засварын хуудас аль хэдийн үүссэн байна.";
+  } else if (appointmentId && appointment?.customerId !== data.customerId) {
+    errors.customerId = "Цаг захиалгын үйлчлүүлэгчтэй таарахгүй байна.";
+  }
+
+  if (
+    appointmentId &&
+    appointment?.vehicleId &&
+    appointment.vehicleId !== data.vehicleId
+  ) {
+    errors.vehicleId = "Энэ цаг захиалгад өөр машин холбогдсон байна.";
+  }
+
+  // The customer may add a car after the appointment was confirmed. That car
+  // exists as an AccountVehicle, but the tenant order form only knows about
+  // TenantVehicle rows. Permit this path only for the appointment's account
+  // and customer; the link is created together with the order below.
+  let accountVehicleToLink = false;
+  if (!vehicle && appointment?.accountId && appointment.customerId === data.customerId) {
+    const accountVehicle = await prisma.accountVehicle.findFirst({
+      where: {
+        accountId: appointment.accountId,
+        vehicleId: data.vehicleId,
+      },
+      select: { vehicleId: true },
+    });
+    if (accountVehicle) accountVehicleToLink = true;
+  }
 
   if (vehicle && data.customerId && vehicle.customerId !== data.customerId) {
     errors.vehicleId = "Энэ машин сонгосон үйлчлүүлэгчийнх биш.";
   }
 
+  if (!vehicle && !accountVehicleToLink && data.vehicleId) {
+    errors.vehicleId = "Машин олдсонгүй.";
+  }
+
   // Машины дараа төлбөрт төлөв — захиалга руу snapshot хийхэд ашиглана.
-  return { errors, vehicleIsPostpaid: vehicle?.isPostpaid ?? false };
+  return {
+    errors,
+    vehicleIsPostpaid: vehicle?.isPostpaid ?? false,
+    accountVehicleToLink,
+    appointmentAccountId: appointment?.accountId ?? null,
+  };
 }
 
 export async function createOrderAction(
@@ -204,9 +261,16 @@ export async function createOrderAction(
     return { ok: false, fieldErrors: errors };
   }
 
-  const { errors: refErrors, vehicleIsPostpaid } = await validateRefs(
+  const appointmentId = s(formData, "appointmentId") || null;
+  const {
+    errors: refErrors,
+    vehicleIsPostpaid,
+    accountVehicleToLink,
+    appointmentAccountId,
+  } = await validateRefs(
     user.tenantId,
     data,
+    appointmentId,
   );
   if (Object.keys(refErrors).length > 0) {
     return { ok: false, fieldErrors: refErrors };
@@ -255,20 +319,52 @@ export async function createOrderAction(
   for (let i = 0; i < 3 && !createdId; i++) {
     const number = await nextOrderNumber(user.tenantId);
     try {
-      const created = await prisma.serviceOrder.create({
-        data: {
-          number,
-          status: "SCHEDULED",
-          tenantId: user.tenantId,
-          branchId: data.branchId,
-          customerId: data.customerId,
-          vehicleId: data.vehicleId,
-          assignedToId: data.assignedToId,
-          scheduledAt: data.scheduledAt,
-          notes: data.notes,
-          isPostpaid: vehicleIsPostpaid,
-        },
-        select: { id: true },
+      const created = await prisma.$transaction(async (tx) => {
+        if (accountVehicleToLink) {
+          await ensureTenantVehicle(tx, {
+            tenantId: user.tenantId,
+            vehicleId: data.vehicleId,
+            customerId: data.customerId,
+          });
+        }
+
+        const order = await tx.serviceOrder.create({
+          data: {
+            number,
+            status: "SCHEDULED",
+            tenantId: user.tenantId,
+            branchId: data.branchId,
+            customerId: data.customerId,
+            vehicleId: data.vehicleId,
+            assignedToId: data.assignedToId,
+            scheduledAt: data.scheduledAt,
+            notes: data.notes,
+            isPostpaid: vehicleIsPostpaid,
+          },
+          select: { id: true },
+        });
+
+        if (appointmentId) {
+          const linked = await tx.appointment.updateMany({
+            where: {
+              id: appointmentId,
+              tenantId: user.tenantId,
+              customerId: data.customerId,
+              ...(appointmentAccountId ? { accountId: appointmentAccountId } : {}),
+              serviceOrderId: null,
+            },
+            data: {
+              serviceOrderId: order.id,
+              status: "CONFIRMED",
+              ...(accountVehicleToLink ? { vehicleId: data.vehicleId } : {}),
+            },
+          });
+          if (linked.count !== 1) {
+            throw new Error("Цаг захиалгыг засварын хуудастай холбож чадсангүй.");
+          }
+        }
+
+        return order;
       });
       createdId = created.id;
     } catch (e) {
@@ -306,17 +402,7 @@ export async function createOrderAction(
     },
   });
 
-  // Цаг захиалгаас үүсгэсэн бол буцаан холбоно (Appointment → ServiceOrder).
-  const appointmentId = s(formData, "appointmentId");
   if (appointmentId) {
-    await prisma.appointment.updateMany({
-      where: {
-        id: appointmentId,
-        tenantId: user.tenantId,
-        serviceOrderId: null,
-      },
-      data: { serviceOrderId: createdId, status: "CONFIRMED" },
-    });
     revalidatePath("/dashboard/appointments");
   }
 
@@ -347,6 +433,7 @@ export async function updateOrderAction(
   const { errors: refErrors, vehicleIsPostpaid } = await validateRefs(
     user.tenantId,
     data,
+    null,
   );
   if (Object.keys(refErrors).length > 0) {
     return { ok: false, fieldErrors: refErrors };

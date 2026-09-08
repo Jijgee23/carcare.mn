@@ -31,16 +31,33 @@ export default async function NewOrderPage({
   const scopeBranchId = workingBranchScopeId(user);
 
   const sp = await searchParams;
+  // Appointment-аас ирсэн бол tenant scope доторх account/customer-г дахин
+  // уншина. Ингэснээр баталгаажсаны дараа customer өөрийн машин нэмсэн
+  // тохиолдолд тэр AccountVehicle-уудыг order form-д зөвхөн энэ appointment-д
+  // зориулж харуулна.
+  const appointment = sp.appointmentId
+    ? await prisma.appointment.findFirst({
+        where: { id: sp.appointmentId, tenantId: user.tenantId },
+        select: {
+          accountId: true,
+          customerId: true,
+          vehicleId: true,
+          serviceOrderId: true,
+        },
+      })
+    : null;
+  const prefillCustomerId = sp.customerId || appointment?.customerId || "";
+  const prefillVehicleId = sp.vehicleId || appointment?.vehicleId || "";
   // Цаг захиалгаас ирсэн prefill (customer/branch/цаг), эсвэл ажиллах
   // салбар тодорхой бол (scopeBranchId) — түүнийг Салбар талбарт автоматаар
   // бөглөнө ("Бүх салбар" сонгосон owner-д prefill хийхгүй, гараар сонгоно).
   const prefillScheduled = sp.scheduledAt ? new Date(sp.scheduledAt) : null;
   const initial =
-    sp.customerId || sp.branchId || sp.scheduledAt || sp.note || scopeBranchId
+    prefillCustomerId || sp.branchId || sp.scheduledAt || sp.note || scopeBranchId
       ? {
           branchId: sp.branchId ?? scopeBranchId ?? "",
-          customerId: sp.customerId ?? "",
-          vehicleId: sp.vehicleId ?? "",
+          customerId: prefillCustomerId,
+          vehicleId: prefillVehicleId,
           assignedToId: null,
           scheduledAt:
             prefillScheduled && Number.isFinite(prefillScheduled.getTime())
@@ -50,7 +67,7 @@ export default async function NewOrderPage({
         }
       : undefined;
 
-  const [branches, customers, vehicles, technicians] = await Promise.all([
+  const [branches, customers, tenantVehicles, technicians, accountVehicles] = await Promise.all([
     prisma.branch.findMany({
       where: {
         tenantId: user.tenantId,
@@ -101,7 +118,35 @@ export default async function NewOrderPage({
         role: { select: { name: true } },
       },
     }),
+    appointment?.accountId && appointment.customerId === prefillCustomerId && !appointment.serviceOrderId
+      ? prisma.accountVehicle.findMany({
+          where: { accountId: appointment.accountId },
+          orderBy: { createdAt: "desc" },
+          select: {
+            vehicleId: true,
+            vehicle: {
+              select: { id: true, plate: true, make: true, model: true },
+            },
+          },
+        })
+      : Promise.resolve([]),
   ]);
+
+  // A global AccountVehicle becomes available to the tenant only when a staff
+  // member selects it for this appointment/order. Keep already-linked tenant
+  // vehicles authoritative and append only the missing account vehicles.
+  const linkedVehicleIds = new Set(tenantVehicles.map((v) => v.id));
+  const vehicles = [
+    ...tenantVehicles,
+    ...accountVehicles
+      .filter((v) => !linkedVehicleIds.has(v.vehicleId))
+      .map((v) => ({
+        ...v.vehicle,
+        customerId: prefillCustomerId,
+        isPostpaid: false,
+        isAccountVehicle: true,
+      })),
+  ];
 
   if (branches.length === 0) {
     return (

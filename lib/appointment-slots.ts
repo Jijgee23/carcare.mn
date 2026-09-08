@@ -1,5 +1,4 @@
 import type { Weekday } from "@/lib/branches";
-import type { PrismaTransactionClient } from "@/lib/prisma";
 
 // Salбарын slot тохиргооны анхдагч (Branch.slotMinutes/slotCapacity null үед).
 export const DEFAULT_SLOT_MINUTES = 30;
@@ -20,6 +19,21 @@ export type DaySlot = {
   iso: string; // requestedAt-д хадгалах ISO timestamp
   available: boolean; // сонгох боломжтой эсэх (ирээдүйд + сул)
   remaining: number; // үлдсэн багтаамж
+};
+
+/**
+ * Аль хэдийн авсан (PENDING/CONFIRMED) захиалгын ЖИНХЭНЭ эзэлж буй хугацаа —
+ * зөвхөн эхлэх цаг (`start`) төдийгүй түүний өөрийнх нь нийт үргэлжлэх
+ * хугацаа (сонгосон ангиллуудын нийлбэр, эсвэл ангилалгүй бол slot-ийн
+ * анхдагч урт). Overlap-based шалгалтад ашиглана — өмнө нь зөвхөн `start`
+ * цэг тухайн slot-ийн НАРИЙН цонхонд (`[slotStart, slotStart+slotMinutes)`)
+ * унасан эсэхийг шалгадаг байсан тул урт хугацаатай захиалга (ж: 120 мин)
+ * зөвхөн өөрийн эхлэх slot-т "эзэлсэн" гэж тооцогдож, дараагийн slot-ууд
+ * (12:30, 13:00, ...) хоосон мэт харагддаг байсан — давхар захиалгын цоорхой.
+ */
+export type TakenInterval = {
+  start: Date;
+  durationMinutes: number;
 };
 
 export type DayAvailability = {
@@ -58,11 +72,14 @@ export function buildDaySlots(opts: {
   closeTime: string | null;
   slotMinutes: number;
   capacity: number;
-  taken: Date[]; // тухайн өдрийн PENDING/CONFIRMED цагуудын requestedAt
+  // Тухайн өдрийн PENDING/CONFIRMED захиалгуудын ЭЗЭЛЖ буй хугацааны
+  // интервал (эхлэх цаг + өөрийнх нь үргэлжлэх хугацаа) — зөвхөн эхлэх цэг биш.
+  taken: TakenInterval[];
   now: Date;
   // Захиалгын нийт үргэлжлэх хугацаа (booking v2 — сонгосон ангилалуудын нийлбэр).
-  // Slot-ийн АЛХАМ нь slotMinutes хэвээр; энэ нь зөвхөн "хаах цагт багтах уу"
-  // хилд нөлөөлнө. null/0 бол slotMinutes-тэй тэнцүү (хуучин зан төлөв).
+  // Slot-ийн АЛХАМ нь slotMinutes хэвээр; энэ нь "хаах цагт багтах уу" хилд
+  // болон overlap шалгалтад (энэ шинэ захиалга хэр удаан "эзэлэх") ашиглана.
+  // null/0 бол slotMinutes-тэй тэнцүү (хуучин зан төлөв).
   appointmentMinutes?: number;
 }): DayAvailability {
   if (!opts.open) return { open: false, reason: "Энэ өдөр амарна.", slots: [] };
@@ -81,15 +98,23 @@ export function buildDaySlots(opts: {
     opts.appointmentMinutes && opts.appointmentMinutes > 0
       ? opts.appointmentMinutes
       : slotMin;
-  const takenMs = opts.taken.map((t) => t.getTime());
+  const takenIntervals = opts.taken.map((t) => ({
+    startMs: t.start.getTime(),
+    endMs: t.start.getTime() + t.durationMinutes * 60000,
+  }));
   const nowMs = opts.now.getTime();
 
   const slots: DaySlot[] = [];
   for (let start = openMin; start + apptMin <= closeMin; start += slotMin) {
     const slotStart = new Date(y, m - 1, d, Math.floor(start / 60), start % 60);
     const startMs = slotStart.getTime();
-    const endMs = startMs + slotMin * 60000;
-    const count = takenMs.filter((ms) => ms >= startMs && ms < endMs).length;
+    // Энэ slot-т шинэ захиалга байршвал ЭЗЭЛЭХ хугацаа (`apptMin`) — зөвхөн
+    // slot-ийн алхам (`slotMin`) биш. Аль хэдийн авсан захиалгуудын жинхэнэ
+    // интервалтай ЯМАРЧ давхцал (overlap) байвал багтаамжаас хасна.
+    const endMs = startMs + apptMin * 60000;
+    const count = takenIntervals.filter(
+      (t) => t.startMs < endMs && t.endMs > startMs,
+    ).length;
     const remaining = Math.max(0, cap - count);
     slots.push({
       time: minutesToTime(start),
@@ -101,30 +126,7 @@ export function buildDaySlots(opts: {
   return { open: true, slots };
 }
 
-type Client = PrismaTransactionClient;
-
-/**
- * Сервер тал — тухайн цаг (slot) хараахан дүүрээгүй эсэхийг шалгана
- * (давхар захиалгаас сэргийлнэ).
- */
-export async function isSlotAvailable(
-  client: Client,
-  branchId: string,
-  when: Date,
-): Promise<boolean> {
-  const branch = await client.branch.findUnique({
-    where: { id: branchId },
-    select: { slotMinutes: true, slotCapacity: true },
-  });
-  const slotMin = branch?.slotMinutes ?? DEFAULT_SLOT_MINUTES;
-  const cap = branch?.slotCapacity ?? DEFAULT_SLOT_CAPACITY;
-  const end = new Date(when.getTime() + slotMin * 60000);
-  const count = await client.appointment.count({
-    where: {
-      branchId,
-      status: { in: ["PENDING", "CONFIRMED"] },
-      requestedAt: { gte: when, lt: end },
-    },
-  });
-  return count < cap;
-}
+// `isSlotAvailable` (booking-цагийн давхцал шалгах) нь `lib/category-duration.ts`
+// руу нүүсэн — тэнд аль хэдийн байгаа `resolveBranchCategoryDurations`-ыг
+// ашиглаж эрт эхэлсэн урт захиалгуудын ЖИНХЭНЭ хугацааг шийднэ (энэ файлаас
+// тийш импортлож циклик импорт үүсгэхээс зайлсхийв).

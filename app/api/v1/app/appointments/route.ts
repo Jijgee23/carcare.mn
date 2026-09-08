@@ -1,10 +1,10 @@
 import { jsonError, jsonOk } from "@/lib/api";
-import { isSlotAvailable } from "@/lib/appointment-slots";
 import {
   ensureAppointmentFeeCheckout,
   serializeAppointmentFee,
 } from "@/lib/appointment-payments";
 import { getApiAccountFromRequest } from "@/lib/auth/account-api-token";
+import { isSlotAvailable, resolveBranchCategoryDurations } from "@/lib/category-duration";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { isFeatureEnabled } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
@@ -149,20 +149,10 @@ export async function POST(req: Request) {
     return jsonError(403, "Энэ байгууллага онлайн цаг захиалга хүлээн авахгүй.");
   }
 
-  if (!(await isSlotAvailable(prisma, branch.id, when))) {
-    return jsonError(409, "Энэ цаг дүүрсэн байна. Өөр цаг сонгоно уу.");
-  }
-
-  if (accountVehicleId) {
-    const owned = await prisma.accountVehicle.findFirst({
-      where: { id: accountVehicleId, accountId: account.id },
-      select: { id: true },
-    });
-    if (!owned) return jsonError(400, "Машин олдсонгүй.");
-  }
-
   // Ангилал — заавал биш; салбарт хамаарах (эсвэл салбаргүй) идэвхтэйг л авна.
-  // Буруу/өөр тенантын id-г чимээгүй хасна (энэ салбарт санал болгож буйг л авна).
+  // Буруу/өөр тенантын id-г чимээгүй хасна (энэ салбарт санал болгож буйг л
+  // авна). Доорх давхцлын шалгалтад ШИНЭ захиалгын жинхэнэ хугацааг мэдэх
+  // шаардлагатай тул isSlotAvailable-аас ӨМНӨ шийднэ.
   let validCategoryIds: string[] = [];
   if (requestedCategoryIds.length) {
     const cats = await prisma.category.findMany({
@@ -178,6 +168,21 @@ export async function POST(req: Request) {
   }
   // Ганц `categoryId` back-compat-д — эхний хүчинтэй ангилал.
   const categoryId: string | null = validCategoryIds[0] ?? null;
+  const { totalMinutes: newDurationMinutes } = validCategoryIds.length
+    ? await resolveBranchCategoryDurations(prisma, branch.id, validCategoryIds)
+    : { totalMinutes: 0 };
+
+  if (!(await isSlotAvailable(prisma, branch.id, when, newDurationMinutes))) {
+    return jsonError(409, "Энэ цаг дүүрсэн байна. Өөр цаг сонгоно уу.");
+  }
+
+  if (accountVehicleId) {
+    const owned = await prisma.accountVehicle.findFirst({
+      where: { id: accountVehicleId, accountId: account.id },
+      select: { id: true },
+    });
+    if (!owned) return jsonError(400, "Машин олдсонгүй.");
+  }
 
   const appt = await prisma.appointment.create({
     data: {
