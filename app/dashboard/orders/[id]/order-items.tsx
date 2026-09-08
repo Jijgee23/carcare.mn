@@ -127,7 +127,7 @@ export function OrderItems({
               Нэгж үнэ
             </th>
             <th className="text-right font-medium px-5 py-2 w-32">Дүн</th>
-            {canEdit ? <th className="w-32" aria-label="Үйлдэл" /> : null}
+            {canEdit ? <th className="w-44" aria-label="Үйлдэл" /> : null}
           </tr>
         </thead>
         <tbody className="divide-y divide-[var(--oc-line)]">
@@ -201,7 +201,7 @@ export function OrderItems({
                     </td>
                     {canEdit ? (
                       <td className="pr-3 py-2.5">
-                        <div className="flex items-center justify-end gap-1">
+                        <div className="flex items-center justify-start gap-1">
                           {canChangeServiceItemStatus(status) ? (
                             <form action={changeOrderItemStatusAction}>
                               <input type="hidden" name="itemId" value={it.id} />
@@ -210,7 +210,7 @@ export function OrderItems({
                                 defaultValue={status}
                                 title="Явц өөрчлөх"
                                 onChange={(e) => e.currentTarget.form?.requestSubmit()}
-                                className="compact-input !py-1 !px-1.5 !text-[11px] !rounded-lg max-w-[6.5rem]"
+                                className="compact-input !py-1 !px-1.5 !text-[11px] !rounded-lg !w-[9.5rem]"
                               >
                                 {rowStatuses.map((s) => (
                                   <option key={s} value={s}>
