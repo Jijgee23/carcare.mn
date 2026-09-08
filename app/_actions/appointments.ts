@@ -27,6 +27,7 @@ import { isFeatureEnabled } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
 import { reserveAppointment, ReservationError } from "@/lib/appointment-reservations";
 import { bookingDayBounds } from "@/lib/booking-time";
+import { safeNext } from "@/lib/safe-redirect";
 import { setBypassContext } from "@/lib/tenant-context";
 
 export type AppointmentActionState = {
@@ -434,7 +435,8 @@ export async function registerAppointmentByStaff(
   });
 
   revalidatePath("/dashboard/appointments");
-  redirect("/dashboard/appointments");
+  // Хуваарийн (calendar) хуудаснаас "next"-тэй ирсэн бол тэр рүү буцна.
+  redirect(safeNext(s(formData, "next"), "/dashboard/appointments"));
 }
 
 /**

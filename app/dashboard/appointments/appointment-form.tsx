@@ -27,11 +27,17 @@ export function AppointmentForm({
   customers: initialCustomers,
   categories,
   defaultBranchId,
+  backHref = "/dashboard/appointments",
+  next,
 }: {
   branches: Branch[];
   customers: Customer[];
   categories: Category[];
   defaultBranchId?: string;
+  backHref?: string;
+  // Амжилттай бүртгэсний дараа буцах зам (жишээ нь: хуваарийн хуудас) —
+  // ирээгүй бол өмнөх адил цаг захиалгын жагсаалт руу орно.
+  next?: string;
 }) {
   const [state, formAction, pending] = useActionState<
     AppointmentActionState,
@@ -83,6 +89,7 @@ export function AppointmentForm({
     >
       <FormError message={state?.message && !state.ok ? state.message : undefined} />
       <input type="hidden" name="requestedAt" value={selectedIso} />
+      {next ? <input type="hidden" name="next" value={next} /> : null}
       {categoryIds.map((id) => (
         <input key={id} type="hidden" name="categoryIds" value={id} />
       ))}
@@ -195,7 +202,7 @@ export function AppointmentForm({
       </div>
 
       <div className="flex gap-2 pt-3 border-t border-[var(--oc-line2)]">
-        <BtnLink href="/dashboard/appointments" variant="ghost">
+        <BtnLink href={backHref} variant="ghost">
           ← Буцах
         </BtnLink>
         <Btn type="submit" disabled={pending || !selectedIso}>

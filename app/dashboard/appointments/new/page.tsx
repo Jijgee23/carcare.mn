@@ -5,16 +5,23 @@ import { requireUser } from "@/lib/auth";
 import { canCreate, workingBranchScopeId } from "@/lib/auth/roles";
 import { openWeekdaysOf } from "@/lib/branches";
 import { prisma } from "@/lib/prisma";
+import { safeNext } from "@/lib/safe-redirect";
 import { APPOINTMENT_FORM_ID, AppointmentForm } from "../appointment-form";
 
 export const metadata = {
   title: "Цаг бүртгэх",
 };
 
-export default async function NewAppointmentPage() {
+export default async function NewAppointmentPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ branchId?: string; next?: string }>;
+}) {
   const user = await requireUser();
   if (!canCreate(user, "appointments")) redirect("/dashboard/appointments");
   const scopeBranchId = workingBranchScopeId(user);
+  const sp = await searchParams;
+  const backTarget = safeNext(sp.next, "/dashboard/appointments");
 
   const [branches, customers, categories] = await Promise.all([
     prisma.branch.findMany({
@@ -70,7 +77,7 @@ export default async function NewAppointmentPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <BtnLink href="/dashboard/appointments" variant="ghost">
+          <BtnLink href={backTarget} variant="ghost">
             ← Буцах
           </BtnLink>
           <Btn type="submit" form={APPOINTMENT_FORM_ID}>
@@ -88,7 +95,9 @@ export default async function NewAppointmentPage() {
           }))}
           customers={customers}
           categories={categories}
-          defaultBranchId={scopeBranchId ?? undefined}
+          defaultBranchId={scopeBranchId ?? sp.branchId ?? undefined}
+          backHref={backTarget}
+          next={sp.next ? backTarget : undefined}
         />
       </div>
     </div>

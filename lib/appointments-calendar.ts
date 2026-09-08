@@ -73,7 +73,7 @@ export function resolveCalendar(sp: {
   anchor?: string;
 }): ResolvedCalendar {
   const interval: CalendarInterval =
-    sp.interval === "month" ? "month" : sp.interval === "day" ? "day" : "week";
+    sp.interval === "month" ? "month" : sp.interval === "week" ? "week" : "day";
   const today = startOfDay(new Date());
   const todayKey = dateKey(today);
   const anchor = parseAnchor(sp.anchor);

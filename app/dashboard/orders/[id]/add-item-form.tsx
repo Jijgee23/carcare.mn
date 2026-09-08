@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
 import {
   type OrderActionState,
   addOrderItemAction,
@@ -42,16 +42,27 @@ export function AddItemForm({
   orderId,
   services,
   diagnosticTemplates,
+  onAdded,
 }: {
   orderId: string;
   services: ServiceOption[];
   diagnosticTemplates: DiagnosticTemplateOption[];
+  // Захиалгын дэлгэрэнгүйг тусад нь (жишээ нь хуваарийн харагдацад) нэг удаа
+  // client дээр татсан үед автоматаар шинэчлэгддэггүй тул нэмсний дараа
+  // дуудагч талд мэдэгдэж дахин татуулах боломж — order/[id]/page.tsx шиг
+  // бүтэн серверийн хуудсанд revalidatePath өөрөө шинэчилдэг тул шаардлагагүй.
+  onAdded?: () => void;
 }) {
   const action = addOrderItemAction.bind(null, orderId);
   const [state, formAction, pending] = useActionState<
     OrderActionState,
     FormData
   >(action, null);
+
+  useEffect(() => {
+    if (state?.ok) onAdded?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
 
   // Амжилттай нэмсний дараа формыг шинэчилнэ (key солигдоно).
   const successKey = state?.ok ? "ok" : "idle";

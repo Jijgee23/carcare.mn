@@ -8,6 +8,7 @@ import {
   workingBranchScopeId,
 } from "@/lib/auth/roles";
 import { prisma } from "@/lib/prisma";
+import { safeNext } from "@/lib/safe-redirect";
 import { ORDER_FORM_ID, OrderForm } from "../order-form";
 
 export const metadata = {
@@ -24,6 +25,7 @@ export default async function NewOrderPage({
     scheduledAt?: string;
     note?: string;
     appointmentId?: string;
+    next?: string;
   }>;
 }) {
   const user = await requireUser();
@@ -31,6 +33,10 @@ export default async function NewOrderPage({
   const scopeBranchId = workingBranchScopeId(user);
 
   const sp = await searchParams;
+  // Ирээгүй бол одоогийн адил "Захиалга" жагсаалт руу буцна — жишээ нь
+  // хуваарийн (calendar) хуудаснаас ирсэн бол тэр хуудас руу яг тэр
+  // байдлаараа (interval/anchor/branchId зэрэг query хэвээр) буцна.
+  const backTarget = safeNext(sp.next, "/dashboard/orders");
   // Appointment-аас ирсэн бол tenant scope доторх account/customer-г дахин
   // уншина. Ингэснээр баталгаажсаны дараа customer өөрийн машин нэмсэн
   // тохиолдолд тэр AccountVehicle-уудыг order form-д зөвхөн энэ appointment-д
@@ -191,7 +197,7 @@ export default async function NewOrderPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <BtnLink href="/dashboard/orders" variant="ghost">
+          <BtnLink href={backTarget} variant="ghost">
             ← Буцах
           </BtnLink>
           <Btn type="submit" form={ORDER_FORM_ID}>
@@ -208,6 +214,8 @@ export default async function NewOrderPage({
           customers={customers}
           vehicles={vehicles}
           technicians={technicians}
+          backHref={backTarget}
+          next={sp.next ? backTarget : undefined}
         />
       </div>
     </div>

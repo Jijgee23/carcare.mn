@@ -67,6 +67,7 @@ export function OrderForm({
   technicians,
   backHref = "/dashboard/orders",
   appointmentId,
+  next,
 }: {
   initial?: Initial;
   branches: Branch[];
@@ -76,6 +77,9 @@ export function OrderForm({
   backHref?: string;
   // Цаг захиалгаас үүсгэж буй бол — үүсгэсэн захиалгыг буцаан холбоно.
   appointmentId?: string;
+  // Амжилттай хадгалсны дараа буцах зам (жишээ нь: хуваарийн хуудас) —
+  // ирээгүй бол одоогийн адил үүсгэсэн захиалга руугаа орно.
+  next?: string;
 }) {
   const isEdit = Boolean(initial?.id);
   const action = isEdit
@@ -97,6 +101,17 @@ export function OrderForm({
 
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [showVehicleForm, setShowVehicleForm] = useState(false);
+
+  // Товлосон огноог өөр ажилтай давхцуулж хадгалахаас өмнө сервэрийн
+  // анхааруулгыг харуулж, ЗӨВХӨН дараагийн (дахин) дарахад confirmed=true
+  // явуулна — reviseExpectedFinishAction/status-controls.tsx-ийн адил
+  // зарчим. Render-ийн үед нөхцөлт setState (useEffect биш) ашиглав.
+  const [scheduleConfirmArmed, setScheduleConfirmArmed] = useState(false);
+  const [prevState, setPrevState] = useState<OrderActionState>(null);
+  if (state !== prevState) {
+    setPrevState(state);
+    setScheduleConfirmArmed(Boolean(state?.fieldErrors?.confirmNeeded));
+  }
 
   const fe = state?.fieldErrors ?? {};
 
@@ -188,6 +203,14 @@ export function OrderForm({
     <form id={ORDER_FORM_ID} action={formAction} className="flex flex-col gap-4" noValidate>
       {appointmentId && !isEdit ? (
         <input type="hidden" name="appointmentId" value={appointmentId} />
+      ) : null}
+      {next && !isEdit ? <input type="hidden" name="next" value={next} /> : null}
+      {isEdit ? (
+        <input
+          type="hidden"
+          name="confirmed"
+          value={scheduleConfirmArmed ? "true" : ""}
+        />
       ) : null}
       {state?.ok ? (
         <div className="bg-[var(--oc-ok)]/10 border border-[var(--oc-ok)]/25 rounded-lg px-3 py-2 text-sm text-[var(--oc-ok)]">
@@ -328,6 +351,7 @@ export function OrderForm({
             name="scheduledAt"
             withTime
             defaultValue={toLocalDatetimeInput(autoScheduledAt)}
+            onChange={() => setScheduleConfirmArmed(false)}
             error={Boolean(fe.scheduledAt)}
           />
         </Field>

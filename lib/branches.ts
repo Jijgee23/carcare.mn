@@ -90,7 +90,7 @@ export function worksWeekends(b: {
 }
 
 // "HH:MM" → минут (өдрийн эхнээс). Буруу бол null.
-function timeToMinutes(t: string | null | undefined): number | null {
+export function timeToMinutes(t: string | null | undefined): number | null {
   if (!t || !isValidTime(t)) return null;
   const [h, m] = t.split(":").map(Number);
   return h * 60 + m;
@@ -160,6 +160,42 @@ export function branchStatusNow(
     return { open: true, hours: openT && closeT ? `${openT}–${closeT}` : null };
   }
   return { open: curMin >= o && curMin < c, hours: `${openT}–${closeT}` };
+}
+
+/**
+ * Тухайн (дурын, "одоо" биш) огнооны ажиллах цагийг минутаар өгнө — Хуваарийн
+ * grid харагдацын цагийн тэнхлэгийг тогтооход ашиглана. `branchStatusNow`-той
+ * ижил логик, гагцхүү "одоо" бус, өгөгдсөн огноогоор.
+ */
+export function branchHoursForDate(
+  b: { openTime: string | null; closeTime: string | null; schedules: SchedDetail[] },
+  date: Date,
+): { openMinutes: number; closeMinutes: number } | null {
+  let weekday: Weekday;
+  try {
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Ulaanbaatar",
+        weekday: "short",
+      })
+        .formatToParts(date)
+        .map((p) => [p.type, p.value]),
+    );
+    weekday = EN_TO_WEEKDAY[parts.weekday as string] ?? "MON";
+  } catch {
+    return null;
+  }
+
+  const sched = b.schedules.find((s) => s.weekday === weekday);
+  const isOpenDay = sched ? sched.isOpen : Boolean(b.openTime && b.closeTime);
+  if (!isOpenDay) return null;
+
+  const openT = (sched?.openTime ?? null) || b.openTime;
+  const closeT = (sched?.closeTime ?? null) || b.closeTime;
+  const o = timeToMinutes(openT);
+  const c = timeToMinutes(closeT);
+  if (o == null || c == null || c <= o) return null;
+  return { openMinutes: o, closeMinutes: c };
 }
 
 /** Хаягийг "Хот, Дүүрэг, Хороо, Гудамж" нэг мөрөнд. */

@@ -513,6 +513,7 @@ export default async function OrderDetailPage({
                 disabled={!canEditOrder}
                 currentStatus={order.status as OrderStatus}
                 occupiesCapacity={order.occupiesCapacity}
+                expectedFinishAt={order.expectedFinishAt}
               />
             </div>
           ) : null}

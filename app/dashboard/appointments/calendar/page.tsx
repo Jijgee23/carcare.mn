@@ -12,16 +12,15 @@ import {
   resolveCalendar,
 } from "@/lib/appointments-calendar";
 import { requireUser } from "@/lib/auth";
-import { canEdit, canView, workingBranchScopeId } from "@/lib/auth/roles";
+import { canEdit, canView, hasPermission, workingBranchScopeId } from "@/lib/auth/roles";
 import { customerLabel } from "@/lib/customers";
 import { prisma } from "@/lib/prisma";
 import {
   loadBranchSchedule,
   loadBranchAttentionOrders,
-  type BranchScheduleAppointmentRow,
-  type BranchScheduleOrderRow,
 } from "@/lib/branch-schedule-loader";
-import type { ScheduleIssue } from "@/lib/branch-schedule";
+import { branchHoursForDate } from "@/lib/branches";
+import { bookingSlotTime } from "@/lib/booking-time";
 import { ORDER_STATUS_BADGE, ORDER_STATUS_LABEL, ORDER_STATUS_TRANSITIONS } from "@/lib/orders";
 import {
   AppointmentArrivedButton,
@@ -30,14 +29,21 @@ import {
 } from "@/app/dashboard/appointments/appointment-row-actions";
 import { StatusControls } from "@/app/dashboard/orders/[id]/status-controls";
 import { RowExpand } from "./row-expand";
+import {
+  appointmentDisplayName,
+  orderDisplayName,
+  buildDayRows,
+  SCHEDULE_ISSUE_LABEL,
+} from "./day-rows";
+import { GridSchedule } from "./grid-schedule";
+import { OrderDetailPanel } from "./order-detail-panel";
+import { CalendarDateJump } from "./calendar-date-jump";
 
-const SCHEDULE_ISSUE_LABEL: Record<ScheduleIssue["reason"], string> = {
-  "missing-estimate": "Тооцоолсон хугацаа дутуу",
-  "unknown-occupancy": "Ажлын байрны эзэмшил тодорхойгүй",
-  overdue: "Тооцоолсон хугацаанаас хэтэрсэн",
-  "missing-order": "Холбогдсон захиалга олдсонгүй",
-  "missing-start": "Эхэлсэн цаг тэмдэглэгдээгүй",
-};
+// Салбарын ажиллах цаг тодорхойгүй (branch.openTime/closeTime хоосон, эсвэл
+// тухайн гараг хаалттай) үед grid-ийн цагийн тэнхлэгийг ямар ч утгагүй
+// орхихгүйн тулд ажил хэргийн ердийн цонх (08:00–20:00) руу буцна.
+const DEFAULT_GRID_OPEN_MINUTES = 8 * 60;
+const DEFAULT_GRID_CLOSE_MINUTES = 20 * 60;
 
 // Асиа/Улаанбаатар цагийн бүсээр — сервер өөр бүсэд байршиж болзошгүй тул.
 function fmtUbTime(d: Date): string {
@@ -69,12 +75,15 @@ export default async function AppointmentsCalendarPage({
     anchor?: string;
     branchId?: string;
     view?: string;
+    layout?: string;
   }>;
 }) {
   const user = await requireUser();
   if (!canView(user, "appointments")) redirect("/dashboard");
   const canRespondAppointments = canEdit(user, "appointments");
   const canEditOrders = canEdit(user, "orders");
+  const canChangeItemStatus = hasPermission(user, "orders.itemStatus");
+  const canEditPayments = canEdit(user, "payments");
 
   const sp = await searchParams;
   const cal = resolveCalendar(sp);
@@ -114,13 +123,29 @@ export default async function AppointmentsCalendarPage({
         });
 
   const isAttention = sp.view === "attention";
+  const isDay = cal.interval === "day" && !isAttention;
+  const isGrid = isDay && sp.layout !== "list";
 
   const daySchedule =
-    cal.interval === "day" && !isAttention && dayBranchId
+    isDay && dayBranchId
       ? await loadBranchSchedule({
           tenantId: user.tenantId,
           branchId: dayBranchId,
           dateStr: cal.days[0].key,
+        })
+      : null;
+
+  // Grid харагдацын цагийн тэнхлэгийг салбарын тухайн өдрийн ажиллах цагаар
+  // хязгаарлана — тодорхойгүй бол ердийн ажлын цонх руу буцна (доор).
+  const dayBranchHours =
+    isGrid && dayBranchId
+      ? await prisma.branch.findFirst({
+          where: { id: dayBranchId, tenantId: user.tenantId },
+          select: {
+            openTime: true,
+            closeTime: true,
+            schedules: { select: { weekday: true, isOpen: true, openTime: true, closeTime: true } },
+          },
         })
       : null;
 
@@ -151,14 +176,22 @@ export default async function AppointmentsCalendarPage({
 
   // Навигаци / toggle линкийн query-г бүрдүүлэгч. `view` (Хоцорсон ажлууд) болон
   // `interval` (Өдөр/7 хоног/Сар) харилцан адилгүй — аль нэгийг сонговол
-  // нөгөөг цэвэрлэнэ.
-  const hrefWith = (over: { interval?: string; anchor?: string; view?: string }) => {
+  // нөгөөг цэвэрлэнэ. `layout` (Жагсаалт/Grid) зөвхөн Өдөр харагдацад хамаатай
+  // тул interval/view солиход автоматаар хасагдана — доор тусад нь удирдана.
+  const hrefWith = (over: {
+    interval?: string;
+    anchor?: string;
+    view?: string;
+    layout?: string;
+  }) => {
     const p = new URLSearchParams();
     if (sp.branchId) p.set("branchId", sp.branchId);
     if (over.view) {
       p.set("view", over.view);
     } else {
       p.set("interval", over.interval ?? cal.interval);
+      const layout = over.layout ?? (over.anchor !== undefined ? sp.layout : undefined);
+      if (layout) p.set("layout", layout);
     }
     const anchor = over.anchor ?? sp.anchor;
     if (anchor) p.set("anchor", anchor);
@@ -167,6 +200,11 @@ export default async function AppointmentsCalendarPage({
 
   const navBtn =
     "px-3 py-1.5 rounded-lg border border-[var(--oc-line)] bg-[var(--oc-panel2)] hover:border-[var(--oc-line2)] hover:bg-white/[0.05] text-sm text-[var(--oc-ink2)] transition-colors";
+
+  // Энэ хуудасны яг одоогийн URL (interval/anchor/branchId/layout хэвээр) —
+  // энэ хуудаснаас захиалга/цаг захиалга үүсгэхэд `next`-ээр дамжуулж, ажил
+  // дуусаад яг энэ хуудас руу (жагсаж байсан өдөр/харагдацаараа) буцаана.
+  const returnTo = hrefWith({});
 
   return (
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
@@ -233,16 +271,19 @@ export default async function AppointmentsCalendarPage({
                 ‹
               </Link>
               <Link href={hrefWith({ anchor: cal.todayKey })} className={navBtn}>
-                Өнөөдөр
+                Өнөөдөр рүү буцах
               </Link>
               <Link href={hrefWith({ anchor: cal.nextAnchorKey })} className={navBtn}>
                 ›
               </Link>
             </div>
 
-            <span className="text-sm font-medium text-[var(--oc-ink2)] px-1">
-              {cal.label}
-            </span>
+            <CalendarDateJump
+              anchorKey={sp.anchor ?? cal.todayKey}
+              interval={cal.interval}
+              branchId={sp.branchId}
+              layout={sp.layout}
+            />
           </>
         ) : null}
 
@@ -262,6 +303,31 @@ export default async function AppointmentsCalendarPage({
           ) : null}
         </Link>
 
+        {isDay ? (
+          <div className="flex rounded-lg border border-[var(--oc-line)] overflow-hidden">
+            <Link
+              href={hrefWith({ layout: "list" })}
+              className={`px-3 py-1.5 text-sm transition-colors ${
+                !isGrid
+                  ? "bg-[var(--oc-accent)] text-[var(--oc-on-accent)] font-medium"
+                  : "text-[var(--oc-muted2)] hover:bg-white/[0.05]"
+              }`}
+            >
+              Жагсаалт
+            </Link>
+            <Link
+              href={hrefWith({ layout: "grid" })}
+              className={`px-3 py-1.5 text-sm transition-colors border-l border-[var(--oc-line)] ${
+                isGrid
+                  ? "bg-[var(--oc-accent)] text-[var(--oc-on-accent)] font-medium"
+                  : "text-[var(--oc-muted2)] hover:bg-white/[0.05]"
+              }`}
+            >
+              Grid
+            </Link>
+          </div>
+        ) : null}
+
         <div className="ml-auto">
           {!scopeBranchId && branches.length > 1 ? (
             <FilterSelect
@@ -278,6 +344,19 @@ export default async function AppointmentsCalendarPage({
           data={attentionData}
           branchName={branches.find((b) => b.id === dayBranchId)?.name ?? null}
         />
+      ) : cal.interval === "day" && isGrid ? (
+        <DayScheduleGrid
+          schedule={daySchedule}
+          branchHours={dayBranchHours}
+          dateKey={cal.days[0].key}
+          branchId={dayBranchId}
+          branchName={branches.find((b) => b.id === dayBranchId)?.name ?? null}
+          canRespondAppointments={canRespondAppointments}
+          canEditOrders={canEditOrders}
+          canChangeItemStatus={canChangeItemStatus}
+          canEditPayments={canEditPayments}
+          returnTo={returnTo}
+        />
       ) : cal.interval === "day" ? (
         <DaySchedule
           schedule={daySchedule}
@@ -285,6 +364,9 @@ export default async function AppointmentsCalendarPage({
           attentionHref={hrefWith({ view: "attention" })}
           canRespondAppointments={canRespondAppointments}
           canEditOrders={canEditOrders}
+          canChangeItemStatus={canChangeItemStatus}
+          canEditPayments={canEditPayments}
+          returnTo={returnTo}
         />
       ) : cal.interval === "week" ? (
         <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2">
@@ -292,9 +374,10 @@ export default async function AppointmentsCalendarPage({
             const items = byDay.get(d.key) ?? [];
             const booked = items.length > 0;
             return (
-              <div
+              <Link
                 key={d.key}
-                className={`rounded-[10px] bg-[var(--oc-panel)] border min-h-[8rem] p-2.5 flex flex-col gap-1.5 ${
+                href={hrefWith({ interval: "day", anchor: d.key })}
+                className={`rounded-[10px] bg-[var(--oc-panel)] border min-h-[8rem] p-2.5 flex flex-col gap-1.5 transition-colors hover:border-[var(--oc-line2)] hover:bg-white/[0.02] ${
                   d.isToday
                     ? "border-[var(--oc-accent)]/50"
                     : booked
@@ -346,7 +429,7 @@ export default async function AppointmentsCalendarPage({
                     Сул
                   </div>
                 )}
-              </div>
+              </Link>
             );
           })}
         </div>
@@ -369,7 +452,7 @@ export default async function AppointmentsCalendarPage({
               return (
                 <Link
                   key={d.key}
-                  href={hrefWith({ interval: "week", anchor: d.key })}
+                  href={hrefWith({ interval: "day", anchor: d.key })}
                   className={`min-h-[5.5rem] p-2 border-b border-r border-[var(--oc-line)] flex flex-col gap-1 transition-colors hover:bg-white/[0.04] ${
                     d.inMonth ? "" : "opacity-40"
                   } ${booked ? "bg-[var(--oc-accent)]/[0.07]" : ""}`}
@@ -400,24 +483,6 @@ export default async function AppointmentsCalendarPage({
 
 type DayScheduleData = Awaited<ReturnType<typeof loadBranchSchedule>>;
 
-function appointmentDisplayName(a: BranchScheduleAppointmentRow): string {
-  return customerLabel({
-    fullName: a.account?.name ?? a.customer?.fullName,
-    phone: a.account?.phone ?? a.customer?.phone,
-  });
-}
-
-function orderDisplayName(o: BranchScheduleOrderRow): string {
-  const vehicle = o.vehicle
-    ? `${o.vehicle.plate} · ${o.vehicle.make} ${o.vehicle.model}`
-    : null;
-  const customer = customerLabel({
-    fullName: o.customer?.fullName,
-    phone: o.customer?.phone,
-  });
-  return vehicle ? `${customer} — ${vehicle}` : customer;
-}
-
 // Захиалга/цаг захиалгын хуваарийг цагийн дараалалд харуулна — зөвхөн унших,
 // эхлүүлэх/тэмдэглэх зэрэг үйлдэл энд байхгүй (дараагийн үе шат).
 function DaySchedule({
@@ -426,12 +491,18 @@ function DaySchedule({
   attentionHref,
   canRespondAppointments,
   canEditOrders,
+  canChangeItemStatus,
+  canEditPayments,
+  returnTo,
 }: {
   schedule: DayScheduleData | null;
   branchName: string | null;
   attentionHref: string;
   canRespondAppointments: boolean;
   canEditOrders: boolean;
+  canChangeItemStatus: boolean;
+  canEditPayments: boolean;
+  returnTo: string;
 }) {
   if (!schedule) {
     return (
@@ -538,7 +609,8 @@ function DaySchedule({
                 showConfirmReject ||
                 showArrivalActions ||
                 showCreateOrderLink ||
-                showOrderControls;
+                showOrderControls ||
+                Boolean(order);
               const orderHref = appt
                 ? `/dashboard/orders/new?${new URLSearchParams({
                     customerId: appt.customerId ?? "",
@@ -547,6 +619,7 @@ function DaySchedule({
                     scheduledAt: new Date(row.startMs).toISOString(),
                     note: appt.note ?? "",
                     appointmentId: appt.id,
+                    next: returnTo,
                   }).toString()}`
                 : "";
               return (
@@ -603,8 +676,17 @@ function DaySchedule({
                             disabled={false}
                             currentStatus={order.status}
                             occupiesCapacity={order.occupiesCapacity}
+                            expectedFinishAt={order.expectedFinishAt}
                           />
                         </div>
+                      ) : null}
+                      {order ? (
+                        <OrderDetailPanel
+                          key={order.id}
+                          orderId={order.id}
+                          canChangeItemStatus={canChangeItemStatus}
+                          canEditPayments={canEditPayments}
+                        />
                       ) : null}
                     </RowExpand>
                   ) : null}
@@ -614,6 +696,85 @@ function DaySchedule({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// Жагсаалттай яг ижил өгөгдлөөс (buildDayRows) визуал grid харагдацыг угсарна —
+// цагийн тэнхлэгийг салбарын ажиллах цагаар (эсвэл дутуу бол 08:00–20:00
+// анхны утгаар) хязгаарлана.
+function DayScheduleGrid({
+  schedule,
+  branchHours,
+  dateKey: dayKey,
+  branchId,
+  branchName,
+  canRespondAppointments,
+  canEditOrders,
+  canChangeItemStatus,
+  canEditPayments,
+  returnTo,
+}: {
+  schedule: DayScheduleData | null;
+  branchHours: {
+    openTime: string | null;
+    closeTime: string | null;
+    schedules: Array<{
+      weekday: "SUN" | "MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT";
+      isOpen: boolean;
+      openTime: string | null;
+      closeTime: string | null;
+    }>;
+  } | null;
+  dateKey: string;
+  branchId: string;
+  branchName: string | null;
+  canRespondAppointments: boolean;
+  canEditOrders: boolean;
+  canChangeItemStatus: boolean;
+  canEditPayments: boolean;
+  returnTo: string;
+}) {
+  if (!schedule) {
+    return (
+      <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-6 text-sm text-[var(--oc-muted3)]">
+        Өдрийн хуваарийг харахын тулд эхлээд салбар сонгоно уу.
+      </div>
+    );
+  }
+
+  const { rows } = buildDayRows(schedule, canRespondAppointments, canEditOrders, returnTo);
+
+  const hours = branchHours
+    ? branchHoursForDate(branchHours, new Date(`${dayKey}T00:00:00+08:00`))
+    : null;
+  const openMinutes = hours?.openMinutes ?? DEFAULT_GRID_OPEN_MINUTES;
+  const closeMinutes = hours?.closeMinutes ?? DEFAULT_GRID_CLOSE_MINUTES;
+  // Захиалга нээлттэй цагийн гадна (жишээ нь эрт эхэлсэн) ч бүрэн харагдах ёстой
+  // тул тэнхлэгийг мөрүүдийн бодит цаг хамарч байгаа эсэхээр өргөтгөнө.
+  let axisStartMs = bookingSlotTime(dayKey, openMinutes).getTime();
+  let axisEndMs = bookingSlotTime(dayKey, closeMinutes).getTime();
+  for (const row of rows) {
+    if (row.startMs < axisStartMs) axisStartMs = row.startMs;
+    if (!row.uncertain && row.endMs > axisEndMs) axisEndMs = row.endMs;
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {branchName ? (
+        <div className="text-sm text-[var(--oc-muted3)]">
+          Салбар: <span className="text-[var(--oc-ink2)] font-medium">{branchName}</span>
+        </div>
+      ) : null}
+      <GridSchedule
+        rows={rows}
+        axisStartMs={axisStartMs}
+        axisEndMs={axisEndMs}
+        canChangeItemStatus={canChangeItemStatus}
+        canEditPayments={canEditPayments}
+        branchId={branchId}
+        returnTo={returnTo}
+      />
     </div>
   );
 }

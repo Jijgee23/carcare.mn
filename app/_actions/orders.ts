@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
+import { customerLabel } from "@/lib/customers";
+import { createNotification } from "@/lib/notifications";
 import {
   canCreate,
   canDelete,
@@ -28,6 +30,7 @@ import {
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { enforceCountLimit } from "@/lib/plan-limits-server";
 import { prisma, type PrismaTransactionClient } from "@/lib/prisma";
+import { safeNext } from "@/lib/safe-redirect";
 import { ensureTenantVehicle } from "@/lib/vehicles";
 
 export type OrderActionState = {
@@ -62,6 +65,22 @@ async function authorize(action: "create" | "edit" | "delete") {
   }
   await assertActiveSubscription(user.tenantId);
   return user;
+}
+
+// Салбараар хязгаарлагдсан ажилтан зөвхөн өөрийн салбарын захиалгыг
+// удирдана — createOrderAction/updateOrderAction-д аль хэдийн байсан адил
+// шалгалт, бусад бүх захиалгын action-д мөн адилхан хэрэглэнэ (өмнө нь зөвхөн
+// tenantId шалгадаг байсан тул өөр салбарын захиалгын ID мэдвэл салбарын
+// хязгаарлалтыг тойрч болдог байсан цоорхой — appointments.ts-ийн
+// assertStaffScope-той адил зарчим).
+function assertOrderBranchScope(
+  user: Awaited<ReturnType<typeof requireUser>>,
+  branchId: string,
+) {
+  const scope = workingBranchScopeId(user);
+  if (scope && branchId !== scope) {
+    throw new Error("Зөвхөн өөрийн салбарын засварын хуудсыг удирдана.");
+  }
 }
 
 // Мөрийн явц өөрчлөх нь орлогын хуудсанд ерөнхий засах эрхээс тусдаа,
@@ -468,7 +487,9 @@ export async function createOrderAction(
 
   revalidatePath("/dashboard/orders");
   revalidatePath("/dashboard");
-  redirect(`/dashboard/orders/${createdId}`);
+  // Хуваарийн (calendar) хуудаснаас "next"-тэй ирсэн бол тэр рүү буцна —
+  // ирээгүй бол өмнөх адил шинээр үүссэн захиалга руугаа шууд орно.
+  redirect(safeNext(s(formData, "next"), `/dashboard/orders/${createdId}`));
 }
 
 // --- UPDATE (info only — status өөр action-аар солино) -------------------
@@ -516,7 +537,7 @@ export async function updateOrderAction(
 
   const existing = await prisma.serviceOrder.findFirst({
     where: scopedOrderWhere,
-    select: { status: true },
+    select: { status: true, scheduledAt: true, estimatedDurationMinutes: true },
   });
   if (!existing) {
     return { ok: false, message: "Засварын хуудас олдсонгүй." };
@@ -526,6 +547,38 @@ export async function updateOrderAction(
       ok: false,
       message: "Дууссан / цуцлагдсан засварын хуудасны мэдээллийг засаж болохгүй.",
     };
+  }
+
+  // Товлосон огноог өөрчилж байгаа бөгөөд захиалга хараахан эхлээгүй (эсвэл
+  // эхэлсэн ч сэлбэг хүлээж, товлосон огноогоороо тооцогддог) үед л
+  // давхцлыг шалгана — reviseExpectedFinishAction-той адил, зөвхөн
+  // анхааруулга, хатуу хориглол биш (D-хугацааны шийдвэр, COWORK.md-г үз).
+  const scheduledChanged =
+    data.scheduledAt != null &&
+    (existing.scheduledAt == null ||
+      data.scheduledAt.getTime() !== existing.scheduledAt.getTime());
+  const confirmed = s(formData, "confirmed") === "true";
+  if (existing.status === "SCHEDULED" && scheduledChanged && !confirmed) {
+    // Хугацаа тодорхойгүй бол (тооцоолол алга) 1 цагийн ойролцоо цонхоор
+    // шалгана — зөвхөн анхааруулгын зорилготой энгийн таамаг, хадгалагдахгүй.
+    const durationMinutes = existing.estimatedDurationMinutes ?? 60;
+    const conflictEnd = new Date(
+      data.scheduledAt!.getTime() + durationMinutes * 60000,
+    );
+    const conflict = await findScheduleConflict(
+      user.tenantId,
+      data.branchId,
+      id,
+      data.scheduledAt!,
+      conflictEnd,
+    );
+    if (conflict) {
+      return {
+        ok: false,
+        message: `Шинэ товлосон огноо ${conflict}-тай давхцаж байна. Үргэлжлүүлэхийн тулд дахин "Хадгалах" дарна уу.`,
+        fieldErrors: { confirmNeeded: "true" },
+      };
+    }
   }
 
   try {
@@ -585,12 +638,18 @@ export async function changeOrderStatusAction(
     where: { id, tenantId: user.tenantId },
     select: {
       id: true,
+      branchId: true,
       status: true,
       startedAt: true,
       estimatedDurationMinutes: true,
     },
   });
   if (!order) return { ok: false, message: "Засварын хуудас олдсонгүй." };
+  try {
+    assertOrderBranchScope(user, order.branchId);
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
 
   const allowed = ORDER_STATUS_TRANSITIONS[order.status as OrderStatus];
   if (!allowed?.includes(next)) {
@@ -692,9 +751,14 @@ export async function setOrderCapacityAction(
 
   const order = await prisma.serviceOrder.findFirst({
     where: { id, tenantId: user.tenantId },
-    select: { id: true, status: true, occupiesCapacity: true },
+    select: { id: true, branchId: true, status: true, occupiesCapacity: true },
   });
   if (!order) return { ok: false, message: "Засварын хуудас олдсонгүй." };
+  try {
+    assertOrderBranchScope(user, order.branchId);
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
   if (order.status !== "WAITING_PARTS") {
     return {
       ok: false,
@@ -736,6 +800,317 @@ export async function setOrderCapacityAction(
   };
 }
 
+// --- EXPECTED FINISH TIME (manual revision) --------------------------------
+
+// Дуусах хугацааг тооцоолсноос хойш ажилтан гар аргаар засаж чадна (сэлбэг
+// хүлээх, гэнэтийн ажил зэргээс шалтгаалан хойшлох тохиолдол) — анхны
+// автомат тооцооллоос ялгаатай, дурын үедээ дуудагдана. Анхны утга анх
+// тавигдахад (өмнө нь байгаагүй үед) мэдэгдэл илгээхгүй — зөвхөн ЗАСВАРЛАСАН
+// (өөрчилсөн) үед л, ба ялгаа 15 минутаас бага бол чимээгүй алгасна (эргэлзээт
+// бага зөрүүгээр үйлчлүүлэгчийг дэмий цочроохгүйн тулд).
+const MEANINGFUL_FINISH_CHANGE_MS = 15 * 60 * 1000;
+
+// Салбарт өөр бай/лифтийн загвар байхгүй тул систем "давхцал"-ыг хатуу
+// хязгаарлал биш, зөвхөн ажилтанд харуулах анхааруулга болгон ашиглана
+// (D-хугацааны шийдвэр — жинхэнэ засварын ажил урьдчилан таамаглашгүй тул
+// хатуу хориглол бодит байдалтай зөрчилддөг). lib/branch-schedule.ts-ийн
+// зарчимтай адил (эхлэл/төгсгөл давхцах эсэх), гагцхүү зөвхөн энэ нэг
+// захиалгын шинэ дуусах хугацаатай мөргөлдөх хамгийн ойрын нэгийг л олно.
+async function findScheduleConflict(
+  tenantId: string,
+  branchId: string,
+  excludeOrderId: string,
+  start: Date,
+  end: Date,
+): Promise<string | null> {
+  const [appts, orders] = await Promise.all([
+    prisma.appointment.findMany({
+      where: {
+        tenantId,
+        branchId,
+        status: { in: ["PENDING", "CONFIRMED"] },
+        OR: [{ serviceOrderId: null }, { serviceOrderId: { not: excludeOrderId } }],
+        requestedAt: { lt: end },
+      },
+      select: {
+        requestedAt: true,
+        estimatedDurationMinutes: true,
+        account: { select: { name: true, phone: true } },
+        customer: { select: { fullName: true, phone: true } },
+      },
+    }),
+    prisma.serviceOrder.findMany({
+      where: {
+        tenantId,
+        branchId,
+        id: { not: excludeOrderId },
+        status: { in: ["SCHEDULED", "IN_PROGRESS", "WAITING_PARTS"] },
+      },
+      select: {
+        number: true,
+        status: true,
+        scheduledAt: true,
+        startedAt: true,
+        estimatedDurationMinutes: true,
+        expectedFinishAt: true,
+        occupiesCapacity: true,
+        customer: { select: { fullName: true, phone: true } },
+      },
+    }),
+  ]);
+
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+
+  for (const a of appts) {
+    const s0 = a.requestedAt.getTime();
+    const e0 = a.estimatedDurationMinutes
+      ? s0 + a.estimatedDurationMinutes * 60000
+      : Number.POSITIVE_INFINITY;
+    if (s0 < endMs && e0 > startMs) {
+      return `цаг захиалга (${customerLabel({ fullName: a.account?.name ?? a.customer?.fullName, phone: a.account?.phone ?? a.customer?.phone })})`;
+    }
+  }
+
+  for (const o of orders) {
+    if (o.status !== "SCHEDULED" && o.occupiesCapacity === false) continue;
+    const scheduled = o.status === "SCHEDULED" && o.occupiesCapacity !== true;
+    const s0 = (scheduled ? o.scheduledAt : o.startedAt)?.getTime();
+    if (s0 == null) continue;
+    const e0 =
+      o.expectedFinishAt?.getTime() ??
+      (scheduled && o.estimatedDurationMinutes
+        ? s0 + o.estimatedDurationMinutes * 60000
+        : Number.POSITIVE_INFINITY);
+    if (s0 < endMs && e0 > startMs) {
+      return `захиалга #${o.number} (${customerLabel(o.customer)})`;
+    }
+  }
+
+  return null;
+}
+
+export async function reviseExpectedFinishAction(
+  _prev: OrderActionState,
+  formData: FormData,
+): Promise<OrderActionState> {
+  let user;
+  try {
+    user = await authorize("edit");
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
+  const id = s(formData, "id");
+  const expectedFinishRaw = s(formData, "expectedFinishAt");
+  const confirmed = s(formData, "confirmed") === "true";
+  if (!id) return { ok: false, message: "Буруу хүсэлт." };
+
+  let expectedFinishAt: Date | null = null;
+  if (expectedFinishRaw) {
+    const d = new Date(expectedFinishRaw);
+    if (!Number.isFinite(d.getTime())) {
+      return { ok: false, fieldErrors: { expectedFinishAt: "Огноо буруу." } };
+    }
+    expectedFinishAt = d;
+  }
+
+  const order = await prisma.serviceOrder.findFirst({
+    where: { id, tenantId: user.tenantId },
+    select: {
+      id: true,
+      status: true,
+      branchId: true,
+      startedAt: true,
+      expectedFinishAt: true,
+      appointment: { select: { id: true, accountId: true, status: true } },
+    },
+  });
+  if (!order) return { ok: false, message: "Засварын хуудас олдсонгүй." };
+  try {
+    assertOrderBranchScope(user, order.branchId);
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
+  if (isOrderLocked(order.status as OrderStatus)) {
+    return {
+      ok: false,
+      message:
+        order.status === "COMPLETED"
+          ? "Энэ засварын хуудас аль хэдийн дууссан тул хугацааг засах боломжгүй. Хуудсыг дахин ачаална уу."
+          : "Энэ засварын хуудас цуцлагдсан тул хугацааг засах боломжгүй. Хуудсыг дахин ачаална уу.",
+    };
+  }
+
+  if (expectedFinishAt && !confirmed) {
+    const conflictStart = order.startedAt ?? new Date();
+    const conflict = await findScheduleConflict(
+      user.tenantId,
+      order.branchId,
+      order.id,
+      conflictStart,
+      expectedFinishAt,
+    );
+    if (conflict) {
+      return {
+        ok: false,
+        message: `Шинэ дуусах хугацаа ${conflict}-тай давхцаж байна. Үргэлжлүүлэхийн тулд дахин "Хадгалах" дарна уу.`,
+        fieldErrors: { confirmNeeded: "true" },
+      };
+    }
+  }
+
+  const previous = order.expectedFinishAt;
+  const isMeaningfulChange =
+    previous != null &&
+    expectedFinishAt != null &&
+    Math.abs(expectedFinishAt.getTime() - previous.getTime()) >=
+      MEANINGFUL_FINISH_CHANGE_MS;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.serviceOrder.update({
+      where: { id: order.id },
+      data: { expectedFinishAt },
+    });
+    await logAudit(
+      {
+        tenantId: user.tenantId,
+        userId: user.id,
+        entity: "ServiceOrder",
+        entityId: order.id,
+        action: "UPDATE",
+        summary: "Дуусах хугацааг гар аргаар шинэчлэв",
+        before: { expectedFinishAt: previous?.toISOString() ?? null },
+        after: { expectedFinishAt: expectedFinishAt?.toISOString() ?? null },
+      },
+      tx,
+    );
+  });
+
+  // Цуцлагдсан/ирээгүй цаг захиалга ч захиалгатайгаа холбоотой хэвээр байдаг
+  // (serviceOrderId салгагддаггүй) — тул тухайн үйлчлүүлэгч аль хэдийн
+  // цуцалсан/ирээгүй цагтаа "хугацаа өөрчлөгдлөө" гэсэн мэдэгдэл авахгүйн
+  // тулд идэвхтэй (PENDING/CONFIRMED) статустай үед л мэдэгдэнэ.
+  const appointmentIsActive =
+    order.appointment?.status === "PENDING" || order.appointment?.status === "CONFIRMED";
+  if (isMeaningfulChange && appointmentIsActive && order.appointment?.accountId) {
+    try {
+      await createNotification({
+        type: "expected_finish_revised",
+        recipient: { accountId: order.appointment.accountId },
+        input: {
+          appointmentId: order.appointment.id,
+          body:
+            expectedFinishAt!.getTime() > previous!.getTime()
+              ? "Таны засварын хуудасны дуусах хугацаа хойшлолоо."
+              : "Таны засварын хуудасны дуусах хугацаа өөрчлөгдлөө.",
+        },
+      });
+    } catch (e) {
+      console.warn("[notify] expected_finish_revised:", e);
+    }
+  }
+
+  revalidatePath("/dashboard/orders");
+  revalidatePath(`/dashboard/orders/${id}`);
+  return { ok: true, message: "Дуусах хугацаа шинэчлэгдлээ." };
+}
+
+// --- RESCHEDULE (SCHEDULED захиалгын товлосон огноог гар аргаар шилжүүлэх) -
+
+// Хуваарийн (schedule) харагдацаас шууд ашиглах хөнгөн үйлдэл — бүтэн
+// засах маягт руу орохгүйгээр товлосон огноог л шилжүүлнэ. Зөвхөн SCHEDULED
+// (хараахан эхлээгүй) захиалгад хамаатай — эхэлсэн ажлыг StatusControls-ийн
+// "Дуусах хугацаа" (reviseExpectedFinishAction) удирддаг, энэ өөр зорилготой.
+export async function rescheduleOrderAction(
+  _prev: OrderActionState,
+  formData: FormData,
+): Promise<OrderActionState> {
+  let user;
+  try {
+    user = await authorize("edit");
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
+  const id = s(formData, "id");
+  const scheduledRaw = s(formData, "scheduledAt");
+  const confirmed = s(formData, "confirmed") === "true";
+  if (!id || !scheduledRaw) return { ok: false, message: "Буруу хүсэлт." };
+
+  const scheduledAt = new Date(scheduledRaw);
+  if (!Number.isFinite(scheduledAt.getTime())) {
+    return { ok: false, fieldErrors: { scheduledAt: "Огноо буруу." } };
+  }
+
+  const order = await prisma.serviceOrder.findFirst({
+    where: { id, tenantId: user.tenantId },
+    select: {
+      id: true,
+      branchId: true,
+      status: true,
+      scheduledAt: true,
+      estimatedDurationMinutes: true,
+    },
+  });
+  if (!order) return { ok: false, message: "Засварын хуудас олдсонгүй." };
+  try {
+    assertOrderBranchScope(user, order.branchId);
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
+  if (order.status !== "SCHEDULED") {
+    return {
+      ok: false,
+      message: "Зөвхөн эхлээгүй (товлогдсон) захиалгын огноог энд шилжүүлнэ.",
+    };
+  }
+
+  if (!confirmed) {
+    const durationMinutes = order.estimatedDurationMinutes ?? 60;
+    const conflictEnd = new Date(scheduledAt.getTime() + durationMinutes * 60000);
+    const conflict = await findScheduleConflict(
+      user.tenantId,
+      order.branchId,
+      order.id,
+      scheduledAt,
+      conflictEnd,
+    );
+    if (conflict) {
+      return {
+        ok: false,
+        message: `Шинэ товлосон огноо ${conflict}-тай давхцаж байна. Үргэлжлүүлэхийн тулд дахин "Хадгалах" дарна уу.`,
+        fieldErrors: { confirmNeeded: "true" },
+      };
+    }
+  }
+
+  const previous = order.scheduledAt;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.serviceOrder.update({
+      where: { id: order.id },
+      data: { scheduledAt },
+    });
+    await logAudit(
+      {
+        tenantId: user.tenantId,
+        userId: user.id,
+        entity: "ServiceOrder",
+        entityId: order.id,
+        action: "UPDATE",
+        summary: "Товлосон огноог хуваарийн хуудаснаас шилжүүлэв",
+        before: { scheduledAt: previous?.toISOString() ?? null },
+        after: { scheduledAt: scheduledAt.toISOString() },
+      },
+      tx,
+    );
+  });
+
+  revalidatePath("/dashboard/orders");
+  revalidatePath(`/dashboard/orders/${id}`);
+  revalidatePath("/dashboard/appointments/calendar");
+  return { ok: true, message: "Товлосон огноо шилжлээ." };
+}
+
 // --- PAYMENT STATUS -------------------------------------------------------
 // Гараар зарлах action-ийг бүрмөсөн хассан — Төлбөрийн төлөв (PAID/PARTIAL/
 // UNPAID) цаашид зөвхөн бодит (арга/дүнгээр бүртгэгдсэн) төлбөрүүдээс
@@ -753,8 +1128,9 @@ export async function deleteOrderAction(formData: FormData): Promise<void> {
 
   const target = await prisma.serviceOrder.findFirst({
     where: { id, tenantId: user.tenantId },
-    select: { number: true },
+    select: { number: true, branchId: true },
   });
+  if (target) assertOrderBranchScope(user, target.branchId);
 
   const hasPaidPayment = await prisma.orderPayment.findFirst({
     where: { orderId: id, status: "PAID" },
@@ -912,9 +1288,14 @@ export async function addOrderItemAction(
 
   const order = await prisma.serviceOrder.findFirst({
     where: { id: orderId, tenantId: user.tenantId },
-    select: { id: true, status: true },
+    select: { id: true, branchId: true, status: true },
   });
   if (!order) return { ok: false, message: "Засварын хуудас олдсонгүй." };
+  try {
+    assertOrderBranchScope(user, order.branchId);
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
   if (isOrderLocked(order.status as OrderStatus)) {
     return {
       ok: false,
@@ -1012,10 +1393,11 @@ export async function cancelOrderItemAction(
       quantity: true,
       status: true,
       service: { select: { type: true } },
-      order: { select: { status: true } },
+      order: { select: { status: true, branchId: true } },
     },
   });
   if (!item) return;
+  assertOrderBranchScope(user, item.order.branchId);
   if (isOrderLocked(item.order.status as OrderStatus)) {
     throw new Error("Дууссан засварын хуудасны мөрийг цуцлаж болохгүй.");
   }
@@ -1104,10 +1486,11 @@ export async function changeOrderItemStatusAction(
       kind: true,
       status: true,
       diagnosticReportId: true,
-      order: { select: { status: true } },
+      order: { select: { status: true, branchId: true } },
     },
   });
   if (!item) return;
+  assertOrderBranchScope(user, item.order.branchId);
   if (isOrderLocked(item.order.status as OrderStatus)) {
     throw new Error("Дууссан засварын хуудасны мөрийн явцыг өөрчлөх боломжгүй.");
   }

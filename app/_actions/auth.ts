@@ -10,6 +10,7 @@ import {
   eligibleBranchIds,
   seedWorkingBranchId,
 } from "@/lib/auth/roles";
+import { safeNext } from "@/lib/safe-redirect";
 import {
   clearSessionCookie,
   setSessionCookie,
@@ -1057,7 +1058,7 @@ export async function chooseBranchAction(
 ): Promise<ChooseBranchState> {
   const branchId = getStr(formData, "branchId");
   const nextRaw = getStr(formData, "next");
-  const next = nextRaw.startsWith("/") ? nextRaw : "/dashboard";
+  const next = safeNext(nextRaw, "/dashboard");
   if (!branchId) return { ok: false, message: "Салбараа сонгоно уу." };
 
   // Session/tenant хараахан бүрэн тогтоогоогүй үе тул bypass-аар эхэлнэ.
