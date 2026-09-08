@@ -9,6 +9,7 @@ import { canCreate, canEdit, workingBranchScopeId } from "@/lib/auth/roles";
 import { formatWhen, resolveCustomerForAccount } from "@/lib/appointments";
 import { ensureAppointmentFeeCheckout } from "@/lib/appointment-payments";
 import {
+  isSlotAvailable,
   resolveBranchCategoryDurations,
   resolveTakenAppointmentIntervals,
 } from "@/lib/category-duration";
@@ -21,12 +22,13 @@ import {
   weekdayFromDate,
 } from "@/lib/appointment-slots";
 import { logAudit } from "@/lib/audit";
+import { customerLabel } from "@/lib/customers";
 import { createNotification, notifyStaff } from "@/lib/notifications";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { isFeatureEnabled } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
 import { reserveAppointment, ReservationError } from "@/lib/appointment-reservations";
-import { bookingDayBounds } from "@/lib/booking-time";
+import { bookingDateKey, bookingDayBounds } from "@/lib/booking-time";
 import { safeNext } from "@/lib/safe-redirect";
 import { setBypassContext } from "@/lib/tenant-context";
 
@@ -341,6 +343,148 @@ export async function cancelAppointmentByAccount(
   }
 
   revalidatePath("/account");
+}
+
+/**
+ * Хэрэглэгч өөрийн PENDING/CONFIRMED цагаа өөр хугацаанд шилжүүлнэ — цуцлаад
+ * дахин захиалахын оронд. Захиалга (ServiceOrder) аль хэдийн үүссэн бол
+ * (ажилтан аль хэдийн ажилд авсан) энд зөвшөөрөхгүй — байгууллагатай шууд
+ * холбогдох ёстой. Хугацааны хязгаарлалт (жишээ нь "N цагийн өмнө")
+ * одоогоор алга — цуцлах үйлдэлтэй адил (2026-09-08 шийдвэр).
+ */
+export async function rescheduleAppointmentByAccount(
+  _prev: AppointmentActionState,
+  formData: FormData,
+): Promise<AppointmentActionState> {
+  const account = await requireAccount();
+  const id = s(formData, "id");
+  const requestedRaw = s(formData, "requestedAt");
+  if (!id || !requestedRaw) return { ok: false, message: "Буруу хүсэлт." };
+
+  const requestedAt = new Date(requestedRaw);
+  if (!Number.isFinite(requestedAt.getTime())) {
+    return { ok: false, fieldErrors: { requestedAt: "Огноо буруу." } };
+  }
+  return rescheduleAppointmentByAccountCore(account, id, requestedAt);
+}
+
+/**
+ * `rescheduleAppointmentByAccount`-ийн цөм логик — FormData-аас тусгаарласан,
+ * учир нь мобайл апп (`/api/v1/app/appointments/[id]/reschedule`) ч мөн адил
+ * үйлдлийг дуудах шаардлагатай (server action шууд дуудагдахгүй, JSON API
+ * хэрэгтэй). Аль аль газраас нэг л газрын логикийг ашиглана — audit/staff
+ * мэдэгдэл хоёуланд адил ажиллана.
+ */
+export async function rescheduleAppointmentByAccountCore(
+  account: { id: string; name: string | null; phone: string },
+  id: string,
+  requestedAt: Date,
+): Promise<AppointmentActionState> {
+  if (requestedAt.getTime() < Date.now()) {
+    return { ok: false, fieldErrors: { requestedAt: "Өнгөрсөн цаг сонгох боломжгүй." } };
+  }
+
+  const appt = await prisma.appointment.findFirst({
+    where: { id, accountId: account.id },
+    select: {
+      id: true,
+      tenantId: true,
+      branchId: true,
+      status: true,
+      requestedAt: true,
+      estimatedDurationMinutes: true,
+      serviceOrderId: true,
+    },
+  });
+  if (!appt) return { ok: false, message: "Цаг захиалга олдсонгүй." };
+  if (appt.status !== "PENDING" && appt.status !== "CONFIRMED") {
+    return { ok: false, message: "Энэ цагийг шилжүүлэх боломжгүй." };
+  }
+  if (appt.serviceOrderId) {
+    return {
+      ok: false,
+      message:
+        "Энэ цагт засварын хуудас нээгдсэн тул онлайнаар шилжүүлэх боломжгүй. Байгууллагатай холбогдоно уу.",
+    };
+  }
+
+  try {
+    const { withBookingTransaction } = await import("@/lib/prisma");
+    await withBookingTransaction(appt.tenantId, async (tx) => {
+      const branch = await tx.branch.findFirst({
+        where: { id: appt.branchId, tenantId: appt.tenantId, isActive: true },
+        include: { schedules: true },
+      });
+      if (!branch) throw new ReservationError(403, "Салбар олдсонгүй.");
+
+      const duration =
+        appt.estimatedDurationMinutes ?? branch.slotMinutes ?? DEFAULT_SLOT_MINUTES;
+      const schedule = branch.schedules.find(
+        (sc) => sc.weekday === weekdayFromDate(requestedAt),
+      );
+      const slots = buildDaySlots({
+        dateStr: bookingDateKey(requestedAt),
+        open: schedule ? schedule.isOpen : Boolean(branch.openTime && branch.closeTime),
+        openTime: schedule?.openTime ?? branch.openTime,
+        closeTime: schedule?.closeTime ?? branch.closeTime,
+        slotMinutes: branch.slotMinutes ?? DEFAULT_SLOT_MINUTES,
+        capacity: branch.slotCapacity ?? DEFAULT_SLOT_CAPACITY,
+        // Слот нээлттэй эсэхийг (цаг, ажиллах өдөр) шалгахад л ашиглана —
+        // багтаамжийг доор `isSlotAvailable`-аар (өөрийгөө хасаж) шалгана.
+        taken: [],
+        now: new Date(),
+      });
+      if (!slots.slots.some((slot) => slot.iso === requestedAt.toISOString() && slot.available)) {
+        throw new ReservationError(400, "Ажиллах цагт багтах сул цаг сонгоно уу.");
+      }
+      if (!(await isSlotAvailable(tx, appt.branchId, requestedAt, duration, appt.id))) {
+        throw new ReservationError(409, "Энэ цаг дүүрсэн байна. Өөр цаг сонгоно уу.");
+      }
+
+      await tx.appointment.update({
+        where: { id: appt.id },
+        data: { requestedAt },
+      });
+    });
+  } catch (error) {
+    if (error instanceof ReservationError) return { ok: false, message: error.message };
+    throw error;
+  }
+
+  // Тусдаа (transaction-гүй) — booking transaction нь өөр (extended биш
+  // "base") Prisma client ашигладаг тул `logAudit`-ийн хүлээж буй tx-тэй
+  // төрөл таарахгүй. Rollback-той хамт алдвал audit мөр л дутуу үлдэнэ —
+  // цуцлах үйлдэл (cancelAppointmentByAccount) ч мөн адил audit хийдэггүй.
+  await logAudit({
+    tenantId: appt.tenantId,
+    branchId: appt.branchId,
+    entity: "Appointment",
+    entityId: appt.id,
+    action: "UPDATE",
+    summary: "Хэрэглэгч цагаа шилжүүлэв",
+    before: { requestedAt: appt.requestedAt.toISOString() },
+    after: { requestedAt: requestedAt.toISOString() },
+  });
+
+  try {
+    const who = account.name?.trim() || account.phone;
+    await notifyStaff({
+      type: "appointment_rescheduled_by_account",
+      tenantId: appt.tenantId,
+      branchId: appt.branchId,
+      input: {
+        appointmentId: appt.id,
+        body: `${who} — цагаа ${formatWhen(requestedAt)} болгож шилжүүллээ.`,
+      },
+    });
+  } catch (e) {
+    console.warn("[notify] rescheduleAppointmentByAccount:", e);
+  }
+
+  revalidatePath("/account");
+  revalidatePath("/dashboard/appointments");
+  revalidatePath("/dashboard/appointments/calendar");
+  return { ok: true, message: "Цаг шилжлээ." };
 }
 
 // --- Ажилтны тал (User) ---------------------------------------------------
@@ -717,6 +861,206 @@ export async function markAppointmentNoShow(
 
   revalidatePath("/dashboard/appointments");
   return { ok: true, message: "Ирээгүй гэж тэмдэглэлээ." };
+}
+
+/**
+ * Тухайн салбарт өгөгдсөн хугацааны хүрээ (`start`-`end`) өөр цаг захиалга
+ * эсвэл захиалгатай (order) давхцаж байгаа эсэхийг шалгана — `orders.ts`-ийн
+ * ижил нэртэй функцтэй адил зарчим, гэхдээ энд ӨӨРИЙН ГЭСЭН Appointment-ийг
+ * (шилжүүлж буй) хасна (order үүсэхэд order.ts нь `excludeOrderId`-аар
+ * ServiceOrder-оо хасдаг — энд харин Appointment.id-аар өөрийгөө хасна).
+ * Зөвхөн danger-биш (non-blocking) сануулга — staff "Хадгалах"-аа дахин
+ * дарж давхцлыг зөвшөөрч болно.
+ */
+async function findAppointmentRescheduleConflict(
+  tenantId: string,
+  branchId: string,
+  excludeAppointmentId: string,
+  start: Date,
+  end: Date,
+): Promise<string | null> {
+  const [appts, orders] = await Promise.all([
+    prisma.appointment.findMany({
+      where: {
+        tenantId,
+        branchId,
+        id: { not: excludeAppointmentId },
+        status: { in: ["PENDING", "CONFIRMED"] },
+        requestedAt: { lt: end },
+      },
+      select: {
+        requestedAt: true,
+        estimatedDurationMinutes: true,
+        account: { select: { name: true, phone: true } },
+        customer: { select: { fullName: true, phone: true } },
+      },
+    }),
+    prisma.serviceOrder.findMany({
+      where: {
+        tenantId,
+        branchId,
+        status: { in: ["SCHEDULED", "IN_PROGRESS", "WAITING_PARTS"] },
+      },
+      select: {
+        number: true,
+        status: true,
+        scheduledAt: true,
+        startedAt: true,
+        estimatedDurationMinutes: true,
+        expectedFinishAt: true,
+        occupiesCapacity: true,
+        customer: { select: { fullName: true, phone: true } },
+      },
+    }),
+  ]);
+
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+
+  for (const a of appts) {
+    const s0 = a.requestedAt.getTime();
+    const e0 = a.estimatedDurationMinutes
+      ? s0 + a.estimatedDurationMinutes * 60000
+      : Number.POSITIVE_INFINITY;
+    if (s0 < endMs && e0 > startMs) {
+      return `цаг захиалга (${customerLabel({ fullName: a.account?.name ?? a.customer?.fullName, phone: a.account?.phone ?? a.customer?.phone })})`;
+    }
+  }
+
+  for (const o of orders) {
+    if (o.status !== "SCHEDULED" && o.occupiesCapacity === false) continue;
+    const scheduled = o.status === "SCHEDULED" && o.occupiesCapacity !== true;
+    const s0 = (scheduled ? o.scheduledAt : o.startedAt)?.getTime();
+    if (s0 == null) continue;
+    const e0 =
+      o.expectedFinishAt?.getTime() ??
+      (scheduled && o.estimatedDurationMinutes
+        ? s0 + o.estimatedDurationMinutes * 60000
+        : Number.POSITIVE_INFINITY);
+    if (s0 < endMs && e0 > startMs) {
+      return `захиалга #${o.number} (${customerLabel(o.customer)})`;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Ажилтан CONFIRMED цагийг өөр хугацаанд шилжүүлнэ — "ирээгүй" гэж
+ * тэмдэглэхийн оронд, алдсан цагийг сэргээх боломж (2026-09-08: "ирц
+ * алдсан" цагийг NO_SHOW болгохоос гадна дахин товлож болох байх ёстой
+ * гэсэн шийдвэрээр нэмэгдсэн). PENDING цагийг энд шилжүүлдэггүй — тэр
+ * баталгаажаагүй хүсэлт тул `confirmAppointment`/`rejectAppointment`-ээр
+ * шийднэ, эсвэл хугацаа хэтэрвэл cron (`appointment_expired`) цуцална.
+ */
+export async function rescheduleAppointmentAction(
+  _prev: AppointmentActionState,
+  formData: FormData,
+): Promise<AppointmentActionState> {
+  const id = s(formData, "id");
+  const requestedRaw = s(formData, "requestedAt");
+  const confirmed = s(formData, "confirmed") === "true";
+  if (!id || !requestedRaw) return { ok: false, message: "Буруу хүсэлт." };
+
+  const requestedAt = new Date(requestedRaw);
+  if (!Number.isFinite(requestedAt.getTime())) {
+    return { ok: false, fieldErrors: { requestedAt: "Огноо буруу." } };
+  }
+  if (requestedAt.getTime() < Date.now()) {
+    return { ok: false, fieldErrors: { requestedAt: "Өнгөрсөн цаг сонгох боломжгүй." } };
+  }
+
+  let user;
+  try {
+    user = await requireUser();
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
+
+  const appt = await prisma.appointment.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      tenantId: true,
+      branchId: true,
+      status: true,
+      requestedAt: true,
+      accountId: true,
+      estimatedDurationMinutes: true,
+    },
+  });
+  if (!appt) return { ok: false, message: "Цаг захиалга олдсонгүй." };
+
+  try {
+    await assertStaffScope(user, appt.branchId);
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
+  if (user.tenantId !== appt.tenantId) {
+    return { ok: false, message: "Танд энэ цагийг удирдах эрх байхгүй." };
+  }
+  if (appt.status !== "CONFIRMED") {
+    return { ok: false, message: "Зөвхөн баталгаажсан цагийг энд шилжүүлнэ." };
+  }
+
+  if (!confirmed) {
+    const durationMinutes = appt.estimatedDurationMinutes ?? DEFAULT_SLOT_MINUTES;
+    const conflictEnd = new Date(requestedAt.getTime() + durationMinutes * 60000);
+    const conflict = await findAppointmentRescheduleConflict(
+      user.tenantId,
+      appt.branchId,
+      appt.id,
+      requestedAt,
+      conflictEnd,
+    );
+    if (conflict) {
+      return {
+        ok: false,
+        message: `Шинэ цаг ${conflict}-тай давхцаж байна. Үргэлжлүүлэхийн тулд дахин "Хадгалах" дарна уу.`,
+        fieldErrors: { confirmNeeded: "true" },
+      };
+    }
+  }
+
+  const previous = appt.requestedAt;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.appointment.update({
+      where: { id: appt.id },
+      data: { requestedAt },
+    });
+    await logAudit(
+      {
+        tenantId: appt.tenantId,
+        userId: user.id,
+        branchId: appt.branchId,
+        entity: "Appointment",
+        entityId: appt.id,
+        action: "UPDATE",
+        summary: "Цагийг шилжүүлэв",
+        before: { requestedAt: previous.toISOString() },
+        after: { requestedAt: requestedAt.toISOString() },
+      },
+      tx,
+    );
+  });
+
+  if (appt.accountId) {
+    try {
+      await createNotification({
+        type: "appointment_rescheduled",
+        recipient: { accountId: appt.accountId },
+        input: { appointmentId: appt.id },
+      });
+    } catch (e) {
+      console.warn("[notify] rescheduleAppointmentAction:", e);
+    }
+  }
+
+  revalidatePath("/dashboard/appointments");
+  revalidatePath("/dashboard/appointments/calendar");
+  revalidatePath("/account");
+  return { ok: true, message: "Цаг шилжлээ." };
 }
 
 // Үйлчлүүлэгч биечлэн ирснийг тэмдэглэнэ (arrivedAt) — ажил эхэлсэн гэсэн үг

@@ -7,6 +7,8 @@ import {
   APPOINTMENT_STATUS_LABEL,
 } from "@/lib/appointments";
 import { requireAccount } from "@/lib/auth/account";
+import { openWeekdaysOf } from "@/lib/branches";
+import { AccountRescheduleControl } from "./reschedule-control";
 import {
   ITEM_KIND_BADGE,
   ITEM_KIND_LABEL,
@@ -82,9 +84,18 @@ export default async function AccountAppointmentDetailPage({
     where: { id, accountId: account.id },
     include: {
       tenant: { select: { name: true, slug: true } },
-      branch: { select: { name: true, phone: true } },
-      category: { select: { name: true } },
-      categories: { select: { category: { select: { name: true } } } },
+      branch: {
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          openTime: true,
+          closeTime: true,
+          schedules: { select: { weekday: true, isOpen: true } },
+        },
+      },
+      category: { select: { id: true, name: true } },
+      categories: { select: { category: { select: { id: true, name: true } } } },
       payment: { select: { amount: true, currency: true } },
       accountVehicle: {
         select: { vehicle: { select: { plate: true, make: true, model: true, year: true } } },
@@ -122,6 +133,15 @@ export default async function AccountAppointmentDetailPage({
   if (!appt) notFound();
 
   const canCancel = appt.status === "PENDING" || appt.status === "CONFIRMED";
+  // Захиалга (ServiceOrder) аль хэдийн үүссэн бол онлайнаар шилжүүлэхийг
+  // зөвшөөрөхгүй (харах: app/_actions/appointments.ts-ийн
+  // rescheduleAppointmentByAccount тайлбар).
+  const canReschedule = canCancel && !appt.serviceOrderId;
+  const categoryIds = appt.categories.length
+    ? appt.categories.map((c) => c.category.id)
+    : appt.category
+      ? [appt.category.id]
+      : [];
   const feeAmount = appt.payment?.amount ?? appt.feeAmount;
   const feeLabel = appt.payment
     ? "Хураамж төлөгдсөн ✓"
@@ -323,6 +343,14 @@ export default async function AccountAppointmentDetailPage({
           >
             {feeLabel}
           </Link>
+        ) : null}
+        {canReschedule ? (
+          <AccountRescheduleControl
+            appointmentId={appt.id}
+            branchId={appt.branch.id}
+            openWeekdays={openWeekdaysOf(appt.branch)}
+            categoryIds={categoryIds}
+          />
         ) : null}
         {canCancel ? (
           <form action={cancelAppointmentByAccount}>

@@ -14,6 +14,7 @@ import {
   AppointmentArrivedButton,
   AppointmentConfirmReject,
   AppointmentNoShowButton,
+  AppointmentRescheduleButton,
 } from "@/app/dashboard/appointments/appointment-row-actions";
 import { StatusControls } from "@/app/dashboard/orders/[id]/status-controls";
 
@@ -145,6 +146,10 @@ export function buildDayRows(
             <>
               <AppointmentArrivedButton appointmentId={appt.id} />
               <AppointmentNoShowButton appointmentId={appt.id} />
+              <AppointmentRescheduleButton
+                appointmentId={appt.id}
+                requestedAt={appt.requestedAt.toISOString()}
+              />
             </>
           ) : null}
           {showCreateOrderLink ? (

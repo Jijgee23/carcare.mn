@@ -18,6 +18,8 @@ export const NOTIFICATION_TYPES = [
   "appointment_fee_paid",
   "expected_finish_revised",
   "order_rescheduled",
+  "appointment_rescheduled",
+  "appointment_rescheduled_by_account",
   "subscription_expiring",
   "feedback_replied_staff",
   "feedback_replied_account",
@@ -41,6 +43,8 @@ export const NOTIFICATION_TYPE_LABEL: Record<NotificationType, string> = {
   appointment_fee_paid: "Цаг захиалгын хураамж төлөгдсөн",
   expected_finish_revised: "Дуусах хугацаа шинэчлэгдсэн",
   order_rescheduled: "Товлосон огноо шилжсэн",
+  appointment_rescheduled: "Цаг шилжсэн",
+  appointment_rescheduled_by_account: "Хэрэглэгч цагаа шилжүүлсэн",
   subscription_expiring: "Багц дуусах",
   feedback_replied_staff: "Санал хүсэлтэд хариу ирсэн",
   feedback_replied_account: "Санал хүсэлтэд хариу ирсэн",
@@ -169,6 +173,24 @@ export const NOTIFICATION_REGISTRY: Record<NotificationType, NotificationDef> = 
       data: { type: "order_rescheduled", appointmentId: i.appointmentId ?? "" },
     }),
     href: (d) => appointmentHref(d),
+  },
+  appointment_rescheduled: {
+    realm: "account",
+    build: (i) => ({
+      title: "Цаг шилжлээ",
+      body: i.body ?? "Таны захиалсан цаг өөр хугацаанд шилжлээ.",
+      data: { type: "appointment_rescheduled", appointmentId: i.appointmentId ?? "" },
+    }),
+    href: (d) => appointmentHref(d),
+  },
+  appointment_rescheduled_by_account: {
+    realm: "staff",
+    build: (i) => ({
+      title: "Хэрэглэгч цагаа шилжүүлсэн",
+      body: i.body ?? "Үйлчлүүлэгч захиалсан цагаа өөр хугацаанд шилжүүллээ.",
+      data: { type: "appointment_rescheduled_by_account", appointmentId: i.appointmentId ?? "" },
+    }),
+    href: (d) => staffAppointmentHref(d.appointmentId),
   },
   subscription_expiring: {
     realm: "staff",

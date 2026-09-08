@@ -2,6 +2,7 @@
 
 import {
   forwardRef,
+  useEffect,
   useImperativeHandle,
   useRef,
   useState,
@@ -40,16 +41,46 @@ export const BranchTimePicker = forwardRef<
     value: string; // сонгосон цагийн ISO
     onChange: (iso: string) => void;
     error?: string;
+    // Хуваарийн хуудаснаас цаг дээр дарж орж ирсэн бол урьдчилан бөглөх
+    // огноо ("YYYY-MM-DD") болон яг тэр цагийн ISO. Ачаалагдсан боломжит
+    // цагуудын дунд яг таарах слот байвал л автоматаар сонгоно.
+    initialDate?: string;
+    initialIso?: string;
   }
 >(function BranchTimePicker(
-  { branchId, categoryIds = [], openWeekdays, value, onChange, error },
+  { branchId, categoryIds = [], openWeekdays, value, onChange, error, initialDate, initialIso },
   ref,
 ) {
-  const [date, setDate] = useState("");
+  const [date, setDate] = useState(initialDate ?? "");
   const [availability, setAvailability] = useState<DayAvailability | null>(null);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const reqIdRef = useRef(0);
   const today = todayKey();
+
+  // Эхний ачаалалт: хуваарийн хуудаснаас урьдчилсан огноотой ирсэн бол
+  // тухайн өдрийн боломжит цагийг шууд татаж, яг таарах слот байвал сонгоно.
+  useEffect(() => {
+    if (!initialDate || !branchId) return;
+    const id = ++reqIdRef.current;
+    setLoadingSlots(true);
+    getBranchDaySlots(branchId, initialDate, categoryIds)
+      .then((res) => {
+        if (id !== reqIdRef.current) return;
+        setAvailability(res);
+        if (initialIso) {
+          const match = res.slots.find((s) => s.iso === initialIso && s.available);
+          if (match) onChange(match.iso);
+        }
+      })
+      .catch(() => {
+        if (id === reqIdRef.current) setAvailability(null);
+      })
+      .finally(() => {
+        if (id === reqIdRef.current) setLoadingSlots(false);
+      });
+    // Зөвхөн mount дээр нэг удаа — цаашид onDateChange/reload-оор л ачаална.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function loadSlots(d: string) {
     if (!branchId || !d) {
@@ -128,13 +159,17 @@ export const BranchTimePicker = forwardRef<
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
             {availability.slots.map((slot) => {
               const selected = slot.iso === value;
+              // Сервер `available`-г "ирээдүйд + сул" гэж тооцдог (харах:
+              // lib/appointment-slots.ts) — өнгөрсөн цагийг захиалгатай
+              // цагаас ялгаж харуулахын тулд энд тусад нь шалгана.
+              const isPast = new Date(slot.iso).getTime() <= Date.now();
               return (
                 <button
                   key={slot.iso}
                   type="button"
                   disabled={!slot.available}
                   onClick={() => onChange(slot.iso)}
-                  title={!slot.available ? "Захиалгатай" : undefined}
+                  title={!slot.available ? (isPast ? "Өнгөрсөн" : "Захиалгатай") : undefined}
                   className={`px-2 py-2 rounded-lg text-sm tabular-nums border transition-colors ${
                     selected
                       ? "bg-violet-600 border-violet-500 text-white font-semibold"

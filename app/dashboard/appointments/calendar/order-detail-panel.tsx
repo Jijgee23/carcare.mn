@@ -10,7 +10,7 @@ import {
   rescheduleOrderAction,
   type OrderActionState,
 } from "@/app/_actions/orders";
-import { DatePicker } from "@/app/_components/date-picker";
+import { DatePicker, todayStr } from "@/app/_components/date-picker";
 import { useToast } from "@/app/_components/toast";
 import { AddItemForm } from "@/app/dashboard/orders/[id]/add-item-form";
 import { OrderItems } from "@/app/dashboard/orders/[id]/order-items";
@@ -223,6 +223,7 @@ function RescheduleControl({
           <input type="hidden" name="confirmed" value={confirmArmed ? "true" : ""} />
           <DatePicker
             withTime
+            min={todayStr()}
             value={value}
             onChange={(v) => {
               setValue(v);

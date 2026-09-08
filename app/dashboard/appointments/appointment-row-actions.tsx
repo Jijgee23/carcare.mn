@@ -1,13 +1,15 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import {
   type AppointmentActionState,
   confirmAppointment,
   markAppointmentArrived,
   markAppointmentNoShow,
   rejectAppointment,
+  rescheduleAppointmentAction,
 } from "@/app/_actions/appointments";
+import { DatePicker, todayStr } from "@/app/_components/date-picker";
 import { Btn } from "@/app/_components/landing-ops-ui";
 import { useToast } from "@/app/_components/toast";
 
@@ -119,6 +121,108 @@ export function AppointmentNoShowButton({ appointmentId }: { appointmentId: stri
       <Btn type="submit" variant="ghost" size="sm" disabled={pending}>
         {pending ? "Тэмдэглэж байна..." : "Ирээгүй"}
       </Btn>
+    </form>
+  );
+}
+
+function toLocalDatetimeInput(iso: string): string {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "";
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+// Баталгаажсан (CONFIRMED) цагийг өөр хугацаанд шилжүүлэх — "ирээгүй" гэж
+// тэмдэглэхийн оронд, ирц алдсан цагийг сэргээх боломж. Давхцлын анхааруулга
+// (findAppointmentRescheduleConflict) order-ийн RescheduleControl-той ижил
+// зарчим: хатуу хориглол биш, дахин "Хадгалах" дарахад confirmed=true явна.
+export function AppointmentRescheduleButton({
+  appointmentId,
+  requestedAt,
+}: {
+  appointmentId: string;
+  requestedAt: string; // ISO
+}) {
+  const toast = useToast();
+  const [state, formAction, pending] = useActionState<
+    AppointmentActionState,
+    FormData
+  >(rescheduleAppointmentAction, null);
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState("");
+  const [confirmArmed, setConfirmArmed] = useState(false);
+  const [prevState, setPrevState] = useState<AppointmentActionState>(null);
+
+  if (state !== prevState) {
+    setPrevState(state);
+    if (state?.ok) {
+      toast.success(state.message ?? "Амжилттай.");
+      setEditing(false);
+      setConfirmArmed(false);
+    } else if (state?.fieldErrors?.confirmNeeded) {
+      setConfirmArmed(true);
+    } else if (state) {
+      toast.error(state.message ?? "Алдаа гарлаа.");
+      setConfirmArmed(false);
+    }
+  }
+
+  const conflictMessage =
+    state && !state.ok && state.fieldErrors?.confirmNeeded ? state.message : null;
+
+  if (!editing) {
+    return (
+      <Btn
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={() => {
+          setValue(toLocalDatetimeInput(requestedAt));
+          setConfirmArmed(false);
+          setEditing(true);
+        }}
+      >
+        Шилжүүлэх
+      </Btn>
+    );
+  }
+
+  return (
+    <form action={formAction} className="flex items-center gap-2">
+      <input type="hidden" name="id" value={appointmentId} />
+      <input type="hidden" name="confirmed" value={confirmArmed ? "true" : ""} />
+      <DatePicker
+        withTime
+        min={todayStr()}
+        value={value}
+        onChange={(v) => {
+          setValue(v);
+          setConfirmArmed(false);
+        }}
+        className="w-40"
+      />
+      <input type="hidden" name="requestedAt" value={value} />
+      {conflictMessage ? (
+        <span className="text-[11px] text-amber-400 light:text-amber-700 max-w-[180px]">
+          {conflictMessage}
+        </span>
+      ) : null}
+      <button
+        type="submit"
+        disabled={pending || !value}
+        className={`rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-colors hover:opacity-90 disabled:opacity-60 whitespace-nowrap ${
+          confirmArmed ? "bg-amber-600" : "bg-[var(--oc-accent)]"
+        }`}
+      >
+        {pending ? "..." : confirmArmed ? "Тийм, хадгалах" : "Хадгалах"}
+      </button>
+      <button
+        type="button"
+        onClick={() => setEditing(false)}
+        className="rounded-lg border border-[var(--oc-line)] bg-white/[0.04] px-2.5 py-1.5 text-xs text-[var(--oc-ink2)] hover:bg-white/[0.08] whitespace-nowrap"
+      >
+        Болих
+      </button>
     </form>
   );
 }

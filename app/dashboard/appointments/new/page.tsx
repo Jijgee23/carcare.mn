@@ -15,13 +15,18 @@ export const metadata = {
 export default async function NewAppointmentPage({
   searchParams,
 }: {
-  searchParams: Promise<{ branchId?: string; next?: string }>;
+  searchParams: Promise<{ branchId?: string; scheduledAt?: string; next?: string }>;
 }) {
   const user = await requireUser();
   if (!canCreate(user, "appointments")) redirect("/dashboard/appointments");
   const scopeBranchId = workingBranchScopeId(user);
   const sp = await searchParams;
   const backTarget = safeNext(sp.next, "/dashboard/appointments");
+  const initialScheduledAt = sp.scheduledAt ? new Date(sp.scheduledAt) : null;
+  const validInitialScheduledAt =
+    initialScheduledAt && Number.isFinite(initialScheduledAt.getTime())
+      ? initialScheduledAt
+      : null;
 
   const [branches, customers, categories] = await Promise.all([
     prisma.branch.findMany({
@@ -96,6 +101,7 @@ export default async function NewAppointmentPage({
           customers={customers}
           categories={categories}
           defaultBranchId={scopeBranchId ?? sp.branchId ?? undefined}
+          initialScheduledAt={validInitialScheduledAt?.toISOString()}
           backHref={backTarget}
           next={sp.next ? backTarget : undefined}
         />

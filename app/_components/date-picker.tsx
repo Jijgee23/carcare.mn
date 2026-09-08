@@ -60,7 +60,7 @@ function ymd(d: Date): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
-function todayStr(): string {
+export function todayStr(): string {
   return ymd(new Date());
 }
 
@@ -139,8 +139,14 @@ export function DatePicker(props: DatePickerProps) {
       setPos(null);
       return;
     }
-    const PANEL_W = 312; // 19.5rem
-    const EST_H = 380;
+    // `withTime`-тэй үед цагийн сонгогчийг өдрийн календарийн ХАЖУУД (баганаар)
+    // байрлуулдаг тул панель өргөн, харин намхан болно — багана биш эгнээ
+    // (тор биш) тул виджет дэлгэцэнд багтахгүй өндөр болохоос сэргийлнэ.
+    // Агуулга: календар 17.5rem + gap-4 (1rem) + цагийн багана 9rem + dialog-ийн
+    // хоёр талын p-4 (2rem) = 29.5rem — панелийн өргөн үүнээс БАГА байвал цагийн
+    // багана хажуу тийш халиад гарна (яг ийм алдаа нэг удаа гарсан байсан).
+    const PANEL_W = withTime ? 472 : 312; // 29.5rem : 19.5rem
+    const EST_H = withTime ? 320 : 380;
     let left = Math.min(r.left, window.innerWidth - PANEL_W - 8);
     left = Math.max(8, left);
     let top = r.bottom + 8;
@@ -286,130 +292,154 @@ export function DatePicker(props: DatePickerProps) {
                 className={`fixed z-[110] border border-white/10 bg-[var(--surface)] p-4 shadow-2xl backdrop-blur-xl ${
                   isMobile || !pos
                     ? "inset-x-0 bottom-0 mx-auto w-full max-w-md rounded-t-2xl"
-                    : "w-[19.5rem] rounded-2xl"
+                    : withTime
+                      ? "w-[29.5rem] rounded-2xl"
+                      : "w-[19.5rem] rounded-2xl"
                 }`}
               >
             {/* mobile grabber */}
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/15 sm:hidden" />
 
-            {/* header */}
-            <div className="mb-3 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() =>
-                  setView((v) => {
-                    const m = v.month - 1;
-                    return m < 0
-                      ? { year: v.year - 1, month: 11 }
-                      : { year: v.year, month: m };
-                  })
-                }
-                className="grid h-8 w-8 place-items-center rounded-lg text-white/60 transition-colors hover:bg-white/10 hover:text-white"
-                aria-label="Өмнөх сар"
-              >
-                <Chevron dir="left" />
-              </button>
-              <div className="text-sm font-medium text-white">
-                {view.year} оны {view.month + 1}-р сар
-              </div>
-              <button
-                type="button"
-                onClick={() =>
-                  setView((v) => {
-                    const m = v.month + 1;
-                    return m > 11
-                      ? { year: v.year + 1, month: 0 }
-                      : { year: v.year, month: m };
-                  })
-                }
-                className="grid h-8 w-8 place-items-center rounded-lg text-white/60 transition-colors hover:bg-white/10 hover:text-white"
-                aria-label="Дараах сар"
-              >
-                <Chevron dir="right" />
-              </button>
-            </div>
-
-            {/* weekday header */}
-            <div className="mb-1 grid grid-cols-7 gap-1">
-              {WEEKDAYS.map((w) => (
-                <div
-                  key={w}
-                  className="grid h-7 place-items-center text-[11px] font-medium text-white/35"
-                >
-                  {w}
-                </div>
-              ))}
-            </div>
-
-            {/* days */}
-            <div className="grid grid-cols-7 gap-1">
-              {grid.map((d) => {
-                const ds = ymd(d);
-                const inMonth = d.getMonth() === view.month;
-                const disabled = isDisabledDate(ds);
-                const isToday = ds === today;
-
-                let selected = false;
-                let rangeStart = false;
-                let rangeEnd = false;
-                let inRange = false;
-                if (isRange) {
-                  rangeStart = Boolean(current.from) && ds === current.from;
-                  rangeEnd = Boolean(current.to) && ds === current.to;
-                  inRange =
-                    Boolean(current.from) &&
-                    Boolean(current.to) &&
-                    ds > current.from &&
-                    ds < current.to;
-                } else {
-                  selected = Boolean(datePart) && ds === datePart;
-                }
-                const active = selected || rangeStart || rangeEnd;
-
-                return (
+            {/* `withTime`-тэй үед цагийн сонгогчийг өдрийн календарийн доор
+                биш ХАЖУУД байрлуулна (desktop) — өндөр багасаж жижиг дэлгэцэнд
+                (богино popover/mobile sheet) багтахгүй болохоос сэргийлнэ.
+                Mobile bottom sheet дээр хоёр багана хэт нарийсах тул хэвээр
+                баганаар (доор) үлдэнэ. */}
+            <div
+              className={
+                withTime && !isMobile ? "flex flex-row gap-4" : "flex flex-col"
+              }
+            >
+              <div className={withTime && !isMobile ? "w-[17.5rem] shrink-0" : ""}>
+                {/* header */}
+                <div className="mb-3 flex items-center justify-between">
                   <button
-                    key={ds}
                     type="button"
-                    disabled={disabled}
-                    onClick={() => pickDay(ds)}
-                    className={`relative grid h-9 place-items-center rounded-lg text-sm transition-colors ${
-                      disabled
-                        ? "cursor-not-allowed text-white/15"
-                        : active
-                          ? "dp-accent-active bg-violet-600 font-semibold text-white"
-                          : inRange
-                            ? "dp-accent-inrange bg-violet-500/15 text-white"
-                            : inMonth
-                              ? "text-white/85 hover:bg-white/10"
-                              : "text-white/25 hover:bg-white/5"
-                    } ${
-                      isToday && !active
-                        ? "dp-accent-ring ring-1 ring-inset ring-violet-400/50"
-                        : ""
-                    }`}
+                    onClick={() =>
+                      setView((v) => {
+                        const m = v.month - 1;
+                        return m < 0
+                          ? { year: v.year - 1, month: 11 }
+                          : { year: v.year, month: m };
+                      })
+                    }
+                    className="grid h-8 w-8 place-items-center rounded-lg text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+                    aria-label="Өмнөх сар"
                   >
-                    {d.getDate()}
+                    <Chevron dir="left" />
                   </button>
-                );
-              })}
-            </div>
-
-            {/* time field (single + withTime) — modern 24-цагийн сонгогч */}
-            {withTime ? (
-              <div className="mt-3 border-t border-white/[0.06] pt-3">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-xs text-white/40">Цаг</span>
-                  <span className="dp-accent-text font-mono text-sm tabular-nums text-violet-300 light:text-violet-700">
-                    {datePart ? timePart || "09:00" : "--:--"}
-                  </span>
+                  <div className="text-sm font-medium text-white">
+                    {view.year} оны {view.month + 1}-р сар
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setView((v) => {
+                        const m = v.month + 1;
+                        return m > 11
+                          ? { year: v.year + 1, month: 0 }
+                          : { year: v.year, month: m };
+                      })
+                    }
+                    className="grid h-8 w-8 place-items-center rounded-lg text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+                    aria-label="Дараах сар"
+                  >
+                    <Chevron dir="right" />
+                  </button>
                 </div>
-                <TimePicker24
-                  value={timePart || "09:00"}
-                  disabled={!datePart}
-                  onChange={setTime}
-                />
+
+                {/* weekday header */}
+                <div className="mb-1 grid grid-cols-7 gap-1">
+                  {WEEKDAYS.map((w) => (
+                    <div
+                      key={w}
+                      className="grid h-7 place-items-center text-[11px] font-medium text-white/35"
+                    >
+                      {w}
+                    </div>
+                  ))}
+                </div>
+
+                {/* days */}
+                <div className="grid grid-cols-7 gap-1">
+                  {grid.map((d) => {
+                    const ds = ymd(d);
+                    const inMonth = d.getMonth() === view.month;
+                    const disabled = isDisabledDate(ds);
+                    const isToday = ds === today;
+
+                    let selected = false;
+                    let rangeStart = false;
+                    let rangeEnd = false;
+                    let inRange = false;
+                    if (isRange) {
+                      rangeStart = Boolean(current.from) && ds === current.from;
+                      rangeEnd = Boolean(current.to) && ds === current.to;
+                      inRange =
+                        Boolean(current.from) &&
+                        Boolean(current.to) &&
+                        ds > current.from &&
+                        ds < current.to;
+                    } else {
+                      selected = Boolean(datePart) && ds === datePart;
+                    }
+                    const active = selected || rangeStart || rangeEnd;
+
+                    return (
+                      <button
+                        key={ds}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => pickDay(ds)}
+                        className={`relative grid h-9 place-items-center rounded-lg text-sm transition-colors ${
+                          disabled
+                            ? "cursor-not-allowed text-white/15"
+                            : active
+                              ? "dp-accent-active bg-violet-600 font-semibold text-white"
+                              : inRange
+                                ? "dp-accent-inrange bg-violet-500/15 text-white"
+                                : inMonth
+                                  ? "text-white/85 hover:bg-white/10"
+                                  : "text-white/25 hover:bg-white/5"
+                        } ${
+                          isToday && !active
+                            ? "dp-accent-ring ring-1 ring-inset ring-violet-400/50"
+                            : ""
+                        }`}
+                      >
+                        {d.getDate()}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            ) : null}
+
+              {/* time field (single + withTime) — модерн 24-цагийн сонгогч */}
+              {withTime ? (
+                <div
+                  className={
+                    isMobile
+                      ? "mt-3 border-t border-white/[0.06] pt-3"
+                      : "w-36 shrink-0 border-l border-white/[0.06] pl-4"
+                  }
+                >
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="text-xs text-white/40">Цаг</span>
+                    <span className="dp-accent-text font-mono text-sm tabular-nums text-violet-300 light:text-violet-700">
+                      {datePart ? timePart || "09:00" : "--:--"}
+                    </span>
+                  </div>
+                  <TimePicker24
+                    value={timePart || "09:00"}
+                    disabled={!datePart}
+                    // Өнөөдрийг сонговол өнгөрсөн цаг/минутыг idle харуулна —
+                    // ирээдүйн огноон дээр хязгаарлалтгүй.
+                    disablePastFrom={datePart === today ? new Date() : null}
+                    onChange={setTime}
+                  />
+                </div>
+              ) : null}
+            </div>
 
             {/* footer */}
             <div className="mt-3 flex items-center justify-between gap-2 border-t border-white/[0.06] pt-3">
@@ -454,15 +484,21 @@ export function DatePicker(props: DatePickerProps) {
 function TimePicker24({
   value,
   disabled,
+  disablePastFrom,
   onChange,
 }: {
   value: string;
   disabled: boolean;
+  // Өгөгдвөл (сонгосон огноо өнөөдөр байх үед) энэ мөчөөс өмнөх цаг/минутыг
+  // idle (сонгож болохгүй) харуулна.
+  disablePastFrom?: Date | null;
   onChange: (time: string) => void;
 }) {
   const [hh, mm] = (value || "09:00").split(":");
   const hours = Array.from({ length: 24 }, (_, i) => pad2(i));
   const minutes = Array.from({ length: 60 }, (_, i) => pad2(i));
+  const nowHour = disablePastFrom?.getHours() ?? null;
+  const nowMinute = disablePastFrom?.getMinutes() ?? null;
   return (
     <div className="flex gap-2">
       <TimeColumn
@@ -470,6 +506,7 @@ function TimePicker24({
         items={hours}
         selected={hh || "09"}
         disabled={disabled}
+        isPast={(v) => nowHour != null && Number(v) < nowHour}
         onPick={(v) => onChange(`${v}:${mm || "00"}`)}
       />
       <div className="self-center pt-4 text-sm font-semibold text-white/30">:</div>
@@ -478,6 +515,12 @@ function TimePicker24({
         items={minutes}
         selected={mm || "00"}
         disabled={disabled}
+        isPast={(v) =>
+          nowHour != null &&
+          nowMinute != null &&
+          Number(hh || "9") === nowHour &&
+          Number(v) < nowMinute
+        }
         onPick={(v) => onChange(`${hh || "09"}:${v}`)}
       />
     </div>
@@ -489,12 +532,14 @@ function TimeColumn({
   items,
   selected,
   disabled,
+  isPast,
   onPick,
 }: {
   label: string;
   items: string[];
   selected: string;
   disabled: boolean;
+  isPast?: (value: string) => boolean;
   onPick: (value: string) => void;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
@@ -522,17 +567,21 @@ function TimeColumn({
       >
         {items.map((it) => {
           const active = it === selected;
+          const past = !active && Boolean(isPast?.(it));
           return (
             <button
               key={it}
               type="button"
-              disabled={disabled}
+              disabled={disabled || past}
               data-selected={active}
+              title={past ? "Өнгөрсөн" : undefined}
               onClick={() => onPick(it)}
               className={`block w-full rounded-md py-1.5 text-center text-sm tabular-nums transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                 active
                   ? "dp-accent-active bg-violet-600 font-semibold text-white"
-                  : "text-white/70 hover:bg-white/10"
+                  : past
+                    ? "text-white/25 line-through"
+                    : "text-white/70 hover:bg-white/10"
               }`}
             >
               {it}

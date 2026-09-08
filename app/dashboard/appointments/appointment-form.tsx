@@ -18,6 +18,17 @@ import { customerLabel } from "@/lib/customers";
 
 export const APPOINTMENT_FORM_ID = "appointment-form";
 
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : String(n);
+}
+
+// Хуваарийн хуудаснаас ирсэн ISO-г browser-ийн локал огноогоор "YYYY-MM-DD"
+// болгоно (order-form.tsx-ийн toLocalDatetimeInput-той адил зарчим).
+function toLocalDateKey(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
 type Branch = { id: string; name: string; openWeekdays: Weekday[] };
 type Customer = { id: string; fullName: string; phone: string };
 type Category = { id: string; name: string; branchIds: string[] };
@@ -27,6 +38,7 @@ export function AppointmentForm({
   customers: initialCustomers,
   categories,
   defaultBranchId,
+  initialScheduledAt,
   backHref = "/dashboard/appointments",
   next,
 }: {
@@ -34,6 +46,9 @@ export function AppointmentForm({
   customers: Customer[];
   categories: Category[];
   defaultBranchId?: string;
+  // Хуваарийн хуудаснаас хоосон цаг дээр дарж орж ирсэн бол тухайн цаг
+  // (ISO) — сонгосон огноо/цагийг урьдчилан бөглөнө.
+  initialScheduledAt?: string;
   backHref?: string;
   // Амжилттай бүртгэсний дараа буцах зам (жишээ нь: хуваарийн хуудас) —
   // ирээгүй бол өмнөх адил цаг захиалгын жагсаалт руу орно.
@@ -49,6 +64,7 @@ export function AppointmentForm({
   const [customerId, setCustomerId] = useState("");
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [selectedIso, setSelectedIso] = useState("");
+  const initialDate = initialScheduledAt ? toLocalDateKey(initialScheduledAt) : undefined;
   // Booking v2: олон ангилал сонгож болно (customer-ийн урсгалтай адил).
   const [categoryIds, setCategoryIds] = useState<string[]>([]);
 
@@ -198,6 +214,8 @@ export function AppointmentForm({
           value={selectedIso}
           onChange={setSelectedIso}
           error={fe.requestedAt}
+          initialDate={initialDate}
+          initialIso={initialScheduledAt}
         />
       </div>
 

@@ -5,6 +5,7 @@ import {
   AppointmentArrivedButton,
   AppointmentConfirmReject,
   AppointmentNoShowButton,
+  AppointmentRescheduleButton,
 } from "./appointment-row-actions";
 import { AddLinkButton, BtnLink } from "@/app/_components/landing-ops-ui";
 import { FilterSelect, ResetFilters, SearchBox } from "@/app/_components/list-filters";
@@ -317,6 +318,10 @@ export default async function AppointmentsPage({
                                 <>
                                   <AppointmentArrivedButton appointmentId={a.id} />
                                   <AppointmentNoShowButton appointmentId={a.id} />
+                                  <AppointmentRescheduleButton
+                                    appointmentId={a.id}
+                                    requestedAt={a.requestedAt.toISOString()}
+                                  />
                                 </>
                               ) : null}
                             </>

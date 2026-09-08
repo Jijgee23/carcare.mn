@@ -228,6 +228,10 @@ export async function isSlotAvailable(
   branchId: string,
   when: Date,
   durationMinutes?: number,
+  // Захиалгаа шилжүүлж байгаа Appointment-ийн ӨӨРИЙНХ нь одоогийн байрлалыг
+  // "эзэлсэн" гэж тоохгүй байхын тулд (эс бөгөөс өөрийгөө өөртэйгөө
+  // мөргөлдсөн мэт үзнэ).
+  excludeAppointmentId?: string,
 ): Promise<boolean> {
   const branch = await client.branch.findUnique({
     where: { id: branchId },
@@ -248,6 +252,7 @@ export async function isSlotAvailable(
       branchId,
       status: { in: ["PENDING", "CONFIRMED"] },
       requestedAt: { gte: dayStart, lt: dayEnd },
+      ...(excludeAppointmentId ? { id: { not: excludeAppointmentId } } : {}),
     },
     select: {
       requestedAt: true,

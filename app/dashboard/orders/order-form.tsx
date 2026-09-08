@@ -7,7 +7,7 @@ import {
   updateOrderAction,
 } from "@/app/_actions/orders";
 import { Field, FormError } from "@/app/_components/auth-shell";
-import { DatePicker } from "@/app/_components/date-picker";
+import { DatePicker, todayStr } from "@/app/_components/date-picker";
 import { Btn, BtnLink, SquareAddButton } from "@/app/_components/landing-ops-ui";
 import { Select } from "@/app/_components/select";
 import { customerLabel } from "@/lib/customers";
@@ -350,6 +350,7 @@ export function OrderForm({
             id="scheduledAt"
             name="scheduledAt"
             withTime
+            min={todayStr()}
             defaultValue={toLocalDatetimeInput(autoScheduledAt)}
             onChange={() => setScheduleConfirmArmed(false)}
             error={Boolean(fe.scheduledAt)}

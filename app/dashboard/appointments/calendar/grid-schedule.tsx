@@ -13,6 +13,13 @@ function roundToSlot(ms: number): number {
   return Math.round(ms / slotMs) * slotMs;
 }
 
+// react-hooks/purity: `Date.now()`-г component-ийн render биед шууд бичихгүй
+// (app/(app)/account/appointments/[id]/page.tsx-ийн computeIsDelayed-ийн ижил
+// тайлбарыг үз) — тусдаа module-level helper-т шилжүүлнэ.
+function nowMs(): number {
+  return Date.now();
+}
+
 // Асиа/Улаанбаатар цагийн бүсээр цаг форматлана — сервер өөр бүсэд байршиж болзошгүй.
 function fmtUbTime(ms: number): string {
   return new Intl.DateTimeFormat("mn-MN", {
@@ -75,6 +82,15 @@ export function GridSchedule({
   const laneCount = Math.max(1, ...positioned.map((r) => r.lane + 1));
   const axisSpan = Math.max(1, axisEndMs - axisStartMs);
 
+  // Өнгөрсөн цагийг (өнөөдрийн харагдац дээр) саарлаар "дүүргэж" тэмдэглэнэ —
+  // тухайн хэсэгт дарж шинэ захиалга/цаг захиалга үүсгэх боломжгүй (доорх
+  // handleBodyClick-д `ms < now` бол алгасна). Ирээдүйн өдөр бол now нь
+  // axisStartMs-ээс өмнө тул дүүргэлт харагдахгүй; бүтэн өнгөрсөн өдөр бол
+  // (жишээ нь өчигдрийг харж байгаа) бүхэлдээ дүүрнэ.
+  const now = nowMs();
+  const pastFillEndMs = Math.min(now, axisEndMs);
+  const showPastFill = pastFillEndMs > axisStartMs;
+
   // Босоо саарал шугам харуулах цагийн тэмдэглэгээ — цаг тутам.
   const hourMarks = useMemo(() => {
     const marks: number[] = [];
@@ -106,6 +122,7 @@ export function GridSchedule({
     if (e.target !== e.currentTarget) return; // блок дээр дарсан бол үл хайхрана
     const ms = msFromClientX(e.clientX);
     if (ms == null) return;
+    if (ms < nowMs()) return; // өнгөрсөн цаг дээр шинэ зүйл үүсгэхгүй
     setCreateAtMs(ms);
   }
 
@@ -118,8 +135,12 @@ export function GridSchedule({
     router.push(`/dashboard/orders/new?${params.toString()}`);
   }
 
-  function goCreateAppointment() {
-    const params = new URLSearchParams({ branchId, next: returnTo });
+  function goCreateAppointment(ms: number) {
+    const params = new URLSearchParams({
+      branchId,
+      scheduledAt: new Date(ms).toISOString(),
+      next: returnTo,
+    });
     router.push(`/dashboard/appointments/new?${params.toString()}`);
   }
 
@@ -152,12 +173,23 @@ export function GridSchedule({
               блок дээр дарсныг e.target !== e.currentTarget-ээр ялгана. */}
           <div
             ref={bodyRef}
-            className="relative cursor-pointer"
-            style={{ height: `${Math.max(1, laneCount) * ROW_HEIGHT + 8}px` }}
+            className="relative"
+            style={{
+              height: `${Math.max(1, laneCount) * ROW_HEIGHT + 8}px`,
+              cursor: hoverMs != null && hoverMs < now ? "not-allowed" : "pointer",
+            }}
             onClick={handleBodyClick}
             onMouseMove={(e) => setHoverMs(msFromClientX(e.clientX))}
             onMouseLeave={() => setHoverMs(null)}
           >
+            {showPastFill ? (
+              <div
+                className="absolute top-0 bottom-0 left-0 bg-[var(--oc-muted4)]/10 pointer-events-none"
+                style={{ width: `${pct(pastFillEndMs)}%` }}
+                title="Өнгөрсөн цаг"
+              />
+            ) : null}
+
             {hourMarks.map((t) => (
               <div
                 key={t}
@@ -166,7 +198,7 @@ export function GridSchedule({
               />
             ))}
 
-            {hoverMs != null ? (
+            {hoverMs != null && hoverMs >= now ? (
               <div
                 className="absolute top-0 bottom-0 w-px bg-[var(--oc-accent)]/70 pointer-events-none"
                 style={{ left: `${pct(hoverMs)}%` }}
@@ -298,7 +330,7 @@ export function GridSchedule({
                   </button>
                   <button
                     type="button"
-                    onClick={goCreateAppointment}
+                    onClick={() => goCreateAppointment(createAtMs)}
                     className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3.5 py-2 text-sm font-medium text-white/80 transition-colors hover:bg-white/[0.08]"
                   >
                     Цаг захиалга үүсгэх
