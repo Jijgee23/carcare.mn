@@ -43,6 +43,7 @@ export async function GET(req: Request) {
           number: true,
           status: true,
           paymentStatus: true,
+          scheduledAt: true,
           startedAt: true,
           completedAt: true,
           estimatedDurationMinutes: true,
@@ -74,6 +75,49 @@ export async function GET(req: Request) {
       payment: { select: { amount: true, currency: true } },
     },
   });
+  // Цаг захиалгагүй (walk-in) захиалга — ажилтан утсаар/шууд ирсэн машинд
+  // цаг захиалгагүйгээр шууд засварын хуудас үүсгэсэн бол Appointment мөр
+  // огт үүсдэггүй тул дээрх query-д огт тусахгүй. Ийм захиалгыг олж, тусад
+  // нь буцаана — эс бөгөөс харилцагч идэвхтэй ажлаа "Миний цагууд"-д огт
+  // харахгүй, зөвхөн дууссаны дараа /api/v1/app/orders (түүх)-д гарна (2026-09-08
+  // хэрэглэгчийн тайлан: ажилтны үүсгэсэн захиалга харагдахгүй байсан).
+  const walkInOrders = await prisma.serviceOrder.findMany({
+    where: {
+      customer: { accountId: account.id },
+      appointment: null,
+      NOT: { status: "COMPLETED", paymentStatus: "PAID" },
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      number: true,
+      status: true,
+      paymentStatus: true,
+      scheduledAt: true,
+      startedAt: true,
+      completedAt: true,
+      estimatedDurationMinutes: true,
+      expectedFinishAt: true,
+      totalAmount: true,
+      paidAmount: true,
+      tenant: { select: { name: true, slug: true } },
+      branch: { select: { id: true, name: true } },
+      vehicle: { select: { plate: true, make: true, model: true, year: true } },
+      items: {
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          kind: true,
+          description: true,
+          status: true,
+          quantity: true,
+          unitPrice: true,
+          total: true,
+        },
+      },
+    },
+  });
+
   // Хариуны хэлбэрийг хадгална: accountVehicle: { plate } | null,
   // payment: AppointmentFeeInfo (null бол хураамж шаардлагагүй).
   const shaped = appointments.map((a) => ({
@@ -95,6 +139,7 @@ export async function GET(req: Request) {
           number: a.serviceOrder.number,
           status: a.serviceOrder.status,
           paymentStatus: a.serviceOrder.paymentStatus,
+          scheduledAt: a.serviceOrder.scheduledAt,
           startedAt: a.serviceOrder.startedAt,
           completedAt: a.serviceOrder.completedAt,
           estimatedDurationMinutes: a.serviceOrder.estimatedDurationMinutes,
@@ -121,7 +166,36 @@ export async function GET(req: Request) {
       : null,
     payment: serializeAppointmentFee(a),
   }));
-  return jsonOk({ appointments: shaped });
+
+  const shapedWalkIns = walkInOrders.map((o) => ({
+    id: o.id,
+    number: o.number,
+    status: o.status,
+    paymentStatus: o.paymentStatus,
+    scheduledAt: o.scheduledAt,
+    startedAt: o.startedAt,
+    completedAt: o.completedAt,
+    estimatedDurationMinutes: o.estimatedDurationMinutes,
+    expectedFinishAt: o.expectedFinishAt,
+    totalAmount:
+      o.totalAmount != null ? Number.parseFloat(o.totalAmount.toString()) : null,
+    paidAmount:
+      o.paidAmount != null ? Number.parseFloat(o.paidAmount.toString()) : null,
+    tenant: o.tenant,
+    branch: o.branch,
+    vehicle: o.vehicle,
+    items: o.items.map((it) => ({
+      id: it.id,
+      kind: it.kind,
+      description: it.description,
+      status: it.status,
+      quantity: Number.parseFloat(it.quantity.toString()),
+      unitPrice: Number.parseFloat(it.unitPrice.toString()),
+      total: Number.parseFloat(it.total.toString()),
+    })),
+  }));
+
+  return jsonOk({ appointments: shaped, walkInOrders: shapedWalkIns });
 }
 
 // POST /api/v1/app/appointments — цаг захиалах (auth).

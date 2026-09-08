@@ -83,6 +83,31 @@ function assertOrderBranchScope(
   }
 }
 
+// Захиалгын товлосон огноо шилжсэнийг холбогдох цаг захиалгын account-д
+// мэдэгдэнэ — reviseExpectedFinishAction-ийн expected_finish_revised-тэй адил
+// зарчим: анхны товлолт (previous == null) мэдэгдэхгүй, зөвхөн цуцлагдаагүй/
+// ирээгүй биш (PENDING/CONFIRMED) идэвхтэй цаг захиалгын account-д л илгээнэ
+// (харах: reviseExpectedFinishAction-д олдсон "цуцалсан цагт мэдэгдэх" алдаа).
+async function notifyOrderRescheduled(
+  appointment: { id: string; accountId: string | null; status: string } | null,
+  previous: Date | null,
+  next: Date,
+): Promise<void> {
+  if (!previous || previous.getTime() === next.getTime()) return;
+  if (!appointment?.accountId) return;
+  const isActive = appointment.status === "PENDING" || appointment.status === "CONFIRMED";
+  if (!isActive) return;
+  try {
+    await createNotification({
+      type: "order_rescheduled",
+      recipient: { accountId: appointment.accountId },
+      input: { appointmentId: appointment.id },
+    });
+  } catch (e) {
+    console.warn("[notify] order_rescheduled:", e);
+  }
+}
+
 // Мөрийн явц өөрчлөх нь орлогын хуудсанд ерөнхий засах эрхээс тусдаа,
 // `orders.itemStatus` тусгай эрхээр хамгаалагдана (харах: lib/auth/permissions.ts).
 async function authorizeItemStatus() {
@@ -537,7 +562,12 @@ export async function updateOrderAction(
 
   const existing = await prisma.serviceOrder.findFirst({
     where: scopedOrderWhere,
-    select: { status: true, scheduledAt: true, estimatedDurationMinutes: true },
+    select: {
+      status: true,
+      scheduledAt: true,
+      estimatedDurationMinutes: true,
+      appointment: { select: { id: true, accountId: true, status: true } },
+    },
   });
   if (!existing) {
     return { ok: false, message: "Засварын хуудас олдсонгүй." };
@@ -612,6 +642,10 @@ export async function updateOrderAction(
       scheduledAt: data.scheduledAt?.toISOString() ?? null,
     },
   });
+
+  if (scheduledChanged) {
+    await notifyOrderRescheduled(existing.appointment, existing.scheduledAt, data.scheduledAt!);
+  }
 
   revalidatePath("/dashboard/orders");
   revalidatePath(`/dashboard/orders/${id}`);
@@ -1049,6 +1083,7 @@ export async function rescheduleOrderAction(
       status: true,
       scheduledAt: true,
       estimatedDurationMinutes: true,
+      appointment: { select: { id: true, accountId: true, status: true } },
     },
   });
   if (!order) return { ok: false, message: "Засварын хуудас олдсонгүй." };
@@ -1104,6 +1139,8 @@ export async function rescheduleOrderAction(
       tx,
     );
   });
+
+  await notifyOrderRescheduled(order.appointment, previous, scheduledAt);
 
   revalidatePath("/dashboard/orders");
   revalidatePath(`/dashboard/orders/${id}`);

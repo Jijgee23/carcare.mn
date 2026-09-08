@@ -83,7 +83,6 @@ export default async function AppointmentsCalendarPage({
   const canRespondAppointments = canEdit(user, "appointments");
   const canEditOrders = canEdit(user, "orders");
   const canChangeItemStatus = hasPermission(user, "orders.itemStatus");
-  const canEditPayments = canEdit(user, "payments");
 
   const sp = await searchParams;
   const cal = resolveCalendar(sp);
@@ -354,7 +353,6 @@ export default async function AppointmentsCalendarPage({
           canRespondAppointments={canRespondAppointments}
           canEditOrders={canEditOrders}
           canChangeItemStatus={canChangeItemStatus}
-          canEditPayments={canEditPayments}
           returnTo={returnTo}
         />
       ) : cal.interval === "day" ? (
@@ -365,7 +363,6 @@ export default async function AppointmentsCalendarPage({
           canRespondAppointments={canRespondAppointments}
           canEditOrders={canEditOrders}
           canChangeItemStatus={canChangeItemStatus}
-          canEditPayments={canEditPayments}
           returnTo={returnTo}
         />
       ) : cal.interval === "week" ? (
@@ -492,7 +489,6 @@ function DaySchedule({
   canRespondAppointments,
   canEditOrders,
   canChangeItemStatus,
-  canEditPayments,
   returnTo,
 }: {
   schedule: DayScheduleData | null;
@@ -501,7 +497,6 @@ function DaySchedule({
   canRespondAppointments: boolean;
   canEditOrders: boolean;
   canChangeItemStatus: boolean;
-  canEditPayments: boolean;
   returnTo: string;
 }) {
   if (!schedule) {
@@ -685,7 +680,6 @@ function DaySchedule({
                           key={order.id}
                           orderId={order.id}
                           canChangeItemStatus={canChangeItemStatus}
-                          canEditPayments={canEditPayments}
                         />
                       ) : null}
                     </RowExpand>
@@ -712,7 +706,6 @@ function DayScheduleGrid({
   canRespondAppointments,
   canEditOrders,
   canChangeItemStatus,
-  canEditPayments,
   returnTo,
 }: {
   schedule: DayScheduleData | null;
@@ -732,7 +725,6 @@ function DayScheduleGrid({
   canRespondAppointments: boolean;
   canEditOrders: boolean;
   canChangeItemStatus: boolean;
-  canEditPayments: boolean;
   returnTo: string;
 }) {
   if (!schedule) {
@@ -771,7 +763,6 @@ function DayScheduleGrid({
         axisStartMs={axisStartMs}
         axisEndMs={axisEndMs}
         canChangeItemStatus={canChangeItemStatus}
-        canEditPayments={canEditPayments}
         branchId={branchId}
         returnTo={returnTo}
       />

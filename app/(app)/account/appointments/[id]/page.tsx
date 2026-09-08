@@ -95,6 +95,7 @@ export default async function AccountAppointmentDetailPage({
           number: true,
           status: true,
           paymentStatus: true,
+          scheduledAt: true,
           startedAt: true,
           completedAt: true,
           estimatedDurationMinutes: true,
@@ -220,6 +221,11 @@ export default async function AccountAppointmentDetailPage({
                 №{appt.serviceOrder.number}
               </span>
             </div>
+            {appt.serviceOrder.status === "SCHEDULED" && appt.serviceOrder.scheduledAt ? (
+              <span className="text-xs text-[var(--oc-muted2)]">
+                Товлосон огноо: {fmtDateTime(appt.serviceOrder.scheduledAt)}
+              </span>
+            ) : null}
             {appt.serviceOrder.estimatedDurationMinutes != null ||
             appt.serviceOrder.expectedFinishAt != null ? (
               <div className="flex flex-col gap-0.5">

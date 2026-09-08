@@ -7,6 +7,7 @@ import {
   APPOINTMENT_STATUS_LABEL,
 } from "@/lib/appointments";
 import { requireAccount } from "@/lib/auth/account";
+import { ORDER_STATUS_BADGE, ORDER_STATUS_LABEL, type OrderStatus } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
 
 export const metadata = {
@@ -76,6 +77,24 @@ export default async function AccountPage() {
     const dx = x.requestedAt.getTime();
     const dy = y.requestedAt.getTime();
     return ax === 0 ? dx - dy : dy - dx; // идэвхтэй: ойрын нь; өмнөх: сүүлийн нь
+  });
+
+  // Цаг захиалгагүй (walk-in) захиалга — ажилтан утсаар/шууд ирсэн машинд
+  // цаг захиалгагүйгээр шууд засварын хуудас үүсгэсэн бол Appointment мөр
+  // огт үүсдэггүй тул дээрх query-д тусахгүй. Тусад нь олж, доор жагсаана
+  // (харах: /api/v1/app/appointments-ийн ижил walkInOrders логик).
+  const walkInOrders = await prisma.serviceOrder.findMany({
+    where: {
+      customer: { accountId: account.id },
+      appointment: null,
+      NOT: { status: "COMPLETED", paymentStatus: "PAID" },
+    },
+    orderBy: { createdAt: "desc" },
+    include: {
+      tenant: { select: { name: true } },
+      branch: { select: { name: true } },
+      vehicle: { select: { plate: true } },
+    },
   });
 
   return (
@@ -205,6 +224,41 @@ export default async function AccountPage() {
           </div>
         )}
       </div>
+
+      {/* Цаг захиалгагүй (walk-in) захиалга — ажилтан шууд ирсэн машинд
+          үүсгэсэн, доороос тусад нь харагдана (эдгээрт цаг/цуцлах/хураамж
+          гэсэн ойлголт байхгүй). */}
+      {walkInOrders.length > 0 ? (
+        <div>
+          <h1 className="font-semibold text-[var(--oc-ink2)] text-sm mb-2">
+            Захиалгууд
+            <span className="text-[var(--oc-muted3)] font-normal"> · {walkInOrders.length}</span>
+          </h1>
+          <div className="flex flex-col gap-2">
+            {walkInOrders.map((o) => (
+              <Link
+                key={o.id}
+                href={`/account/orders/${o.id}`}
+                className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-3 flex flex-col gap-0.5 hover:border-[var(--oc-accent)] transition-colors"
+              >
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-[var(--oc-ink)] truncate">
+                    {o.tenant.name}
+                  </span>
+                  <span
+                    className={`font-plex-mono text-[11px] px-2.5 py-1 rounded-full ${ORDER_STATUS_BADGE[o.status as OrderStatus]}`}
+                  >
+                    {ORDER_STATUS_LABEL[o.status as OrderStatus]}
+                  </span>
+                </div>
+                <div className="text-xs text-[var(--oc-muted)] mt-0.5">
+                  {o.branch.name} · {o.vehicle.plate} · №{o.number}
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

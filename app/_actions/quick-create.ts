@@ -65,18 +65,57 @@ export async function quickCreateCustomerAction(input: {
 
   const normalizedPhone = normalizePhone(phone) ?? phone;
 
-  let created;
-  try {
-    created = await prisma.customer.create({
-      data: {
-        fullName,
-        phone: normalizedPhone,
-        email,
-        note,
-        tenantId: user.tenantId,
-      },
+  // Утасны дугаараар онлайн Account олж, байвал шинэ Customer-т холбоно —
+  // эс бөгөөс энэ Customer "Миний цагууд"/"Захиалгууд"-д (харилцагчийн
+  // апп/веб) хожим харагдахгүй үлддэг байсан (2026-09-08 хэрэглэгчийн тайлан:
+  // ажилтны шууд үүсгэсэн захиалга харилцагчид харагдахгүй байсан — үндэс нь
+  // энэ функц accountId-г огт тохируулдаггүй байсан явдал байсан).
+  const account = await prisma.account.findUnique({
+    where: { phone: normalizedPhone },
+    select: { id: true },
+  });
+
+  if (account) {
+    // Энэ Account-д зориулсан Customer тухайн tenant-д аль хэдийн байвал
+    // (@@unique([tenantId, accountId])) шинээр үүсгэхгүй, түүнийг ашиглана.
+    const existingForAccount = await prisma.customer.findUnique({
+      where: { tenantId_accountId: { tenantId: user.tenantId, accountId: account.id } },
       select: { id: true, fullName: true, phone: true },
     });
+    if (existingForAccount) {
+      return { ok: true, customer: existingForAccount };
+    }
+  }
+
+  let created;
+  try {
+    // Ижил утастай "эзэнгүй" (accountId=null) Customer энэ tenant-д өмнө нь
+    // үүссэн байж болзошгүй (энэ засвараас өмнө) — шинээр давхардуулан
+    // үүсгэхийн оронд түүнийг "нэхэмжлэх" (accountId-г нь тохируулах).
+    const unclaimed = account
+      ? await prisma.customer.findFirst({
+          where: { tenantId: user.tenantId, phone: normalizedPhone, accountId: null },
+          select: { id: true },
+        })
+      : null;
+
+    created = unclaimed
+      ? await prisma.customer.update({
+          where: { id: unclaimed.id },
+          data: { fullName: fullName || undefined, email, note, accountId: account!.id },
+          select: { id: true, fullName: true, phone: true },
+        })
+      : await prisma.customer.create({
+          data: {
+            fullName,
+            phone: normalizedPhone,
+            email,
+            note,
+            tenantId: user.tenantId,
+            accountId: account?.id ?? null,
+          },
+          select: { id: true, fullName: true, phone: true },
+        });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
       return {

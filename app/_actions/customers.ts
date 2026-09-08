@@ -93,12 +93,43 @@ export async function createCustomerAction(
     return { ok: false, message: limit.message };
   }
 
-  let created;
-  try {
-    created = await prisma.customer.create({
-      data: { ...data, tenantId: user.tenantId },
+  // Утасны дугаараар онлайн Account олж, байвал холбоно — quick-create.ts-ийн
+  // adил шалтгаанаар (2026-09-08: ажилтны шууд бүртгэсэн үйлчлүүлэгч
+  // харилцагчийн апп/веб-д хожим захиалгаа харахгүй байсан).
+  const account = await prisma.account.findUnique({
+    where: { phone: data.phone },
+    select: { id: true },
+  });
+
+  if (account) {
+    const existingForAccount = await prisma.customer.findUnique({
+      where: { tenantId_accountId: { tenantId: user.tenantId, accountId: account.id } },
       select: { id: true },
     });
+    if (existingForAccount) {
+      redirect(`/dashboard/customers/${existingForAccount.id}`);
+    }
+  }
+
+  let created;
+  try {
+    const unclaimed = account
+      ? await prisma.customer.findFirst({
+          where: { tenantId: user.tenantId, phone: data.phone, accountId: null },
+          select: { id: true },
+        })
+      : null;
+
+    created = unclaimed
+      ? await prisma.customer.update({
+          where: { id: unclaimed.id },
+          data: { ...data, fullName: data.fullName || undefined, accountId: account!.id },
+          select: { id: true },
+        })
+      : await prisma.customer.create({
+          data: { ...data, tenantId: user.tenantId, accountId: account?.id ?? null },
+          select: { id: true },
+        });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
       return {
