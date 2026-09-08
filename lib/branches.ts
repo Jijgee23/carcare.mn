@@ -79,6 +79,16 @@ export function openWeekdaysOf(b: {
   });
 }
 
+/** Салбар Бямба/Ням аль нэгэнд ажилладаг эсэх ("Амралтын өдөр ажилладаг" шүүлт). */
+export function worksWeekends(b: {
+  openTime: string | null;
+  closeTime: string | null;
+  schedules: { weekday: string; isOpen: boolean }[];
+}): boolean {
+  const days = openWeekdaysOf(b);
+  return days.includes("SAT") || days.includes("SUN");
+}
+
 // "HH:MM" → минут (өдрийн эхнээс). Буруу бол null.
 function timeToMinutes(t: string | null | undefined): number | null {
   if (!t || !isValidTime(t)) return null;

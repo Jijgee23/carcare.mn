@@ -55,7 +55,11 @@ export default async function AccountHistoryPage({
   // account-той холбоотой Customer-ийн захиалга (хуучин зан төлөвтэй нийцүүлэв).
   // Машин нэг байгууллагад өөр (холбогдоогүй) Customer дээр бүртгэгдсэн ч,
   // эзэмшил нь өөр газар баталгаажсан бол түүх энд нэгдэж харагдана.
+  // Түүх бол зөвхөн дууссан ажлыг харуулна — SCHEDULED/IN_PROGRESS/WAITING_PARTS
+  // хараахан идэвхтэй, /account (Миний цагууд) дээр харагдана. Төлбөрийн
+  // төлөв энд шүүлт биш: төлөгдөөгүй ч дууссан ажил энд харагдана.
   const where: Prisma.ServiceOrderWhereInput = {
+    status: "COMPLETED",
     OR: [
       { customer: { accountId: account.id } },
       ...(ownedVehicleIds.length

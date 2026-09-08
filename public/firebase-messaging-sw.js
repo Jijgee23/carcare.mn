@@ -40,8 +40,45 @@ messaging.onBackgroundMessage((payload) => {
   });
 });
 
-// Мэдэгдэл дээр дарахад апп нээх.
+// Мэдэгдэл дээр дарахад шилжих зам — lib/notifications.ts-ийн
+// NOTIFICATION_REGISTRY-ийн href()-тэй ижил логик, гэхдээ service worker нь
+// тухайн server-side модулийг import хийж чадахгүй тул энд давхардуулав.
+// Шинэ account-realm event нэмэхдээ энд ч тохирох замыг нэмнэ үү.
+function hrefForNotificationData(data) {
+  const d = data || {};
+  switch (d.type) {
+    case "appointment_confirmed":
+    case "appointment_rejected":
+    case "appointment_reminder":
+    case "appointment_expired":
+      return d.appointmentId ? `/account/appointments/${d.appointmentId}` : "/account";
+    case "feedback_replied_account":
+    case "broadcast_account":
+      return "/account/notifications";
+    default:
+      return "/account";
+  }
+}
+
+// Мэдэгдэл дээр дарахад: аль хэдийн нээлттэй таб байвал түүн рүү шилжиж
+// шинэ хаяг руу шилжинэ (шинэ таб нээхгүй); байхгүй бол шинээр нээнэ.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  event.waitUntil(clients.openWindow("/account"));
+  const url = hrefForNotificationData(event.notification.data);
+  const targetUrl = new URL(url, self.location.origin).href;
+
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((list) => {
+        for (const client of list) {
+          if ("focus" in client) {
+            client.focus();
+            if ("navigate" in client) return client.navigate(targetUrl);
+            return;
+          }
+        }
+        return self.clients.openWindow(targetUrl);
+      }),
+  );
 });

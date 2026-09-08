@@ -1,4 +1,9 @@
-import { type Weekday, branchStatusNow, formatAddress } from "@/lib/branches";
+import {
+  type Weekday,
+  branchStatusNow,
+  formatAddress,
+  worksWeekends,
+} from "@/lib/branches";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { plansWithFeature } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
@@ -85,6 +90,11 @@ export default async function DiscoverPage() {
         },
         now,
       );
+      const weekend = worksWeekends({
+        openTime: b.openTime,
+        closeTime: b.closeTime,
+        schedules: b.schedules,
+      });
       // Энэ салбарт хамаарах ангилал: хамаарах салбаргүй (бүх салбарт) эсвэл
       // энэ салбарыг шууд сонгосон ангилал.
       const services = t.categories
@@ -103,6 +113,7 @@ export default async function DiscoverPage() {
         lng: b.longitude,
         open: status.open,
         hours: status.hours,
+        weekend,
         services,
       };
     }),

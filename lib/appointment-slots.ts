@@ -1,4 +1,6 @@
 import type { Weekday } from "@/lib/branches";
+import { peakOccupancy } from "@/lib/schedule-capacity";
+import { bookingDateKey, bookingDayBounds, bookingSlotTime } from "@/lib/booking-time";
 
 // Salбарын slot тохиргооны анхдагч (Branch.slotMinutes/slotCapacity null үед).
 export const DEFAULT_SLOT_MINUTES = 30;
@@ -43,7 +45,7 @@ export type DayAvailability = {
 };
 
 export function weekdayFromDate(d: Date): Weekday {
-  return JS_DAY_TO_WEEKDAY[d.getDay()];
+  return JS_DAY_TO_WEEKDAY[new Date(`${bookingDateKey(d)}T12:00:00Z`).getUTCDay()];
 }
 
 function timeToMinutes(t: string | null): number | null {
@@ -90,7 +92,9 @@ export function buildDaySlots(opts: {
     return { open: false, reason: "Ажиллах цаг тодорхойлогдоогүй.", slots: [] };
   }
 
-  const [y, m, d] = opts.dateStr.split("-").map(Number);
+  try { bookingDayBounds(opts.dateStr); } catch {
+    return { open: false, reason: "Буруу өдөр.", slots: [] };
+  }
   const slotMin = opts.slotMinutes > 0 ? opts.slotMinutes : DEFAULT_SLOT_MINUTES;
   const cap = opts.capacity > 0 ? opts.capacity : DEFAULT_SLOT_CAPACITY;
   // Захиалга багтах ёстой урт — хаах цагийн хилд ашиглана.
@@ -106,15 +110,13 @@ export function buildDaySlots(opts: {
 
   const slots: DaySlot[] = [];
   for (let start = openMin; start + apptMin <= closeMin; start += slotMin) {
-    const slotStart = new Date(y, m - 1, d, Math.floor(start / 60), start % 60);
+    const slotStart = bookingSlotTime(opts.dateStr, start);
     const startMs = slotStart.getTime();
     // Энэ slot-т шинэ захиалга байршвал ЭЗЭЛЭХ хугацаа (`apptMin`) — зөвхөн
     // slot-ийн алхам (`slotMin`) биш. Аль хэдийн авсан захиалгуудын жинхэнэ
     // интервалтай ЯМАРЧ давхцал (overlap) байвал багтаамжаас хасна.
     const endMs = startMs + apptMin * 60000;
-    const count = takenIntervals.filter(
-      (t) => t.startMs < endMs && t.endMs > startMs,
-    ).length;
+    const count = peakOccupancy(takenIntervals, startMs, endMs);
     const remaining = Math.max(0, cap - count);
     slots.push({
       time: minutesToTime(start),

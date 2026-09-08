@@ -4,6 +4,7 @@ import {
   isBranchOpenAt,
   nowInZone,
 } from "@/lib/branch-filters";
+import { worksWeekends } from "@/lib/branches";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { plansWithFeature } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
@@ -19,6 +20,10 @@ const MAX_RADIUS_KM = 100;
 //                     эрэмбэлнэ — "бүх карт зайгаа харуулна" UX).
 //   ?radius=<км>    — lat/lng-тэй хамт өгвөл нэмээд тухайн радиус дотор шүүнэ.
 //   ?openNow=1      — "одоо нээлттэй": яг одоо ажиллаж буй салбартай байгууллага.
+//   ?weekend=1      — "амралтын өдөр ажилладаг": Бямба/Ням аль нэгэнд
+//                     ажилладаг ЯМАР Ч НЭГ салбартай байгууллага (тохирвол
+//                     тухайн байгууллагын БҮХ салбарыг буцаана, зөвхөн
+//                     weekend салбарыг нь биш — city/district-ээс ялгаатай).
 // Хэд хэдэн шүүлт зэрэг өгвөл салбар БҮГДийг нь хангасан байх ёстой.
 //
 // Ангиллын шүүлт ЭНД БАЙХГҮЙ — тухайн шийдвэр эргүүлэгдсэн: ангилал бол
@@ -46,6 +51,8 @@ export async function GET(request: Request) {
   const radius = hasRadius ? Math.min(radiusRaw, MAX_RADIUS_KM) : null;
 
   const openNow = sp.get("openNow") === "1" || sp.get("openNow") === "true";
+  const weekend = sp.get("weekend") === "1" || sp.get("weekend") === "true";
+  const needsSchedule = openNow || weekend;
 
   const allowedPlans = await plansWithFeature(PLAN_LIMIT_CODES.ONLINE_BOOKING);
   const orgs = await prisma.tenant.findMany({
@@ -67,10 +74,10 @@ export async function GET(request: Request) {
           district: true,
           latitude: true,
           longitude: true,
-          // Шүүлтэд ашиглана — хариунд буцаахгүй (openNow-д).
-          openTime: openNow,
-          closeTime: openNow,
-          schedules: openNow
+          // Шүүлтэд ашиглана — хариунд буцаахгүй (openNow/weekend-д).
+          openTime: needsSchedule,
+          closeTime: needsSchedule,
+          schedules: needsSchedule
             ? {
                 select: {
                   weekday: true,
@@ -86,7 +93,7 @@ export async function GET(request: Request) {
   });
 
   // Шүүлтгүй бол хуучин зан төлөв яг хэвээр.
-  if (!nearMe && !openNow) return jsonOk({ orgs });
+  if (!nearMe && !openNow && !weekend) return jsonOk({ orgs });
 
   const now = openNow ? nowInZone() : null;
 
@@ -111,6 +118,11 @@ export async function GET(request: Request) {
   for (const org of orgs) {
     const branches: BranchOut[] = [];
     let nearest = Number.POSITIVE_INFINITY;
+    // Org-level: аль нэг (доорхи openNow/near-me шүүлтийг давсан) салбар нь
+    // Бямба/Ням ажилладаг эсэх — тохирвол БҮХ салбарыг харуулна (branch-level
+    // continue биш, city/district-ээс ялгаатай зарчим — харах: түгээмэл
+    // тайлбар дээрх docstring).
+    let anyWeekendBranch = false;
 
     for (const b of org.branches) {
       // "Одоо нээлттэй" шүүлт.
@@ -125,6 +137,15 @@ export async function GET(request: Request) {
           now.minutes,
         );
         if (!open) continue;
+      }
+
+      if (weekend) {
+        const worksWeekend = worksWeekends({
+          openTime: b.openTime ?? null,
+          closeTime: b.closeTime ?? null,
+          schedules: b.schedules || [],
+        });
+        if (worksWeekend) anyWeekendBranch = true;
       }
 
       // "Ойролцоо": зай онооно; radius өгсөн тохиолдолд л шүүнэ.
@@ -148,6 +169,7 @@ export async function GET(request: Request) {
     }
 
     if (branches.length === 0) continue;
+    if (weekend && !anyWeekendBranch) continue;
     // Ойролцоо салбарыг эхэнд харуулах.
     if (nearMe) branches.sort((x, y) => (x.distanceKm ?? 0) - (y.distanceKm ?? 0));
     filtered.push({

@@ -12,6 +12,7 @@ import {
   isFirebaseConfigured,
   vapidKey,
 } from "@/lib/firebase-client";
+import { accountNotificationHref } from "@/lib/notification-client-href";
 
 type Status =
   | "idle"
@@ -183,10 +184,20 @@ export function WebPushToggle({
 
       // Foreground мессеж — энгийн Notification болгож харуулаад, хонхыг
       // (NotificationBell) шууд шинэчлэхийг мэдэгдэнэ (45с polling-ийг хүлээлгүй).
+      // Дарахад холбогдох хуудас руу шилжинэ (зөвхөн account realm — staff/
+      // system-admin push-ийн товч мэдэгдэл дээрх зан төлөв энэ ажлын хүрээнд биш).
       onMessage(messaging, (payload) => {
         const n = payload.notification;
         if (n && Notification.permission === "granted") {
-          new Notification(n.title ?? "Carservice", { body: n.body ?? "" });
+          const notif = new Notification(n.title ?? "Carservice", { body: n.body ?? "" });
+          if (target === "account") {
+            const href = accountNotificationHref(payload.data);
+            notif.onclick = () => {
+              window.focus();
+              window.location.assign(href);
+              notif.close();
+            };
+          }
         }
         window.dispatchEvent(new Event("carcare:notification-received"));
       });

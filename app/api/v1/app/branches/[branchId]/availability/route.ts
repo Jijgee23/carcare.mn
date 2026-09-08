@@ -1,4 +1,5 @@
 import { jsonError, jsonOk } from "@/lib/api";
+import { bookingDayBounds } from "@/lib/booking-time";
 import {
   buildDaySlots,
   DEFAULT_SLOT_CAPACITY,
@@ -64,8 +65,9 @@ export async function GET(
     return jsonError(403, "Энэ байгууллага онлайн цаг захиалга хүлээн авахгүй.");
   }
 
-  const [y, m, d] = dateStr.split("-").map(Number);
-  const weekday = weekdayFromDate(new Date(y, m - 1, d));
+  let bounds;
+  try { bounds = bookingDayBounds(dateStr); } catch { return jsonError(400, "Буруу өдөр."); }
+  const weekday = weekdayFromDate(bounds.start);
   const sched = branch.schedules.find((s) => s.weekday === weekday);
   // Тухайн өдрийн хуваарь байвал баримтална; байхгүй бол branch-ийн default цаг.
   const open = sched
@@ -84,8 +86,8 @@ export async function GET(
   const appointmentMinutes = totalMinutes > 0 ? totalMinutes : slotMin;
 
   // Тухайн өдрийн аль хэдийн авсан цагууд.
-  const dayStart = new Date(y, m - 1, d, 0, 0, 0, 0);
-  const dayEnd = new Date(y, m - 1, d + 1, 0, 0, 0, 0);
+  const dayStart = bounds.start;
+  const dayEnd = bounds.end;
   const takenRows = await prisma.appointment.findMany({
     where: {
       branchId: branch.id,
@@ -94,6 +96,7 @@ export async function GET(
     },
     select: {
       requestedAt: true,
+      estimatedDurationMinutes: true,
       categoryId: true,
       categories: { select: { categoryId: true } },
     },

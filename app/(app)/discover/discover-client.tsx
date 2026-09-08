@@ -15,6 +15,8 @@ export type DiscoverBranch = {
   lng: number | null;
   open: boolean;
   hours: string | null;
+  // Бямба/Ням аль нэгэнд ажилладаг эсэх ("Амралтын өдөр ажилладаг" шүүлт).
+  weekend: boolean;
   services: string[];
 };
 
@@ -174,6 +176,9 @@ export function DiscoverClient({
   // Засварын (үйлчилгээ) нэр эсвэл салбарын нэрээр хайх — жагсаалт/газрын
   // зураг хоёуланд хамаарна.
   const [query, setQuery] = useState("");
+  // "Амралтын өдөр ажилладаг" — байгууллага аль нэг салбар нь Бямба/Ням
+  // ажилладаг бол харагдана (city/district-той ижил client-side шүүлт).
+  const [weekendOnly, setWeekendOnly] = useState(false);
 
   // Сонгосон хотод хамаарах дүүрэг/сумууд.
   const districts = useMemo(() => {
@@ -190,7 +195,7 @@ export function DiscoverClient({
   const q = query.trim().toLowerCase();
 
   const visibleOrgs = useMemo(() => {
-    if (!city && !district && !q) return orgs;
+    if (!city && !district && !q && !weekendOnly) return orgs;
     return orgs
       .map((o) => ({
         ...o,
@@ -203,8 +208,12 @@ export function DiscoverClient({
               b.services.some((s) => s.toLowerCase().includes(q))),
         ),
       }))
-      .filter((o) => o.branches.length > 0);
-  }, [orgs, city, district, q]);
+      .filter((o) => o.branches.length > 0)
+      // Org-level шүүлт: аль нэг (дээрх шүүлтийг давсан) салбар нь Бямба/Ням
+      // ажилладаг бол ЭНЭ org-ийн БҮХ салбарыг харуулна (зөвхөн weekend
+      // салбарыг нь биш) — city/district-ээс ялгаатай зарчим.
+      .filter((o) => !weekendOnly || o.branches.some((b) => b.weekend));
+  }, [orgs, city, district, q, weekendOnly]);
 
   const markers = useMemo<Marker[]>(
     () =>
@@ -216,7 +225,12 @@ export function DiscoverClient({
     [visibleOrgs],
   );
 
-  const hasMap = Boolean(apiKey) && markers.length > 0;
+  // Газрын зураг ТОХИРУУЛАГДСАН эсэх (apiKey байгаа эсэх) — тогтмол, шүүлтийн
+  // үр дүнгээс хамаардаггүй тул "Газрын зураг" tab/товч шүүлтийн улмаас 0
+  // илэрцтэй болоход алга болохгүй (үр дүнгүй үед доорхи "Энэ хайлтаар газар
+  // олдсонгүй" мессеж харагдана, товч биш алга болно).
+  const mapConfigured = Boolean(apiKey);
+  const hasMap = mapConfigured && markers.length > 0;
   const [view, setView] = useState<"map" | "list">(hasMap ? "map" : "list");
   const [selected, setSelected] = useState<Marker | null>(null);
   const [mapError, setMapError] = useState(false);
@@ -375,7 +389,7 @@ export function DiscoverClient({
       {/* Tab + шүүлтүүд нэг мөрөнд */}
       <div className="flex items-center gap-2 flex-wrap">
         <div className="inline-flex items-center rounded-xl border border-white/[0.1] p-0.5 bg-white/[0.03] shrink-0">
-          {hasMap ? (
+          {mapConfigured ? (
             <button
               type="button"
               onClick={() => setView("map")}
@@ -390,7 +404,7 @@ export function DiscoverClient({
           <button
             type="button"
             onClick={() => setView("list")}
-            className={`h-10 flex items-center px-4 rounded-lg text-sm font-medium transition-colors ${view === "list" || !hasMap
+            className={`h-10 flex items-center px-4 rounded-lg text-sm font-medium transition-colors ${view === "list" || !mapConfigured
               ? "bg-violet-600 text-white"
               : "text-white/55 hover:text-white/80"
               }`}
@@ -456,6 +470,22 @@ export function DiscoverClient({
             />
           </div>
         ) : null}
+
+        <button
+          type="button"
+          onClick={() => {
+            setWeekendOnly((v) => !v);
+            setSelected(null);
+          }}
+          aria-pressed={weekendOnly}
+          className={`shrink-0 text-xs px-3 h-10 rounded-lg border transition-colors ${
+            weekendOnly
+              ? "bg-[#7c5cff] border-[#7c5cff] text-white"
+              : "border-white/[0.12] bg-white/[0.04] text-white/70 hover:bg-white/[0.08]"
+          }`}
+        >
+          Амралтын өдөр ажилладаг
+        </button>
 
         <span className="text-xs text-white/40 shrink-0 ml-auto">
           {visibleOrgs.length} газар · {markers.length} салбар

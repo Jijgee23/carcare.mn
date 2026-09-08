@@ -1,5 +1,5 @@
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "@/app/generated/prisma/client";
+import { PrismaClient, type Prisma as PrismaTypes } from "@/app/generated/prisma/client";
 import { getTenantContext } from "@/lib/tenant-context";
 
 /**
@@ -43,6 +43,7 @@ type TenantScopedPrismaClient = ReturnType<typeof withTenantContext>;
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: TenantScopedPrismaClient;
+  bookingBaseClient?: PrismaClient;
 };
 
 /**
@@ -88,6 +89,24 @@ function createBaseClient(): PrismaClient {
 
 const baseClient = globalForPrisma.prisma ? undefined : createBaseClient();
 export const prisma = globalForPrisma.prisma ?? withTenantContext(baseClient!);
+
+/** One real connection for reservation lock/read/write, preserving request RLS. */
+export async function withBookingTransaction<T>(
+  tenantId: string,
+  work: (tx: PrismaTypes.TransactionClient) => Promise<T>,
+): Promise<T> {
+  const ctx = getTenantContext();
+  if (!ctx || (ctx.mode === "tenant" && ctx.tenantId !== tenantId)) {
+    throw new Error("Reservation tenant context mismatch");
+  }
+  const client = globalForPrisma.bookingBaseClient ?? baseClient ?? createBaseClient();
+  globalForPrisma.bookingBaseClient = client;
+  return client.$transaction(async (tx) => {
+    // Explicitly set both transaction-local flags; never inherit pool state.
+    await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true), set_config('app.bypass_rls', ${ctx.mode === "bypass" ? "on" : "off"}, true)`;
+    return work(tx);
+  }, { isolationLevel: "ReadCommitted", maxWait: 10_000, timeout: 15_000 });
+}
 
 /**
  * Сервер эхлэхэд (зөвхөн БОДИТ ажиллах үед — `next build`-ийн static

@@ -4,7 +4,7 @@ import {
   serializeAppointmentFee,
 } from "@/lib/appointment-payments";
 import { getApiAccountFromRequest } from "@/lib/auth/account-api-token";
-import { isSlotAvailable, resolveBranchCategoryDurations } from "@/lib/category-duration";
+import { reserveAppointment, ReservationError } from "@/lib/appointment-reservations";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { isFeatureEnabled } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
@@ -14,8 +14,15 @@ export async function GET(req: Request) {
   const account = await getApiAccountFromRequest(req);
   if (!account) return jsonError(401, "Нэвтрэх шаардлагатай.");
 
+  // Finished-and-settled appointments (order fully completed AND fully paid)
+  // belong in service history, not here — see /api/v1/app/orders. An
+  // appointment whose order is completed but not yet fully paid stays here
+  // so the customer still sees it needs payment.
   const appointments = await prisma.appointment.findMany({
-    where: { accountId: account.id },
+    where: {
+      accountId: account.id,
+      NOT: { serviceOrder: { status: "COMPLETED", paymentStatus: "PAID" } },
+    },
     orderBy: { requestedAt: "desc" },
     select: {
       id: true,
@@ -35,6 +42,7 @@ export async function GET(req: Request) {
           id: true,
           number: true,
           status: true,
+          paymentStatus: true,
           startedAt: true,
           completedAt: true,
           items: {
@@ -77,6 +85,7 @@ export async function GET(req: Request) {
           id: a.serviceOrder.id,
           number: a.serviceOrder.number,
           status: a.serviceOrder.status,
+          paymentStatus: a.serviceOrder.paymentStatus,
           startedAt: a.serviceOrder.startedAt,
           completedAt: a.serviceOrder.completedAt,
           items: a.serviceOrder.items,
@@ -149,33 +158,6 @@ export async function POST(req: Request) {
     return jsonError(403, "Энэ байгууллага онлайн цаг захиалга хүлээн авахгүй.");
   }
 
-  // Ангилал — заавал биш; салбарт хамаарах (эсвэл салбаргүй) идэвхтэйг л авна.
-  // Буруу/өөр тенантын id-г чимээгүй хасна (энэ салбарт санал болгож буйг л
-  // авна). Доорх давхцлын шалгалтад ШИНЭ захиалгын жинхэнэ хугацааг мэдэх
-  // шаардлагатай тул isSlotAvailable-аас ӨМНӨ шийднэ.
-  let validCategoryIds: string[] = [];
-  if (requestedCategoryIds.length) {
-    const cats = await prisma.category.findMany({
-      where: {
-        id: { in: requestedCategoryIds },
-        tenantId: branch.tenantId,
-        isActive: true,
-        OR: [{ branches: { some: { id: branch.id } } }, { branches: { none: {} } }],
-      },
-      select: { id: true },
-    });
-    validCategoryIds = cats.map((c) => c.id);
-  }
-  // Ганц `categoryId` back-compat-д — эхний хүчинтэй ангилал.
-  const categoryId: string | null = validCategoryIds[0] ?? null;
-  const { totalMinutes: newDurationMinutes } = validCategoryIds.length
-    ? await resolveBranchCategoryDurations(prisma, branch.id, validCategoryIds)
-    : { totalMinutes: 0 };
-
-  if (!(await isSlotAvailable(prisma, branch.id, when, newDurationMinutes))) {
-    return jsonError(409, "Энэ цаг дүүрсэн байна. Өөр цаг сонгоно уу.");
-  }
-
   if (accountVehicleId) {
     const owned = await prisma.accountVehicle.findFirst({
       where: { id: accountVehicleId, accountId: account.id },
@@ -184,22 +166,16 @@ export async function POST(req: Request) {
     if (!owned) return jsonError(400, "Машин олдсонгүй.");
   }
 
-  const appt = await prisma.appointment.create({
-    data: {
-      tenantId: branch.tenantId,
-      branchId: branch.id,
-      accountId: account.id,
-      accountVehicleId,
-      categoryId,
-      categories: validCategoryIds.length
-        ? { create: validCategoryIds.map((id) => ({ categoryId: id })) }
-        : undefined,
-      requestedAt: when,
-      note: note || null,
-      status: "PENDING",
-    },
-    select: { id: true, status: true, requestedAt: true },
-  });
+  let appt;
+  try {
+    appt = await reserveAppointment({
+      tenantId: branch.tenantId, branchId: branch.id, accountId: account.id,
+      accountVehicleId, categoryIds: requestedCategoryIds, requestedAt: when, note: note || null,
+    });
+  } catch (error) {
+    if (error instanceof ReservationError) return jsonError(error.status, error.message);
+    throw error;
+  }
 
   // Цаг захиалгын хураамж — идэвхтэй бол QPay invoice татна. Доголдвол ч
   // захиалга үүсэхийг тасалдуулахгүй (fee талбарууд FAILED-тэй үлдэж,

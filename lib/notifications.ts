@@ -72,7 +72,7 @@ export const NOTIFICATION_REGISTRY: Record<NotificationType, NotificationDef> = 
       body: "Таны захиалсан цаг баталгаажлаа.",
       data: { type: "appointment_confirmed", appointmentId: i.appointmentId ?? "" },
     }),
-    href: () => "/account",
+    href: (d) => appointmentHref(d),
   },
   appointment_rejected: {
     realm: "account",
@@ -81,7 +81,7 @@ export const NOTIFICATION_REGISTRY: Record<NotificationType, NotificationDef> = 
       body: "Таны захиалсан цагийг байгууллага батлаагүй байна.",
       data: { type: "appointment_rejected", appointmentId: i.appointmentId ?? "" },
     }),
-    href: () => "/account",
+    href: (d) => appointmentHref(d),
   },
   appointment_reminder: {
     realm: "account",
@@ -94,7 +94,7 @@ export const NOTIFICATION_REGISTRY: Record<NotificationType, NotificationDef> = 
         ? `appointment_reminder:${i.appointmentId}`
         : undefined,
     }),
-    href: () => "/account",
+    href: (d) => appointmentHref(d),
   },
   appointment_created: {
     realm: "staff",
@@ -130,7 +130,7 @@ export const NOTIFICATION_REGISTRY: Record<NotificationType, NotificationDef> = 
       body: "Таны хүссэн цагт байгууллага хариу өгөөгүй тул захиалга автоматаар цуцлагдлаа.",
       data: { type: "appointment_expired", appointmentId: i.appointmentId ?? "" },
     }),
-    href: () => "/account",
+    href: (d) => appointmentHref(d),
   },
   subscription_expiring: {
     realm: "staff",
@@ -160,7 +160,9 @@ export const NOTIFICATION_REGISTRY: Record<NotificationType, NotificationDef> = 
       body: i.message ?? "",
       data: { type: "feedback_replied_account", feedbackId: i.feedbackId ?? "" },
     }),
-    href: () => "/account",
+    // No customer-facing feedback detail page exists (mirrors the mobile
+    // app's D-031 fallback) — land on the notifications list instead.
+    href: () => "/account/notifications",
   },
   tenant_created: {
     realm: "system",
@@ -190,9 +192,16 @@ export const NOTIFICATION_REGISTRY: Record<NotificationType, NotificationDef> = 
       body: i.body ?? "",
       data: { type: "broadcast_account" },
     }),
-    href: () => "/account",
+    href: () => "/account/notifications",
   },
 };
+
+/** `appointmentId` байвал дэлгэрэнгүй хуудас руу, байхгүй бол "Миний цагууд" руу. */
+function appointmentHref(data: Record<string, string>): string {
+  return data.appointmentId
+    ? `/account/appointments/${data.appointmentId}`
+    : "/account";
+}
 
 // Клиент рүү дамжуулах хялбаршуулсан хэлбэр (server action-ууд буцаана).
 export type NotificationItem = {

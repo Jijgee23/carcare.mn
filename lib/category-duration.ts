@@ -1,5 +1,24 @@
-import type { PrismaTransactionClient } from "@/lib/prisma";
+import { bookingDateKey, bookingDayBounds } from "@/lib/booking-time";
+import { peakOccupancy } from "@/lib/schedule-capacity";
 import { DEFAULT_SLOT_CAPACITY, DEFAULT_SLOT_MINUTES } from "@/lib/appointment-slots";
+// Concrete read shapes accept both the RLS-extended client and a real transaction
+// without casting away Prisma's generic extension types.
+type PrismaTransactionClient = {
+  category: { findMany(args: {
+    where: { id: { in: string[] } }; select: { id: true; durationMinutes: true };
+  }): Promise<{ id: string; durationMinutes: number | null }[]> };
+  branchCategoryDuration: { findMany(args: {
+    where: { branchId: string; categoryId: { in: string[] } };
+    select: { categoryId: true; durationMinutes: true };
+  }): Promise<{ categoryId: string; durationMinutes: number }[]> };
+  branch: { findUnique(args: {
+    where: { id: string }; select: { slotMinutes: true; slotCapacity: true };
+  }): Promise<{ slotMinutes: number | null; slotCapacity: number | null } | null> };
+  appointment: { findMany(args: {
+    where: { branchId: string; status: { in: ("PENDING" | "CONFIRMED")[] }; requestedAt: { gte: Date; lt: Date } };
+    select: { requestedAt: true; estimatedDurationMinutes: true; categoryId: true; categories: { select: { categoryId: true } } };
+  }): Promise<TakenAppointmentRow[]> };
+};
 
 // Ангилалд хугацаа тохируулаагүй үеийн эцсийн fallback (минут). Slot-ийн
 // анхдагч урттай санаатай нийцүүлэв — booking v2-ийн шатлал:
@@ -144,6 +163,7 @@ export async function resolveBranchCategoryDurations(
 
 /** Аль хэдийн авсан нэг захиалгын минимум мэдээлэл — хугацааг шийдэхэд хэрэгтэй. */
 export type TakenAppointmentRow = {
+  estimatedDurationMinutes?: number | null;
   requestedAt: Date;
   categoryId: string | null;
   categories: { categoryId: string }[];
@@ -182,7 +202,10 @@ export async function resolveTakenAppointmentIntervals(
     const total = ids.reduce((sum, id) => sum + (minutesById.get(id) ?? 0), 0);
     return {
       start: a.requestedAt,
-      durationMinutes: total > 0 ? total : fallbackMinutes,
+      durationMinutes: a.estimatedDurationMinutes != null &&
+        Number.isInteger(a.estimatedDurationMinutes) && a.estimatedDurationMinutes > 0
+        ? a.estimatedDurationMinutes
+        : total > 0 ? total : fallbackMinutes,
     };
   });
 }
@@ -219,8 +242,7 @@ export async function isSlotAvailable(
 
   // Тухайн өдрийн БҮХ идэвхтэй захиалгыг авна (зөвхөн `when`-ий орчмынхыг биш) —
   // эрт эхэлсэн ч урт хугацаатай захиалга хожуу цагтай давхцаж болно.
-  const dayStart = new Date(when.getFullYear(), when.getMonth(), when.getDate());
-  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60000);
+  const { start: dayStart, end: dayEnd } = bookingDayBounds(bookingDateKey(when));
   const candidates = await client.appointment.findMany({
     where: {
       branchId,
@@ -229,6 +251,7 @@ export async function isSlotAvailable(
     },
     select: {
       requestedAt: true,
+      estimatedDurationMinutes: true,
       categoryId: true,
       categories: { select: { categoryId: true } },
     },
@@ -239,10 +262,9 @@ export async function isSlotAvailable(
     candidates,
     slotMin,
   );
-  const count = intervals.filter(
-    (iv) =>
-      iv.start.getTime() < newEndMs &&
-      iv.start.getTime() + iv.durationMinutes * 60000 > newStartMs,
-  ).length;
+  const count = peakOccupancy(intervals.map((iv) => ({
+    startMs: iv.start.getTime(),
+    endMs: iv.start.getTime() + iv.durationMinutes * 60000,
+  })), newStartMs, newEndMs);
   return count < cap;
 }

@@ -21,6 +21,11 @@ export async function GET(req: Request) {
   const ownedVehicleIds = await ownedVehicleIdsForAccount(account.id, account.phone);
 
   const where: Prisma.ServiceOrderWhereInput = {
+    // History шиг зөвхөн дууссан ажлыг харуулна — SCHEDULED/IN_PROGRESS/
+    // WAITING_PARTS хараахан идэвхтэй, /api/v1/app/appointments дээр харагдана.
+    // Төлбөрийн төлөв нэмэлт шүүлт биш: төлөгдөөгүй ч дууссан ажил энд
+    // харагдана (chip нь unpaid/partial/paid-г тусад нь харуулна).
+    status: "COMPLETED",
     OR: [
       { customer: { accountId: account.id } },
       ...(ownedVehicleIds.length

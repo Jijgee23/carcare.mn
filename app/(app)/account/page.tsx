@@ -50,8 +50,14 @@ function dateParts(d: Date): { date: string; time: string; weekday: string } {
 export default async function AccountPage() {
   const account = await requireAccount();
 
+  // Дууссан + бүрэн төлөгдсөн захиалга энд биш, Үйлчилгээний түүхэд харагдана
+  // (харах: app/account/history). Дуусаад ч төлөгдөөгүй бол энд үлдэнэ, учир
+  // нь хэрэглэгч төлбөрөө хараахан хийгээгүй байгааг мэдэх ёстой.
   const appointments = await prisma.appointment.findMany({
-    where: { accountId: account.id },
+    where: {
+      accountId: account.id,
+      NOT: { serviceOrder: { status: "COMPLETED", paymentStatus: "PAID" } },
+    },
     orderBy: { requestedAt: "desc" },
     include: {
       tenant: { select: { name: true, slug: true } },
@@ -131,24 +137,28 @@ export default async function AccountPage() {
                   className={`rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-3 flex items-stretch gap-3 ${canCancel ? "" : "opacity-70"
                     }`}
                 >
-                  {/* Огнооны chip */}
-                  <div className="shrink-0 w-14 rounded-lg bg-[var(--oc-panel2)] border border-[var(--oc-line2)] flex flex-col items-center justify-center py-1.5">
+                  {/* Огнооны chip + мэдээлэл — дэлгэрэнгүй хуудас руу линк.
+                      Цуцлах/төлбөрийн товч тусдаа, линк доторх линк үүсгэхгүй. */}
+                  <Link
+                    href={`/account/appointments/${a.id}`}
+                    className="shrink-0 w-14 rounded-lg bg-[var(--oc-panel2)] border border-[var(--oc-line2)] flex flex-col items-center justify-center py-1.5 hover:border-[var(--oc-accent)] transition-colors"
+                  >
                     <div className="text-sm font-bold tabular-nums leading-tight">
                       {dt.time}
                     </div>
                     <div className="text-[11px] text-[var(--oc-muted3)] tabular-nums">
                       {dt.date}
                     </div>
-                  </div>
+                  </Link>
 
-                  <div className="min-w-0 flex-1 flex flex-col justify-center">
+                  <Link
+                    href={`/account/appointments/${a.id}`}
+                    className="min-w-0 flex-1 flex flex-col justify-center"
+                  >
                     <div className="flex items-center gap-2 flex-wrap">
-                      <Link
-                        href={`/org/${a.tenant.slug}`}
-                        className="font-semibold text-[var(--oc-ink)] hover:text-[var(--oc-accent)] transition-colors truncate"
-                      >
+                      <span className="font-semibold text-[var(--oc-ink)] truncate">
                         {a.tenant.name}
-                      </Link>
+                      </span>
                       <span
                         className={`font-plex-mono text-[11px] px-2.5 py-1 rounded-full ${APPOINTMENT_STATUS_BADGE[a.status]}`}
                       >
@@ -164,7 +174,7 @@ export default async function AccountPage() {
                         {a.note}
                       </div>
                     ) : null}
-                  </div>
+                  </Link>
 
                   <div className="shrink-0 flex flex-col items-end justify-center gap-1.5">
                     {a.payment || a.feeAmount ? (
