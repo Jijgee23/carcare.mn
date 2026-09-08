@@ -11,6 +11,7 @@ import { DatePicker } from "@/app/_components/date-picker";
 import { Btn, BtnLink, SquareAddButton } from "@/app/_components/landing-ops-ui";
 import { Select } from "@/app/_components/select";
 import { customerLabel } from "@/lib/customers";
+import { DurationHmInput } from "@/app/dashboard/services/duration-input";
 import {
   type CreatedCustomer,
   InlineCustomerForm,
@@ -330,6 +331,25 @@ export function OrderForm({
             error={Boolean(fe.scheduledAt)}
           />
         </Field>
+
+        {!isEdit && !appointmentId ? (
+          // Цаг захиалгаас үүссэн бол хугацааны тооцоолол автоматаар удамшина
+          // (D-041 маягийн зарчим) — энд зөвхөн шууд ирсэн (walk-in) захиалгад
+          // л ойролцоо хугацааг гараар оруулна. Хадгалагдсаны дараа энэ утга
+          // өөрчлөгддөггүй (immutable анхны тооцоолол), тул засах маягтад алга.
+          <Field
+            label="Ойролцоо хугацаа"
+            htmlFor="durationHours"
+            hint="заавал биш"
+            error={fe.durationMinutes}
+            className={FIELD_MW}
+          >
+            <DurationHmInput
+              defaultMinutes={null}
+              invalid={Boolean(fe.durationMinutes)}
+            />
+          </Field>
+        ) : null}
       </div>
 
       {vehicles.find((v) => v.id === vehicleId)?.isPostpaid ? (

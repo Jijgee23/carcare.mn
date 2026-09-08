@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef } from "react";
 import {
   type AppointmentActionState,
   confirmAppointment,
+  markAppointmentArrived,
   markAppointmentNoShow,
   rejectAppointment,
 } from "@/app/_actions/appointments";
@@ -69,6 +70,31 @@ export function AppointmentConfirmReject({ appointmentId }: { appointmentId: str
         </button>
       </form>
     </>
+  );
+}
+
+export function AppointmentArrivedButton({ appointmentId }: { appointmentId: string }) {
+  const toast = useToast();
+  const [state, formAction, pending] = useActionState<
+    AppointmentActionState,
+    FormData
+  >(markAppointmentArrived, null);
+
+  const handled = useRef<AppointmentActionState>(null);
+  useEffect(() => {
+    if (!state || state === handled.current) return;
+    handled.current = state;
+    if (state.ok) toast.success(state.message ?? "Амжилттай.");
+    else toast.error(state.message ?? "Алдаа гарлаа.");
+  }, [state, toast]);
+
+  return (
+    <form action={formAction}>
+      <input type="hidden" name="id" value={appointmentId} />
+      <Btn type="submit" variant="ghost" size="sm" disabled={pending}>
+        {pending ? "Тэмдэглэж байна..." : "Ирсэн"}
+      </Btn>
+    </form>
   );
 }
 

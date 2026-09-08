@@ -13,6 +13,7 @@ import {
   workingBranchScopeId,
 } from "@/lib/auth/roles";
 import { assertActiveSubscription } from "@/lib/subscription-server";
+import { parseDurationInput } from "@/lib/category-duration";
 import {
   ITEM_KINDS,
   ORDER_STATUS_TRANSITIONS,
@@ -204,6 +205,8 @@ async function validateRefs(
             accountId: true,
             vehicleId: true,
             serviceOrderId: true,
+            estimatedDurationMinutes: true,
+            arrivedAt: true,
           },
         })
       : Promise.resolve(null),
@@ -259,6 +262,8 @@ async function validateRefs(
     vehicleIsPostpaid: vehicle?.isPostpaid ?? false,
     accountVehicleToLink,
     appointmentAccountId: appointment?.accountId ?? null,
+    appointmentEstimatedDurationMinutes: appointment?.estimatedDurationMinutes ?? null,
+    appointmentNeedsArrival: Boolean(appointment) && !appointment?.arrivedAt,
   };
 }
 
@@ -274,16 +279,33 @@ export async function createOrderAction(
   }
 
   const { data, errors } = parseOrderInput(formData);
+  const appointmentId = s(formData, "appointmentId") || null;
+  // Walk-in (цаг захиалгагүй) захиалгад л гараар ойролцоо хугацаа авна —
+  // цаг захиалгаас үүссэн бол хугацаа автоматаар удамшина (доор), тул энд
+  // давхар асуухгүй.
+  let walkInEstimatedDurationMinutes: number | null = null;
+  if (!appointmentId) {
+    const durationParse = parseDurationInput(
+      s(formData, "durationHours"),
+      s(formData, "durationMinutes"),
+    );
+    if (durationParse.ok) {
+      walkInEstimatedDurationMinutes = durationParse.minutes;
+    } else {
+      errors.durationMinutes = durationParse.error;
+    }
+  }
   if (Object.keys(errors).length > 0) {
     return { ok: false, fieldErrors: errors };
   }
 
-  const appointmentId = s(formData, "appointmentId") || null;
   const {
     errors: refErrors,
     vehicleIsPostpaid,
     accountVehicleToLink,
     appointmentAccountId,
+    appointmentEstimatedDurationMinutes,
+    appointmentNeedsArrival,
   } = await validateRefs(
     user.tenantId,
     data,
@@ -357,6 +379,12 @@ export async function createOrderAction(
             scheduledAt: data.scheduledAt,
             notes: data.notes,
             isPostpaid: vehicleIsPostpaid,
+            // Цаг захиалгаас удамшуулсан анхны тооцоолол (D-041 маягийн зарчим) —
+            // категори өөрчлөгдвөл энэ хуучин захиалгад нөлөөлөхгүй. Walk-in
+            // захиалгад ажилтны гараар оруулсан ойролцоо хугацааг хадгална.
+            estimatedDurationMinutes: appointmentId
+              ? appointmentEstimatedDurationMinutes
+              : walkInEstimatedDurationMinutes,
           },
           select: { id: true },
         });
@@ -374,6 +402,10 @@ export async function createOrderAction(
               serviceOrderId: order.id,
               status: "CONFIRMED",
               ...(accountVehicleToLink ? { vehicleId: data.vehicleId } : {}),
+              // Захиалга үүсгэсэн гэдэг нь машин ирсэн гэсэн үг — тусад нь
+              // "Ирсэн" товч дарах шаардлагагүй, харин аль хэдийн тэмдэглэсэн
+              // бол (жинхэнэ ирсэн цагийг хадгалахын тулд) дарж бичихгүй.
+              ...(appointmentNeedsArrival ? { arrivedAt: new Date() } : {}),
             },
           });
           if (linked.count !== 1) {
@@ -553,7 +585,12 @@ export async function changeOrderStatusAction(
 
   const order = await prisma.serviceOrder.findFirst({
     where: { id, tenantId: user.tenantId },
-    select: { id: true, status: true },
+    select: {
+      id: true,
+      status: true,
+      startedAt: true,
+      estimatedDurationMinutes: true,
+    },
   });
   if (!order) return { ok: false, message: "Засварын хуудас олдсонгүй." };
 
@@ -582,11 +619,31 @@ export async function changeOrderStatusAction(
   }
 
   const updates: Prisma.ServiceOrderUpdateInput = { status: next };
+  const startedAt =
+    next === "IN_PROGRESS" && order.status === "SCHEDULED"
+      ? new Date()
+      : order.startedAt;
   if (next === "IN_PROGRESS" && order.status === "SCHEDULED") {
-    updates.startedAt = new Date();
+    updates.startedAt = startedAt;
   }
   if (next === "COMPLETED") {
     updates.completedAt = new Date();
+  }
+  // Хүчин чадлын эзэмшил: идэвхтэй ажил хүчин чадал эзэлнэ; дууссан/цуцлагдсан
+  // ажил тэр даруй суллана. Сэлбэг хүлээх рүү шилжихэд ажилтан өөрөө тодорхой
+  // сонгоно ("occupiesCapacity" талбар, status-controls.tsx-ийн диалогоос) —
+  // ирээгүй бол консерватив анхны утга true (хуучин дуудагчидтай нийцтэй).
+  if (next === "COMPLETED" || next === "CANCELLED") {
+    updates.occupiesCapacity = false;
+  } else if (next === "WAITING_PARTS" && formData.has("occupiesCapacity")) {
+    updates.occupiesCapacity = s(formData, "occupiesCapacity") === "true";
+  } else {
+    updates.occupiesCapacity = true;
+  }
+  if (next === "IN_PROGRESS" && startedAt && order.estimatedDurationMinutes) {
+    updates.expectedFinishAt = new Date(
+      startedAt.getTime() + order.estimatedDurationMinutes * 60000,
+    );
   }
 
   await prisma.$transaction(async (tx) => {
@@ -613,6 +670,72 @@ export async function changeOrderStatusAction(
   revalidatePath(`/dashboard/orders/${id}`);
   revalidatePath("/dashboard");
   return { ok: true, message: "Статус шинэчлэгдлээ." };
+}
+
+// --- CAPACITY (WAITING_PARTS-с гадна, статус солихгүйгээр) ---------------
+
+// Сэлбэг хүлээж буй захиалгын ажлын байрны эзэмшлийг статус солихгүйгээр
+// суллах/сэргээх ("release/resume workspace"). Зөвхөн WAITING_PARTS үед л
+// хамаатай — бусад статусад occupiesCapacity нь changeOrderStatusAction-оор
+// л удирдагдана (COMPLETED/CANCELLED → false, бусад → true).
+export async function setOrderCapacityAction(
+  _prev: OrderActionState,
+  formData: FormData,
+): Promise<OrderActionState> {
+  let user;
+  try {
+    user = await authorize("edit");
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
+  const id = s(formData, "id");
+  const occupiesCapacity = s(formData, "occupiesCapacity") === "true";
+  if (!id) return { ok: false, message: "Буруу хүсэлт." };
+
+  const order = await prisma.serviceOrder.findFirst({
+    where: { id, tenantId: user.tenantId },
+    select: { id: true, status: true, occupiesCapacity: true },
+  });
+  if (!order) return { ok: false, message: "Засварын хуудас олдсонгүй." };
+  if (order.status !== "WAITING_PARTS") {
+    return {
+      ok: false,
+      message: "Зөвхөн сэлбэг хүлээж буй захиалгад энэ үйлдлийг хийх боломжтой.",
+    };
+  }
+  if (order.occupiesCapacity === occupiesCapacity) {
+    return { ok: true, message: "Өөрчлөлт алга." };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.serviceOrder.update({
+      where: { id: order.id },
+      data: { occupiesCapacity },
+    });
+    await logAudit(
+      {
+        tenantId: user.tenantId,
+        userId: user.id,
+        entity: "ServiceOrder",
+        entityId: order.id,
+        action: "STATUS_CHANGE",
+        summary: occupiesCapacity
+          ? "Ажлын байрны эзэмшлийг сэргээв"
+          : "Ажлын байрыг суллав",
+        before: { occupiesCapacity: order.occupiesCapacity },
+        after: { occupiesCapacity },
+      },
+      tx,
+    );
+  });
+
+  revalidatePath("/dashboard/orders");
+  revalidatePath(`/dashboard/orders/${id}`);
+  revalidatePath("/dashboard");
+  return {
+    ok: true,
+    message: occupiesCapacity ? "Ажлын байрыг сэргээлээ." : "Ажлын байрыг суллалаа.",
+  };
 }
 
 // --- PAYMENT STATUS -------------------------------------------------------

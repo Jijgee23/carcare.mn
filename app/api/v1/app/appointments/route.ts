@@ -45,12 +45,21 @@ export async function GET(req: Request) {
           paymentStatus: true,
           startedAt: true,
           completedAt: true,
+          estimatedDurationMinutes: true,
+          expectedFinishAt: true,
+          totalAmount: true,
+          paidAmount: true,
+          vehicle: { select: { plate: true, make: true, model: true, year: true } },
           items: {
             orderBy: { createdAt: "asc" },
             select: {
               id: true,
+              kind: true,
               description: true,
               status: true,
+              quantity: true,
+              unitPrice: true,
+              total: true,
             },
           },
         },
@@ -88,7 +97,26 @@ export async function GET(req: Request) {
           paymentStatus: a.serviceOrder.paymentStatus,
           startedAt: a.serviceOrder.startedAt,
           completedAt: a.serviceOrder.completedAt,
-          items: a.serviceOrder.items,
+          estimatedDurationMinutes: a.serviceOrder.estimatedDurationMinutes,
+          expectedFinishAt: a.serviceOrder.expectedFinishAt,
+          totalAmount:
+            a.serviceOrder.totalAmount != null
+              ? Number.parseFloat(a.serviceOrder.totalAmount.toString())
+              : null,
+          paidAmount:
+            a.serviceOrder.paidAmount != null
+              ? Number.parseFloat(a.serviceOrder.paidAmount.toString())
+              : null,
+          vehicle: a.serviceOrder.vehicle,
+          items: a.serviceOrder.items.map((it) => ({
+            id: it.id,
+            kind: it.kind,
+            description: it.description,
+            status: it.status,
+            quantity: Number.parseFloat(it.quantity.toString()),
+            unitPrice: Number.parseFloat(it.unitPrice.toString()),
+            total: Number.parseFloat(it.total.toString()),
+          })),
         }
       : null,
     payment: serializeAppointmentFee(a),

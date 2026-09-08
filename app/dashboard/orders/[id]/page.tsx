@@ -491,6 +491,8 @@ export default async function OrderDetailPage({
                 orderId={order.id}
                 transitions={allowedTransitions}
                 disabled={!canEditOrder}
+                currentStatus={order.status as OrderStatus}
+                occupiesCapacity={order.occupiesCapacity}
               />
             </div>
           ) : null}

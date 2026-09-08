@@ -11,7 +11,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // Даваа эхэлсэн долоо хоногийн өдрийн товч нэр.
 export const WEEKDAY_LABELS = ["Да", "Мя", "Лх", "Пү", "Ба", "Бя", "Ня"];
 
-export type CalendarInterval = "week" | "month";
+export type CalendarInterval = "day" | "week" | "month";
 
 export type CalendarDay = {
   key: string; // YYYY-MM-DD (local)
@@ -72,7 +72,8 @@ export function resolveCalendar(sp: {
   interval?: string;
   anchor?: string;
 }): ResolvedCalendar {
-  const interval: CalendarInterval = sp.interval === "month" ? "month" : "week";
+  const interval: CalendarInterval =
+    sp.interval === "month" ? "month" : sp.interval === "day" ? "day" : "week";
   const today = startOfDay(new Date());
   const todayKey = dateKey(today);
   const anchor = parseAnchor(sp.anchor);
@@ -83,6 +84,19 @@ export function resolveCalendar(sp: {
     inMonth: anchorMonth === undefined ? true : date.getMonth() === anchorMonth,
     isToday: dateKey(date) === todayKey,
   });
+
+  if (interval === "day") {
+    return {
+      interval,
+      rangeStart: anchor,
+      rangeEnd: addDays(anchor, 1),
+      days: [mk(anchor)],
+      label: `${anchor.getFullYear()}/${anchor.getMonth() + 1}/${anchor.getDate()}`,
+      prevAnchorKey: dateKey(addDays(anchor, -1)),
+      nextAnchorKey: dateKey(addDays(anchor, 1)),
+      todayKey,
+    };
+  }
 
   if (interval === "week") {
     const start = mondayOf(anchor);

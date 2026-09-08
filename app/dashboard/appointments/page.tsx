@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Prisma } from "@/app/generated/prisma/client";
 import {
+  AppointmentArrivedButton,
   AppointmentConfirmReject,
   AppointmentNoShowButton,
 } from "./appointment-row-actions";
@@ -312,7 +313,12 @@ export default async function AppointmentsPage({
                               >
                                 Засварын хуудас үүсгэх →
                               </BtnLink>
-                              <AppointmentNoShowButton appointmentId={a.id} />
+                              {!a.arrivedAt ? (
+                                <>
+                                  <AppointmentArrivedButton appointmentId={a.id} />
+                                  <AppointmentNoShowButton appointmentId={a.id} />
+                                </>
+                              ) : null}
                             </>
                           ) : null}
                         </div>

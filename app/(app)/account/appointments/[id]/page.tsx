@@ -8,11 +8,18 @@ import {
 } from "@/lib/appointments";
 import { requireAccount } from "@/lib/auth/account";
 import {
+  ITEM_KIND_BADGE,
+  ITEM_KIND_LABEL,
   ORDER_STATUS_BADGE,
   ORDER_STATUS_LABEL,
+  PAYMENT_STATUS_BADGE,
+  PAYMENT_STATUS_LABEL,
   SERVICE_ITEM_STATUS_BADGE,
   SERVICE_ITEM_STATUS_LABEL,
+  formatTugrik,
+  type ItemKind,
   type OrderStatus,
+  type PaymentStatus,
   type ServiceItemStatus,
 } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
@@ -23,6 +30,30 @@ export const metadata = {
 
 export const dynamic = "force-dynamic";
 
+// react-hooks/purity: `new Date()`/`Date.now()` дуудлагыг component-ийн
+// render биед шууд бичихгүй (lib/appointments-calendar.ts-ийн ижил тайлбарыг
+// үз) — тусдаа module-level helper-т шилжүүлнэ.
+function computeIsDelayed(order: {
+  status: string;
+  expectedFinishAt: Date | null;
+} | null): boolean {
+  return (
+    order != null &&
+    order.status !== "COMPLETED" &&
+    order.status !== "CANCELLED" &&
+    order.expectedFinishAt != null &&
+    order.expectedFinishAt.getTime() < Date.now()
+  );
+}
+
+function fmtEstimatedMinutes(total: number): string {
+  const hours = Math.floor(total / 60);
+  const minutes = total % 60;
+  if (hours && minutes) return `${hours} ц ${minutes} мин`;
+  if (hours) return `${hours} ц`;
+  return `${minutes} мин`;
+}
+
 function fmtDateTime(d: Date): string {
   return d.toLocaleString("mn-MN", {
     year: "numeric",
@@ -32,6 +63,11 @@ function fmtDateTime(d: Date): string {
     minute: "2-digit",
     hour12: false,
   });
+}
+
+function qtyText(q: string): string {
+  const n = Number.parseFloat(q);
+  return Number.isFinite(n) ? n.toLocaleString("mn-MN", { maximumFractionDigits: 3 }) : q;
 }
 
 export default async function AccountAppointmentDetailPage({
@@ -50,6 +86,9 @@ export default async function AccountAppointmentDetailPage({
       category: { select: { name: true } },
       categories: { select: { category: { select: { name: true } } } },
       payment: { select: { amount: true, currency: true } },
+      accountVehicle: {
+        select: { vehicle: { select: { plate: true, make: true, model: true, year: true } } },
+      },
       serviceOrder: {
         select: {
           id: true,
@@ -58,9 +97,22 @@ export default async function AccountAppointmentDetailPage({
           paymentStatus: true,
           startedAt: true,
           completedAt: true,
+          estimatedDurationMinutes: true,
+          expectedFinishAt: true,
+          totalAmount: true,
+          paidAmount: true,
+          vehicle: { select: { plate: true, make: true, model: true, year: true } },
           items: {
             orderBy: { createdAt: "asc" },
-            select: { id: true, description: true, status: true },
+            select: {
+              id: true,
+              kind: true,
+              description: true,
+              status: true,
+              quantity: true,
+              unitPrice: true,
+              total: true,
+            },
           },
         },
       },
@@ -85,6 +137,13 @@ export default async function AccountAppointmentDetailPage({
   const settled =
     appt.serviceOrder?.status === "COMPLETED" &&
     appt.serviceOrder?.paymentStatus === "PAID";
+  // Тооцоолсон дуусах хугацаанаас хэтэрсэн ч ажил хараахан дуусаагүй эсэх —
+  // completedAt-тай андуурч болохгүй (carcare_customer_mobile-ийн isDelayed-тай ижил).
+  const isDelayed = computeIsDelayed(appt.serviceOrder);
+  // Захиалга үүссэний дараа тэнд snapshot хийгдсэн машиныг тэргүүн ээлжид
+  // харуулна (баталгаажсаны дараа өөрчлөгдсөн байж болзошгүй тул) — байхгүй
+  // бол (захиалга хараахан үүсээгүй) хэрэглэгчийн сонгосон accountVehicle.
+  const vehicle = appt.serviceOrder?.vehicle ?? appt.accountVehicle?.vehicle ?? null;
 
   return (
     <div className="w-full max-w-full flex flex-col gap-5">
@@ -95,6 +154,12 @@ export default async function AccountAppointmentDetailPage({
             {appt.branch.name}
             {appt.branch.phone ? ` · ${appt.branch.phone}` : ""}
           </p>
+          {vehicle ? (
+            <p className="text-[var(--oc-muted2)] text-sm mt-0.5">
+              {vehicle.plate} · {vehicle.make} {vehicle.model}
+              {vehicle.year ? ` · ${vehicle.year}` : ""}
+            </p>
+          ) : null}
         </div>
         <BtnLink href="/account" variant="ghost" className="shrink-0">
           ← Буцах
@@ -144,27 +209,87 @@ export default async function AccountAppointmentDetailPage({
               >
                 {ORDER_STATUS_LABEL[appt.serviceOrder.status as OrderStatus]}
               </span>
+              {/* Захиалгын өөрийн төлбөрийн төлөв — доорх цаг захиалгын
+                  хураамжаас (feeLabel) тусдаа ойлголт. */}
+              <span
+                className={`font-plex-mono text-[11px] px-2.5 py-1 rounded-full ${PAYMENT_STATUS_BADGE[appt.serviceOrder.paymentStatus as PaymentStatus]}`}
+              >
+                {PAYMENT_STATUS_LABEL[appt.serviceOrder.paymentStatus as PaymentStatus]}
+              </span>
               <span className="text-xs text-[var(--oc-muted3)] font-plex-mono">
                 №{appt.serviceOrder.number}
               </span>
             </div>
+            {appt.serviceOrder.estimatedDurationMinutes != null ||
+            appt.serviceOrder.expectedFinishAt != null ? (
+              <div className="flex flex-col gap-0.5">
+                {appt.serviceOrder.estimatedDurationMinutes != null ? (
+                  <span className="text-xs text-[var(--oc-muted2)]">
+                    Ойролцоо хугацаа: {fmtEstimatedMinutes(appt.serviceOrder.estimatedDurationMinutes)}
+                  </span>
+                ) : null}
+                {appt.serviceOrder.expectedFinishAt ? (
+                  <span
+                    className={`text-xs ${isDelayed ? "text-red-400 font-medium" : "text-[var(--oc-muted2)]"}`}
+                  >
+                    {isDelayed ? "Дуусах ёстой байсан" : "Дуусах хугацаа"}:{" "}
+                    {fmtDateTime(appt.serviceOrder.expectedFinishAt)}
+                  </span>
+                ) : null}
+                {isDelayed ? (
+                  <span className="text-xs text-red-400 font-medium">
+                    Төлөвлөснөөс хожимдож байна
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
             {appt.serviceOrder.items.length ? (
               <div className="flex flex-col divide-y divide-[var(--oc-line)]">
                 {appt.serviceOrder.items.map((it) => (
-                  <div
-                    key={it.id}
-                    className="flex items-center justify-between gap-3 py-2"
-                  >
-                    <span className="text-sm text-[var(--oc-ink2)]">
-                      {it.description}
-                    </span>
+                  <div key={it.id} className="flex items-start gap-3 py-2.5">
                     <span
-                      className={`shrink-0 font-plex-mono text-[10px] px-1.5 py-0.5 rounded-full ${SERVICE_ITEM_STATUS_BADGE[it.status as ServiceItemStatus]}`}
+                      className={`shrink-0 mt-0.5 font-plex-mono text-[10px] px-1.5 py-0.5 rounded-full ${ITEM_KIND_BADGE[it.kind as ItemKind]}`}
                     >
-                      {SERVICE_ITEM_STATUS_LABEL[it.status as ServiceItemStatus]}
+                      {ITEM_KIND_LABEL[it.kind as ItemKind]}
                     </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm text-[var(--oc-ink2)]">
+                          {it.description}
+                        </span>
+                        <span
+                          className={`shrink-0 font-plex-mono text-[10px] px-1.5 py-0.5 rounded-full ${SERVICE_ITEM_STATUS_BADGE[it.status as ServiceItemStatus]}`}
+                        >
+                          {SERVICE_ITEM_STATUS_LABEL[it.status as ServiceItemStatus]}
+                        </span>
+                      </div>
+                      <div className="text-xs text-[var(--oc-muted3)] mt-0.5 tabular-nums">
+                        {qtyText(it.quantity.toString())} × {formatTugrik(it.unitPrice.toString())}
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-sm font-medium text-[var(--oc-ink)] tabular-nums">
+                      {formatTugrik(it.total.toString())}
+                    </div>
                   </div>
                 ))}
+              </div>
+            ) : null}
+            {appt.serviceOrder.totalAmount != null ? (
+              <div className="rounded-lg bg-[var(--oc-panel2)] border border-[var(--oc-line)] p-3 flex flex-col gap-1.5">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-[var(--oc-muted)]">Нийт дүн</span>
+                  <span className="font-bold text-[var(--oc-ink)] tabular-nums">
+                    {formatTugrik(appt.serviceOrder.totalAmount.toString())}
+                  </span>
+                </div>
+                {appt.serviceOrder.paidAmount != null ? (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-[var(--oc-muted)]">Төлсөн</span>
+                    <span className="text-[var(--oc-ink2)] tabular-nums">
+                      {formatTugrik(appt.serviceOrder.paidAmount.toString())}
+                    </span>
+                  </div>
+                ) : null}
               </div>
             ) : null}
             {settled ? (

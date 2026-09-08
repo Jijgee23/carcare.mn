@@ -17,6 +17,10 @@ type NavLeaf = {
   label: string;
   icon?: React.ReactNode;
   exact?: boolean;
+  // Өөр тусдаа nav item-тэй давхцахгүйн тулд prefix-match-аас хасах дэд зам
+  // (ж: "Цаг захиалга" нь "/dashboard/appointments/calendar"-ыг өөрийн prefix
+  // match-д оруулахгүй, учир нь "Хуваарь" тусдаа item тэр замыг эзэмшдэг).
+  activeExcludePrefix?: string;
   // Харагдах эрх: resource key (ж: "orders"), "audit", "owner", эсвэл undefined
   // (бүгдэд харагдана). Owner үргэлж бүгдийг харна.
   view?: string;
@@ -111,11 +115,23 @@ const navItems: NavItem[] = [
     href: "/dashboard/appointments",
     view: "appointments",
     label: "Цаг захиалга",
+    activeExcludePrefix: "/dashboard/appointments/calendar",
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <rect x="3" y="4" width="18" height="18" rx="2" />
         <path d="M16 2v4M8 2v4M3 10h18" />
         <path d="M12 14v3M10.5 15.5h3" />
+      </svg>
+    ),
+  },
+  {
+    href: "/dashboard/appointments/calendar",
+    view: "appointments",
+    label: "Хуваарь",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 2" />
       </svg>
     ),
   },
@@ -247,7 +263,11 @@ const secondaryItems: NavItem[] = [
 const STORAGE_KEY = "carcare:sidebar:open";
 
 function isLeafActive(pathname: string, item: NavLeaf): boolean {
-  return item.exact ? pathname === item.href : pathname.startsWith(item.href);
+  if (item.exact) return pathname === item.href;
+  if (item.activeExcludePrefix && pathname.startsWith(item.activeExcludePrefix)) {
+    return false;
+  }
+  return pathname.startsWith(item.href);
 }
 
 function isGroupActive(pathname: string, group: NavGroup): boolean {

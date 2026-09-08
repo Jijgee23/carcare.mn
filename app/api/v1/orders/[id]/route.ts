@@ -104,7 +104,12 @@ export async function PATCH(
       tenantId: auth.user.tenantId,
       ...(scope ? { branchId: scope } : {}),
     },
-    select: { id: true, status: true, startedAt: true },
+    select: {
+      id: true,
+      status: true,
+      startedAt: true,
+      estimatedDurationMinutes: true,
+    },
   });
   if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
   if (isOrderLocked(order.status as OrderStatus)) {
@@ -136,11 +141,36 @@ export async function PATCH(
     }
     updates.status = newStatus;
     statusChangedTo = newStatus;
+    const startedAt =
+      newStatus === "IN_PROGRESS" && !order.startedAt
+        ? new Date()
+        : order.startedAt;
     if (newStatus === "IN_PROGRESS" && !order.startedAt) {
-      updates.startedAt = new Date();
+      updates.startedAt = startedAt;
     }
     if (newStatus === "COMPLETED") {
       updates.completedAt = new Date();
+    }
+    // Хүчин чадлын эзэмшил — app/_actions/orders.ts-ийн
+    // changeOrderStatusAction-той ижил зарчим: идэвхтэй ажил хүчин чадал
+    // эзэлнэ, дууссан/цуцлагдсан бол шууд суллана. WAITING_PARTS рүү шилжихэд
+    // дуудагч `occupiesCapacity: boolean`-г JSON body-д тодорхой дамжуулж
+    // болно (ирээгүй бол консерватив анхны утга true).
+    if (newStatus === "COMPLETED" || newStatus === "CANCELLED") {
+      updates.occupiesCapacity = false;
+    } else if (newStatus === "WAITING_PARTS" && typeof b.occupiesCapacity === "boolean") {
+      updates.occupiesCapacity = b.occupiesCapacity;
+    } else {
+      updates.occupiesCapacity = true;
+    }
+    if (
+      newStatus === "IN_PROGRESS" &&
+      startedAt &&
+      order.estimatedDurationMinutes
+    ) {
+      updates.expectedFinishAt = new Date(
+        startedAt.getTime() + order.estimatedDurationMinutes * 60000,
+      );
     }
   }
 

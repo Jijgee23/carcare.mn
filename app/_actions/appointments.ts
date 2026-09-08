@@ -392,7 +392,7 @@ export async function registerAppointmentByStaff(
     }),
     prisma.customer.findFirst({
       where: { id: customerId, tenantId: user.tenantId },
-      select: { id: true },
+      select: { id: true, accountId: true },
     }),
   ]);
   if (!branch) return { ok: false, fieldErrors: { branchId: "Салбар олдсонгүй." } };
@@ -406,6 +406,11 @@ export async function registerAppointmentByStaff(
   try {
     created = await reserveAppointment({
       tenantId: user.tenantId, branchId, customerId, staffUserId: user.id,
+      // Customer нь онлайн Account-той гүүрлэгдсэн бол (өмнө нь тэр утсаар
+      // онлайн захиалга хийсэн байвал) энэ утсаар бүртгэсэн цагийг мөн тэр
+      // Account-д харагдуулна — эс бөгөөс "Миний цагууд"-д алга болно (2026-09-08
+      // хэрэглэгчийн тайлан).
+      accountId: customer.accountId,
       categoryIds: requestedCategoryIds, requestedAt: requestedAt!, note: note || null,
     });
   } catch (error) {
@@ -710,4 +715,67 @@ export async function markAppointmentNoShow(
 
   revalidatePath("/dashboard/appointments");
   return { ok: true, message: "Ирээгүй гэж тэмдэглэлээ." };
+}
+
+// Үйлчлүүлэгч биечлэн ирснийг тэмдэглэнэ (arrivedAt) — ажил эхэлсэн гэсэн үг
+// БИШ, зөвхөн ирц. markAppointmentNoShow-той бараг ижил бүтэцтэй.
+export async function markAppointmentArrived(
+  _prev: AppointmentActionState,
+  formData: FormData,
+): Promise<AppointmentActionState> {
+  const id = s(formData, "id");
+  if (!id) return { ok: false, message: "Буруу хүсэлт." };
+
+  let user;
+  try {
+    user = await requireUser();
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
+
+  const appt = await prisma.appointment.findUnique({
+    where: { id },
+    select: { id: true, tenantId: true, branchId: true, status: true, arrivedAt: true },
+  });
+  if (!appt) return { ok: false, message: "Цаг захиалга олдсонгүй." };
+
+  try {
+    await assertStaffScope(user, appt.branchId);
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
+  if (user.tenantId !== appt.tenantId) {
+    return { ok: false, message: "Танд энэ цагийг удирдах эрх байхгүй." };
+  }
+  if (appt.status !== "CONFIRMED") {
+    return { ok: false, message: "Энэ цагийг тэмдэглэх боломжгүй." };
+  }
+  if (appt.arrivedAt) {
+    return { ok: false, message: "Аль хэдийн ирсэн гэж тэмдэглэсэн байна." };
+  }
+
+  try {
+    await prisma.appointment.update({
+      where: { id: appt.id },
+      data: { arrivedAt: new Date() },
+    });
+    await logAudit({
+      tenantId: appt.tenantId,
+      userId: user.id,
+      branchId: appt.branchId,
+      entity: "Appointment",
+      entityId: appt.id,
+      action: "STATUS_CHANGE",
+      summary: "Үйлчлүүлэгч ирснийг тэмдэглэв",
+      after: { arrivedAt: new Date().toISOString() },
+    });
+  } catch (e) {
+    return {
+      ok: false,
+      message: e instanceof Error ? e.message : "Тэмдэглэхэд алдаа гарлаа.",
+    };
+  }
+
+  revalidatePath("/dashboard/appointments");
+  return { ok: true, message: "Ирсэн гэж тэмдэглэлээ." };
 }
