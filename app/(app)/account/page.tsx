@@ -83,10 +83,10 @@ export default async function AccountPage() {
       {/* Шинэ цаг захиалах */}
       <AddLinkButton href="/discover">Шинэ цаг захиалах</AddLinkButton>
 
-      {/* Push мэдэгдэл */}
+      {/* Мэдэгдэл */}
       <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-3 flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-sm font-medium text-[var(--oc-ink2)]">Push мэдэгдэл</div>
+          <div className="text-sm font-medium text-[var(--oc-ink2)]">Мэдэгдэл</div>
           <div className="text-xs text-[var(--oc-muted3)]">
             Цаг баталгаажих, сануулгыг энэ төхөөрөмж дээр авах.
           </div>
@@ -134,7 +134,8 @@ export default async function AccountPage() {
               return (
                 <div
                   key={a.id}
-                  className={`rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-3 flex items-stretch gap-3 ${canCancel ? "" : "opacity-70"
+                  id={`appt-${a.id}`}
+                  className={`scroll-mt-4 rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-3 flex items-stretch gap-3 target:border-[var(--oc-accent)] target:ring-2 target:ring-[var(--oc-accent)]/40 ${canCancel ? "" : "opacity-70"
                     }`}
                 >
                   {/* Огнооны chip + мэдээлэл — дэлгэрэнгүй хуудас руу линк.

@@ -39,7 +39,7 @@ export default async function SystemSettingsPage() {
         </section>
 
         <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5 sm:p-6">
-          <h2 className="font-semibold text-[var(--oc-ink)] mb-0.5">Push мэдэгдэл</h2>
+          <h2 className="font-semibold text-[var(--oc-ink)] mb-0.5">Мэдэгдэл</h2>
           <p className="text-xs text-[var(--oc-muted3)] mb-4">
             Мобайл апп руу push мэдэгдэл илгээх Firebase тохиргооны төлөв.
           </p>

@@ -45,7 +45,7 @@ export default async function SystemAdminLayout({
           <div className="px-4 sm:px-6 lg:px-8 pt-3">
             <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-3 flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-sm font-medium text-[var(--oc-ink2)]">Push мэдэгдэл</div>
+                <div className="text-sm font-medium text-[var(--oc-ink2)]">Мэдэгдэл</div>
                 <div className="text-xs text-[var(--oc-muted3)]">
                   Шинэ байгууллага бүртгүүлэх зэрэг мэдэгдлийг энэ төхөөрөмж дээр авах.
                 </div>

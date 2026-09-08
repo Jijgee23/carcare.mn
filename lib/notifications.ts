@@ -64,6 +64,22 @@ type NotificationDef = {
   href: (data: Record<string, string>) => string;
 };
 
+// Ажилтны цаг захиалгын жагсаалт (/dashboard/appointments) хуудасны хувьд
+// хуудаслалт/шүүлт дундаас тухайн нэг мөрийг олоход хялбар байхын тулд
+// `highlight` query param-аар шууд тухайн ID-г заана (харах: page.tsx).
+function staffAppointmentHref(appointmentId: string | undefined): string {
+  return appointmentId
+    ? `/dashboard/appointments?highlight=${appointmentId}`
+    : "/dashboard/appointments";
+}
+
+// Account-ийн "Миний цагууд" (/account) бүх мөрийг нэг хуудсанд хуудаслалтгүй
+// харуулдаг тул энгийн URL fragment-ээр (#appt-<id>) шууд тухайн карт руу
+// scroll хийж, :target CSS-ээр тодруулна (JS шаардлагагүй).
+function accountAppointmentHref(appointmentId: string | undefined): string {
+  return appointmentId ? `/account#appt-${appointmentId}` : "/account";
+}
+
 export const NOTIFICATION_REGISTRY: Record<NotificationType, NotificationDef> = {
   appointment_confirmed: {
     realm: "account",
@@ -103,7 +119,7 @@ export const NOTIFICATION_REGISTRY: Record<NotificationType, NotificationDef> = 
       body: i.body ?? "Шинэ цаг захиалгын хүсэлт ирлээ.",
       data: { type: "appointment_created", appointmentId: i.appointmentId ?? "" },
     }),
-    href: () => "/dashboard/appointments",
+    href: (d) => staffAppointmentHref(d.appointmentId),
   },
   appointment_cancelled: {
     realm: "staff",
@@ -112,7 +128,7 @@ export const NOTIFICATION_REGISTRY: Record<NotificationType, NotificationDef> = 
       body: i.body ?? "Үйлчлүүлэгч захиалсан цагаа цуцаллаа.",
       data: { type: "appointment_cancelled", appointmentId: i.appointmentId ?? "" },
     }),
-    href: () => "/dashboard/appointments",
+    href: (d) => staffAppointmentHref(d.appointmentId),
   },
   appointment_fee_paid: {
     realm: "staff",
@@ -121,7 +137,7 @@ export const NOTIFICATION_REGISTRY: Record<NotificationType, NotificationDef> = 
       body: i.body ?? "Цаг захиалгын хураамж төлөгдлөө.",
       data: { type: "appointment_fee_paid", appointmentId: i.appointmentId ?? "" },
     }),
-    href: () => "/dashboard/appointments",
+    href: (d) => staffAppointmentHref(d.appointmentId),
   },
   appointment_expired: {
     realm: "account",
@@ -451,21 +467,21 @@ async function broadcastToRealm(
   let cursor: string | undefined;
   let total = 0;
 
-  for (;;) {
+  for (; ;) {
     const rows =
       realm === "staff"
         ? await prisma.user.findMany({
-            select: { id: true },
-            take: BROADCAST_BATCH_SIZE,
-            orderBy: { id: "asc" },
-            ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
-          })
+          select: { id: true },
+          take: BROADCAST_BATCH_SIZE,
+          orderBy: { id: "asc" },
+          ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+        })
         : await prisma.account.findMany({
-            select: { id: true },
-            take: BROADCAST_BATCH_SIZE,
-            orderBy: { id: "asc" },
-            ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
-          });
+          select: { id: true },
+          take: BROADCAST_BATCH_SIZE,
+          orderBy: { id: "asc" },
+          ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+        });
     if (rows.length === 0) break;
 
     await prisma.notification.createMany({

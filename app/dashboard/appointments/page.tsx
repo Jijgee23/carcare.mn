@@ -41,6 +41,17 @@ function formatDateTime(d: Date): string {
   });
 }
 
+const APPOINTMENT_INCLUDE = {
+  account: { select: { name: true, phone: true } },
+  customer: { select: { fullName: true, phone: true } },
+  branch: { select: { name: true } },
+  category: { select: { name: true } },
+  // Booking v2: олон ангилал (categories) — хуучин ганц category нь
+  // энэ migration-ийн өмнөх мөрүүдэд fallback хэвээр үлдэнэ.
+  categories: { select: { category: { select: { name: true } } } },
+  serviceOrder: { select: { id: true, number: true } },
+} satisfies Prisma.AppointmentInclude;
+
 export default async function AppointmentsPage({
   searchParams,
 }: {
@@ -49,6 +60,10 @@ export default async function AppointmentsPage({
     q?: string;
     branchId?: string;
     page?: string;
+    // Мэдэгдэл дээр дарахад ирнэ (харах: lib/notifications.ts
+    // staffAppointmentHref) — тухайн нэг цаг захиалга руу шууд "үсэрнэ",
+    // бусад шүүлт/хуудаслалтыг тойрч зөвхөн энэ мөрийг харуулна.
+    highlight?: string;
   }>;
 }) {
   const user = await requireUser();
@@ -61,11 +76,13 @@ export default async function AppointmentsPage({
     q = "",
     branchId = "",
     page: pageParam,
+    highlight,
   } = await searchParams;
   const status =
     statusParam && (APPOINTMENT_STATUSES as readonly string[]).includes(statusParam)
       ? (statusParam as AppointmentStatus)
       : null;
+  const highlightId = highlight?.trim() || null;
 
   const scopeBranchId = workingBranchScopeId(user);
 
@@ -84,33 +101,43 @@ export default async function AppointmentsPage({
   }
 
   const { page, pageSize, skip, take } = getPageInfo(pageParam);
-  const [appointments, filteredTotal, branches] = await Promise.all([
-    prisma.appointment.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip,
-      take,
-      include: {
-        account: { select: { name: true, phone: true } },
-        customer: { select: { fullName: true, phone: true } },
-        branch: { select: { name: true } },
-        category: { select: { name: true } },
-        // Booking v2: олон ангилал (categories) — хуучин ганц category нь
-        // энэ migration-ийн өмнөх мөрүүдэд fallback хэвээр үлдэнэ.
-        categories: { select: { category: { select: { name: true } } } },
-        serviceOrder: { select: { id: true, number: true } },
-      },
-    }),
-    prisma.appointment.count({ where }),
-    prisma.branch.findMany({
+
+  let appointments: Prisma.AppointmentGetPayload<{ include: typeof APPOINTMENT_INCLUDE }>[];
+  let filteredTotal: number;
+  if (highlightId) {
+    // Мэдэгдлээс ирсэн бол шүүлт/хуудаслалтыг үл хэрэгсэж яг тухайн мөрийг
+    // л (тухайн ажилтны салбарын хүрээнд) шууд авчирна.
+    const one = await prisma.appointment.findFirst({
       where: {
+        id: highlightId,
         tenantId: user.tenantId,
-        ...(scopeBranchId ? { id: scopeBranchId } : {}),
+        ...(scopeBranchId ? { branchId: scopeBranchId } : {}),
       },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
-    }),
-  ]);
+      include: APPOINTMENT_INCLUDE,
+    });
+    appointments = one ? [one] : [];
+    filteredTotal = appointments.length;
+  } else {
+    [appointments, filteredTotal] = await Promise.all([
+      prisma.appointment.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take,
+        include: APPOINTMENT_INCLUDE,
+      }),
+      prisma.appointment.count({ where }),
+    ]);
+  }
+
+  const branches = await prisma.branch.findMany({
+    where: {
+      tenantId: user.tenantId,
+      ...(scopeBranchId ? { id: scopeBranchId } : {}),
+    },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true },
+  });
 
   const meta = buildMeta(filteredTotal, page, pageSize);
 
@@ -133,27 +160,45 @@ export default async function AppointmentsPage({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        <SearchBox placeholder="Нэр, утас, тэмдэглэл..." />
-        <FilterSelect
-          paramName="status"
-          placeholder="Бүх төлөв"
-          options={STATUS_OPTIONS}
-        />
-        {!scopeBranchId && branches.length > 1 ? (
+      {highlightId ? (
+        <div className="flex items-center justify-between gap-3 mb-4 rounded-[10px] border border-[var(--oc-accent)]/40 bg-[var(--oc-accent)]/[0.08] px-4 py-2.5">
+          <p className="text-sm text-[var(--oc-ink2)]">
+            Мэдэгдлээс сонгосон нэг цаг захиалга харагдаж байна.
+          </p>
+          <Link
+            href="/dashboard/appointments"
+            className="shrink-0 text-sm text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors"
+          >
+            Бүх жагсаалт руу буцах →
+          </Link>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <SearchBox placeholder="Нэр, утас, тэмдэглэл..." />
           <FilterSelect
-            paramName="branchId"
-            placeholder="Бүх салбар"
-            options={branches.map((b) => ({ value: b.id, label: b.name }))}
+            paramName="status"
+            placeholder="Бүх төлөв"
+            options={STATUS_OPTIONS}
           />
-        ) : null}
-        <ResetFilters paramNames={["status", "q", "branchId"]} />
-      </div>
+          {!scopeBranchId && branches.length > 1 ? (
+            <FilterSelect
+              paramName="branchId"
+              placeholder="Бүх салбар"
+              options={branches.map((b) => ({ value: b.id, label: b.name }))}
+            />
+          ) : null}
+          <ResetFilters paramNames={["status", "q", "branchId"]} />
+        </div>
+      )}
 
       {appointments.length === 0 ? (
         <EmptyState
-          title="Цаг захиалгын хүсэлт алга"
-          description="Одоогоор цаг захиалгын хүсэлт ирээгүй байна."
+          title={highlightId ? "Цаг захиалга олдсонгүй" : "Цаг захиалгын хүсэлт алга"}
+          description={
+            highlightId
+              ? "Энэ цаг захиалга устгагдсан эсвэл танд харах эрх байхгүй байна."
+              : "Одоогоор цаг захиалгын хүсэлт ирээгүй байна."
+          }
         />
       ) : (
         <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden flex-1 min-h-0 flex flex-col">
@@ -281,12 +326,14 @@ export default async function AppointmentsPage({
         </div>
       )}
 
-      <Pagination
-        page={meta.page}
-        totalPages={meta.totalPages}
-        total={meta.total}
-        params={{ status: status ?? "", q, branchId }}
-      />
+      {!highlightId ? (
+        <Pagination
+          page={meta.page}
+          totalPages={meta.totalPages}
+          total={meta.total}
+          params={{ status: status ?? "", q, branchId }}
+        />
+      ) : null}
     </div>
   );
 }

@@ -24,12 +24,12 @@ export const notifications: ManualSection = {
     },
     {
       slug: "notification-push-toggle",
-      title: "Push мэдэгдэл асаах",
+      title: "Мэдэгдэл асаах",
       roleTags: [],
       whenToUse: "Шинэ захиалга/цаг захиалга ирэх үед browser/утсандаа push мэдэгдэл авахыг хүсвэл.",
       prerequisites: ["Browser эсвэл төхөөрөмж мэдэгдэл зөвшөөрсөн байх"],
       steps: [
-        { title: "Самбарын дээд хэсэгт (эсвэл /dashboard/profile) \"Push мэдэгдэл\" хэсгийг асаана" },
+        { title: "Самбарын дээд хэсэгт (эсвэл /dashboard/profile) \"Мэдэгдэл\" хэсгийг асаана" },
         { title: "Browser-ийн зөвшөөрлийн цонхонд \"Зөвшөөрөх\" дарна" },
       ],
       rules: [

@@ -206,7 +206,7 @@ export function EmployeeForm({
             />
           </Field>
           <Field
-            label="Ажиллах хүртэлх огноо"
+            label="Ажиллах хугацаа дуусах огноо"
             htmlFor="activeUntil"
             hint="Түр ажилтан бол огноо. Хоосон бол байнгын."
             error={fe.activeUntil}
