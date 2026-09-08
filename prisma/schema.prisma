@@ -372,6 +372,13 @@ model ServiceOrder {
   scheduledAt   DateTime?
   startedAt     DateTime?
   completedAt   DateTime?
+  // Scheduling v1: immutable initial estimate; null for legacy/unestimated orders.
+  estimatedDurationMinutes Int?
+  // Staff-revisable forecast, never a replacement for completedAt or the booking time.
+  expectedFinishAt DateTime?
+  // Physical workspace occupancy: null = not recorded, false = explicitly released.
+  // Independent of payment/workflow status; completion does not prove the bay is clear.
+  occupiesCapacity Boolean?
   paidAt        DateTime?
   notes         String?
   totalAmount   Decimal?      @db.Decimal(12, 2)
@@ -1071,6 +1078,11 @@ model Appointment {
   id          String            @id @default(cuid())
   status      AppointmentStatus @default(PENDING)
   requestedAt DateTime // хэрэглэгчийн хүссэн цаг
+  // Booking-time duration snapshot; later category edits must not rewrite this value.
+  // null preserves unknown historical estimates and supports older application writers.
+  estimatedDurationMinutes Int?
+  // Actual customer arrival/check-in; does not mean work has started.
+  arrivedAt DateTime?
   note        String?
 
   tenantId String
