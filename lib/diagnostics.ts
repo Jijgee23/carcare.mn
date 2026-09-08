@@ -199,6 +199,130 @@ export function emptySchema(): TemplateSchema {
 }
 
 /**
+ * Системийн үндсэн (default) оношилгооны загвар — бодит засварын газрын
+ * цаасан "Оношилгооны хуудас"-аас дижитал болгосон бүрэн үзлэгийн жагсаалт.
+ * Шинэ тенант бүрт signup дээр автоматаар үүсгэгдэнэ (харах: app/_actions/
+ * auth.ts signUpAction), мөн одоо байгаа тенантуудад migration-оор
+ * (prisma/migrations/*_default_intake_diagnostic_template) нэг удаа
+ * нэмэгдсэн. Энэ тогтмолыг өөрчлөх нь ЗӨВХӨН шинэ тенантад нөлөөлнэ — аль
+ * хэдийн үүссэн загваруудыг дахин бичихгүй.
+ */
+export const DEFAULT_INTAKE_TEMPLATE_NAME = "Ерөнхий үзлэг (хүлээж авах)";
+
+// "check" төрлийн мөр бүрт options дутуу байвал (доорх литералд зориудаар
+// орхигдсон — давтагдал багасгах үүднээс) энд нэг мөчид тавьж өгнө. Формыг
+// бөглөх/харах хуудсууд schema-г validateSchema()-гүйгээр шууд ашигладаг тул
+// (харах: DiagnosticForm, report хуудсууд) options эндээс аль хэдийн бэлэн
+// байх ёстой — эс бөгөөс сонголтын товчнууд гарахгүй.
+function withDefaultCheckOptions(schema: TemplateSchema): TemplateSchema {
+  return {
+    sections: schema.sections.map((section) => ({
+      ...section,
+      items: section.items.map((item) =>
+        item.type === "check" && !item.options
+          ? { ...item, options: DEFAULT_CHECK_OPTIONS.slice() }
+          : item,
+      ),
+    })),
+  };
+}
+
+const RAW_INTAKE_TEMPLATE_SCHEMA: TemplateSchema = {
+  sections: [
+    {
+      id: "sec_fluids",
+      title: "Шингэн, тослох материал",
+      items: [
+        { id: "item_engine_oil", label: "Хөдөлгүүрийн тос", type: "check", required: false },
+        { id: "item_transmission_fluid", label: "Хурдны хайрцагны шингэн", type: "check", required: false },
+        { id: "item_coolant", label: "Хөргөлтийн шингэн", type: "check", required: false },
+        { id: "item_brake_fluid", label: "Тоормозны шингэн", type: "check", required: false },
+        { id: "item_hydraulic_fluid", label: "Гидрийн шингэн", type: "check", required: false },
+        { id: "item_diff_oil", label: "ХДА-н тос (дифференциал)", type: "check", required: false, positionSet: "FB" },
+        { id: "item_transfer_case_oil", label: "Туслах кропны тос", type: "check", required: false },
+        { id: "item_grease", label: "Цэвэр тослого", type: "check", required: false },
+      ],
+    },
+    {
+      id: "sec_general",
+      title: "Ерөнхий үзлэг",
+      items: [
+        { id: "item_lights", label: "Гэрэл дохио", type: "check", required: false },
+        { id: "item_air_filter", label: "Моторын агаар шүүлтүүр", type: "check", required: false },
+        { id: "item_cabin_filter", label: "Салон шүүр", type: "check", required: false },
+        { id: "item_radiator", label: "Радиатор", type: "check", required: false },
+        { id: "item_water_pump", label: "Усны помп", type: "check", required: false },
+        { id: "item_front_seal", label: "Духны сальник", type: "check", required: false },
+        { id: "item_fan_belt", label: "Сэнсний ремен", type: "check", required: false },
+        { id: "item_tensioner_bearing", label: "Чангалагч шарикнууд", type: "check", required: false },
+        { id: "item_valve_gasket", label: "Тагны жийрэг", type: "check", required: false, positionSet: "LR" },
+        { id: "item_steering_rack", label: "Рулийн аппарат", type: "check", required: false },
+      ],
+    },
+    {
+      id: "sec_front_suspension",
+      title: "Урд өнхрөх систем",
+      items: [
+        { id: "item_tie_rod", label: "Рулийн тяга", type: "check", required: false, positionSet: "LR" },
+        { id: "item_steering_joint", label: "Рулийн шарнер", type: "check", required: false, positionSet: "LR" },
+        { id: "item_ball_joint_front", label: "Цапны шарик (урд)", type: "check", required: false, positionSet: "LR" },
+        { id: "item_lower_arm", label: "Доод гар", type: "check", required: false, positionSet: "LR" },
+        { id: "item_lower_ball_mount", label: "Доод өндгөн тулгуур", type: "check", required: false, positionSet: "LR" },
+        { id: "item_stabilizer_link", label: "Босоо тэнцүүлэгч", type: "check", required: false, positionSet: "LR" },
+        { id: "item_shock_front", label: "Амортизатор (урд)", type: "check", required: false, positionSet: "LR" },
+        { id: "item_brake_pad_front", label: "Наклад (урд)", type: "check", required: false, positionSet: "LR" },
+        { id: "item_caliper_front", label: "Тоормосны аппарат (урд)", type: "check", required: false, positionSet: "LR" },
+        { id: "item_disc_front", label: "Пиланз (урд)", type: "check", required: false, positionSet: "LR" },
+        { id: "item_boot_rubber", label: "Булны гармушик резин", type: "check", required: false },
+        { id: "item_upper_arm", label: "Дээд гар", type: "check", required: false, positionSet: "LR" },
+        { id: "item_upper_ball_mount", label: "Дээд өндгөн тулгуур", type: "check", required: false, positionSet: "LR" },
+        { id: "item_front_bushing", label: "Урд хэвтээгийн даравч резин", type: "check", required: false, positionSet: "LR" },
+        { id: "item_body_seal", label: "Их биений сальник", type: "check", required: false },
+        { id: "item_support_seal_front", label: "Урд туслахын сальник", type: "check", required: false },
+      ],
+    },
+    {
+      id: "sec_driveshaft",
+      title: "Карданы голын систем",
+      items: [
+        { id: "item_driveshaft_joint", label: "Карданы чагтан гол", type: "check", required: false, positionSet: "FB" },
+        { id: "item_center_gear_seal", label: "Зүрх араaны сальник", type: "check", required: false },
+      ],
+    },
+    {
+      id: "sec_rear_suspension",
+      title: "Хойд өнхрөх систем",
+      items: [
+        { id: "item_short_link_rear", label: "Хойд богино татуурга", type: "check", required: false, positionSet: "LR" },
+        { id: "item_long_link_rear", label: "Урт татуурга", type: "check", required: false, positionSet: "LR" },
+        { id: "item_stabilizer_bushing_rear", label: "Хэвтээ тэнцүүлэгчийн дамар резин", type: "check", required: false, positionSet: "LR" },
+        { id: "item_rear_bushing", label: "Хойд хэвтээгийн даравч резин", type: "check", required: false, positionSet: "LR" },
+        { id: "item_lateral_link", label: "Хөндлөн татуурга", type: "check", required: false },
+        { id: "item_shock_rear", label: "Амортизатор (хойд)", type: "check", required: false, positionSet: "LR" },
+        { id: "item_brake_pad_rear", label: "Наклад (хойд)", type: "check", required: false, positionSet: "LR" },
+        { id: "item_caliper_rear", label: "Тоормосны аппарат (хойд)", type: "check", required: false, positionSet: "LR" },
+        { id: "item_disc_rear", label: "Пиланз (хойд)", type: "check", required: false, positionSet: "LR" },
+        { id: "item_handbrake_pad", label: "Гар карданы наклад", type: "check", required: false },
+        { id: "item_ball_joint_rear", label: "Цапны шарик (хойд)", type: "check", required: false, positionSet: "LR" },
+        { id: "item_half_shaft_seal", label: "Хагас голны сальник", type: "check", required: false, positionSet: "LR" },
+        { id: "item_frame_bushing", label: "Рам, кузовны ком втулка", type: "check", required: false },
+      ],
+    },
+    {
+      id: "sec_notes",
+      title: "Нэмэлт тэмдэглэл",
+      items: [
+        { id: "item_notes", label: "Нэмэлт тайлбар", type: "text", required: false },
+        { id: "item_signature", label: "Гарын үсэг", type: "signature", required: false },
+      ],
+    },
+  ],
+};
+
+export const DEFAULT_INTAKE_TEMPLATE_SCHEMA: TemplateSchema =
+  withDefaultCheckOptions(RAW_INTAKE_TEMPLATE_SCHEMA);
+
+/**
  * Хэрэглэгчээс ирсэн санамсаргүй JSON-ыг template schema болгож хатуу шалгана.
  * Хүчингүй бол throw.
  */

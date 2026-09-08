@@ -1,5 +1,6 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
+import { logAudit } from "@/lib/audit";
 import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
@@ -147,7 +148,7 @@ export async function POST(req: Request) {
       },
       update: customerIdStr ? { customerId: customerIdStr } : {},
     });
-    return tx.vehicle.findUniqueOrThrow({
+    const full = await tx.vehicle.findUniqueOrThrow({
       where: { id: v.id },
       select: {
         id: true,
@@ -159,6 +160,21 @@ export async function POST(req: Request) {
         mileage: true,
       },
     });
+
+    await logAudit(
+      {
+        tenantId: auth.user.tenantId,
+        userId: auth.user.id,
+        entity: "Vehicle",
+        entityId: full.id,
+        action: "CREATE",
+        summary: `${full.plate} · ${full.make} ${full.model}`,
+        after: { plate: full.plate, make: full.make, model: full.model, customerId: customerIdStr },
+      },
+      tx,
+    );
+
+    return full;
   });
   return jsonOk(
     { vehicle: { ...vehicle, customerId: customerIdStr } },

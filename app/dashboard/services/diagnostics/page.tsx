@@ -112,8 +112,18 @@ export default async function DiagnosticsServicesPage({
                       href={`/dashboard/services/diagnostics/${t.id}`}
                     >
                       <td className="px-5 py-4">
-                        <div className="text-sm font-medium text-[var(--oc-ink)]">
-                          {t.name}
+                        <div className="flex items-center gap-2">
+                          <div className="text-sm font-medium text-[var(--oc-ink)]">
+                            {t.name}
+                          </div>
+                          {t.isSystemDefault ? (
+                            <span
+                              className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--oc-accent)]/15 text-[var(--oc-accent)] border border-[var(--oc-accent)]/25"
+                              title="Системийн үндсэн загвар — засах/устгах боломжгүй"
+                            >
+                              Системийн
+                            </span>
+                          ) : null}
                         </div>
                         {t.description ? (
                           <div className="text-xs text-[var(--oc-muted3)] mt-0.5 line-clamp-1">
@@ -159,7 +169,7 @@ export default async function DiagnosticsServicesPage({
                               href={`/dashboard/services/diagnostics/${t.id}`}
                               className="text-xs text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors px-2.5 py-1.5 rounded-lg hover:bg-[var(--oc-accent)]/10"
                             >
-                              Засах
+                              {t.isSystemDefault ? "Харах" : "Засах"}
                             </Link>
                             <form action={duplicateTemplateAction}>
                               <input type="hidden" name="id" value={t.id} />
@@ -170,20 +180,22 @@ export default async function DiagnosticsServicesPage({
                                 Хуулах
                               </button>
                             </form>
-                            <form action={deleteTemplateAction}>
-                              <input type="hidden" name="id" value={t.id} />
-                              <button
-                                type="submit"
-                                className="text-xs text-red-400 hover:text-red-300 light:text-red-600 light:hover:text-red-700 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-red-500/10"
-                                title={
-                                  t._count.reports > 0
-                                    ? "Бөглөгдсөн тайлантай тул архивлагдана"
-                                    : "Устгана"
-                                }
-                              >
-                                {t._count.reports > 0 ? "Архив" : "Устгах"}
-                              </button>
-                            </form>
+                            {!t.isSystemDefault ? (
+                              <form action={deleteTemplateAction}>
+                                <input type="hidden" name="id" value={t.id} />
+                                <button
+                                  type="submit"
+                                  className="text-xs text-red-400 hover:text-red-300 light:text-red-600 light:hover:text-red-700 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-red-500/10"
+                                  title={
+                                    t._count.reports > 0
+                                      ? "Бөглөгдсөн тайлантай тул архивлагдана"
+                                      : "Устгана"
+                                  }
+                                >
+                                  {t._count.reports > 0 ? "Архив" : "Устгах"}
+                                </button>
+                              </form>
+                            ) : null}
                           </div>
                         ) : null}
                       </td>

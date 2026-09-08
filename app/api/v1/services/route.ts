@@ -1,5 +1,6 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser } from "@/lib/api";
+import { logAudit } from "@/lib/audit";
 import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
@@ -101,6 +102,16 @@ export async function POST(req: Request) {
       tenantId: auth.user.tenantId,
     },
     select: SERVICE_SELECT,
+  });
+
+  await logAudit({
+    tenantId: auth.user.tenantId,
+    userId: auth.user.id,
+    entity: "Service",
+    entityId: service.id,
+    action: "CREATE",
+    summary: service.name,
+    after: { name: service.name, type: service.type, price: service.price.toString() },
   });
 
   return jsonOk({ service });

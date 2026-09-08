@@ -69,11 +69,14 @@ export function OrderItems({
   items,
   orderId,
   canEdit,
+  canChangeStatus,
 }: {
   items: OrderItemLite[];
   orderId: string;
   canEdit: boolean;
+  canChangeStatus: boolean;
 }) {
+  const showActionColumn = canEdit || canChangeStatus;
   const groups = KIND_ORDER.map((kind) => {
     const list = items.filter((i) => i.kind === kind);
     const subtotal = list.reduce(
@@ -127,7 +130,7 @@ export function OrderItems({
               Нэгж үнэ
             </th>
             <th className="text-right font-medium px-5 py-2 w-32">Дүн</th>
-            {canEdit ? <th className="w-44" aria-label="Үйлдэл" /> : null}
+            {showActionColumn ? <th className="w-44" aria-label="Үйлдэл" /> : null}
           </tr>
         </thead>
         <tbody className="divide-y divide-[var(--oc-line)]">
@@ -136,7 +139,7 @@ export function OrderItems({
               {activeTab === "ALL" ? (
                 /* Бүлгийн гарчиг — хэсгийн толгой шиг уншигдана */
                 <tr className="bg-[var(--oc-panel2)]">
-                  <td colSpan={canEdit ? 5 : 4} className="px-5 py-1.5">
+                  <td colSpan={showActionColumn ? 5 : 4} className="px-5 py-1.5">
                     <div className="flex items-center gap-2">
                       <span
                         className={`w-1.5 h-1.5 rounded-full ${ITEM_KIND_DOT[g.kind]}`}
@@ -199,10 +202,10 @@ export function OrderItems({
                     >
                       {formatTugrik(it.total)}
                     </td>
-                    {canEdit ? (
+                    {showActionColumn ? (
                       <td className="pr-3 py-2.5">
                         <div className="flex items-center justify-start gap-1">
-                          {canChangeServiceItemStatus(status) ? (
+                          {canChangeStatus && canChangeServiceItemStatus(status) ? (
                             <form action={changeOrderItemStatusAction}>
                               <input type="hidden" name="itemId" value={it.id} />
                               <select
@@ -229,7 +232,7 @@ export function OrderItems({
                               Бөглөх
                             </Link>
                           ) : null}
-                          {isServiceItemCancellable(status) ? (
+                          {canEdit && isServiceItemCancellable(status) ? (
                             <form action={cancelOrderItemAction}>
                               <input type="hidden" name="itemId" value={it.id} />
                               <button

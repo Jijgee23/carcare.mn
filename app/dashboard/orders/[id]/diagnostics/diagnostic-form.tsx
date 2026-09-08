@@ -52,6 +52,25 @@ export function DiagnosticForm({
   }
 
   const formRef = useRef<HTMLFormElement>(null);
+  const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  // Тухайн бүлгийн "check" төрлийн бүх мөрийг (байрлал бүрийг оролцуулан)
+  // нэг л сонголт руу шууд шилжүүлнэ — өдөр тутам ихэнх мөр "Хэвийн" байдаг
+  // тул мөр бүрийг тус тусад нь дарах шаардлагагүй болгоно. Уугуул radio
+  // input тул DOM-оор шууд тэмдэглэж, React-ийн onChange (showWhen-д
+  // ашиглагддаг) хэвийн ажиллуулахын тулд жинхэнэ "change" event илгээнэ.
+  function markSection(sectionId: string, value: string) {
+    const container = sectionRefs.current[sectionId];
+    if (!container) return;
+    const radios = container.querySelectorAll<HTMLInputElement>(
+      `input[type="radio"][value="${CSS.escape(value)}"]`,
+    );
+    radios.forEach((radio) => {
+      if (radio.checked) return;
+      radio.checked = true;
+      radio.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  }
 
   // Алдааны мессежийг харагдуулахын тулд form-ын эхэнд гүйлгэнэ.
   useEffect(() => {
@@ -92,13 +111,47 @@ export function DiagnosticForm({
           isItemVisible(it, answers),
         );
         if (visibleItems.length === 0) return null;
+        // Бүлэгт байгаа "check" мөрүүдийн options-оос давхцалгүй цуглуулж,
+        // зөвхөн бодитоор ашиглагдаж буй сонголтуудад (ихэвчлэн Хэвийн/
+        // Анхаарах) л "бүгдийг тэмдэглэх" товч харуулна.
+        const checkOptions = new Set<string>();
+        for (const it of visibleItems) {
+          if (it.type === "check") {
+            for (const opt of it.options ?? []) checkOptions.add(opt);
+          }
+        }
+        const bulkOptions = ["Хэвийн", "Анхаарах"].filter((o) =>
+          checkOptions.has(o),
+        );
         return (
           <section
             key={section.id}
             className="glass rounded-2xl p-5 sm:p-6 border border-white/[0.08] flex flex-col gap-4"
           >
-            <h2 className="font-semibold">{section.title}</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4 items-start">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <h2 className="font-semibold">{section.title}</h2>
+              {bulkOptions.length > 0 ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-white/40">Бүгдийг:</span>
+                  {bulkOptions.map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => markSection(section.id, opt)}
+                      className="text-xs px-2.5 py-1 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] text-white/70 hover:text-white/90 transition-colors"
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <div
+              ref={(el) => {
+                sectionRefs.current[section.id] = el;
+              }}
+              className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4 items-start"
+            >
               {visibleItems.map((item) => {
                 const positioned = Boolean(itemPositions(item));
                 return (

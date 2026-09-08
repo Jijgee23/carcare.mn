@@ -315,10 +315,14 @@ function DiagnosticReportPDF({ report }: { report: DiagnosticReportData }) {
             <View style={styles.itemsWrap}>
               {section.items.map((item) => {
                 const positions = itemPositions(item);
+                // 2 байрлалтай (Зүүн/Баруун, Урд/Хойд) мөр хагас баганад
+                // багтдаг тул нягт 2 баганаар үзүүлнэ; зөвхөн 3+ байрлалтай
+                // (ж: 4 булан) мөрийг л бүтэн мөрөнд гаргана.
+                const useFullWidth = (positions?.length ?? 0) > 2;
                 return (
                   <View
                     key={item.id}
-                    style={positions ? styles.itemColFull : styles.itemCol}
+                    style={useFullWidth ? styles.itemColFull : styles.itemCol}
                     wrap={false}
                   >
                     <Text style={styles.qLabel}>{item.label}</Text>

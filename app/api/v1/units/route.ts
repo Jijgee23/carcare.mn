@@ -1,4 +1,5 @@
 import { jsonError, jsonOk, requireApiUser } from "@/lib/api";
+import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 
 const SELECT = { id: true, name: true, code: true, isActive: true, createdAt: true };
@@ -45,6 +46,16 @@ export async function POST(req: Request) {
       tenantId: auth.user.tenantId,
     },
     select: SELECT,
+  });
+
+  await logAudit({
+    tenantId: auth.user.tenantId,
+    userId: auth.user.id,
+    entity: "Unit",
+    entityId: unit.id,
+    action: "CREATE",
+    summary: unit.name,
+    after: { name: unit.name, code: unit.code },
   });
 
   return jsonOk({ unit });

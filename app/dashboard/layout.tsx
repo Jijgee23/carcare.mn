@@ -70,35 +70,40 @@ export default async function DashboardLayout({
           />
           <SubscriptionGuard locked={subState.locked} isOwner={user.isOwner} />
           <div className="px-4 sm:px-6 lg:px-8 pt-3">
-            <div className="rounded-[10px] border border-[var(--oc-accent)]/25 bg-[var(--oc-accent)]/[0.06] px-4 py-2.5 text-sm text-[var(--oc-ink2)]">
-              {user.workingBranchId === ALL_BRANCHES ? (
-                <>
-                  {user.firstName}, та өнөөдөр{" "}
-                  <span className="font-semibold text-[var(--oc-accent)]">
-                    БҮХ САЛБАРЫГ
-                  </span>{" "}
-                  хараад байна.
-                </>
-              ) : user.workingBranch ? (
-                <>
-                  {user.firstName}, та өнөөдөр{" "}
-                  <span className="font-semibold text-[var(--oc-accent)]">
-                    {user.workingBranch.name}
-                  </span>{" "}
-                  салбарт ажиллаж байна.
-                </>
+            <div className="flex flex-col sm:flex-row items-stretch gap-3">
+              {user.workingBranchId === ALL_BRANCHES || user.workingBranch ? (
+                <div className="shrink-0 flex items-center gap-1 rounded-[10px] border border-[var(--oc-accent)]/25 bg-[var(--oc-accent)]/[0.06] px-4 py-2.5 text-sm text-[var(--oc-ink2)]">
+                  {user.workingBranchId === ALL_BRANCHES ? (
+                    <>
+                      {user.firstName}, та өнөөдөр {" "}
+                      <span className="font-semibold text-[var(--oc-accent)]">
+                        БҮХ САЛБАРЫГ
+                      </span>{" "}
+                      хараад байна.
+                    </>
+                  ) : (
+                    <>
+                      {user.firstName}, та өнөөдөр {"  "}
+                      <span className="font-semibold text-[var(--oc-accent)]">
+                        {user.workingBranch!.name}
+                      </span>{"  "}
+                      салбарт ажиллаж байна.
+                    </>
+                  )}
+                </div>
               ) : null}
+              <SubscriptionBanner
+                locked={subState.locked}
+                isTrial={subState.active?.isTrial ?? false}
+                daysLeft={subState.active?.daysLeft ?? 0}
+                expiresAt={subState.active?.expiresAt ?? null}
+                expiringSoon={subState.expiringSoon}
+                hasPendingPayment={subState.hasPendingPayment}
+                isOwner={user.isOwner}
+                className="flex-1 min-w-0"
+              />
             </div>
           </div>
-          <SubscriptionBanner
-            locked={subState.locked}
-            isTrial={subState.active?.isTrial ?? false}
-            daysLeft={subState.active?.daysLeft ?? 0}
-            expiresAt={subState.active?.expiresAt ?? null}
-            expiringSoon={subState.expiringSoon}
-            hasPendingPayment={subState.hasPendingPayment}
-            isOwner={user.isOwner}
-          />
           <div className="px-4 sm:px-6 lg:px-8 pt-3">
             <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-3 flex items-center justify-between gap-3">
               <div className="min-w-0">

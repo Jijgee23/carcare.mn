@@ -5,7 +5,13 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
-import { canCreate, canDelete, canEdit, workingBranchScopeId } from "@/lib/auth/roles";
+import {
+  canCreate,
+  canDelete,
+  canEdit,
+  hasPermission,
+  workingBranchScopeId,
+} from "@/lib/auth/roles";
 import { assertActiveSubscription } from "@/lib/subscription-server";
 import {
   ITEM_KINDS,
@@ -54,6 +60,17 @@ async function authorize(action: "create" | "edit" | "delete") {
         : canDelete(user, "orders");
   if (!ok) {
     throw new Error("Танд засварын хуудсанд энэ үйлдэл хийх эрх байхгүй.");
+  }
+  await assertActiveSubscription(user.tenantId);
+  return user;
+}
+
+// Мөрийн явц өөрчлөх нь орлогын хуудсанд ерөнхий засах эрхээс тусдаа,
+// `orders.itemStatus` тусгай эрхээр хамгаалагдана (харах: lib/auth/permissions.ts).
+async function authorizeItemStatus() {
+  const user = await requireUser();
+  if (!hasPermission(user, "orders.itemStatus")) {
+    throw new Error("Танд үйлчилгээний мөрийн явц өөрчлөх эрх байхгүй.");
   }
   await assertActiveSubscription(user.tenantId);
   return user;
@@ -362,6 +379,19 @@ export async function createOrderAction(
           if (linked.count !== 1) {
             throw new Error("Цаг захиалгыг засварын хуудастай холбож чадсангүй.");
           }
+
+          await logAudit(
+            {
+              tenantId: user.tenantId,
+              userId: user.id,
+              entity: "Appointment",
+              entityId: appointmentId,
+              action: "STATUS_CHANGE",
+              summary: "Цаг захиалга засварын хуудастай холбогдов",
+              after: { serviceOrderId: order.id, status: "CONFIRMED" },
+            },
+            tx,
+          );
         }
 
         return order;
@@ -1002,7 +1032,7 @@ export async function cancelOrderItemAction(
 export async function changeOrderItemStatusAction(
   formData: FormData,
 ): Promise<void> {
-  const user = await authorize("edit");
+  const user = await authorizeItemStatus();
   const itemId = s(formData, "itemId");
   const next = s(formData, "status") as ServiceItemStatus;
   if (!itemId || !next || next === "CANCELLED") return;

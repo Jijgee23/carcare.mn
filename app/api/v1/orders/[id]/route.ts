@@ -1,6 +1,7 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
 import { branchScopeId } from "@/lib/auth/roles";
+import { logAudit } from "@/lib/audit";
 import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
 import { prisma } from "@/lib/prisma";
 import {
@@ -122,6 +123,7 @@ export async function PATCH(
 
   const b = body as Record<string, unknown>;
   const updates: Prisma.ServiceOrderUpdateInput = {};
+  let statusChangedTo: OrderStatus | null = null;
 
   if (typeof b.status === "string") {
     const newStatus = b.status as OrderStatus;
@@ -133,6 +135,7 @@ export async function PATCH(
       );
     }
     updates.status = newStatus;
+    statusChangedTo = newStatus;
     if (newStatus === "IN_PROGRESS" && !order.startedAt) {
       updates.startedAt = new Date();
     }
@@ -156,6 +159,28 @@ export async function PATCH(
     data: updates,
     select: ORDER_DETAIL_SELECT,
   });
+
+  if (statusChangedTo) {
+    await logAudit({
+      tenantId: auth.user.tenantId,
+      userId: auth.user.id,
+      entity: "ServiceOrder",
+      entityId: id,
+      action: "STATUS_CHANGE",
+      summary: `${order.status} → ${statusChangedTo}`,
+      before: { status: order.status },
+      after: { status: statusChangedTo },
+    });
+  } else {
+    await logAudit({
+      tenantId: auth.user.tenantId,
+      userId: auth.user.id,
+      entity: "ServiceOrder",
+      entityId: id,
+      action: "UPDATE",
+      summary: "Засварын хуудасны мэдээлэл шинэчлэв",
+    });
+  }
 
   return jsonOk({ order: updated });
 }

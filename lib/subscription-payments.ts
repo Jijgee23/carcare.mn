@@ -2,6 +2,7 @@ import "server-only";
 
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@/app/generated/prisma/client";
+import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { QPayService } from "@/lib/qpay";
 import { periodEndDate } from "@/lib/subscription";
@@ -85,6 +86,23 @@ export async function confirmSubscriptionPayment(
           createdSubscriptionId: created.id,
         },
       });
+
+      await logAudit(
+        {
+          tenantId: payment.tenantId,
+          entity: "Tenant",
+          entityId: payment.tenantId,
+          action: "PAYMENT_CHANGE",
+          summary: `Багц идэвхжив: ${payment.plan} · ${payment.amount.toString()}₮`,
+          after: {
+            paymentId: payment.id,
+            plan: payment.plan,
+            amount: payment.amount.toString(),
+            subscriptionId: created.id,
+          },
+        },
+        tx,
+      );
     });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError) {

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@/app/generated/prisma/client";
+import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { QPayService } from "@/lib/qpay";
@@ -84,6 +85,15 @@ export async function createSubscriptionPaymentAction(
       where: { id: payment.id },
       data: { status: "FAILED" },
     });
+    await logAudit({
+      tenantId: user.tenantId,
+      userId: user.id,
+      entity: "Tenant",
+      entityId: user.tenantId,
+      action: "PAYMENT_CHANGE",
+      summary: `Багцын QPay invoice үүсгэхэд алдаа: ${price.plan}`,
+      after: { paymentId: payment.id, plan: price.plan, status: "FAILED" },
+    });
     return { ok: false, message: inv.error };
   }
 
@@ -95,6 +105,16 @@ export async function createSubscriptionPaymentAction(
       qrImage: inv.qr_image,
       qpayUrls: inv.urls ?? Prisma.JsonNull,
     },
+  });
+
+  await logAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    entity: "Tenant",
+    entityId: user.tenantId,
+    action: "PAYMENT_CHANGE",
+    summary: `Багцын QPay QR үүсгэв: ${price.plan} · ${amountNumber}₮`,
+    after: { paymentId: payment.id, plan: price.plan, amount: amountNumber },
   });
 
   revalidatePath("/dashboard/settings/subscription");
@@ -134,6 +154,13 @@ export async function cancelSubscriptionPaymentAction(
   const user = await requireUser();
   const paymentId = s(formData, "paymentId");
   if (!paymentId) return;
+
+  const payment = await prisma.subscriptionPayment.findFirst({
+    where: { id: paymentId, tenantId: user.tenantId, status: "PENDING" },
+    select: { plan: true, amount: true },
+  });
+  if (!payment) return;
+
   await prisma.subscriptionPayment.updateMany({
     where: {
       id: paymentId,
@@ -142,5 +169,16 @@ export async function cancelSubscriptionPaymentAction(
     },
     data: { status: "CANCELLED" },
   });
+
+  await logAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    entity: "Tenant",
+    entityId: user.tenantId,
+    action: "PAYMENT_CHANGE",
+    summary: `Багцын QPay QR цуцлав: ${payment.plan} · ${payment.amount.toString()}₮`,
+    after: { paymentId, plan: payment.plan, status: "CANCELLED" },
+  });
+
   revalidatePath("/dashboard/settings/subscription");
 }

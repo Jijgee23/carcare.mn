@@ -1,5 +1,6 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
+import { logAudit } from "@/lib/audit";
 import { normalizePhone } from "@/lib/phone";
 import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
@@ -104,6 +105,16 @@ export async function POST(req: Request) {
     }
     throw e;
   }
+
+  await logAudit({
+    tenantId: auth.user.tenantId,
+    userId: auth.user.id,
+    entity: "Customer",
+    entityId: customer.id,
+    action: "CREATE",
+    summary: customer.fullName || customer.phone,
+    after: { fullName: customer.fullName, phone: customer.phone, email: customer.email },
+  });
 
   return jsonOk({ customer }, { status: 201 });
 }

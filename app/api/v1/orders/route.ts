@@ -1,6 +1,7 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
 import { branchScopeId } from "@/lib/auth/roles";
+import { logAudit } from "@/lib/audit";
 import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
 import type { OrderStatus } from "@/lib/orders";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
@@ -176,6 +177,16 @@ export async function POST(req: Request) {
   if (!order) {
     return jsonError(500, "Захиалгын дугаар үүсгэж чадсангүй. Дахин оролдоно уу.");
   }
+
+  await logAudit({
+    tenantId: auth.user.tenantId,
+    userId: auth.user.id,
+    entity: "ServiceOrder",
+    entityId: order.id,
+    action: "CREATE",
+    summary: "Засварын хуудас үүсгэсэн",
+    after: { branchId, customerId, vehicleId, assignedToId, scheduledAt: scheduledAt?.toISOString() ?? null },
+  });
 
   return jsonOk({ order }, { status: 201 });
 }

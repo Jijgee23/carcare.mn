@@ -13,6 +13,7 @@ import {
   TEMPLATE_EDITOR_FORM_ID,
   TemplateEditor,
 } from "../../../diagnostics/templates/template-editor";
+import { TemplatePreview } from "../../../diagnostics/templates/template-preview";
 
 export const metadata = {
   title: "Оношилгоо засах",
@@ -59,7 +60,9 @@ export default async function EditDiagnosticTemplatePage({
 
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">Оношилгоо засах</h1>
+          <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">
+            {template.isSystemDefault ? "Оношилгоо харах" : "Оношилгоо засах"}
+          </h1>
           <p className="text-sm text-[var(--oc-muted3)] mt-1">
             v{template.version} · {template.name}
           </p>
@@ -68,26 +71,42 @@ export default async function EditDiagnosticTemplatePage({
           <BtnLink href="/dashboard/services/diagnostics" variant="ghost">
             ← Буцах
           </BtnLink>
-          <Btn type="submit" form={TEMPLATE_EDITOR_FORM_ID}>
-            Хадгалах
-          </Btn>
+          {!template.isSystemDefault ? (
+            <Btn type="submit" form={TEMPLATE_EDITOR_FORM_ID}>
+              Хадгалах
+            </Btn>
+          ) : null}
         </div>
       </div>
 
-      <TemplateEditor
-        categories={categories}
-        initial={{
-          id: template.id,
-          name: template.name,
-          description: template.description,
-          type: template.type as DiagnosticType,
-          isActive: template.isActive,
-          schema,
-          price: template.price?.toString() ?? null,
-          durationMin: template.durationMin,
-          categoryId: template.categoryId,
-        }}
-      />
+      {template.isSystemDefault ? (
+        <div className="flex flex-col gap-6">
+          <div className="rounded-[10px] border border-[var(--oc-accent)]/25 bg-[var(--oc-accent)]/[0.06] px-4 py-2.5 text-sm text-[var(--oc-ink2)]">
+            Энэ бол системийн үндсэн загвар — шинэ байгууллага бүрт автоматаар
+            үүсдэг тул засах, устгах боломжгүй. Өөрчлөх шаардлагатай бол
+            жагсаалтаас <span className="font-medium">Хуулах</span> дарж хувь
+            эх үүсгэн, тэрийг засаарай.
+          </div>
+          <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5 sm:p-6">
+            <TemplatePreview schema={schema} />
+          </div>
+        </div>
+      ) : (
+        <TemplateEditor
+          categories={categories}
+          initial={{
+            id: template.id,
+            name: template.name,
+            description: template.description,
+            type: template.type as DiagnosticType,
+            isActive: template.isActive,
+            schema,
+            price: template.price?.toString() ?? null,
+            durationMin: template.durationMin,
+            categoryId: template.categoryId,
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { jsonError, jsonOk, requireApiUser } from "@/lib/api";
 import { branchScopeId, canDelete } from "@/lib/auth/roles";
+import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(
@@ -55,7 +56,7 @@ export async function DELETE(
       tenantId: auth.user.tenantId,
       ...(scope ? { branchId: scope } : {}),
     },
-    select: { id: true, filledById: true },
+    select: { id: true, filledById: true, orderId: true },
   });
   if (!report) return jsonError(404, "Тайлан олдсонгүй.");
 
@@ -64,5 +65,15 @@ export async function DELETE(
   if (!allowed) return jsonError(403, "Танд устгах эрх байхгүй.");
 
   await prisma.diagnosticReport.delete({ where: { id: report.id } });
+
+  await logAudit({
+    tenantId: auth.user.tenantId,
+    userId: auth.user.id,
+    entity: "DiagnosticReport",
+    entityId: report.id,
+    action: "DELETE",
+    summary: report.orderId ? `засварын хуудас #${report.orderId}` : null,
+  });
+
   return jsonOk({ ok: true });
 }

@@ -233,9 +233,20 @@ export async function updateTemplateAction(
   // Бөглөгдсөн тайлантай бол schema өөрчилбөл version-г өсгөнө
   const existing = await prisma.diagnosticTemplate.findFirst({
     where: { id, tenantId: user.tenantId },
-    select: { schema: true, version: true, _count: { select: { reports: true } } },
+    select: {
+      schema: true,
+      version: true,
+      isSystemDefault: true,
+      _count: { select: { reports: true } },
+    },
   });
   if (!existing) return { ok: false, message: "Загвар олдсонгүй." };
+  if (existing.isSystemDefault) {
+    return {
+      ok: false,
+      message: "Системийн үндсэн загварыг засах боломжгүй.",
+    };
+  }
 
   const schemaChanged =
     JSON.stringify(existing.schema) !== JSON.stringify(schema);
@@ -286,9 +297,16 @@ export async function deleteTemplateAction(formData: FormData): Promise<void> {
   // Тайлантай бол устгахгүй, зөвхөн идэвхгүй болгоно
   const t = await prisma.diagnosticTemplate.findFirst({
     where: { id, tenantId: user.tenantId },
-    select: { name: true, _count: { select: { reports: true } } },
+    select: {
+      name: true,
+      isSystemDefault: true,
+      _count: { select: { reports: true } },
+    },
   });
   if (!t) return;
+  // UI-д товч харагдахгүй байх ёстой — энэ зөвхөн шууд POST илгээх гэх мэт
+  // UI-г тойрсон оролдлогоос хамгаалах сүүлчийн хамгаалалт.
+  if (t.isSystemDefault) return;
 
   const archived = t._count.reports > 0;
   if (archived) {
@@ -322,7 +340,7 @@ export async function duplicateTemplateAction(formData: FormData): Promise<void>
   });
   if (!src) return;
 
-  await prisma.diagnosticTemplate.create({
+  const copy = await prisma.diagnosticTemplate.create({
     data: {
       name: `${src.name} (хуулбар)`,
       description: src.description,
@@ -333,6 +351,16 @@ export async function duplicateTemplateAction(formData: FormData): Promise<void>
       tenantId: user.tenantId,
       createdById: user.id,
     },
+    select: { id: true, name: true },
+  });
+
+  await logAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    entity: "DiagnosticTemplate",
+    entityId: copy.id,
+    action: "CREATE",
+    summary: `${copy.name} (${src.name}-ээс хуулбарлав)`,
   });
 
   revalidatePath("/dashboard/services/diagnostics");

@@ -37,6 +37,10 @@ import {
 } from "@/lib/branches";
 import { trialEndDate } from "@/lib/subscription";
 import { DEFAULT_UNITS } from "@/lib/units";
+import {
+  DEFAULT_INTAKE_TEMPLATE_NAME,
+  DEFAULT_INTAKE_TEMPLATE_SCHEMA,
+} from "@/lib/diagnostics";
 
 export type SignUpFormValues = {
   orgName: string;
@@ -324,6 +328,20 @@ export async function signUpAction(
           code: u.code,
         })),
         skipDuplicates: true,
+      });
+
+      // Системийн үндсэн оношилгооны загвар — шинэ тенант шууд ашиглаж
+      // эхэлнэ (ангилалгүй; ажилтан хүсвэл дараа нь ангилал/үнэ нэмж болно).
+      // isSystemDefault: тенант засах/устгах боломжгүй (харах:
+      // app/_actions/diagnostic-templates.ts).
+      await tx.diagnosticTemplate.create({
+        data: {
+          tenantId: tenant.id,
+          name: DEFAULT_INTAKE_TEMPLATE_NAME,
+          type: "INTAKE",
+          schema: DEFAULT_INTAKE_TEMPLATE_SCHEMA,
+          isSystemDefault: true,
+        },
       });
 
       // 14 хоногийн free trial subscription автоматаар үүсгэнэ
@@ -784,7 +802,7 @@ export async function resetPasswordAction(
 
   const user = await prisma.user.findUnique({
     where: { email },
-    select: { id: true },
+    select: { id: true, tenantId: true },
   });
   if (!user) {
     return {
@@ -805,6 +823,14 @@ export async function resetPasswordAction(
       failedLoginAttempts: 0,
       lockedAt: null,
     },
+  });
+  await logAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    entity: "User",
+    entityId: user.id,
+    action: "UPDATE",
+    summary: "Нууц үг сэргээв (OTP-ээр баталгаажуулсан)",
   });
   // Бүх идэвхтэй refresh token-уудыг хүчингүй болгож, бусад OTP-уудыг ч revoke
   await Promise.all([

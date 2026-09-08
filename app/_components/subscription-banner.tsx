@@ -26,6 +26,7 @@ export function SubscriptionBanner({
   expiringSoon,
   hasPendingPayment,
   isOwner,
+  className,
 }: {
   locked: boolean;
   isTrial: boolean;
@@ -34,11 +35,13 @@ export function SubscriptionBanner({
   expiringSoon: boolean;
   hasPendingPayment: boolean;
   isOwner: boolean;
+  className?: string;
 }) {
   if (locked) {
     return (
       <BannerShell
         urgent
+        className={className}
         title="Багцын хугацаа дууссан"
         detail={
           hasPendingPayment
@@ -56,6 +59,7 @@ export function SubscriptionBanner({
       /* Сануулгын тон — улааныг зөвхөн түгжигдсэн (locked) төлөвт үлдээнэ */
       <BannerShell
         urgent={false}
+        className={className}
         dismissKey="trial"
         title={`Туршилтын хувилбар — ${formatDaysLeft(daysLeft)}`}
         detail={
@@ -71,6 +75,7 @@ export function SubscriptionBanner({
     return (
       <BannerShell
         urgent={false}
+        className={className}
         dismissKey="expiring"
         title={`Багц удахгүй дуусна — ${formatDaysLeft(daysLeft)}`}
         detail={
@@ -90,11 +95,13 @@ function BannerShell({
   title,
   detail,
   dismissKey,
+  className = "",
 }: {
   urgent: boolean;
   title: string;
   detail?: string;
   dismissKey?: string;
+  className?: string;
 }) {
   const storageKey = dismissKey ? `sub-banner-dismissed:${dismissKey}` : null;
   const [hidden, setHidden] = useState(false);
@@ -106,70 +113,68 @@ function BannerShell({
   if (hidden) return null;
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 pt-3">
-      <div
-        className={`flex items-center gap-3 rounded-xl border px-3.5 py-2 ${
-          urgent
-            ? "border-red-500/30 bg-red-500/[0.08] text-red-200 light:border-red-300 light:bg-red-50 light:text-red-700"
-            : "border-amber-500/30 bg-amber-500/[0.08] text-amber-200 light:border-amber-300 light:bg-amber-50 light:text-amber-800"
-        }`}
+    <div
+      className={`flex items-center gap-3 rounded-xl border px-3.5 py-2 ${
+        urgent
+          ? "border-red-500/30 bg-red-500/[0.08] text-red-200 light:border-red-300 light:bg-red-50 light:text-red-700"
+          : "border-amber-500/30 bg-amber-500/[0.08] text-amber-200 light:border-amber-300 light:bg-amber-50 light:text-amber-800"
+      } ${className}`}
+    >
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="shrink-0"
+        aria-hidden="true"
       >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="shrink-0"
-          aria-hidden="true"
-        >
-          <circle cx="12" cy="12" r="10" />
-          <line x1="12" y1="8" x2="12" y2="12" />
-          <line x1="12" y1="16" x2="12.01" y2="16" />
-        </svg>
-        <div className="min-w-0 flex-1 truncate text-sm">
-          <span className="font-medium">{title}</span>
-          {detail ? (
-            <span className="hidden md:inline text-xs opacity-75 ml-2">
-              {detail}
-            </span>
-          ) : null}
-        </div>
-        <a
-          href="/dashboard/settings/subscription"
-          className="shrink-0 inline-flex items-center justify-center rounded-lg bg-white/[0.06] hover:bg-white/[0.12] transition-colors px-2.5 py-1 text-xs font-medium"
-        >
-          Багц харах →
-        </a>
-        {storageKey ? (
-          <button
-            type="button"
-            aria-label="Хаах"
-            onClick={() => {
-              sessionStorage.setItem(storageKey, "1");
-              setHidden(true);
-            }}
-            className="shrink-0 w-6 h-6 rounded-lg flex items-center justify-center opacity-60 hover:opacity-100 hover:bg-white/[0.08] transition-all"
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              aria-hidden="true"
-            >
-              <path d="M18 6 6 18" />
-              <path d="m6 6 12 12" />
-            </svg>
-          </button>
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
+      <div className="min-w-0 flex-1 truncate text-sm">
+        <span className="font-medium">{title}</span>
+        {detail ? (
+          <span className="hidden md:inline text-xs opacity-75 ml-2">
+            {detail}
+          </span>
         ) : null}
       </div>
+      <a
+        href="/dashboard/settings/subscription"
+        className="shrink-0 inline-flex items-center justify-center rounded-lg bg-white/[0.06] hover:bg-white/[0.12] transition-colors px-2.5 py-1 text-xs font-medium"
+      >
+        Багц харах →
+      </a>
+      {storageKey ? (
+        <button
+          type="button"
+          aria-label="Хаах"
+          onClick={() => {
+            sessionStorage.setItem(storageKey, "1");
+            setHidden(true);
+          }}
+          className="shrink-0 w-6 h-6 rounded-lg flex items-center justify-center opacity-60 hover:opacity-100 hover:bg-white/[0.08] transition-all"
+        >
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            aria-hidden="true"
+          >
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </svg>
+        </button>
+      ) : null}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { jsonError, jsonOk, requireApiUser } from "@/lib/api";
+import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 
 const SELECT = { id: true, name: true, description: true, isActive: true, createdAt: true };
@@ -43,6 +44,16 @@ export async function PATCH(
     select: SELECT,
   });
 
+  await logAudit({
+    tenantId: auth.user.tenantId,
+    userId: auth.user.id,
+    entity: "Category",
+    entityId: id,
+    action: "UPDATE",
+    summary: category.name,
+    after: { name: category.name, isActive: category.isActive },
+  });
+
   return jsonOk({ category });
 }
 
@@ -67,5 +78,15 @@ export async function DELETE(
     return jsonError(400, `${usageCount} үйлчилгээнд ашиглагдаж байгаа тул устгах боломжгүй`);
 
   await prisma.category.delete({ where: { id } });
+
+  await logAudit({
+    tenantId: auth.user.tenantId,
+    userId: auth.user.id,
+    entity: "Category",
+    entityId: id,
+    action: "DELETE",
+    summary: existing.name,
+  });
+
   return jsonOk({ ok: true });
 }

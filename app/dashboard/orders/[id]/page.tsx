@@ -8,6 +8,7 @@ import {
   canDelete,
   canEdit,
   canView,
+  hasPermission,
   workingBranchScopeId,
 } from "@/lib/auth/roles";
 import { redirect } from "next/navigation";
@@ -52,6 +53,7 @@ export default async function OrderDetailPage({
   const user = await requireUser();
   if (!canView(user, "orders")) redirect("/dashboard");
   const canEditOrder = canEdit(user, "orders");
+  const canChangeItemStatus = hasPermission(user, "orders.itemStatus");
   const canDeleteOrder = canDelete(user, "orders");
   const canEditPayments = canEdit(user, "payments");
   const scopeBranchId = workingBranchScopeId(user);
@@ -337,6 +339,7 @@ export default async function OrderDetailPage({
                 }))}
                 orderId={order.id}
                 canEdit={isEditable && canEditOrder}
+                canChangeStatus={isEditable && canChangeItemStatus}
               />
             )}
 

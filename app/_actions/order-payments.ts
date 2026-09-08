@@ -240,17 +240,27 @@ export async function cancelOrderQPayPaymentAction(
   if (!canDelete(user, "payments")) return;
   const paymentId = s(formData, "paymentId");
   if (!paymentId) return;
+
+  const payment = await prisma.orderPayment.findFirst({
+    where: { id: paymentId, tenantId: user.tenantId, status: "PENDING" },
+    select: { orderId: true, amount: true },
+  });
+  if (!payment) return;
+
   await prisma.orderPayment.updateMany({
-    where: {
-      id: paymentId,
-      tenantId: user.tenantId,
-      status: "PENDING",
-    },
+    where: { id: paymentId, tenantId: user.tenantId, status: "PENDING" },
     data: { status: "CANCELLED" },
   });
-  const p = await prisma.orderPayment.findFirst({
-    where: { id: paymentId },
-    select: { orderId: true },
+
+  await logAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    entity: "ServiceOrder",
+    entityId: payment.orderId,
+    action: "PAYMENT_CHANGE",
+    summary: `QPay QR цуцлав · ${payment.amount.toString()}₮`,
+    after: { paymentId, amount: payment.amount.toString(), status: "CANCELLED" },
   });
-  if (p) revalidatePath(`/dashboard/orders/${p.orderId}`);
+
+  revalidatePath(`/dashboard/orders/${payment.orderId}`);
 }
