@@ -135,13 +135,13 @@ function QRPanel({
       )}
 
       {pending.urls.length > 0 ? (
-        <div className="grid grid-cols-3 gap-2 w-full">
+        <div className="flex flex-wrap justify-center gap-1.5 w-full">
           {pending.urls.map((bank) => (
             <a
               key={bank.link}
               href={bank.link}
               title={bank.name_mn || bank.name}
-              className="flex flex-col items-center gap-1.5 rounded-[8px] border border-[var(--oc-line2)] px-1.5 py-2 hover:border-[var(--oc-accent)]/50 hover:bg-[var(--oc-accent)]/[0.04] transition-colors"
+              className="flex flex-col items-center gap-1 w-14 shrink-0 rounded-lg border border-[var(--oc-line2)] px-1 py-1.5 hover:border-[var(--oc-accent)]/50 hover:bg-[var(--oc-accent)]/[0.04] transition-colors"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img

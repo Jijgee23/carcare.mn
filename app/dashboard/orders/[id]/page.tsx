@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Prisma } from "@/app/generated/prisma/client";
 import { deleteOrderAction } from "@/app/_actions/orders";
 import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
 import { requireUser } from "@/lib/auth";
 import {
   ORDER_ASSIGNABLE_WHERE,
+  canCreate,
   canDelete,
   canEdit,
   canView,
@@ -36,7 +38,7 @@ import { prisma } from "@/lib/prisma";
 import type { QPayBankUrl } from "@/lib/qpay-tenant";
 import { AddItemForm } from "./add-item-form";
 import { OrderItems } from "./order-items";
-import { PaymentControls } from "./payment-controls";
+import { OrderPaymentsList } from "./order-payments-list";
 import { QPayWidget } from "./qpay-widget";
 import { StatusControls } from "./status-controls";
 import { OrderForm } from "../order-form";
@@ -56,6 +58,8 @@ export default async function OrderDetailPage({
   const canChangeItemStatus = hasPermission(user, "orders.itemStatus");
   const canDeleteOrder = canDelete(user, "orders");
   const canEditPayments = canEdit(user, "payments");
+  const canRecordPayments = canCreate(user, "payments");
+  const canReversePayments = canDelete(user, "payments");
   const scopeBranchId = workingBranchScopeId(user);
   const { id } = await params;
 
@@ -177,8 +181,9 @@ export default async function OrderDetailPage({
     }),
   ]);
 
-  // QPay тохиргоо + одоо хүлээгдэж байгаа QPay invoice
-  const [qpayConfig, pendingOrderPayment] = await Promise.all([
+  // QPay тохиргоо + одоо хүлээгдэж байгаа QPay invoice + бүртгэгдсэн
+  // төлбөрүүдийн жагсаалт (арга бүрээр — жишээ нь 20,000₮ QPay, 50,000₮ бэлнээр).
+  const [qpayConfig, pendingOrderPayment, orderPayments] = await Promise.all([
     prisma.tenantQPaySettings.findUnique({
       where: { tenantId: user.tenantId },
       select: { enabled: true },
@@ -186,6 +191,18 @@ export default async function OrderDetailPage({
     prisma.orderPayment.findFirst({
       where: { orderId: id, status: "PENDING", method: "QPAY" },
       orderBy: { createdAt: "desc" },
+    }),
+    prisma.orderPayment.findMany({
+      where: { orderId: id, status: { not: "PENDING" } },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        amount: true,
+        method: true,
+        status: true,
+        paidAt: true,
+        createdAt: true,
+      },
     }),
   ]);
   const qpayReady = Boolean(qpayConfig?.enabled);
@@ -195,6 +212,9 @@ export default async function OrderDetailPage({
   const status = order.status as OrderStatus;
   const paymentStatus = order.paymentStatus as PaymentStatus;
   const allowedTransitions = ORDER_STATUS_TRANSITIONS[status];
+  const remainingAmount = (order.totalAmount ?? new Prisma.Decimal(0))
+    .minus(order.paidAmount ?? new Prisma.Decimal(0))
+    .toString();
   const isEditable = status !== "COMPLETED" && status !== "CANCELLED";
   const diagnosticsFillable = canFillDiagnostics(status);
 
@@ -535,14 +555,25 @@ export default async function OrderDetailPage({
                 Дараа төлбөрт засварын хуудас — төлбөрийг гэрээгээр нэгтгэн төлнө.
               </p>
             ) : null}
-            {canEditPayments ? (
-              <PaymentControls
-                orderId={order.id}
-                paymentStatus={paymentStatus}
-                totalAmount={
-                  order.totalAmount ? order.totalAmount.toString() : "0"
-                }
-              />
+            {(orderPayments.length > 0 || canRecordPayments) ? (
+              <div className="mt-4 pt-4 border-t border-[var(--oc-line)]">
+                <div className="font-plex-mono text-[10.5px] text-[var(--oc-muted3)] uppercase tracking-[0.1em] mb-2">
+                  Төлбөрүүд
+                </div>
+                <OrderPaymentsList
+                  orderId={order.id}
+                  payments={orderPayments.map((p) => ({
+                    id: p.id,
+                    amount: p.amount.toString(),
+                    method: p.method,
+                    status: p.status,
+                    createdAt: p.createdAt.toISOString(),
+                  }))}
+                  remaining={remainingAmount}
+                  canRecord={canRecordPayments}
+                  canReverse={canReversePayments}
+                />
+              </div>
             ) : null}
             {canEditPayments && paymentStatus !== "PAID" ? (
               <div className="mt-4 pt-4 border-t border-[var(--oc-line)]">

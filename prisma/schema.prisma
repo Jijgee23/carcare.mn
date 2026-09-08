@@ -769,6 +769,7 @@ enum OrderPaymentMethod {
   QPAY
   CASH
   BANK_TRANSFER
+  CARD
   OTHER
 }
 

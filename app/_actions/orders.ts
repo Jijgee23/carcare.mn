@@ -17,14 +17,12 @@ import { parseDurationInput } from "@/lib/category-duration";
 import {
   ITEM_KINDS,
   ORDER_STATUS_TRANSITIONS,
-  PAYMENT_STATUSES,
   SERVICE_ITEM_STATUSES,
   canChangeServiceItemStatus,
   isOrderLocked,
   isServiceItemCancellable,
   type ItemKind,
   type OrderStatus,
-  type PaymentStatus,
   type ServiceItemStatus,
 } from "@/lib/orders";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
@@ -739,75 +737,12 @@ export async function setOrderCapacityAction(
 }
 
 // --- PAYMENT STATUS -------------------------------------------------------
-
-export async function changeOrderPaymentStatusAction(
-  formData: FormData,
-): Promise<void> {
-  const user = await authorize("edit");
-  const id = s(formData, "id");
-  const next = s(formData, "paymentStatus") as PaymentStatus;
-  const paidAmountRaw = s(formData, "paidAmount");
-
-  if (!id) return;
-  if (!(PAYMENT_STATUSES as readonly string[]).includes(next)) {
-    throw new Error("Төлбөрийн төлөв буруу.");
-  }
-
-  const order = await prisma.serviceOrder.findFirst({
-    where: { id, tenantId: user.tenantId },
-    select: { id: true, totalAmount: true, paymentStatus: true },
-  });
-  if (!order) return;
-
-  const updates: Prisma.ServiceOrderUpdateInput = { paymentStatus: next };
-
-  if (next === "PAID") {
-    updates.paidAt = new Date();
-    updates.paidAmount = order.totalAmount ?? new Prisma.Decimal(0);
-  } else if (next === "UNPAID") {
-    updates.paidAt = null;
-    updates.paidAmount = null;
-  } else if (next === "PARTIAL") {
-    const amt = parseDecimal(paidAmountRaw);
-    if (!amt) {
-      throw new Error("Хагас төлбөрийн дүнг зөв оруулна уу.");
-    }
-    if (order.totalAmount && amt.gt(order.totalAmount)) {
-      throw new Error("Төлсөн дүн нийт дүнгээс их байж болохгүй.");
-    }
-    updates.paidAmount = amt;
-    updates.paidAt = null;
-  }
-
-  const paidAmountStr =
-    updates.paidAmount instanceof Prisma.Decimal
-      ? updates.paidAmount.toString()
-      : null;
-
-  await prisma.$transaction(async (tx) => {
-    await tx.serviceOrder.update({
-      where: { id: order.id },
-      data: updates,
-    });
-    await logAudit(
-      {
-        tenantId: user.tenantId,
-        userId: user.id,
-        entity: "ServiceOrder",
-        entityId: order.id,
-        action: "PAYMENT_CHANGE",
-        summary: `${order.paymentStatus} → ${next}${paidAmountStr ? ` (${paidAmountStr})` : ""}`,
-        before: { paymentStatus: order.paymentStatus },
-        after: { paymentStatus: next, paidAmount: paidAmountStr },
-      },
-      tx,
-    );
-  });
-
-  revalidatePath("/dashboard/orders");
-  revalidatePath(`/dashboard/orders/${id}`);
-  revalidatePath("/dashboard");
-}
+// Гараар зарлах action-ийг бүрмөсөн хассан — Төлбөрийн төлөв (PAID/PARTIAL/
+// UNPAID) цаашид зөвхөн бодит (арга/дүнгээр бүртгэгдсэн) төлбөрүүдээс
+// автоматаар тооцогдоно (харах: app/_actions/order-payments.ts
+// recordOrderPaymentAction/reverseOrderPaymentAction). Дашбоард дээр захиалгын
+// дэлгэрэнгүй хуудасны "Төлбөр" картын гарчгийн badge (PAYMENT_STATUS_BADGE/
+// PAYMENT_STATUS_LABEL, харах: page.tsx) л одоогийн төлөвийг харуулна.
 
 // --- DELETE ---------------------------------------------------------------
 

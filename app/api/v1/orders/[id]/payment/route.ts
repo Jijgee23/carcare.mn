@@ -3,10 +3,7 @@ import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api"
 import { logAudit } from "@/lib/audit";
 import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
 import { branchScopeId } from "@/lib/auth/roles";
-import {
-  PAYMENT_STATUSES,
-  type PaymentStatus,
-} from "@/lib/orders";
+import type { PaymentStatus } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
 
 const ORDER_DETAIL_SELECT = {
@@ -90,9 +87,12 @@ export async function PATCH(
     return jsonError(400, "JSON body шаардлагатай.");
   }
 
+  // "Хагас" (PARTIAL) төлөвийг энд ГАРААР зарлахгүй — зөвхөн бодит
+  // (арга/дүнгээр бүртгэгдсэн) төлбөрүүдээс автоматаар тооцогдоно (харах:
+  // app/_actions/order-payments.ts recordOrderPaymentAction/reverseOrderPaymentAction).
   const b = body as Record<string, unknown>;
   const next = b.paymentStatus as string;
-  if (!(PAYMENT_STATUSES as readonly string[]).includes(next)) {
+  if (next !== "PAID" && next !== "UNPAID") {
     return jsonError(422, "Төлбөрийн төлөв буруу.");
   }
 
@@ -103,23 +103,9 @@ export async function PATCH(
   if (next === "PAID") {
     updates.paidAt = new Date();
     updates.paidAmount = order.totalAmount ?? new Prisma.Decimal(0);
-  } else if (next === "UNPAID") {
+  } else {
     updates.paidAt = null;
     updates.paidAmount = null;
-  } else if (next === "PARTIAL") {
-    const rawAmt =
-      typeof b.paidAmount === "number"
-        ? b.paidAmount
-        : Number.parseFloat(String(b.paidAmount ?? ""));
-    if (!rawAmt || Number.isNaN(rawAmt) || rawAmt <= 0) {
-      return jsonError(422, "Хагас төлбөрийн дүнг зөв оруулна уу.");
-    }
-    const amt = new Prisma.Decimal(rawAmt);
-    if (order.totalAmount && amt.gt(order.totalAmount)) {
-      return jsonError(422, "Төлсөн дүн нийт дүнгээс их байж болохгүй.");
-    }
-    updates.paidAmount = amt;
-    updates.paidAt = null;
   }
 
   const paidAmountStr =

@@ -233,13 +233,11 @@ Res:  200 { "item": {...} }
 422 { "error": "Энэ мөрийг цуцлах боломжгүй." }`}</Code>
         </Endpoint>
 
-        <Endpoint method="PATCH" path="/api/v1/orders/[id]/payment" auth="bearer" bearerLabel={BEARER} tags={["Эрх: payments.edit", "Багц идэвхтэй байх шаардлагатай"]} title="Засварын хуудасны төлбөрийн төлөв шинэчлэх (бэлнээр төлсөн гэх мэт).">
-          <Code>{`Req:  { "paymentStatus": "UNPAID" | "PARTIAL" | "PAID", "paidAmount": 0 }  // PARTIAL үед paidAmount заавал
+        <Endpoint method="PATCH" path="/api/v1/orders/[id]/payment" auth="bearer" bearerLabel={BEARER} tags={["Эрх: payments.edit", "Багц идэвхтэй байх шаардлагатай"]} title="Засварын хуудсыг бүхэлд нь Төлөгдсөн/Төлөгдөөгүй болгох (Хагас/PARTIAL энд гараар байхгүй — зөвхөн бодит бүртгэгдсэн төлбөрүүдээс автоматаар тооцогдоно).">
+          <Code>{`Req:  { "paymentStatus": "UNPAID" | "PAID" }
 Res:  200 { "order": {...} }
 404  { "error": "Засварын хуудас олдсонгүй." }
-422  { "error": "Төлбөрийн төлөв буруу." }
-422  { "error": "Хагас төлбөрийн дүнг зөв оруулна уу." }
-422  { "error": "Төлсөн дүн нийт дүнгээс их байж болохгүй." }`}</Code>
+422  { "error": "Төлбөрийн төлөв буруу." }`}</Code>
         </Endpoint>
 
         <Endpoint method="GET" path="/api/v1/orders/[id]/qpay" auth="bearer" bearerLabel={BEARER} title="Засварын хуудасны идэвхтэй QPay нэхэмжлэхийг харах.">

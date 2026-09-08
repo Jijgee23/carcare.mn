@@ -67,6 +67,41 @@ export const PAYMENT_STATUS_BADGE: Record<PaymentStatus, string> = {
     "bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700",
 };
 
+// --- Захиалгын төлбөрийн арга (OrderPayment.method) -----------------------
+// QPay-аас гадна гараар (аль хэдийн хүлээн авсан) төлбөр бүртгэх боломжтой
+// аргууд. "OTHER" нь DB enum-д байгаа ч UI-д сонголт болгон харуулахгүй
+// (тодорхойгүй тохиолдолд ашиглах нөөц утга — жагсаалт бүтэн байлгахын тулд).
+export const ORDER_PAYMENT_METHODS = [
+  "QPAY",
+  "CASH",
+  "BANK_TRANSFER",
+  "CARD",
+] as const;
+export type OrderPaymentMethod = (typeof ORDER_PAYMENT_METHODS)[number];
+
+export const ORDER_PAYMENT_METHOD_LABEL: Record<string, string> = {
+  QPAY: "QPay",
+  CASH: "Бэлэн",
+  BANK_TRANSFER: "Дансаар",
+  CARD: "Карт",
+  OTHER: "Бусад",
+};
+
+export const ORDER_PAYMENT_METHOD_BADGE: Record<string, string> = {
+  QPAY: "bg-sky-500/15 text-sky-300 border border-sky-500/25 light:bg-sky-100 light:border-sky-300 light:text-sky-700",
+  CASH: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700",
+  BANK_TRANSFER: "bg-violet-500/15 text-violet-300 border border-violet-500/25 light:bg-violet-100 light:border-violet-300 light:text-violet-700",
+  CARD: "bg-amber-500/15 text-amber-300 border border-amber-500/25 light:bg-amber-100 light:border-amber-300 light:text-amber-700",
+  OTHER: "bg-zinc-500/15 text-zinc-300 border border-zinc-500/25 light:bg-zinc-100 light:border-zinc-300 light:text-zinc-600",
+};
+
+export const ORDER_PAYMENT_STATUS_LABEL: Record<string, string> = {
+  PENDING: "Хүлээгдэж буй",
+  PAID: "Төлөгдсөн",
+  CANCELLED: "Цуцлагдсан",
+  FAILED: "Амжилтгүй",
+};
+
 // Дараа төлбөрт (гэрээт) машин/захиалгын тэмдэг — олон хуудсанд нийтлэг.
 export const POSTPAID_LABEL = "Дараа төлбөрт";
 export const POSTPAID_BADGE =
