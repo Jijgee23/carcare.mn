@@ -4,27 +4,20 @@ import {
   deleteEmployeeAndReturnAction,
   resetEmployeePasswordAction,
 } from "@/app/_actions/employees";
+import { ConfirmForm } from "@/app/_components/confirm-form";
 import { Btn } from "@/app/_components/landing-ops-ui";
 
 export function ResetPasswordButton({ employeeId }: { employeeId: string }) {
   return (
-    <form
+    <ConfirmForm
       action={resetEmployeePasswordAction}
-      onSubmit={(e) => {
-        if (
-          !window.confirm(
-            "Энэ ажилтны нууц үгийг хүчингүй болгох уу? Дараагийн удаа нэвтрэхдээ утсанд ирэх кодоор шинэ нууц үг үүсгэнэ.",
-          )
-        ) {
-          e.preventDefault();
-        }
-      }}
+      message="Энэ ажилтны нууц үгийг хүчингүй болгох уу? Дараагийн удаа нэвтрэхдээ утсанд ирэх кодоор шинэ нууц үг үүсгэнэ."
     >
       <input type="hidden" name="id" value={employeeId} />
       <Btn type="submit" variant="ghost">
         Нууц үг шинэчлэх
       </Btn>
-    </form>
+    </ConfirmForm>
   );
 }
 
@@ -36,22 +29,14 @@ export function DeleteEmployeeButton({
   employeeName: string;
 }) {
   return (
-    <form
+    <ConfirmForm
       action={deleteEmployeeAndReturnAction}
-      onSubmit={(e) => {
-        if (
-          !window.confirm(
-            `"${employeeName}" ажилтныг устгах уу? Энэ үйлдлийг буцаах боломжгүй.`,
-          )
-        ) {
-          e.preventDefault();
-        }
-      }}
+      message={`"${employeeName}" ажилтныг устгах уу? Энэ үйлдлийг буцаах боломжгүй.`}
     >
       <input type="hidden" name="id" value={employeeId} />
       <Btn type="submit" variant="danger" className="w-full">
         Ажилтныг устгах
       </Btn>
-    </form>
+    </ConfirmForm>
   );
 }

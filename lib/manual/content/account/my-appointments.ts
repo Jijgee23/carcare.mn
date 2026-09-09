@@ -2,7 +2,7 @@ import type { ManualSection } from "@/lib/manual/types";
 
 export const myAppointments: ManualSection = {
   slug: "my-appointments",
-  title: "Миний цаг",
+  title: "Миний захиалгууд",
   description: "Захиалсан цагуудаа харах, цуцлах.",
   articles: [
     {
@@ -12,7 +12,7 @@ export const myAppointments: ManualSection = {
       whenToUse: "Захиалсан цагныхаа төлөв (хүлээгдэж буй/баталгаажсан) болон хураамжийн төлбөрийн байдлыг шалгах, шаардлагатай бол цуцлахад.",
       prerequisites: [],
       steps: [
-        { title: "\"Миний цаг\" хуудсанд орно" },
+        { title: "\"Миний захиалгууд\" хуудсанд орно" },
         { title: "Цаг бүрийн төлөв, хураамж төлөгдсөн эсэхийг харна" },
         { title: "Шаардлагатай бол \"Цуцлах\" дарна" },
       ],

@@ -8,6 +8,7 @@ import {
   updatePlanPriceAction,
 } from "@/app/_actions/system-plan-prices";
 import { Field, FormError } from "@/app/_components/landing-ops-ui";
+import { ConfirmForm } from "@/app/_components/confirm-form";
 import {
   BILLING_PERIODS,
   BILLING_PERIOD_LABEL,
@@ -132,7 +133,10 @@ function ViewRow({ row, onEdit }: { row: PlanPriceRow; onEdit: () => void }) {
           >
             Засах
           </button>
-          <form action={deletePlanPriceAction}>
+          <ConfirmForm
+            action={deletePlanPriceAction}
+            message="Энэ үнийн мөрийг устгах уу?"
+          >
             <input type="hidden" name="id" value={row.id} />
             <button
               type="submit"
@@ -140,7 +144,7 @@ function ViewRow({ row, onEdit }: { row: PlanPriceRow; onEdit: () => void }) {
             >
               Устгах
             </button>
-          </form>
+          </ConfirmForm>
         </div>
       </td>
     </tr>

@@ -9,26 +9,38 @@ import { customerLabel } from "@/lib/customers";
 import {
   DIAGNOSTIC_TYPE_BADGE,
   DIAGNOSTIC_TYPE_LABEL,
+  SEVERITY_BADGE,
+  SEVERITY_LABEL,
   type DiagnosticType,
+  type ReportSeverity,
 } from "@/lib/diagnostics";
 import { prisma } from "@/lib/prisma";
+import { FilterSelect } from "@/app/_components/list-filters";
 
 export const metadata = {
   title: "Оношилгооны тайлангууд",
 };
 
+const SEVERITY_VALUES: ReportSeverity[] = ["BAD", "WARN", "GOOD"];
+
+function isSeverity(v: string | undefined): v is ReportSeverity {
+  return !!v && (SEVERITY_VALUES as string[]).includes(v);
+}
+
 export default async function ReportsListPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; severity?: string }>;
 }) {
   const user = await requireUser();
 
-  const { page: pageParam } = await searchParams;
+  const { page: pageParam, severity: severityParam } = await searchParams;
+  const severity = isSeverity(severityParam) ? severityParam : undefined;
   const scopeBranchId = workingBranchScopeId(user);
   const where = {
     tenantId: user.tenantId,
     ...(scopeBranchId ? { branchId: scopeBranchId } : {}),
+    ...(severity ? { maxSeverity: severity } : {}),
   };
   const { page, pageSize, skip, take } = getPageInfo(pageParam);
   const [reports, total] = await Promise.all([
@@ -59,7 +71,17 @@ export default async function ReportsListPage({
             Бөглөгдсөн оношилгооны тайлангуудын жагсаалт · {total} тайлан
           </p>
         </div>
-        <AddLinkButton href="/dashboard/diagnostics/new">Шинэ тайлан</AddLinkButton>
+        <div className="flex items-center gap-2">
+          <FilterSelect
+            paramName="severity"
+            placeholder="Бүх түвшин"
+            options={SEVERITY_VALUES.map((v) => ({
+              value: v,
+              label: SEVERITY_LABEL[v],
+            }))}
+          />
+          <AddLinkButton href="/dashboard/diagnostics/new">Шинэ тайлан</AddLinkButton>
+        </div>
       </div>
 
       {reports.length === 0 ? (
@@ -79,6 +101,7 @@ export default async function ReportsListPage({
                   {[
                     "Огноо",
                     "Загвар",
+                    "Түвшин",
                     "Үйлчлүүлэгч",
                     "Машин",
                     "Салбар",
@@ -121,6 +144,17 @@ export default async function ReportsListPage({
                           </span>
                         </div>
                       </td>
+                      <td className="px-5 py-3">
+                        {r.maxSeverity ? (
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-full border ${SEVERITY_BADGE[r.maxSeverity as ReportSeverity]}`}
+                          >
+                            {SEVERITY_LABEL[r.maxSeverity as ReportSeverity]}
+                          </span>
+                        ) : (
+                          <span className="text-[var(--oc-muted4)] text-xs">—</span>
+                        )}
+                      </td>
                       <td className="px-5 py-3 text-sm text-[var(--oc-muted2)]">
                         {customerLabel(r.customer)}
                       </td>
@@ -153,6 +187,7 @@ export default async function ReportsListPage({
             page={meta.page}
             totalPages={meta.totalPages}
             total={meta.total}
+            params={{ severity }}
           />
         </div>
       )}

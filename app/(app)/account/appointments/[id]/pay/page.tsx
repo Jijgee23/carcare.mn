@@ -39,7 +39,7 @@ export default async function AppointmentPayPage({
         href="/account"
         className="text-xs text-[var(--oc-muted3)] hover:text-[var(--oc-ink2)] transition-colors w-fit"
       >
-        ← Миний цагууд
+        ← Миний захиалгууд
       </Link>
 
       <div>

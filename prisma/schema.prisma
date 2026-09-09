@@ -633,10 +633,24 @@ enum DiagnosticType {
 
 // --- DiagnosticReport (бөглөгдсөн хуудас, захиалгад хавсаргана) -----------
 
+// Тайлан доторх check хариултуудаас хамгийн муу (worst) өнгийг тайлангийн
+// түвшинд урьдчилан тооцож хадгална — жагсаалтыг DB түвшинд шүүхэд (worker
+// web-ийн "яаралтай"-аар шүүх функц) ашиглана. Тайлангийн `data` нь дур
+// зоргоороо key-тэй JSON тул SQL-ээр шууд шүүх боломжгүй, тиймээс бичих
+// үедээ нэг удаа тооцоолж хадгална (харах: lib/diagnostics.ts-ийн
+// computeReportSeverity, app/_actions/diagnostic-reports.ts). Тайлан
+// өөрчлөгддөггүй (edit action байхгүй) тул дахин тооцох шаардлагагүй.
+enum ReportSeverity {
+  GOOD
+  WARN
+  BAD
+}
+
 model DiagnosticReport {
-  id              String  @id @default(cuid())
+  id              String          @id @default(cuid())
   templateVersion Int
   data            Json // {[itemId]: {value?, photos?, note?}}
+  maxSeverity     ReportSeverity? // check хариултуудын хамгийн муу өнгө (харах дээрх тайлбар)
   signatureUrl    String?
   mileageAtReport Int?
   notes           String?
@@ -672,6 +686,7 @@ model DiagnosticReport {
 
   @@index([tenantId, createdAt])
   @@index([tenantId, orderId])
+  @@index([tenantId, maxSeverity])
   @@index([vehicleId])
   @@index([customerId])
   @@index([branchId])

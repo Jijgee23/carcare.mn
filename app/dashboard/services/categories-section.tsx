@@ -8,6 +8,7 @@ import {
   updateCategoryAction,
 } from "@/app/_actions/categories";
 import { Field, FormError } from "@/app/_components/auth-shell";
+import { ConfirmForm } from "@/app/_components/confirm-form";
 import { Btn, Chip, PlusIcon, TagChip } from "@/app/_components/landing-ops-ui";
 import { formatDuration } from "@/lib/category-duration";
 import { DurationHmInput } from "./duration-input";
@@ -189,7 +190,14 @@ function ViewRow({
           >
             Засах
           </button>
-          <form action={deleteCategoryAction}>
+          <ConfirmForm
+            action={deleteCategoryAction}
+            message={
+              category.servicesCount > 0
+                ? `\"${category.name}\" ангиллыг архивлах уу?`
+                : `\"${category.name}\" ангиллыг устгах уу?`
+            }
+          >
             <input type="hidden" name="id" value={category.id} />
             <button
               type="submit"
@@ -202,7 +210,7 @@ function ViewRow({
             >
               {category.servicesCount > 0 ? "Архив" : "Устгах"}
             </button>
-          </form>
+          </ConfirmForm>
         </div>
       </td>
     </tr>

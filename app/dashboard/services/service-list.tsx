@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { deleteServiceAction } from "@/app/_actions/services";
 import { ClickableRow } from "@/app/_components/clickable-row";
+import { ConfirmForm } from "@/app/_components/confirm-form";
 import { AddLinkButton, Chip } from "@/app/_components/landing-ops-ui";
 import { EmptyState } from "@/app/_components/page-header";
 import { Pagination } from "@/app/_components/pagination";
@@ -185,7 +186,14 @@ export async function ServiceList({
                       <td className="px-5 py-4">
                         {canRemove ? (
                           <div className="flex items-center justify-end">
-                            <form action={deleteServiceAction}>
+                            <ConfirmForm
+                              action={deleteServiceAction}
+                              message={
+                                svc._count.items > 0
+                                  ? `\"${svc.name}\" үйлчилгээг архивлах уу?`
+                                  : `\"${svc.name}\" үйлчилгээг устгах уу?`
+                              }
+                            >
                               <input type="hidden" name="id" value={svc.id} />
                               <button
                                 type="submit"
@@ -198,7 +206,7 @@ export async function ServiceList({
                               >
                                 {svc._count.items > 0 ? "Архив" : "Устгах"}
                               </button>
-                            </form>
+                            </ConfirmForm>
                           </div>
                         ) : null}
                       </td>

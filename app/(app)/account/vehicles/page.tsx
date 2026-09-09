@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { deleteAccountVehicle } from "@/app/_actions/account-vehicles";
 import { TagChip } from "@/app/_components/landing-ops-ui";
+import { ConfirmForm } from "@/app/_components/confirm-form";
 import { requireAccount } from "@/lib/auth/account";
 import { prisma } from "@/lib/prisma";
 import { AddAccountVehicle } from "../add-account-vehicle";
@@ -19,6 +20,18 @@ export default async function AccountVehiclesPage() {
     make: true,
     model: true,
     year: true,
+    vin: true,
+    fuelType: true,
+    wheelPosition: true,
+    colorName: true,
+    capacity: true,
+    purpose: true,
+    _count: {
+      select: {
+        serviceOrders: { where: { status: "COMPLETED" } },
+        diagnosticReports: true,
+      },
+    },
   } as const;
 
   const [avLinks, ownedTV] = await Promise.all([
@@ -53,6 +66,16 @@ export default async function AccountVehiclesPage() {
       make: string;
       model: string;
       year: number | null;
+      vin: string | null;
+      fuelType: string | null;
+      wheelPosition: string | null;
+      colorName: string | null;
+      capacity: number | null;
+      purpose: string | null;
+      _count: {
+        serviceOrders: number;
+        diagnosticReports: number;
+      };
       removable: boolean;
     }
   >();
@@ -95,7 +118,7 @@ export default async function AccountVehiclesPage() {
             {vehicles.map((v) => (
               <div
                 key={v.id}
-                className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-2.5 flex items-center gap-2.5"
+                className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-2.5 flex items-start gap-2.5"
               >
                 <div className="w-9 h-9 rounded-lg bg-[var(--oc-panel2)] border border-[var(--oc-line2)] flex items-center justify-center text-[var(--oc-accent)] shrink-0">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -110,23 +133,46 @@ export default async function AccountVehiclesPage() {
                   className="min-w-0 flex-1 group"
                   title="Машины дэлгэрэнгүй ба үйлчилгээний түүх"
                 >
-                  <div className="font-semibold text-[var(--oc-ink)] group-hover:text-[var(--oc-accent)] transition-colors tabular-nums">
-                    {v.plate}
-                  </div>
-                  <div className="text-xs text-[var(--oc-muted3)] flex items-center gap-1 min-w-0">
-                    <span className="truncate">
-                      {v.make} {v.model}
-                      {v.year ? ` · ${v.year}` : ""}
-                    </span>
-                    {!v.removable ? (
-                      <span className="shrink-0">
-                        <TagChip>Сервисээс</TagChip>
-                      </span>
-                    ) : null}
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-2">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-[var(--oc-ink)] group-hover:text-[var(--oc-accent)] transition-colors tabular-nums">
+                        {v.plate}
+                      </div>
+                      <div className="mt-0.5 flex min-w-0 items-center gap-1 text-xs font-normal text-[var(--oc-muted3)]">
+                        <span className="truncate">
+                          {v.make} {v.model}
+                          {v.year ? ` · ${v.year}` : ""}
+                        </span>
+                        {!v.removable ? (
+                          <span className="shrink-0">
+                            <TagChip>Сервисээс</TagChip>
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 whitespace-nowrap text-[11px] font-normal text-[var(--oc-muted3)] justify-self-end">
+                      <span>{v._count.serviceOrders} үйлчилгээ</span>
+                      <span aria-hidden="true">·</span>
+                      <span>{v._count.diagnosticReports} оношилгоо</span>
+                    </div>
+                    <div className="min-w-0 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-normal text-[var(--oc-muted3)]">
+                      {v.colorName ? <span className="truncate">Өнгө: {v.colorName}</span> : null}
+                      {v.fuelType ? <span className="truncate">{v.fuelType}</span> : null}
+                      {v.capacity ? <span className="truncate">{v.capacity.toLocaleString("mn-MN")} см³</span> : null}
+                      {v.wheelPosition ? <span className="truncate">Хүрд: {v.wheelPosition}</span> : null}
+                      {v.purpose ? <span className="truncate">{v.purpose}</span> : null}
+                    </div>
+                    <div className="self-end whitespace-nowrap text-right text-[11px] font-normal text-[var(--oc-accent)]">
+                      Дэлгэрэнгүй харах →
+                    </div>
                   </div>
                 </Link>
                 {v.removable ? (
-                  <form action={deleteAccountVehicle} className="shrink-0">
+                  <ConfirmForm
+                    action={deleteAccountVehicle}
+                    message={`\"${v.plate}\" машиныг устгах уу?`}
+                    className="shrink-0"
+                  >
                     <input type="hidden" name="id" value={v.id} />
                     <button
                       type="submit"
@@ -138,7 +184,7 @@ export default async function AccountVehiclesPage() {
                         <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                       </svg>
                     </button>
-                  </form>
+                  </ConfirmForm>
                 ) : null}
               </div>
             ))}

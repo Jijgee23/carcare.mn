@@ -8,6 +8,7 @@ import {
   updatePlanFeatureAction,
 } from "@/app/_actions/system-plan-features";
 import { Field, FormError } from "@/app/_components/landing-ops-ui";
+import { ConfirmForm } from "@/app/_components/confirm-form";
 import { PLAN_LABEL } from "@/lib/subscription";
 
 const PLANS: ("FREE" | "BUSINESS" | "ENTERPRISE")[] = [
@@ -123,7 +124,10 @@ function ViewRow({
         >
           Засах
         </button>
-        <form action={deletePlanFeatureAction}>
+        <ConfirmForm
+          action={deletePlanFeatureAction}
+          message="Энэ plan feature-ийг устгах уу?"
+        >
           <input type="hidden" name="id" value={feature.id} />
           <button
             type="submit"
@@ -131,7 +135,7 @@ function ViewRow({
           >
             ✕
           </button>
-        </form>
+        </ConfirmForm>
       </div>
     </li>
   );

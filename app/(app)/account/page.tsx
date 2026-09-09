@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { cancelAppointmentByAccount } from "@/app/_actions/appointments";
 import { AddLinkButton, Btn } from "@/app/_components/landing-ops-ui";
+import { ConfirmForm } from "@/app/_components/confirm-form";
 import { WebPushToggle } from "@/app/_components/web-push";
 import {
   APPOINTMENT_STATUS_BADGE,
@@ -11,7 +12,7 @@ import { ORDER_STATUS_BADGE, ORDER_STATUS_LABEL, type OrderStatus } from "@/lib/
 import { prisma } from "@/lib/prisma";
 
 export const metadata = {
-  title: "Миний цаг",
+  title: "Миний захиалгууд",
 };
 
 export const dynamic = "force-dynamic";
@@ -116,7 +117,7 @@ export default async function AccountPage() {
       {/* Цагууд */}
       <div>
         <h1 className="font-semibold text-[var(--oc-ink2)] text-sm mb-2">
-          Миний цагууд
+          Цагийн захиалгууд
           {sortedAppts.length > 0 ? (
             <span className="text-[var(--oc-muted3)] font-normal"> · {sortedAppts.length}</span>
           ) : null}
@@ -210,12 +211,17 @@ export default async function AccountPage() {
                       </Link>
                     ) : null}
                     {canCancel ? (
-                      <form action={cancelAppointmentByAccount}>
+                      <ConfirmForm
+                        action={cancelAppointmentByAccount}
+                        message={`\"${a.tenant.name}\" — ${a.branch.name} дахь ${dt.date} ${dt.time} цагийг цуцлах уу?`}
+                        title="Захиалга цуцлах"
+                        confirmLabel="Тийм, цуцлах"
+                      >
                         <input type="hidden" name="id" value={a.id} />
                         <Btn variant="danger" size="sm" type="submit">
                           Цуцлах
                         </Btn>
-                      </form>
+                      </ConfirmForm>
                     ) : null}
                   </div>
                 </div>
@@ -231,7 +237,7 @@ export default async function AccountPage() {
       {walkInOrders.length > 0 ? (
         <div>
           <h1 className="font-semibold text-[var(--oc-ink2)] text-sm mb-2">
-            Захиалгууд
+            Засварын захиалгууд
             <span className="text-[var(--oc-muted3)] font-normal"> · {walkInOrders.length}</span>
           </h1>
           <div className="flex flex-col gap-2">

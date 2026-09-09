@@ -11,6 +11,7 @@ import {
 } from "@/app/_actions/system-tenants";
 import { DatePicker } from "@/app/_components/date-picker";
 import { PageHeader } from "@/app/_components/page-header";
+import { ConfirmForm } from "@/app/_components/confirm-form";
 import { requireSuperAdmin } from "@/lib/auth/system";
 import { formatTugrik } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
@@ -227,7 +228,10 @@ export default async function SystemTenantDetailPage({
                           </td>
                           <td className="px-5 py-3 text-right">
                             {canCancel ? (
-                              <form action={cancelSubscriptionAction}>
+                              <ConfirmForm
+                                action={cancelSubscriptionAction}
+                                message="Энэ subscription-ийг цуцлах уу?"
+                              >
                                 <input
                                   type="hidden"
                                   name="id"
@@ -244,7 +248,7 @@ export default async function SystemTenantDetailPage({
                                 >
                                   Цуцлах
                                 </button>
-                              </form>
+                              </ConfirmForm>
                             ) : null}
                           </td>
                         </tr>
@@ -429,9 +433,10 @@ export default async function SystemTenantDetailPage({
               </button>
             </form>
           ) : (
-            <form
+            <ConfirmForm
               action={suspendTenantAction}
               className="rounded-[10px] border border-amber-500/20 bg-[var(--oc-panel)] p-5"
+              message="Энэ байгууллагыг түр зогсоох уу? Хэрэглэгчид нэвтэрч чадахгүй болно."
             >
               <h2 className="font-semibold mb-1 text-sm text-amber-300 light:text-amber-700">
                 Түр зогсоох
@@ -446,7 +451,7 @@ export default async function SystemTenantDetailPage({
               >
                 Зогсоох
               </button>
-            </form>
+            </ConfirmForm>
           )}
 
           <form

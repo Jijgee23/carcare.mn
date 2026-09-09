@@ -8,6 +8,7 @@ import {
   reviseExpectedFinishAction,
   setOrderCapacityAction,
 } from "@/app/_actions/orders";
+import { ConfirmForm } from "@/app/_components/confirm-form";
 import { DatePicker } from "@/app/_components/date-picker";
 import { useToast } from "@/app/_components/toast";
 import type { OrderStatus } from "@/lib/orders";
@@ -164,7 +165,12 @@ export function StatusControls({
             {STATUS_BTN_LABEL[next]}
           </button>
         ) : (
-          <form key={next} action={formAction}>
+          <ConfirmForm
+            key={next}
+            action={formAction}
+            enabled={next === "COMPLETED"}
+            message="Энэ засварын хуудсыг дууссан гэж тэмдэглэх үү? Энэ үйлдлийг буцаах боломжгүй."
+          >
             <input type="hidden" name="id" value={orderId} />
             <input type="hidden" name="status" value={next} />
             <button
@@ -174,7 +180,7 @@ export function StatusControls({
             >
               {STATUS_BTN_LABEL[next]}
             </button>
-          </form>
+          </ConfirmForm>
         ),
       )}
 

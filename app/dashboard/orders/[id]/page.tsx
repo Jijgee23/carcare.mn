@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Prisma } from "@/app/generated/prisma/client";
 import { deleteOrderAction } from "@/app/_actions/orders";
 import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
+import { ConfirmForm } from "@/app/_components/confirm-form";
 import { requireUser } from "@/lib/auth";
 import {
   ORDER_ASSIGNABLE_WHERE,
@@ -667,9 +668,10 @@ export default async function OrderDetailPage({
           </div>
 
           {canDeleteOrder ? (
-            <form
+            <ConfirmForm
               action={deleteOrderAction}
               className="rounded-[10px] border border-red-500/25 bg-[var(--oc-panel)] p-5"
+              message="Энэ засварын хуудсыг устгах уу? Энэ үйлдлийг буцаах боломжгүй."
             >
               <h2 className="font-semibold mb-2 text-sm text-red-400 light:text-red-600">
                 Аюултай бүс
@@ -681,7 +683,7 @@ export default async function OrderDetailPage({
               <Btn type="submit" variant="danger" className="w-full">
                 Засварын хуудсыг устгах
               </Btn>
-            </form>
+            </ConfirmForm>
           ) : null}
         </aside>
       </div>

@@ -7,6 +7,7 @@ import {
   createOrderQPayInvoiceAction,
   type OrderPaymentActionState,
 } from "@/app/_actions/order-payments";
+import { ConfirmButton } from "@/app/_components/confirm-form";
 import { Btn } from "@/app/_components/landing-ops-ui";
 import type { QPayBankUrl } from "@/lib/qpay-tenant";
 
@@ -167,13 +168,15 @@ function QRPanel({
         <Btn type="button" onClick={check} disabled={checking || paid} size="sm">
           {checking ? "Шалгаж..." : "Шалгах"}
         </Btn>
-        <button
-          type="button"
-          onClick={cancel}
+        <ConfirmButton
+          onConfirm={cancel}
+          message="Энэ QPay төлбөрийн нэхэмжлэлийг цуцлах уу?"
+          title="QPay нэхэмжлэл цуцлах"
+          confirmLabel="Тийм, цуцлах"
           className="text-xs text-[var(--oc-muted3)] hover:text-[var(--oc-ink2)] underline underline-offset-2"
         >
           Цуцлах
-        </button>
+        </ConfirmButton>
       </div>
     </div>
   );

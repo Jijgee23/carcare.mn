@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cancelAppointmentByAccount } from "@/app/_actions/appointments";
 import { BtnLink, Btn } from "@/app/_components/landing-ops-ui";
+import { ConfirmForm } from "@/app/_components/confirm-form";
 import {
   APPOINTMENT_STATUS_BADGE,
   APPOINTMENT_STATUS_LABEL,
@@ -353,12 +354,17 @@ export default async function AccountAppointmentDetailPage({
           />
         ) : null}
         {canCancel ? (
-          <form action={cancelAppointmentByAccount}>
+          <ConfirmForm
+            action={cancelAppointmentByAccount}
+            message={`\"${appt.tenant.name}\" — ${appt.branch.name} дахь ${fmtDateTime(appt.requestedAt)} цагийг цуцлах уу?`}
+            title="Захиалга цуцлах"
+            confirmLabel="Тийм, цуцлах"
+          >
             <input type="hidden" name="id" value={appt.id} />
             <Btn variant="danger" size="sm" type="submit">
               Цуцлах
             </Btn>
-          </form>
+          </ConfirmForm>
         ) : null}
       </div>
     </div>

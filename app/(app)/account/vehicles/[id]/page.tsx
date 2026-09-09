@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { BtnLink } from "@/app/_components/landing-ops-ui";
 import { requireAccount } from "@/lib/auth/account";
 import {
@@ -117,6 +118,7 @@ export default async function AccountVehiclePage({
   ]);
 
   const attrs: [string, string | null][] = [
+    ["Үйлдвэрлэсэн он", vehicle.year != null ? String(vehicle.year) : null],
     ["Өнгө", vehicle.colorName],
     ["Моторын хэмжээ", vehicle.capacity ? `${vehicle.capacity} см³` : null],
     ["Шатахуун", vehicle.fuelType],
@@ -128,7 +130,7 @@ export default async function AccountVehiclePage({
 
   return (
     <div className="w-full flex flex-col gap-6">
-      <BtnLink href="/account" variant="ghost" size="sm" className="self-start">
+      <BtnLink href="/account/vehicles" variant="ghost" size="sm" className="self-start">
         ← Миний машинууд
       </BtnLink>
 
@@ -142,15 +144,13 @@ export default async function AccountVehiclePage({
           </span>
         </div>
         <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2 mt-4">
-          {attrs
-            .filter(([, val]) => val)
-            .map(([label, val]) => (
+          {attrs.map(([label, val]) => (
               <div
                 key={label}
                 className="flex items-center justify-between gap-3 text-sm border-b border-[var(--oc-line2)] pb-1.5"
               >
                 <span className="text-[var(--oc-muted3)]">{label}</span>
-                <span className="text-[var(--oc-ink2)] text-right">{val}</span>
+                <span className="text-[var(--oc-ink2)] text-right">{val ?? "—"}</span>
               </div>
             ))}
         </div>
@@ -173,34 +173,39 @@ export default async function AccountVehiclePage({
               return (
                 <li
                   key={o.id}
-                  className="flex items-start justify-between gap-3 px-5 py-3.5"
+                  className="px-5 py-3.5"
                 >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-[var(--oc-ink)]">
-                        {o.tenant.name}
-                      </span>
-                      <span className="text-xs text-[var(--oc-muted3)] font-plex-mono">
-                        №{o.number}
-                      </span>
-                      <span
-                        className={`font-plex-mono text-[11px] px-2.5 py-1 rounded-full ${ORDER_STATUS_BADGE[o.status as OrderStatus]}`}
-                      >
-                        {ORDER_STATUS_LABEL[o.status as OrderStatus]}
-                      </span>
+                  <Link
+                    href={`/account/history/${o.id}`}
+                    className="flex min-w-0 items-start justify-between gap-3 rounded-md hover:bg-[var(--oc-panel2)] -mx-2 -my-1 px-2 py-1 transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-[var(--oc-ink)]">
+                          {o.tenant.name}
+                        </span>
+                        <span className="text-xs text-[var(--oc-muted3)] font-plex-mono">
+                          №{o.number}
+                        </span>
+                        <span
+                          className={`font-plex-mono text-[11px] px-2.5 py-1 rounded-full ${ORDER_STATUS_BADGE[o.status as OrderStatus]}`}
+                        >
+                          {ORDER_STATUS_LABEL[o.status as OrderStatus]}
+                        </span>
+                      </div>
+                      <div className="text-xs text-[var(--oc-muted3)] mt-1 tabular-nums">
+                        {fmtDate(when)} · {o.branch.name} · {o._count.items} мөр
+                      </div>
                     </div>
-                    <div className="text-xs text-[var(--oc-muted3)] mt-1 tabular-nums">
-                      {fmtDate(when)} · {o.branch.name} · {o._count.items} мөр
+                    <div className="text-right shrink-0">
+                      <div className="text-sm font-semibold text-[var(--oc-ink)] tabular-nums">
+                        {formatTugrik(o.totalAmount?.toString() ?? null)}
+                      </div>
+                      <div className="text-xs text-[var(--oc-muted3)]">
+                        {PAYMENT_STATUS_LABEL[o.paymentStatus as PaymentStatus]}
+                      </div>
                     </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="text-sm font-semibold text-[var(--oc-ink)] tabular-nums">
-                      {formatTugrik(o.totalAmount?.toString() ?? null)}
-                    </div>
-                    <div className="text-xs text-[var(--oc-muted3)]">
-                      {PAYMENT_STATUS_LABEL[o.paymentStatus as PaymentStatus]}
-                    </div>
-                  </div>
+                  </Link>
                 </li>
               );
             })}
@@ -225,7 +230,10 @@ export default async function AccountVehiclePage({
                 key={a.id}
                 className="flex items-start justify-between gap-3 px-5 py-3.5"
               >
-                <div className="min-w-0">
+                <Link
+                  href={`/account/appointments/${a.id}`}
+                  className="block min-w-0 flex-1 rounded-md hover:bg-[var(--oc-panel2)] -mx-2 -my-1 px-2 py-1 transition-colors"
+                >
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-semibold text-[var(--oc-ink)]">
                       {a.tenant.name}
@@ -241,7 +249,7 @@ export default async function AccountVehiclePage({
                     {a.category ? ` · ${a.category.name}` : ""}
                     {a.note ? ` · ${a.note}` : ""}
                   </div>
-                </div>
+                </Link>
               </li>
             ))}
           </ul>

@@ -7,6 +7,7 @@ import {
   type TenantQPayActionState,
 } from "@/app/_actions/tenant-qpay";
 import { Field, FormError } from "@/app/_components/auth-shell";
+import { ConfirmForm } from "@/app/_components/confirm-form";
 import { Btn } from "@/app/_components/landing-ops-ui";
 
 type Initial = {
@@ -162,11 +163,15 @@ export function TenantQPayForm({ initial }: { initial: Initial | null }) {
       </div>
     </form>
     {isConfigured ? (
-      <form action={deleteTenantQPayAction} className="pt-2">
+      <ConfirmForm
+        action={deleteTenantQPayAction}
+        className="pt-2"
+        message="QPay тохиргоог устгах уу?"
+      >
         <Btn type="submit" variant="danger">
           Тохиргоог устгах
         </Btn>
-      </form>
+      </ConfirmForm>
     ) : null}
     </>
   );

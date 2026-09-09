@@ -6,6 +6,7 @@ import {
   rescheduleAppointmentByAccount,
 } from "@/app/_actions/appointments";
 import { BranchTimePicker } from "@/app/_components/branch-time-picker";
+import { ConfirmForm } from "@/app/_components/confirm-form";
 import { Btn } from "@/app/_components/landing-ops-ui";
 import { useToast } from "@/app/_components/toast";
 import type { Weekday } from "@/lib/branches";
@@ -62,7 +63,13 @@ export function AccountRescheduleControl({
 
   return (
     <div className="w-full rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-4">
-      <form action={formAction} className="flex flex-col gap-4">
+      <ConfirmForm
+        action={formAction}
+        className="flex flex-col gap-4"
+        message="Сонгосон шинэ цаг руу захиалгыг шилжүүлэх үү?"
+        title="Цагаа шилжүүлэх"
+        confirmLabel="Тийм, шилжүүлэх"
+      >
         <input type="hidden" name="id" value={appointmentId} />
         <input type="hidden" name="requestedAt" value={iso} />
         <div className="grid gap-4 sm:grid-cols-2">
@@ -83,7 +90,7 @@ export function AccountRescheduleControl({
             Болих
           </Btn>
         </div>
-      </form>
+      </ConfirmForm>
     </div>
   );
 }

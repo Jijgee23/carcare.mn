@@ -127,6 +127,20 @@ export async function GET(request: Request) {
         if (!open) continue;
       }
 
+      // "Ойролцоо": зай онооно; radius өгсөн тохиолдолд л шүүнэ.
+      let dist: number | undefined;
+      if (nearMe) {
+        if (b.latitude == null || b.longitude == null) continue;
+        dist = distanceKm(lat, lng, b.latitude, b.longitude);
+        if (radius != null && dist > radius) continue;
+        if (dist < nearest) nearest = dist;
+      }
+
+      // Weekend is intentionally an organization-level eligibility filter.
+      // When combined with near-me/open-now, evaluate it only among branches
+      // that survived those branch-level filters; otherwise a weekend branch
+      // outside the radius (or not open now) could incorrectly qualify the
+      // organization while a different branch is returned.
       if (weekend) {
         const worksWeekend = worksEffectiveWeekends({
           openTime: b.openTime ?? null,
@@ -136,15 +150,6 @@ export async function GET(request: Request) {
           scheduleSeasons: b.scheduleSeasons || [],
         });
         if (worksWeekend) anyWeekendBranch = true;
-      }
-
-      // "Ойролцоо": зай онооно; radius өгсөн тохиолдолд л шүүнэ.
-      let dist: number | undefined;
-      if (nearMe) {
-        if (b.latitude == null || b.longitude == null) continue;
-        dist = distanceKm(lat, lng, b.latitude, b.longitude);
-        if (radius != null && dist > radius) continue;
-        if (dist < nearest) nearest = dist;
       }
 
       branches.push({

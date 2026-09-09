@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { deleteReportAction } from "@/app/_actions/diagnostic-reports";
 import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
+import { ConfirmForm } from "@/app/_components/confirm-form";
 import { AdvancedPDFButton } from "./pdf-generator";
 import { requireUser } from "@/lib/auth";
 import { workingBranchScopeId } from "@/lib/auth/roles";
@@ -9,8 +10,11 @@ import { customerLabel } from "@/lib/customers";
 import {
   DIAGNOSTIC_TYPE_BADGE,
   DIAGNOSTIC_TYPE_LABEL,
+  SEVERITY_BADGE,
+  SEVERITY_LABEL,
   type DiagnosticType,
   type ReportData,
+  type ReportSeverity,
   type TemplateSchema,
   emptySchema,
 } from "@/lib/diagnostics";
@@ -80,6 +84,13 @@ export default async function ReportDetailPage({
           >
             {DIAGNOSTIC_TYPE_LABEL[tp]}
           </span>
+          {report.maxSeverity ? (
+            <span
+              className={`text-xs px-2.5 py-1 rounded-full border ${SEVERITY_BADGE[report.maxSeverity as ReportSeverity]}`}
+            >
+              {SEVERITY_LABEL[report.maxSeverity as ReportSeverity]}
+            </span>
+          ) : null}
           <AdvancedPDFButton
             report={{
               reportId: report.id,
@@ -181,12 +192,15 @@ export default async function ReportDetailPage({
         <BtnLink href="/dashboard/diagnostics/reports" variant="ghost" size="sm">
           ← Жагсаалт руу буцах
         </BtnLink>
-        <form action={deleteReportAction}>
+        <ConfirmForm
+          action={deleteReportAction}
+          message="Энэ оношилгооны тайланг устгах уу? Энэ үйлдлийг буцаах боломжгүй."
+        >
           <input type="hidden" name="id" value={report.id} />
           <Btn type="submit" variant="danger" size="sm">
             Тайланг устгах
           </Btn>
-        </form>
+        </ConfirmForm>
       </div>
     </div>
   );

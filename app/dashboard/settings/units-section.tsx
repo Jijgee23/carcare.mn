@@ -8,6 +8,7 @@ import {
   updateUnitAction,
 } from "@/app/_actions/units";
 import { Field, FormError } from "@/app/_components/auth-shell";
+import { ConfirmForm } from "@/app/_components/confirm-form";
 import { Btn, Chip, TagChip } from "@/app/_components/landing-ops-ui";
 import { SYSTEM_UNIT_NAMES } from "@/lib/units";
 
@@ -105,12 +106,15 @@ function ViewRow({ unit, onEdit }: { unit: UnitRow; onEdit: () => void }) {
               —
             </span>
           ) : (
-            <form action={deleteUnitAction}>
+            <ConfirmForm
+              action={deleteUnitAction}
+              message={`\"${unit.name}\" нэгжийг устгах уу?`}
+            >
               <input type="hidden" name="id" value={unit.id} />
               <Btn type="submit" variant="danger" size="sm">
                 Устгах
               </Btn>
-            </form>
+            </ConfirmForm>
           )}
         </div>
       </td>

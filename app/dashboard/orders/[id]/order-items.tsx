@@ -6,6 +6,7 @@ import {
   cancelOrderItemAction,
   changeOrderItemStatusAction,
 } from "@/app/_actions/orders";
+import { ConfirmForm } from "@/app/_components/confirm-form";
 import {
   ITEM_KIND_LABEL,
   SERVICE_ITEM_STATUSES,
@@ -233,7 +234,10 @@ export function OrderItems({
                             </Link>
                           ) : null}
                           {canEdit && isServiceItemCancellable(status) ? (
-                            <form action={cancelOrderItemAction}>
+                            <ConfirmForm
+                              action={cancelOrderItemAction}
+                              message={`\"${it.description}\" мөрийг цуцлах уу?`}
+                            >
                               <input type="hidden" name="itemId" value={it.id} />
                               <button
                                 type="submit"
@@ -255,7 +259,7 @@ export function OrderItems({
                                   <path d="m6 6 12 12" />
                                 </svg>
                               </button>
-                            </form>
+                            </ConfirmForm>
                           ) : null}
                         </div>
                       </td>

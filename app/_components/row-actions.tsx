@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import type { ReactNode } from "react";
+import { ConfirmForm } from "@/app/_components/confirm-form";
 
 /* Жагсаалтын мөрийн «⋯» үйлдлийн цэс. Аюултай үйлдлүүдийг (устгах г.м)
    мөрөн дээр ил байлгахын оронд энд нууна. Цэс нь position:fixed тул
@@ -104,15 +105,11 @@ export function RowMenuFormItem({
 }) {
   const close = useContext(CloseCtx);
   return (
-    <form
+    <ConfirmForm
       action={action}
-      onSubmit={(e) => {
-        if (confirmMessage && !window.confirm(confirmMessage)) {
-          e.preventDefault();
-          return;
-        }
-        close();
-      }}
+      enabled={Boolean(confirmMessage)}
+      message={confirmMessage ?? "Энэ үйлдлийг үргэлжлүүлэх үү?"}
+      onSubmitConfirmed={close}
     >
       {Object.entries(hidden ?? {}).map(([k, v]) => (
         <input key={k} type="hidden" name={k} value={v} />
@@ -128,6 +125,6 @@ export function RowMenuFormItem({
       >
         {children}
       </button>
-    </form>
+    </ConfirmForm>
   );
 }

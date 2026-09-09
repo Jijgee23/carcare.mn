@@ -21,12 +21,38 @@ export async function GET(req: Request) {
           model: true,
           year: true,
           vin: true,
+          fuelType: true,
+          wheelPosition: true,
+          colorName: true,
+          capacity: true,
+          purpose: true,
+          _count: {
+            select: {
+              serviceOrders: { where: { status: "COMPLETED" } },
+              diagnosticReports: true,
+            },
+          },
         },
       },
     },
   });
-  // Хариуны хэлбэрийг хадгална: { id, plate, make, model, year, vin }.
-  const vehicles = links.map((l) => ({ id: l.id, ...l.vehicle }));
+  // HUR-ийн техникийн талбаруудыг хамт буцаана — мобайлын дэлгэрэнгүй
+  // дэлгэц offline cache-ээс ч бүрэн мэдээлэл харуулах боломжтой.
+  const vehicles = links.map((l) => ({
+    id: l.id,
+    plate: l.vehicle.plate,
+    make: l.vehicle.make,
+    model: l.vehicle.model,
+    year: l.vehicle.year,
+    vin: l.vehicle.vin,
+    fuelType: l.vehicle.fuelType,
+    wheelPosition: l.vehicle.wheelPosition,
+    colorName: l.vehicle.colorName,
+    capacity: l.vehicle.capacity,
+    purpose: l.vehicle.purpose,
+    serviceCount: l.vehicle._count.serviceOrders,
+    diagnosisCount: l.vehicle._count.diagnosticReports,
+  }));
   return jsonOk({ vehicles });
 }
 
@@ -49,6 +75,9 @@ export async function POST(req: Request) {
     vin?: unknown;
     fuelType?: unknown;
     wheelPosition?: unknown;
+    colorName?: unknown;
+    capacity?: unknown;
+    purpose?: unknown;
   };
   const plate = typeof b.plate === "string" ? b.plate.trim() : "";
   const make = typeof b.make === "string" ? b.make.trim() : "";
@@ -57,6 +86,16 @@ export async function POST(req: Request) {
   const fuelType = typeof b.fuelType === "string" ? b.fuelType.trim() : "";
   const wheelPosition =
     typeof b.wheelPosition === "string" ? b.wheelPosition.trim() : "";
+  const colorName = typeof b.colorName === "string" ? b.colorName.trim() : "";
+  const purpose = typeof b.purpose === "string" ? b.purpose.trim() : "";
+  let capacity: number | null = null;
+  if (b.capacity != null && b.capacity !== "") {
+    const n = Number.parseInt(String(b.capacity), 10);
+    if (!Number.isFinite(n) || n <= 0 || n > 100_000) {
+      return jsonError(400, "capacity буруу.");
+    }
+    capacity = n;
+  }
   if (!plate || !make || !model) {
     return jsonError(400, "plate, make, model шаардлагатай.");
   }
@@ -79,6 +118,9 @@ export async function POST(req: Request) {
         year,
         fuelType: fuelType || null,
         wheelPosition: wheelPosition || null,
+        colorName: colorName || null,
+        capacity,
+        purpose: purpose || null,
       });
       const link = await tx.accountVehicle.create({
         data: { accountId: account.id, vehicleId: v.id },
@@ -86,9 +128,40 @@ export async function POST(req: Request) {
       });
       const full = await tx.vehicle.findUniqueOrThrow({
         where: { id: v.id },
-        select: { plate: true, make: true, model: true, year: true },
+        select: {
+          plate: true,
+          make: true,
+          model: true,
+          year: true,
+          vin: true,
+          fuelType: true,
+          wheelPosition: true,
+          colorName: true,
+          capacity: true,
+          purpose: true,
+          _count: {
+            select: {
+              serviceOrders: { where: { status: "COMPLETED" } },
+              diagnosticReports: true,
+            },
+          },
+        },
       });
-      return { id: link.id, ...full };
+      return {
+        id: link.id,
+        plate: full.plate,
+        make: full.make,
+        model: full.model,
+        year: full.year,
+        vin: full.vin,
+        fuelType: full.fuelType,
+        wheelPosition: full.wheelPosition,
+        colorName: full.colorName,
+        capacity: full.capacity,
+        purpose: full.purpose,
+        serviceCount: full._count.serviceOrders,
+        diagnosisCount: full._count.diagnosticReports,
+      };
     });
     return jsonOk({ vehicle }, { status: 201 });
   } catch (e) {

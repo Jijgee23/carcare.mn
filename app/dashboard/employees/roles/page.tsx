@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { deleteRoleAction } from "@/app/_actions/roles";
 import { ClickableRow } from "@/app/_components/clickable-row";
+import { ConfirmForm } from "@/app/_components/confirm-form";
 import {
   AddLinkButton,
   BtnLink,
@@ -136,7 +137,10 @@ export default async function RolesPage({
                     <td className="px-5 py-4">
                       {r._count.users === 0 ? (
                         <div className="flex items-center justify-end">
-                          <form action={deleteRoleAction}>
+                          <ConfirmForm
+                            action={deleteRoleAction}
+                            message={`\"${r.name}\" үүргийг устгах уу?`}
+                          >
                             <input type="hidden" name="id" value={r.id} />
                             <button
                               type="submit"
@@ -144,7 +148,7 @@ export default async function RolesPage({
                             >
                               Устгах
                             </button>
-                          </form>
+                          </ConfirmForm>
                         </div>
                       ) : null}
                     </td>

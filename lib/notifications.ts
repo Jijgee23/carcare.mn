@@ -81,7 +81,7 @@ function staffAppointmentHref(appointmentId: string | undefined): string {
     : "/dashboard/appointments";
 }
 
-// Account-ийн "Миний цагууд" (/account) бүх мөрийг нэг хуудсанд хуудаслалтгүй
+// Account-ийн "Миний захиалгууд" (/account) бүх мөрийг нэг хуудсанд хуудаслалтгүй
 // харуулдаг тул энгийн URL fragment-ээр (#appt-<id>) шууд тухайн карт руу
 // scroll хийж, :target CSS-ээр тодруулна (JS шаардлагагүй).
 function accountAppointmentHref(appointmentId: string | undefined): string {
@@ -256,7 +256,7 @@ export const NOTIFICATION_REGISTRY: Record<NotificationType, NotificationDef> = 
   },
 };
 
-/** `appointmentId` байвал дэлгэрэнгүй хуудас руу, байхгүй бол "Миний цагууд" руу. */
+/** `appointmentId` байвал дэлгэрэнгүй хуудас руу, байхгүй бол "Миний захиалгууд" руу. */
 function appointmentHref(data: Record<string, string>): string {
   return data.appointmentId
     ? `/account/appointments/${data.appointmentId}`

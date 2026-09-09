@@ -7,6 +7,7 @@ import {
   checkSubscriptionPaymentAction,
   createSubscriptionPaymentAction,
 } from "@/app/_actions/subscription-payments";
+import { ConfirmButton } from "@/app/_components/confirm-form";
 import { Btn } from "@/app/_components/landing-ops-ui";
 import { QPayBankGrid } from "@/app/_components/qpay-bank-grid";
 import { useToast } from "@/app/_components/toast";
@@ -234,13 +235,15 @@ function QRPanel({ pending }: { pending: PendingPayment }) {
         <Btn type="button" onClick={checkNow} disabled={checking || paid}>
           {checking ? "Шалгаж байна..." : "Төлбөр шалгах"}
         </Btn>
-        <button
-          type="button"
-          onClick={onCancel}
+        <ConfirmButton
+          onConfirm={onCancel}
+          message="Энэ төлбөрийн нэхэмжлэлийг цуцлах уу?"
+          title="Төлбөрийн нэхэмжлэл цуцлах"
+          confirmLabel="Тийм, цуцлах"
           className="text-xs text-[var(--oc-muted3)] hover:text-[var(--oc-ink2)] underline underline-offset-2"
         >
           Цуцлах
-        </button>
+        </ConfirmButton>
       </div>
     </div>
   );

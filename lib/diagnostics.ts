@@ -182,6 +182,67 @@ export const CHECK_TONE_ACTIVE: Record<CheckTone, string> = {
   bad: "bg-red-500/15 border-red-500/40 text-red-300 light:bg-red-100 light:border-red-300 light:text-red-600",
 };
 
+// --- Тайлангийн нэгдсэн ноцтой байдал (severity) ---------------------------
+// DB-д хадгалагдах `DiagnosticReport.maxSeverity`-тай ижил утгууд (prisma enum
+// ReportSeverity). Тайлан доторх бүх check хариултаас хамгийн муу өнгийг олно.
+
+export type ReportSeverity = "GOOD" | "WARN" | "BAD";
+
+const TONE_TO_SEVERITY: Record<CheckTone, ReportSeverity> = {
+  good: "GOOD",
+  warn: "WARN",
+  bad: "BAD",
+};
+
+const SEVERITY_RANK: Record<ReportSeverity, number> = {
+  GOOD: 0,
+  WARN: 1,
+  BAD: 2,
+};
+
+export const SEVERITY_LABEL: Record<ReportSeverity, string> = {
+  GOOD: "Хэвийн",
+  WARN: "Анхаарах",
+  BAD: "Солих шаардлагатай",
+};
+
+export const SEVERITY_BADGE: Record<ReportSeverity, string> = {
+  GOOD: CHECK_TONE_ACTIVE.good,
+  WARN: CHECK_TONE_ACTIVE.warn,
+  BAD: CHECK_TONE_ACTIVE.bad,
+};
+
+/**
+ * Загвар (schema) болон бөглөсөн өгөгдлөөс (data) хамаарч тайлангийн
+ * хамгийн муу check-хариултын түвшинг тооцно. Check бус item-үүдийг
+ * (текст, тоо, зураг, гарын үсэг) орлуулахгүй. Check хариулт огт байхгүй
+ * бол `null` (жишээ нь бүгд текст/зурагтай загвар).
+ */
+export function computeReportSeverity(
+  schema: TemplateSchema,
+  data: ReportData,
+): ReportSeverity | null {
+  let worst: ReportSeverity | null = null;
+  for (const section of schema.sections) {
+    for (const item of section.items) {
+      if (item.type !== "check") continue;
+      const positions = itemPositions(item);
+      const keys = positions
+        ? positions.map((p) => positionedKey(item.id, p.code))
+        : [item.id];
+      for (const key of keys) {
+        const value = data[key]?.value;
+        if (typeof value !== "string" || value === "") continue;
+        const severity = TONE_TO_SEVERITY[checkOptionTone(value)];
+        if (worst === null || SEVERITY_RANK[severity] > SEVERITY_RANK[worst]) {
+          worst = severity;
+        }
+      }
+    }
+  }
+  return worst;
+}
+
 export function newId(prefix: string): string {
   return `${prefix}_${randomBytes(6).toString("hex")}`;
 }

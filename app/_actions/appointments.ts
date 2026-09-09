@@ -552,7 +552,7 @@ export async function registerAppointmentByStaff(
       tenantId: user.tenantId, branchId, customerId, staffUserId: user.id,
       // Customer нь онлайн Account-той гүүрлэгдсэн бол (өмнө нь тэр утсаар
       // онлайн захиалга хийсэн байвал) энэ утсаар бүртгэсэн цагийг мөн тэр
-      // Account-д харагдуулна — эс бөгөөс "Миний цагууд"-д алга болно (2026-09-08
+      // Account-д харагдуулна — эс бөгөөс "Миний захиалгууд"-д алга болно (2026-09-08
       // хэрэглэгчийн тайлан).
       accountId: customer.accountId,
       categoryIds: requestedCategoryIds, requestedAt: requestedAt!, note: note || null,

@@ -75,7 +75,7 @@ function DriverPanel() {
         <div className="mt-6 overflow-hidden rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)]">
           <div className="flex items-center justify-between border-b border-[var(--oc-line)] px-5 py-3.5">
             <span className="text-[13.5px] font-semibold text-[var(--oc-ink2)]">
-              Миний цаг — Ойрын
+              Миний захиалгууд — Ойрын
             </span>
             <span className="font-plex-mono text-[11px] text-[var(--oc-muted3)]">
               live · 1 идэвхтэй

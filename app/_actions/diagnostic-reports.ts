@@ -7,6 +7,7 @@ import { requireUser } from "@/lib/auth";
 import { workingBranchScopeId } from "@/lib/auth/roles";
 import { canDelete as canDeletePerm } from "@/lib/auth/roles";
 import {
+  computeReportSeverity,
   type ReportEntry,
   type TemplateSchema,
   validateReportData,
@@ -183,12 +184,15 @@ export async function createReportAction(
       ? Math.floor(mileage)
       : null;
 
+  const maxSeverity = computeReportSeverity(schema, validated);
+
   let reportId: string;
   try {
     const created = await prisma.diagnosticReport.create({
       data: {
         templateVersion: template.version,
         data: validated,
+        maxSeverity,
         signatureUrl: collected.signatureUrl,
         mileageAtReport: mileageVal,
         notes: notes || null,

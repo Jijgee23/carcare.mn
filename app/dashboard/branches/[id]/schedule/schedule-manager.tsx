@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { Field, FormError } from "@/app/_components/auth-shell";
+import { ConfirmForm } from "@/app/_components/confirm-form";
 import { Btn } from "@/app/_components/landing-ops-ui";
 import { Select } from "@/app/_components/select";
 import {
@@ -114,7 +115,7 @@ export function BranchScheduleManager({ branchId, exceptions, seasons, baseDays 
                 </div>
                 <div className="flex gap-2">
                   <button type="button" onClick={() => editException(item)} className="text-xs text-[var(--oc-accent)]">Засах</button>
-                  <form action={deleteBranchScheduleExceptionAction}><input type="hidden" name="branchId" value={branchId} /><input type="hidden" name="id" value={item.id} /><button type="submit" className="text-xs text-red-400">Устгах</button></form>
+                  <ConfirmForm action={deleteBranchScheduleExceptionAction} message={`${item.date} тусгай өдрийн тохиргоог устгах уу?`}><input type="hidden" name="branchId" value={branchId} /><input type="hidden" name="id" value={item.id} /><button type="submit" className="text-xs text-red-400">Устгах</button></ConfirmForm>
                 </div>
               </div>
             ))}
@@ -159,7 +160,7 @@ export function BranchScheduleManager({ branchId, exceptions, seasons, baseDays 
           </form>
         ) : null}
         {seasons.length === 0 ? <p className="text-sm text-[var(--oc-muted3)]">Улирлын хуваарь тохируулаагүй.</p> : (
-          <div className="space-y-2">{seasons.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 rounded-lg border border-[var(--oc-line)] bg-[var(--oc-panel2)] px-3 py-3"><div><div className="font-medium text-sm text-[var(--oc-ink)]">{item.name}</div><div className="font-plex-mono text-xs text-[var(--oc-muted3)]">{item.startsOn} → {item.endsOn}</div></div><div className="flex gap-2"><button type="button" onClick={() => editSeason(item)} className="text-xs text-[var(--oc-accent)]">Засах</button><form action={deleteBranchScheduleSeasonAction}><input type="hidden" name="branchId" value={branchId} /><input type="hidden" name="id" value={item.id} /><button type="submit" className="text-xs text-red-400">Устгах</button></form></div></div>)}</div>
+          <div className="space-y-2">{seasons.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 rounded-lg border border-[var(--oc-line)] bg-[var(--oc-panel2)] px-3 py-3"><div><div className="font-medium text-sm text-[var(--oc-ink)]">{item.name}</div><div className="font-plex-mono text-xs text-[var(--oc-muted3)]">{item.startsOn} → {item.endsOn}</div></div><div className="flex gap-2"><button type="button" onClick={() => editSeason(item)} className="text-xs text-[var(--oc-accent)]">Засах</button><ConfirmForm action={deleteBranchScheduleSeasonAction} message={`${item.name} улирлын хуваарийг устгах уу?`}><input type="hidden" name="branchId" value={branchId} /><input type="hidden" name="id" value={item.id} /><button type="submit" className="text-xs text-red-400">Устгах</button></ConfirmForm></div></div>)}</div>
         )}
       </section>
     </div>

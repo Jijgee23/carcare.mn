@@ -7,6 +7,7 @@ import {
   uploadTenantLogoAction,
 } from "@/app/_actions/tenant";
 import { Field, FormError } from "@/app/_components/auth-shell";
+import { ConfirmForm } from "@/app/_components/confirm-form";
 import { Btn } from "@/app/_components/landing-ops-ui";
 
 export function LogoForm({
@@ -84,10 +85,13 @@ export function LogoForm({
 
 function RemoveButton() {
   return (
-    <form action={removeTenantLogoAction}>
+    <ConfirmForm
+      action={removeTenantLogoAction}
+      message="Байгууллагын логог устгах уу?"
+    >
       <Btn type="submit" variant="ghost" size="sm">
         Устгах
       </Btn>
-    </form>
+    </ConfirmForm>
   );
 }

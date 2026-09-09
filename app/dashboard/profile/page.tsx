@@ -3,6 +3,7 @@ import {
   revokeSessionAction,
 } from "@/app/_actions/sessions";
 import { Btn, Chip } from "@/app/_components/landing-ops-ui";
+import { ConfirmForm } from "@/app/_components/confirm-form";
 import { getSession, requireUser } from "@/lib/auth";
 import { userRoleLabel } from "@/lib/auth/roles";
 import { deviceLabel, splitSessions } from "@/lib/auth/user-session";
@@ -140,11 +141,14 @@ export default async function ProfilePage() {
             desc="Идэвхтэй нэвтрэлтүүдийг хараад, танихгүй төхөөрөмжийг гаргаж болно."
             action={
               otherActiveCount > 0 ? (
-                <form action={revokeOtherSessionsAction}>
+                <ConfirmForm
+                  action={revokeOtherSessionsAction}
+                  message="Бусад бүх идэвхтэй нэвтрэлтийг гаргах уу?"
+                >
                   <Btn type="submit" variant="danger" size="sm">
                     Бусдыг гаргах ({otherActiveCount})
                   </Btn>
-                </form>
+                </ConfirmForm>
               ) : null
             }
           >
@@ -173,12 +177,15 @@ export default async function ProfilePage() {
                         {s.ip ?? "—"} · Сүүлд: {formatDateTime(s.lastSeenAt)}
                       </div>
                     </div>
-                    <form action={revokeSessionAction}>
+                    <ConfirmForm
+                      action={revokeSessionAction}
+                      message={`${isCurrent ? "Энэ төхөөрөмжөөс" : "Энэ төхөөрөмжийг"} гарах уу?`}
+                    >
                       <input type="hidden" name="id" value={s.id} />
                       <Btn type="submit" variant="ghost" size="sm">
                         {isCurrent ? "Гарах" : "Гаргах"}
                       </Btn>
-                    </form>
+                    </ConfirmForm>
                   </div>
                 );
               })}

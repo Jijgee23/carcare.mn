@@ -321,7 +321,7 @@ export default async function AppointmentsCalendarPage({
                   : "text-[var(--oc-muted2)] hover:bg-white/[0.05]"
               }`}
             >
-              Grid
+              Хүснэгт
             </Link>
           </div>
         ) : null}

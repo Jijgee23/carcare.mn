@@ -74,7 +74,7 @@ export default function GuidePage() {
               автосервисээс онлайнаар цаг товлоно.
             </li>
             <li>
-              <span className="text-white/80">Миний цаг:</span> захиалсан
+              <span className="text-white/80">Миний захиалгууд:</span> захиалсан
               цагаа хянах, түүний төлөвийг шалгах.
             </li>
             <li>

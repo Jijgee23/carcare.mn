@@ -10,6 +10,7 @@ import {
   rescheduleAppointmentAction,
 } from "@/app/_actions/appointments";
 import { DatePicker, todayStr } from "@/app/_components/date-picker";
+import { ConfirmForm } from "@/app/_components/confirm-form";
 import { Btn } from "@/app/_components/landing-ops-ui";
 import { useToast } from "@/app/_components/toast";
 
@@ -61,7 +62,7 @@ export function AppointmentConfirmReject({ appointmentId }: { appointmentId: str
           {confirmPending ? "Батлаж байна..." : "Батлах"}
         </button>
       </form>
-      <form action={rejectAction}>
+      <ConfirmForm action={rejectAction} message="Энэ цагийн хүсэлтийг татгалзах уу?">
         <input type="hidden" name="id" value={appointmentId} />
         <button
           type="submit"
@@ -70,7 +71,7 @@ export function AppointmentConfirmReject({ appointmentId }: { appointmentId: str
         >
           {rejectPending ? "Татгалзаж байна..." : "Татгалзах"}
         </button>
-      </form>
+      </ConfirmForm>
     </>
   );
 }
@@ -91,12 +92,12 @@ export function AppointmentArrivedButton({ appointmentId }: { appointmentId: str
   }, [state, toast]);
 
   return (
-    <form action={formAction}>
+    <ConfirmForm action={formAction} message="Энэ цагт үйлчлүүлэгч ирсэн гэж тэмдэглэх үү?">
       <input type="hidden" name="id" value={appointmentId} />
       <Btn type="submit" variant="ghost" size="sm" disabled={pending}>
         {pending ? "Тэмдэглэж байна..." : "Ирсэн"}
       </Btn>
-    </form>
+    </ConfirmForm>
   );
 }
 
@@ -116,12 +117,12 @@ export function AppointmentNoShowButton({ appointmentId }: { appointmentId: stri
   }, [state, toast]);
 
   return (
-    <form action={formAction}>
+    <ConfirmForm action={formAction} message="Энэ цагт үйлчлүүлэгч ирээгүй гэж тэмдэглэх үү?">
       <input type="hidden" name="id" value={appointmentId} />
       <Btn type="submit" variant="ghost" size="sm" disabled={pending}>
         {pending ? "Тэмдэглэж байна..." : "Ирээгүй"}
       </Btn>
-    </form>
+    </ConfirmForm>
   );
 }
 
@@ -188,7 +189,12 @@ export function AppointmentRescheduleButton({
   }
 
   return (
-    <form action={formAction} className="flex items-center gap-2">
+    <ConfirmForm
+      action={formAction}
+      className="flex items-center gap-2"
+      enabled={!confirmArmed}
+      message="Энэ цагийн захиалгыг сонгосон шинэ хугацаа руу шилжүүлэх үү?"
+    >
       <input type="hidden" name="id" value={appointmentId} />
       <input type="hidden" name="confirmed" value={confirmArmed ? "true" : ""} />
       <DatePicker
@@ -223,6 +229,6 @@ export function AppointmentRescheduleButton({
       >
         Болих
       </button>
-    </form>
+    </ConfirmForm>
   );
 }

@@ -4,6 +4,7 @@ import {
   duplicateTemplateAction,
 } from "@/app/_actions/diagnostic-templates";
 import { ClickableRow } from "@/app/_components/clickable-row";
+import { ConfirmForm } from "@/app/_components/confirm-form";
 import { AddLinkButton, Chip } from "@/app/_components/landing-ops-ui";
 import { EmptyState } from "@/app/_components/page-header";
 import { Pagination } from "@/app/_components/pagination";
@@ -181,7 +182,14 @@ export default async function DiagnosticsServicesPage({
                               </button>
                             </form>
                             {!t.isSystemDefault ? (
-                              <form action={deleteTemplateAction}>
+                              <ConfirmForm
+                                action={deleteTemplateAction}
+                                message={
+                                  t._count.reports > 0
+                                    ? `\"${t.name}\" загварыг архивлах уу?`
+                                    : `\"${t.name}\" загварыг устгах уу?`
+                                }
+                              >
                                 <input type="hidden" name="id" value={t.id} />
                                 <button
                                   type="submit"
@@ -194,7 +202,7 @@ export default async function DiagnosticsServicesPage({
                                 >
                                   {t._count.reports > 0 ? "Архив" : "Устгах"}
                                 </button>
-                              </form>
+                              </ConfirmForm>
                             ) : null}
                           </div>
                         ) : null}

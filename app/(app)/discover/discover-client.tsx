@@ -15,6 +15,7 @@ export type DiscoverBranch = {
   lng: number | null;
   open: boolean;
   hours: string | null;
+  distanceKm?: number;
   // Бямба/Ням аль нэгэнд ажилладаг эсэх ("Амралтын өдөр ажилладаг" шүүлт).
   weekend: boolean;
   services: string[];
@@ -31,6 +32,106 @@ export type DiscoverOrg = {
 };
 
 type Marker = { org: DiscoverOrg; branch: DiscoverBranch };
+
+type GeoPoint = { lat: number; lng: number };
+
+function distanceLabel(distanceKm: number): string {
+  if (distanceKm < 1) {
+    return `${Math.max(1, Math.round(distanceKm * 1000))} м`;
+  }
+  return `${distanceKm.toFixed(1)} км`;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+/** Merge the API's filtered/sorted branch summary onto the richer SSR payload. */
+function mergeFilteredOrgs(
+  initialOrgs: DiscoverOrg[],
+  payload: unknown,
+  { openNow }: { openNow: boolean },
+): DiscoverOrg[] {
+  const body = asRecord(payload);
+  const apiOrgs = body?.orgs;
+  if (!Array.isArray(apiOrgs)) throw new Error("Шүүлтүүрийн хариу буруу байна.");
+
+  const initialBySlug = new Map(initialOrgs.map((org) => [org.slug, org]));
+  const filtered: DiscoverOrg[] = [];
+  for (const rawOrg of apiOrgs) {
+    const apiOrg = asRecord(rawOrg);
+    const slug = apiOrg?.slug;
+    const apiBranches = apiOrg?.branches;
+    if (typeof slug !== "string" || !Array.isArray(apiBranches)) continue;
+
+    const initialOrg = initialBySlug.get(slug);
+    if (!initialOrg) continue;
+    const initialBranches = new Map(
+      initialOrg.branches.map((branch) => [branch.id, branch]),
+    );
+    const branches: DiscoverBranch[] = [];
+    for (const rawBranch of apiBranches) {
+      const apiBranch = asRecord(rawBranch);
+      const id = apiBranch?.id;
+      if (typeof id !== "string") continue;
+      const initialBranch = initialBranches.get(id);
+      if (!initialBranch) continue;
+      const rawDistance = apiBranch?.distanceKm;
+      branches.push({
+        ...initialBranch,
+        ...(openNow ? { open: true } : {}),
+        ...(typeof rawDistance === "number" && Number.isFinite(rawDistance)
+          ? { distanceKm: rawDistance }
+          : {}),
+      });
+    }
+    if (branches.length === 0) continue;
+    filtered.push({ ...initialOrg, branches });
+  }
+  return filtered;
+}
+
+async function fetchFilteredOrgs({
+  initialOrgs,
+  location,
+  openNow,
+  signal,
+}: {
+  initialOrgs: DiscoverOrg[];
+  location: GeoPoint | null;
+  openNow: boolean;
+  signal: AbortSignal;
+}): Promise<DiscoverOrg[]> {
+  const params = new URLSearchParams();
+  if (location) {
+    params.set("lat", String(location.lat));
+    params.set("lng", String(location.lng));
+  }
+  if (openNow) params.set("openNow", "1");
+  const query = params.toString();
+  const response = await fetch(`/api/v1/app/orgs${query ? `?${query}` : ""}`, {
+    signal,
+    cache: "no-store",
+  });
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) throw new Error("Шүүлтүүрийн үр дүнг ачаалж чадсангүй.");
+  return mergeFilteredOrgs(initialOrgs, payload, { openNow });
+}
+
+function requestBrowserLocation(): Promise<GeoPoint> {
+  if (typeof navigator === "undefined" || !navigator.geolocation) {
+    return Promise.reject(new Error("Энэ browser байршил тогтоохыг дэмжихгүй байна."));
+  }
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => resolve({ lat: coords.latitude, lng: coords.longitude }),
+      () => reject(new Error("Байршлын зөвшөөрөл олгогдсонгүй.")),
+      { enableHighAccuracy: false, maximumAge: 60_000, timeout: 10_000 },
+    );
+  });
+}
 
 // Google Maps JS API-г нэг л удаа ачаална (module-level promise).
 declare global {
@@ -172,6 +273,7 @@ export function DiscoverClient({
   const [city, setCity] = useState(() =>
     cities.includes(DEFAULT_CITY) ? DEFAULT_CITY : "",
   );
+  const [citySelectedByUser, setCitySelectedByUser] = useState(false);
   const [district, setDistrict] = useState("");
   // Засварын (үйлчилгээ) нэр эсвэл салбарын нэрээр хайх — жагсаалт/газрын
   // зураг хоёуланд хамаарна.
@@ -179,6 +281,49 @@ export function DiscoverClient({
   // "Амралтын өдөр ажилладаг" — байгууллага аль нэг салбар нь Бямба/Ням
   // ажилладаг бол харагдана (city/district-той ижил client-side шүүлт).
   const [weekendOnly, setWeekendOnly] = useState(false);
+  const [nearMeOnly, setNearMeOnly] = useState(false);
+  const [openNowOnly, setOpenNowOnly] = useState(false);
+  const [nearMeLocation, setNearMeLocation] = useState<GeoPoint | null>(null);
+  const [locationPending, setLocationPending] = useState(false);
+  const [filterLoading, setFilterLoading] = useState(false);
+  const [filterError, setFilterError] = useState<string | null>(null);
+  const [catalogOrgs, setCatalogOrgs] = useState(orgs);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    if (!nearMeOnly && !openNowOnly) {
+      setCatalogOrgs(orgs);
+      setFilterError(null);
+      setFilterLoading(false);
+      return () => controller.abort();
+    }
+
+    setFilterLoading(true);
+    setFilterError(null);
+    fetchFilteredOrgs({
+      initialOrgs: orgs,
+      location: nearMeOnly ? nearMeLocation : null,
+      openNow: openNowOnly,
+      signal: controller.signal,
+    })
+      .then((filtered) => {
+        if (controller.signal.aborted) return;
+        setCatalogOrgs(filtered);
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setFilterError(
+          error instanceof Error
+            ? error.message
+            : "Шүүлтүүрийн үр дүнг ачаалж чадсангүй.",
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setFilterLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [nearMeLocation, nearMeOnly, openNowOnly, orgs]);
 
   // Сонгосон хотод хамаарах дүүрэг/сумууд.
   const districts = useMemo(() => {
@@ -195,8 +340,8 @@ export function DiscoverClient({
   const q = query.trim().toLowerCase();
 
   const visibleOrgs = useMemo(() => {
-    if (!city && !district && !q && !weekendOnly) return orgs;
-    return orgs
+    if (!city && !district && !q && !weekendOnly) return catalogOrgs;
+    return catalogOrgs
       .map((o) => ({
         ...o,
         branches: o.branches.filter(
@@ -213,7 +358,7 @@ export function DiscoverClient({
       // ажилладаг бол ЭНЭ org-ийн БҮХ салбарыг харуулна (зөвхөн weekend
       // салбарыг нь биш) — city/district-ээс ялгаатай зарчим.
       .filter((o) => !weekendOnly || o.branches.some((b) => b.weekend));
-  }, [orgs, city, district, q, weekendOnly]);
+  }, [catalogOrgs, city, district, q, weekendOnly]);
 
   const markers = useMemo<Marker[]>(
     () =>
@@ -236,11 +381,43 @@ export function DiscoverClient({
   const [mapError, setMapError] = useState(false);
   const [light, setLight] = useState(false);
 
+  const toggleNearMe = async () => {
+    setSelected(null);
+    if (nearMeOnly) {
+      setNearMeOnly(false);
+      return;
+    }
+    setLocationPending(true);
+    setFilterError(null);
+    try {
+      const location = nearMeLocation ?? (await requestBrowserLocation());
+      // Ulaanbaatar is only a presentation default. Do not let that implicit
+      // city filter hide nearby branches when the user's location is elsewhere;
+      // preserve a city the user explicitly chose.
+      if (!citySelectedByUser && city === DEFAULT_CITY) {
+        setCity("");
+        setDistrict("");
+      }
+      setNearMeLocation(location);
+      setNearMeOnly(true);
+    } catch (error: unknown) {
+      setFilterError(
+        error instanceof Error
+          ? error.message
+          : "Байршил авах боломжгүй байна.",
+      );
+    } finally {
+      setLocationPending(false);
+    }
+  };
+
   const mapRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapInstanceRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const markersRef = useRef<{ marker: any; m: Marker }[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const userMarkerRef = useRef<any>(null);
 
   // Аппын theme-г ажиглаж state-д тусгана — өөрчлөгдөхөд газрын зургийг
   // тохирох colorScheme-тэйгээр дахин үүсгэнэ.
@@ -257,6 +434,7 @@ export function DiscoverClient({
   useEffect(() => {
     if (view !== "map" || !hasMap) return;
     let cancelled = false;
+    setMapError(false);
     loadGoogleMaps(apiKey)
       .then(() => {
         if (cancelled || !mapRef.current) return;
@@ -270,6 +448,7 @@ export function DiscoverClient({
           colorScheme: light ? "LIGHT" : "DARK",
           mapTypeControl: false,
           streetViewControl: false,
+          zoomControl: false,
           fullscreenControl: true,
           clickableIcons: false,
           // Ctrl дарахгүйгээр шууд scroll-оор томруулна (cooperative биш greedy).
@@ -284,9 +463,30 @@ export function DiscoverClient({
         });
         mapInstanceRef.current = map;
         markersRef.current = [];
+        userMarkerRef.current = null;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const Advanced = g.maps.marker?.AdvancedMarkerElement;
         const bounds = new g.maps.LatLngBounds();
+        const userPosition = nearMeLocation
+          ? { lat: nearMeLocation.lat, lng: nearMeLocation.lng }
+          : null;
+        if (userPosition) {
+          userMarkerRef.current = new g.maps.Marker({
+            map,
+            position: userPosition,
+            title: "Таны байршил",
+            zIndex: 2000,
+            icon: {
+              path: g.maps.SymbolPath.CIRCLE,
+              scale: 9,
+              fillColor: "#2563eb",
+              fillOpacity: 1,
+              strokeColor: "#ffffff",
+              strokeWeight: 3,
+            },
+          });
+          bounds.extend(userPosition);
+        }
         markers.forEach((m) => {
           const pos = { lat: m.branch.lat as number, lng: m.branch.lng as number };
           const active = selected?.branch.id === m.branch.id;
@@ -328,7 +528,10 @@ export function DiscoverClient({
           markersRef.current.push({ marker, m });
           bounds.extend(pos);
         });
-        if (markers.length === 1) {
+        if (userPosition) {
+          map.setCenter(userPosition);
+          map.setZoom(markers.length > 0 ? 13 : 15);
+        } else if (markers.length === 1) {
           map.setCenter(bounds.getCenter());
           map.setZoom(15);
         } else {
@@ -341,9 +544,13 @@ export function DiscoverClient({
       });
     return () => {
       cancelled = true;
+      if (userMarkerRef.current?.setMap) {
+        userMarkerRef.current.setMap(null);
+      }
+      userMarkerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, hasMap, apiKey, markers, mapId, light]);
+  }, [view, hasMap, apiKey, markers, mapId, light, nearMeLocation]);
 
   // Сонгосон маркерыг тодруулж (ягаан + том), түүн рүү зөөлөн төвлөрнө.
   useEffect(() => {
@@ -447,6 +654,7 @@ export function DiscoverClient({
               value={city}
               placeholder="Аймаг/хот"
               onChange={(v) => {
+                setCitySelectedByUser(true);
                 setCity(v);
                 setDistrict("");
                 setSelected(null);
@@ -473,6 +681,37 @@ export function DiscoverClient({
 
         <button
           type="button"
+          onClick={toggleNearMe}
+          disabled={locationPending}
+          aria-pressed={nearMeOnly}
+          aria-busy={locationPending}
+          className={`shrink-0 text-xs px-3 h-10 rounded-lg border transition-colors disabled:opacity-60 disabled:cursor-wait ${
+            nearMeOnly
+              ? "bg-[#7c5cff] border-[#7c5cff] text-white"
+              : "border-white/[0.12] bg-white/[0.04] text-white/70 hover:bg-white/[0.08]"
+          }`}
+        >
+          {locationPending ? "Байршил авч байна…" : "Надад ойр"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setOpenNowOnly((value) => !value);
+            setSelected(null);
+          }}
+          aria-pressed={openNowOnly}
+          className={`shrink-0 text-xs px-3 h-10 rounded-lg border transition-colors ${
+            openNowOnly
+              ? "bg-[#7c5cff] border-[#7c5cff] text-white"
+              : "border-white/[0.12] bg-white/[0.04] text-white/70 hover:bg-white/[0.08]"
+          }`}
+        >
+          Одоо нээлттэй
+        </button>
+
+        <button
+          type="button"
           onClick={() => {
             setWeekendOnly((v) => !v);
             setSelected(null);
@@ -490,6 +729,17 @@ export function DiscoverClient({
         <span className="text-xs text-white/40 shrink-0 ml-auto">
           {visibleOrgs.length} газар · {markers.length} салбар
         </span>
+
+        {filterLoading ? (
+          <span className="basis-full text-xs text-violet-300 light:text-violet-700">
+            Шүүлтүүрийн үр дүн шинэчилж байна…
+          </span>
+        ) : null}
+        {filterError ? (
+          <div className="basis-full text-xs text-amber-300 light:text-amber-700">
+            {filterError}
+          </div>
+        ) : null}
       </div>
 
       {orgs.length === 0 ? (
@@ -506,6 +756,61 @@ export function DiscoverClient({
             ref={mapRef}
             className="h-[70vh] min-h-[24rem] w-full rounded-2xl overflow-hidden border border-white/[0.08] bg-[var(--surface)]"
           />
+          <div className="absolute top-3 right-3 z-10 flex flex-col items-end gap-2">
+            <div className="overflow-hidden rounded-xl border border-white/10 bg-zinc-900/95 shadow-lg light:border-black/10 light:bg-white/95">
+              <button
+                type="button"
+                onClick={() => {
+                  const map = mapInstanceRef.current;
+                  if (map) map.setZoom((map.getZoom() ?? 12) + 1);
+                }}
+                aria-label="Газрын зургийг томруулах"
+                title="Томруулах"
+                className="flex h-10 w-10 items-center justify-center text-xl font-medium text-white/85 transition-colors hover:bg-white/10 light:text-zinc-700 light:hover:bg-zinc-100"
+              >
+                +
+              </button>
+              <div className="h-px bg-white/10 light:bg-zinc-200" />
+              <button
+                type="button"
+                onClick={() => {
+                  const map = mapInstanceRef.current;
+                  if (map) map.setZoom((map.getZoom() ?? 12) - 1);
+                }}
+                aria-label="Газрын зургийг жижигрүүлэх"
+                title="Жижигрүүлэх"
+                className="flex h-10 w-10 items-center justify-center text-xl font-medium text-white/85 transition-colors hover:bg-white/10 light:text-zinc-700 light:hover:bg-zinc-100"
+              >
+                −
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const map = mapInstanceRef.current;
+                if (map && nearMeLocation) {
+                  map.panTo({
+                    lat: nearMeLocation.lat,
+                    lng: nearMeLocation.lng,
+                  });
+                  map.setZoom(Math.max(map.getZoom() ?? 13, 14));
+                } else {
+                  void toggleNearMe();
+                }
+              }}
+              aria-label="Миний байршил руу очих"
+              title="Миний байршил"
+              className={`flex h-10 w-10 items-center justify-center rounded-xl border shadow-lg transition-colors ${
+                nearMeLocation
+                  ? "border-blue-400/50 bg-blue-600 text-white hover:bg-blue-500"
+                  : "border-white/10 bg-zinc-900/95 text-white/85 hover:bg-white/10 light:border-black/10 light:bg-white/95 light:text-zinc-700 light:hover:bg-zinc-100"
+              }`}
+            >
+              <span className="text-lg leading-none" aria-hidden>
+                ◎
+              </span>
+            </button>
+          </div>
           {mapError ? (
             <div className="absolute inset-0 flex items-center justify-center text-sm text-white/50 bg-[var(--surface)] rounded-2xl">
               Газрын зураг ачаалж чадсангүй.
@@ -557,6 +862,15 @@ export function DiscoverClient({
                     />
                   </div>
 
+                  {selected.branch.distanceKm != null ? (
+                    <div className="flex items-center gap-2.5 text-sm text-violet-200 light:text-violet-700">
+                      <span aria-hidden>⌖</span>
+                      <span>
+                        {distanceLabel(selected.branch.distanceKm)} зайтай
+                      </span>
+                    </div>
+                  ) : null}
+
                   <div className="flex items-start gap-2.5 text-sm text-white/70">
                     <svg className="w-4 h-4 mt-0.5 text-white/35 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
@@ -599,7 +913,7 @@ export function DiscoverClient({
               className="glass rounded-2xl border border-white/[0.08] overflow-hidden"
             >
               <Link
-                href={`/org/${org.slug}`}
+                href={`/org/${org.slug}?branch=${encodeURIComponent(org.branches[0].id)}`}
                 className="flex items-center gap-3 px-4 py-3 hover:bg-white/[0.03] transition-colors"
               >
                 {org.logoUrl ? (
@@ -620,6 +934,11 @@ export function DiscoverClient({
                   </div>
                   <div className="text-xs text-white/40">
                     {org.branches.length} салбар
+                    {org.branches[0].distanceKm != null ? (
+                      <span className="text-violet-300 light:text-violet-700">
+                        {` · ${distanceLabel(org.branches[0].distanceKm)} зайтай`}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
                 <span className="text-violet-300 light:text-violet-700 text-sm shrink-0">→</span>
@@ -636,6 +955,11 @@ export function DiscoverClient({
                       <div className="text-xs text-white/40 mt-0.5 truncate">
                         {b.address}
                       </div>
+                      {b.distanceKm != null ? (
+                        <div className="text-xs text-violet-300 light:text-violet-700 mt-1">
+                          {distanceLabel(b.distanceKm)} зайтай
+                        </div>
+                      ) : null}
                       {b.services.length > 0 ? (
                         <div className="mt-1.5">
                           <ServiceTags services={b.services} />

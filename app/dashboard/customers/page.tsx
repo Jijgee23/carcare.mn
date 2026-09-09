@@ -2,6 +2,7 @@ import { deleteCustomerAction } from "@/app/_actions/customers";
 import { Prisma } from "@/app/generated/prisma/client";
 import { ClickableRow } from "@/app/_components/clickable-row";
 import { AddLinkButton } from "@/app/_components/landing-ops-ui";
+import { ConfirmForm } from "@/app/_components/confirm-form";
 import { ResetFilters, SearchBox } from "@/app/_components/list-filters";
 import { Pagination } from "@/app/_components/pagination";
 import { EmptyState } from "@/app/_components/page-header";
@@ -146,7 +147,10 @@ export default async function CustomersPage({
                       <td className="px-5 py-4">
                         {canRemove ? (
                           <div className="flex items-center justify-end">
-                            <form action={deleteCustomerAction}>
+                            <ConfirmForm
+                              action={deleteCustomerAction}
+                              message={`\"${customerLabel(c)}\" харилцагчийг устгах уу?`}
+                            >
                               <input type="hidden" name="id" value={c.id} />
                               <button
                                 type="submit"
@@ -154,7 +158,7 @@ export default async function CustomersPage({
                               >
                                 Устгах
                               </button>
-                            </form>
+                            </ConfirmForm>
                           </div>
                         ) : null}
                       </td>
