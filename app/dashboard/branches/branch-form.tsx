@@ -54,8 +54,11 @@ type Initial = {
   slotMinutes?: number | null;
   slotCapacity?: number | null;
   openDays: Weekday[];
+  daySchedules?: Record<Weekday, { isOpen: boolean; openTime: string | null; closeTime: string | null }>;
   isPrimary: boolean;
 };
+
+type DaySchedule = { isOpen: boolean; openTime: string; closeTime: string };
 
 function SectionPanel({
   index,
@@ -106,7 +109,22 @@ export function BranchForm({
   const initialDays = initial?.openDays?.length
     ? initial.openDays
     : DEFAULT_OPEN_DAYS;
-  const [days, setDays] = useState<Set<Weekday>>(new Set(initialDays));
+  const [daySchedules, setDaySchedules] = useState<Record<Weekday, DaySchedule>>(
+    () =>
+      Object.fromEntries(
+        WEEK_DAYS.map((d) => {
+          const saved = initial?.daySchedules?.[d.value];
+          return [
+            d.value,
+            {
+              isOpen: saved?.isOpen ?? initialDays.includes(d.value),
+              openTime: saved?.openTime ?? initial?.openTime ?? "",
+              closeTime: saved?.closeTime ?? initial?.closeTime ?? "",
+            },
+          ];
+        }),
+      ) as Record<Weekday, DaySchedule>,
+  );
   const [lat, setLat] = useState<number | null>(initial?.latitude ?? null);
   const [lng, setLng] = useState<number | null>(initial?.longitude ?? null);
   const [dirty, setDirty] = useState(false);
@@ -156,14 +174,9 @@ export function BranchForm({
     setLng(Number.isFinite(n) ? n : null);
   }
 
-  function toggleDay(value: Weekday) {
+  function updateDay(value: Weekday, patch: Partial<DaySchedule>) {
     setDirty(true);
-    setDays((prev) => {
-      const next = new Set(prev);
-      if (next.has(value)) next.delete(value);
-      else next.add(value);
-      return next;
-    });
+    setDaySchedules((prev) => ({ ...prev, [value]: { ...prev[value], ...patch } }));
   }
 
   return (
@@ -360,38 +373,56 @@ export function BranchForm({
           </Field>
         </div>
 
-        <div className="mt-4">
+        <div className="mt-5">
           <label className="text-sm font-medium text-[var(--oc-ink2)] mb-2 block">
-            Ажиллах өдрүүд
+            Өдөр тус бүрийн цаг
           </label>
-          <div className="flex flex-wrap gap-2">
+          <div className="rounded-[10px] border border-[var(--oc-line)] overflow-hidden">
             {WEEK_DAYS.map((d) => {
-              const active = days.has(d.value);
+              const value = daySchedules[d.value];
+              const openError = fe[`schedule_${d.value}_openTime`];
+              const closeError = fe[`schedule_${d.value}_closeTime`];
               return (
-                <label
-                  key={d.value}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border cursor-pointer transition-colors text-sm font-medium ${
-                    active
-                      ? "bg-[var(--oc-accent)] text-[var(--oc-on-accent)] border-[var(--oc-accent)]"
-                      : "bg-[var(--oc-panel2)] text-[var(--oc-muted)] border-[var(--oc-line)] hover:border-[var(--oc-line2)]"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    name="workDays"
-                    value={d.value}
-                    checked={active}
-                    onChange={() => toggleDay(d.value)}
-                    className="sr-only"
-                  />
-                  {d.short}
-                </label>
+                <div key={d.value} className="grid gap-3 sm:grid-cols-[120px_1fr_1fr] items-center px-3 py-3 border-b last:border-b-0 border-[var(--oc-line)] bg-[var(--oc-panel2)]">
+                  <label className="flex items-center gap-2 text-sm font-medium text-[var(--oc-ink2)]">
+                    <input
+                      type="checkbox"
+                      name={`schedule_${d.value}_isOpen`}
+                      checked={value.isOpen}
+                      onChange={(e) => updateDay(d.value, { isOpen: e.target.checked })}
+                      className="accent-[var(--oc-accent)]"
+                    />
+                    {d.long}
+                  </label>
+                  <Field label="Нээх" htmlFor={`schedule_${d.value}_openTime`} error={openError}>
+                    <Select
+                      id={`schedule_${d.value}_openTime`}
+                      name={`schedule_${d.value}_openTime`}
+                      value={value.openTime}
+                      onChange={(v) => updateDay(d.value, { openTime: v })}
+                      error={openError}
+                      placeholder="—"
+                      options={TIME_OPTIONS}
+                    />
+                  </Field>
+                  <Field label="Хаах" htmlFor={`schedule_${d.value}_closeTime`} error={closeError}>
+                    <Select
+                      id={`schedule_${d.value}_closeTime`}
+                      name={`schedule_${d.value}_closeTime`}
+                      value={value.closeTime}
+                      onChange={(v) => updateDay(d.value, { closeTime: v })}
+                      error={closeError}
+                      placeholder="—"
+                      options={TIME_OPTIONS}
+                    />
+                  </Field>
+                </div>
               );
             })}
           </div>
           <p className="text-xs text-[var(--oc-muted3)] mt-2">
-            Сонгосон өдрүүдэд онлайн цаг захиалга нээгдэнэ. Юу ч сонгохгүй бол
-            анхдагч Даваа–Баасан ашиглагдана.
+            Нээлттэй өдөр бүрийн нээх, хаах цагийг тусад нь тохируулна. Дээрх
+            ерөнхий цаг нь шинэ өдөр нэмэгдэхэд ашиглах fallback хэвээр байна.
           </p>
         </div>
       </SectionPanel>

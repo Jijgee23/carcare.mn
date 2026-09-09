@@ -19,7 +19,6 @@ import {
   DEFAULT_SLOT_MINUTES,
   type DayAvailability,
   buildDaySlots,
-  weekdayFromDate,
 } from "@/lib/appointment-slots";
 import { logAudit } from "@/lib/audit";
 import { customerLabel } from "@/lib/customers";
@@ -29,6 +28,8 @@ import { isFeatureEnabled } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
 import { reserveAppointment, ReservationError } from "@/lib/appointment-reservations";
 import { bookingDateKey, bookingDayBounds } from "@/lib/booking-time";
+import { resolveEffectiveSchedule } from "@/lib/branch-effective-schedule";
+import { branchScheduleForDateSelect } from "@/lib/branch-effective-schedule-server";
 import { safeNext } from "@/lib/safe-redirect";
 import { setBypassContext } from "@/lib/tenant-context";
 
@@ -63,25 +64,6 @@ export async function getBranchDaySlots(
   if (!branchId || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
     return { open: false, reason: "Буруу өдөр.", slots: [] };
   }
-  const branch = await prisma.branch.findUnique({
-    where: { id: branchId },
-    select: {
-      openTime: true,
-      closeTime: true,
-      slotMinutes: true,
-      slotCapacity: true,
-      schedules: {
-        select: {
-          weekday: true,
-          isOpen: true,
-          openTime: true,
-          closeTime: true,
-        },
-      },
-    },
-  });
-  if (!branch) return { open: false, reason: "Салбар олдсонгүй.", slots: [] };
-
   let date: Date;
   try { date = bookingDayBounds(dateStr).start; } catch {
     return { open: false, reason: "Буруу өдөр.", slots: [] };
@@ -89,13 +71,17 @@ export async function getBranchDaySlots(
   if (!Number.isFinite(date.getTime())) {
     return { open: false, reason: "Буруу өдөр.", slots: [] };
   }
-  const weekday = weekdayFromDate(date);
-  const sched = branch.schedules.find((x) => x.weekday === weekday);
-  const open = sched
-    ? sched.isOpen
-    : Boolean(branch.openTime && branch.closeTime);
-  const openTime = sched?.openTime ?? branch.openTime;
-  const closeTime = sched?.closeTime ?? branch.closeTime;
+  const branch = await prisma.branch.findUnique({
+    where: { id: branchId },
+    select: {
+      slotMinutes: true,
+      slotCapacity: true,
+      ...branchScheduleForDateSelect(dateStr),
+    },
+  });
+  if (!branch) return { open: false, reason: "Салбар олдсонгүй.", slots: [] };
+  const schedule = resolveEffectiveSchedule({ dateStr, branch });
+  const { open, openTime, closeTime } = schedule;
 
   const dayStart = date;
   const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60000);
@@ -130,7 +116,7 @@ export async function getBranchDaySlots(
     slotMin,
   );
 
-  return buildDaySlots({
+  const availability = buildDaySlots({
     dateStr,
     open,
     openTime,
@@ -141,6 +127,7 @@ export async function getBranchDaySlots(
     now: new Date(),
     appointmentMinutes: resolved?.totalMinutes,
   });
+  return { ...availability, scheduleSource: schedule.source, scheduleLabel: schedule.label };
 }
 
 // --- Хэрэглэгчийн тал (Account) -------------------------------------------
@@ -413,20 +400,32 @@ export async function rescheduleAppointmentByAccountCore(
     await withBookingTransaction(appt.tenantId, async (tx) => {
       const branch = await tx.branch.findFirst({
         where: { id: appt.branchId, tenantId: appt.tenantId, isActive: true },
-        include: { schedules: true },
+        include: {
+          schedules: true,
+          scheduleExceptions: { where: { date: bookingDayBounds(bookingDateKey(requestedAt)).start } },
+          scheduleSeasons: {
+            where: {
+              isActive: true,
+              startsOn: { lte: bookingDayBounds(bookingDateKey(requestedAt)).start },
+              endsOn: { gt: bookingDayBounds(bookingDateKey(requestedAt)).start },
+            },
+            include: { days: true },
+          },
+        },
       });
       if (!branch) throw new ReservationError(403, "Салбар олдсонгүй.");
 
       const duration =
         appt.estimatedDurationMinutes ?? branch.slotMinutes ?? DEFAULT_SLOT_MINUTES;
-      const schedule = branch.schedules.find(
-        (sc) => sc.weekday === weekdayFromDate(requestedAt),
-      );
+      const schedule = resolveEffectiveSchedule({
+        dateStr: bookingDateKey(requestedAt),
+        branch,
+      });
       const slots = buildDaySlots({
         dateStr: bookingDateKey(requestedAt),
-        open: schedule ? schedule.isOpen : Boolean(branch.openTime && branch.closeTime),
-        openTime: schedule?.openTime ?? branch.openTime,
-        closeTime: schedule?.closeTime ?? branch.closeTime,
+        open: schedule.open,
+        openTime: schedule.openTime,
+        closeTime: schedule.closeTime,
         slotMinutes: branch.slotMinutes ?? DEFAULT_SLOT_MINUTES,
         capacity: branch.slotCapacity ?? DEFAULT_SLOT_CAPACITY,
         // Слот нээлттэй эсэхийг (цаг, ажиллах өдөр) шалгахад л ашиглана —

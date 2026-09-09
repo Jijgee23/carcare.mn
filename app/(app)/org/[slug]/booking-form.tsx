@@ -13,6 +13,7 @@ import {
 } from "@/app/_components/branch-time-picker";
 import { Select } from "@/app/_components/select";
 import type { Weekday } from "@/lib/branches";
+import type { ScheduleException, ScheduleSeason, ScheduleRule } from "@/lib/branch-effective-schedule";
 import { formatDuration } from "@/lib/category-duration";
 import { InlineAccountVehicleForm } from "@/app/(app)/account/inline-account-vehicle-form";
 
@@ -21,6 +22,13 @@ type Branch = {
   id: string;
   name: string;
   openWeekdays: Weekday[];
+  schedule: {
+    openTime: string | null;
+    closeTime: string | null;
+    schedules: ScheduleRule[];
+    scheduleExceptions?: ScheduleException[];
+    scheduleSeasons?: ScheduleSeason[];
+  };
   categories: Category[];
 };
 // id нь global Vehicle id (AccountVehicle link биш).
@@ -249,6 +257,7 @@ export function BookingForm({
           branchId={branchId}
           categoryIds={categoryIds}
           openWeekdays={selectedBranch?.openWeekdays}
+          schedule={selectedBranch?.schedule}
           value={selectedIso}
           onChange={setSelectedIso}
           error={fe.requestedAt}

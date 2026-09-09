@@ -16,7 +16,7 @@ import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canEdit, canView } from "@/lib/auth/roles";
 import { redirect } from "next/navigation";
-import { formatAddress, formatWorkDays } from "@/lib/branches";
+import { formatAddress, formatWorkDays, formatWorkHoursSummary } from "@/lib/branches";
 import { prisma } from "@/lib/prisma";
 import { buildBranchWhere, type BranchStatusFilter } from "./data";
 
@@ -33,7 +33,7 @@ const STATUS_TABS: { key: "all" | "active" | "inactive"; label: string }[] = [
 export default async function BranchesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; q?: string; status?: string }>;
+  searchParams: Promise<{ page?: string; q?: string; status?: string; scheduleWarning?: string }>;
 }) {
   const user = await requireUser();
   if (!canView(user, "branches")) redirect("/dashboard");
@@ -41,7 +41,7 @@ export default async function BranchesPage({
   const canRemove = canDelete(user, "branches");
   const canModify = canEdit(user, "branches");
 
-  const { page: pageParam, q: qParam, status: statusParam } = await searchParams;
+  const { page: pageParam, q: qParam, status: statusParam, scheduleWarning } = await searchParams;
   const q = qParam ?? "";
   const status: BranchStatusFilter =
     statusParam === "active" || statusParam === "inactive" ? statusParam : undefined;
@@ -57,7 +57,7 @@ export default async function BranchesPage({
         take,
         include: {
           _count: { select: { users: true, serviceOrders: true } },
-          schedules: { select: { weekday: true, isOpen: true } },
+          schedules: { select: { weekday: true, isOpen: true, openTime: true, closeTime: true } },
         },
       }),
       prisma.branch.count({ where }),
@@ -104,6 +104,12 @@ export default async function BranchesPage({
         <StatCell label="Ажилтан" value={totalStaff} />
         <StatCell label="Нээлттэй засварын хуудас" value={openOrders} tone="accent" />
       </StatGrid>
+
+      {scheduleWarning && Number(scheduleWarning) > 0 ? (
+        <div className="mt-5 rounded-[10px] border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">
+          Хуваарь хадгалагдлаа. {scheduleWarning} захиалгын үргэлжлэх хугацааг шинэ хаах цагт тааруулан богиносголоо.
+        </div>
+      ) : null}
 
       {totalBranches === 0 ? (
         <EmptyState
@@ -202,9 +208,7 @@ export default async function BranchesPage({
                         ) : null}
                       </td>
                       <td className="px-5 py-4 font-plex-mono text-sm text-[var(--oc-muted)] whitespace-nowrap">
-                        {b.openTime && b.closeTime
-                          ? `${b.openTime} – ${b.closeTime}`
-                          : "—"}
+                        {formatWorkHoursSummary(b)}
                       </td>
                       <td className="px-5 py-4 text-xs text-[var(--oc-muted3)] whitespace-nowrap">
                         {formatWorkDays(b.schedules)}

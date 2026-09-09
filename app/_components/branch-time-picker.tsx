@@ -12,6 +12,7 @@ import { BookingCalendar } from "@/app/_components/booking-calendar";
 import type { DayAvailability } from "@/lib/appointment-slots";
 import { todayKey } from "@/lib/appointments-calendar";
 import type { Weekday } from "@/lib/branches";
+import type { ScheduleException, ScheduleSeason, ScheduleRule } from "@/lib/branch-effective-schedule";
 
 /** Гаднаас (categoryIds солигдоход) дуудах имплиэйтив API. */
 export type BranchTimePickerHandle = {
@@ -38,6 +39,13 @@ export const BranchTimePicker = forwardRef<
     branchId: string;
     categoryIds?: string[];
     openWeekdays?: Weekday[];
+    schedule?: {
+      openTime: string | null;
+      closeTime: string | null;
+      schedules: ScheduleRule[];
+      scheduleExceptions?: ScheduleException[];
+      scheduleSeasons?: ScheduleSeason[];
+    };
     value: string; // сонгосон цагийн ISO
     onChange: (iso: string) => void;
     error?: string;
@@ -48,7 +56,7 @@ export const BranchTimePicker = forwardRef<
     initialIso?: string;
   }
 >(function BranchTimePicker(
-  { branchId, categoryIds = [], openWeekdays, value, onChange, error, initialDate, initialIso },
+  { branchId, categoryIds = [], openWeekdays, schedule, value, onChange, error, initialDate, initialIso },
   ref,
 ) {
   const [date, setDate] = useState(initialDate ?? "");
@@ -135,6 +143,7 @@ export const BranchTimePicker = forwardRef<
             today={today}
             onChange={onDateChange}
             openWeekdays={openWeekdays}
+            schedule={schedule}
           />
         ) : (
           <p className="text-xs text-white/40">Эхлээд салбараа сонгоно уу.</p>
@@ -184,6 +193,9 @@ export const BranchTimePicker = forwardRef<
             })}
           </div>
         )}
+        {availability?.scheduleLabel ? (
+          <p className="text-xs text-amber-300/80">{availability.scheduleLabel}</p>
+        ) : null}
         {availability?.open && availability.slots.length > 0 ? (
           <div className="flex items-center gap-3 text-[11px] text-white/40">
             <span className="inline-flex items-center gap-1">

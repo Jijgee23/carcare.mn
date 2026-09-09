@@ -6,6 +6,7 @@ import { Btn, BtnLink, Chip } from "@/app/_components/landing-ops-ui";
 import { prisma } from "@/lib/prisma";
 import { BranchForm, BRANCH_FORM_ID } from "../branch-form";
 import { getAddressData } from "@/lib/address";
+import type { Weekday } from "@/lib/branches";
 
 export const metadata = {
   title: "Салбар засах",
@@ -44,7 +45,7 @@ export default async function EditBranchPage({
     prisma.branch.findFirst({
       where: { id, tenantId: user.tenantId },
       include: {
-        schedules: { select: { weekday: true, isOpen: true } },
+        schedules: { select: { weekday: true, isOpen: true, openTime: true, closeTime: true } },
         _count: { select: { users: true } },
       },
     }),
@@ -63,6 +64,13 @@ export default async function EditBranchPage({
   const openDays = branch.schedules
     .filter((s) => s.isOpen)
     .map((s) => s.weekday);
+  const daySchedules = Object.fromEntries(
+    branch.schedules.map((s) => [s.weekday, {
+      isOpen: s.isOpen,
+      openTime: s.openTime,
+      closeTime: s.closeTime,
+    }]),
+  ) as Record<Weekday, { isOpen: boolean; openTime: string | null; closeTime: string | null }>;
 
   const capacity = dailyCapacity(
     branch.openTime,
@@ -106,6 +114,9 @@ export default async function EditBranchPage({
               {branch.openTime}–{branch.closeTime}
             </Chip>
           ) : null}
+          <BtnLink href={`/dashboard/branches/${branch.id}/schedule`} variant="ghost">
+            Нарийвчилсан хуваарь
+          </BtnLink>
           <BtnLink href="/dashboard/branches" variant="ghost">
             ← Буцах
           </BtnLink>
@@ -135,6 +146,7 @@ export default async function EditBranchPage({
             slotMinutes: branch.slotMinutes,
             slotCapacity: branch.slotCapacity,
             openDays,
+            daySchedules,
             isPrimary: branch.isPrimary,
           }}
         />

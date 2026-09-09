@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getAccount } from "@/lib/auth/account";
 import { openWeekdaysOf } from "@/lib/branches";
+import { branchScheduleDisplaySelect } from "@/lib/branch-effective-schedule-server";
 import { resolveCategoryDurationMinutes } from "@/lib/category-duration";
 import { prisma } from "@/lib/prisma";
 import { setBypassContext } from "@/lib/tenant-context";
@@ -57,9 +58,7 @@ async function loadOrg(slug: string) {
         select: {
           id: true,
           name: true,
-          openTime: true,
-          closeTime: true,
-          schedules: { select: { weekday: true, isOpen: true } },
+          ...branchScheduleDisplaySelect(),
         },
       },
     },
@@ -192,6 +191,13 @@ export default async function OrgPage({
                 id: b.id,
                 name: b.name,
                 openWeekdays: openWeekdaysOf(b),
+                schedule: {
+                  openTime: b.openTime,
+                  closeTime: b.closeTime,
+                  schedules: b.schedules,
+                  scheduleExceptions: b.scheduleExceptions,
+                  scheduleSeasons: b.scheduleSeasons,
+                },
                 categories: branchCategories.get(b.id) ?? [],
               }))}
               vehicles={vehicles}

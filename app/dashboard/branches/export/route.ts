@@ -1,6 +1,6 @@
 import ExcelJS from "exceljs";
 import { requireUser } from "@/lib/auth";
-import { formatAddress, formatWorkDays } from "@/lib/branches";
+import { formatAddress, formatWorkDays, formatWorkHoursSummary } from "@/lib/branches";
 import { prisma } from "@/lib/prisma";
 import { buildBranchWhere, type BranchStatusFilter } from "../data";
 
@@ -19,7 +19,7 @@ export async function GET(req: Request) {
     orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
     include: {
       _count: { select: { users: true, serviceOrders: true } },
-      schedules: { select: { weekday: true, isOpen: true } },
+      schedules: { select: { weekday: true, isOpen: true, openTime: true, closeTime: true } },
     },
   });
 
@@ -43,7 +43,7 @@ export async function GET(req: Request) {
     branches.map((b) => ({
       name: b.name,
       address: formatAddress(b),
-      hours: b.openTime && b.closeTime ? `${b.openTime}–${b.closeTime}` : "—",
+      hours: formatWorkHoursSummary(b),
       days: formatWorkDays(b.schedules),
       phone: b.phone ?? "—",
       staff: b._count.users,

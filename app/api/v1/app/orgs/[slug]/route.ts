@@ -4,6 +4,7 @@ import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { plansWithFeature } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
 import { setBypassContext } from "@/lib/tenant-context";
+import { branchScheduleDisplaySelect } from "@/lib/branch-effective-schedule-server";
 
 // GET /api/v1/app/orgs/[slug] — байгууллагын дэлгэрэнгүй + салбарууд (нийтэд).
 // Booking v2: салбар бүрд санал болгох ангилалуудыг шийдэгдсэн хугацаатай нь
@@ -39,8 +40,7 @@ export async function GET(
           address: true,
           latitude: true,
           longitude: true,
-          openTime: true,
-          closeTime: true,
+          ...branchScheduleDisplaySelect(),
         },
       },
       // Онлайн захиалгад санал болгох идэвхтэй ангилалууд. `branches` хоосон бол

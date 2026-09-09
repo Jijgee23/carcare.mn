@@ -1,3 +1,6 @@
+import { bookingDateKey } from "@/lib/booking-time";
+import { resolveEffectiveSchedule, type ScheduleException, type ScheduleSeason } from "@/lib/branch-effective-schedule";
+
 export type Weekday = "SUN" | "MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT";
 
 // UI-д харуулах дараалал — Даваагаас Ням.
@@ -89,6 +92,39 @@ export function worksWeekends(b: {
   return days.includes("SAT") || days.includes("SUN");
 }
 
+export function formatWorkHoursSummary(b: {
+  openTime: string | null;
+  closeTime: string | null;
+  schedules: { isOpen: boolean; openTime?: string | null; closeTime?: string | null }[];
+}): string {
+  const hours = new Set<string>();
+  for (const schedule of b.schedules) {
+    if (!schedule.isOpen) continue;
+    const open = schedule.openTime ?? b.openTime;
+    const close = schedule.closeTime ?? b.closeTime;
+    if (open && close) hours.add(`${open}–${close}`);
+  }
+  if (hours.size === 0 && b.openTime && b.closeTime) return `${b.openTime}–${b.closeTime}`;
+  if (hours.size === 1) return [...hours][0];
+  if (hours.size > 1) return "Өдөр бүр өөр";
+  return "—";
+}
+
+/** Whether the next Saturday or Sunday has effective open hours. */
+export function worksEffectiveWeekends(
+  b: BranchScheduleDisplay,
+  reference: Date = new Date(),
+): boolean {
+  const todayKey = bookingDateKey(reference);
+  const base = new Date(`${todayKey}T12:00:00Z`);
+  for (let offset = 0; offset < 8; offset += 1) {
+    const candidate = new Date(base.getTime() + offset * 86400000);
+    const day = candidate.getUTCDay();
+    if ((day === 0 || day === 6) && branchHoursForDate(b, candidate)) return true;
+  }
+  return false;
+}
+
 // "HH:MM" → минут (өдрийн эхнээс). Буруу бол null.
 export function timeToMinutes(t: string | null | undefined): number | null {
   if (!t || !isValidTime(t)) return null;
@@ -96,21 +132,19 @@ export function timeToMinutes(t: string | null | undefined): number | null {
   return h * 60 + m;
 }
 
-const EN_TO_WEEKDAY: Record<string, Weekday> = {
-  Sun: "SUN",
-  Mon: "MON",
-  Tue: "TUE",
-  Wed: "WED",
-  Thu: "THU",
-  Fri: "FRI",
-  Sat: "SAT",
-};
-
 type SchedDetail = {
   weekday: Weekday;
   isOpen: boolean;
   openTime: string | null;
   closeTime: string | null;
+};
+
+type BranchScheduleDisplay = {
+  openTime: string | null;
+  closeTime: string | null;
+  schedules: SchedDetail[];
+  scheduleExceptions?: ScheduleException[];
+  scheduleSeasons?: ScheduleSeason[];
 };
 
 /**
@@ -120,14 +154,9 @@ type SchedDetail = {
  * энгийнээр хаалттай гэж үзнэ.
  */
 export function branchStatusNow(
-  b: {
-    openTime: string | null;
-    closeTime: string | null;
-    schedules: SchedDetail[];
-  },
+  b: BranchScheduleDisplay,
   now: Date = new Date(),
 ): { open: boolean; hours: string | null } {
-  let weekday: Weekday;
   let curMin: number;
   try {
     const parts = Object.fromEntries(
@@ -141,18 +170,15 @@ export function branchStatusNow(
         .formatToParts(now)
         .map((p) => [p.type, p.value]),
     );
-    weekday = EN_TO_WEEKDAY[parts.weekday as string] ?? "MON";
     curMin = Number(parts.hour) * 60 + Number(parts.minute);
   } catch {
     return { open: false, hours: null };
   }
 
-  const sched = b.schedules.find((s) => s.weekday === weekday);
-  const isOpenDay = sched ? sched.isOpen : Boolean(b.openTime && b.closeTime);
-  if (!isOpenDay) return { open: false, hours: null };
-
-  const openT = (sched?.openTime ?? null) || b.openTime;
-  const closeT = (sched?.closeTime ?? null) || b.closeTime;
+  const effective = resolveEffectiveSchedule({ dateStr: bookingDateKey(now), branch: b });
+  if (!effective.open) return { open: false, hours: null };
+  const openT = effective.openTime;
+  const closeT = effective.closeTime;
   const o = timeToMinutes(openT);
   const c = timeToMinutes(closeT);
   if (o == null || c == null || c <= o) {
@@ -168,32 +194,20 @@ export function branchStatusNow(
  * ижил логик, гагцхүү "одоо" бус, өгөгдсөн огноогоор.
  */
 export function branchHoursForDate(
-  b: { openTime: string | null; closeTime: string | null; schedules: SchedDetail[] },
+  b: BranchScheduleDisplay,
   date: Date,
 ): { openMinutes: number; closeMinutes: number } | null {
-  let weekday: Weekday;
+  const dateStr = bookingDateKey(date);
+  const effective = resolveEffectiveSchedule({ dateStr, branch: b });
+  if (!effective.open) return null;
   try {
-    const parts = Object.fromEntries(
-      new Intl.DateTimeFormat("en-US", {
-        timeZone: "Asia/Ulaanbaatar",
-        weekday: "short",
-      })
-        .formatToParts(date)
-        .map((p) => [p.type, p.value]),
-    );
-    weekday = EN_TO_WEEKDAY[parts.weekday as string] ?? "MON";
+    // Validate the business date before using the resolved times.
+    if (bookingDateKey(date) !== dateStr) return null;
   } catch {
     return null;
   }
-
-  const sched = b.schedules.find((s) => s.weekday === weekday);
-  const isOpenDay = sched ? sched.isOpen : Boolean(b.openTime && b.closeTime);
-  if (!isOpenDay) return null;
-
-  const openT = (sched?.openTime ?? null) || b.openTime;
-  const closeT = (sched?.closeTime ?? null) || b.closeTime;
-  const o = timeToMinutes(openT);
-  const c = timeToMinutes(closeT);
+  const o = timeToMinutes(effective.openTime);
+  const c = timeToMinutes(effective.closeTime);
   if (o == null || c == null || c <= o) return null;
   return { openMinutes: o, closeMinutes: c };
 }

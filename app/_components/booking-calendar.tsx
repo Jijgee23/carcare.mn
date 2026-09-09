@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { Weekday } from "@/lib/branches";
+import { resolveEffectiveSchedule, type ScheduleException, type ScheduleSeason, type ScheduleRule } from "@/lib/branch-effective-schedule";
 
 // Inline (popover биш) сарын календарь — салбар сонгомогц шууд харагдана.
 const WEEKDAYS = ["Да", "Мя", "Лх", "Пү", "Ба", "Бя", "Ня"];
@@ -42,12 +43,20 @@ export function BookingCalendar({
   today,
   onChange,
   openWeekdays,
+  schedule,
 }: {
   value: string;
   today: string; // YYYY-MM-DD — өнөөдөр (минимум сонголт)
   onChange: (dateStr: string) => void;
   // Салбарын ажилладаг гарагууд. Заагдвал бусад (амардаг) гарагийг disabled.
   openWeekdays?: Weekday[];
+  schedule?: {
+    openTime: string | null;
+    closeTime: string | null;
+    schedules: ScheduleRule[];
+    scheduleExceptions?: ScheduleException[];
+    scheduleSeasons?: ScheduleSeason[];
+  };
 }) {
   const [view, setView] = useState(() => {
     const base = value || today;
@@ -107,9 +116,13 @@ export function BookingCalendar({
         {grid.map((d) => {
           const ds = ymd(d);
           const inMonth = d.getMonth() === view.month;
-          const closed =
-            openWeekdays != null &&
-            !openWeekdays.includes(JS_DAY_TO_WEEKDAY[d.getDay()]);
+          const scheduleForDate = schedule
+            ? resolveEffectiveSchedule({ dateStr: ds, branch: schedule })
+            : null;
+          const closed = scheduleForDate
+            ? !scheduleForDate.open
+            : openWeekdays != null &&
+              !openWeekdays.includes(JS_DAY_TO_WEEKDAY[d.getDay()]);
           const disabled = ds < today || closed;
           const selected = ds === value;
           const isToday = ds === today;

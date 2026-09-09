@@ -18,6 +18,8 @@ import { isValidPhone, normalizePhone } from "@/lib/phone";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { enforceCountLimit } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
+import { resolveEffectiveSchedule } from "@/lib/branch-effective-schedule";
+import { applyScheduleClips, inspectScheduleImpact } from "@/lib/branch-schedule-impact";
 
 export type BranchActionState = {
   ok: boolean;
@@ -59,6 +61,7 @@ type Parsed = {
   slotMinutes: number | null;
   slotCapacity: number | null;
   openDays: Weekday[];
+  daySchedules: Record<Weekday, { isOpen: boolean; openTime: string | null; closeTime: string | null }>;
   isPrimary: boolean;
   errors: Record<string, string>;
 };
@@ -108,13 +111,15 @@ function validate(fd: FormData): Parsed {
     }
   }
 
-  // Цаг
+  // Салбарын fallback цаг. Өдөр тус бүрийн мөрүүд доор өөрийн цагтай байж болно.
   const openTime = openTimeRaw || null;
   const closeTime = closeTimeRaw || null;
   if (openTime && !isValidTime(openTime))
     errors.openTime = "Цагийн форматыг HH:MM (24 цаг) хэлбэрээр оруулна уу.";
   if (closeTime && !isValidTime(closeTime))
     errors.closeTime = "Цагийн форматыг HH:MM (24 цаг) хэлбэрээр оруулна уу.";
+  if (openTime && closeTime && closeTime <= openTime)
+    errors.closeTime = "Дуусах цаг эхлэх цагаас хойш байна.";
 
   // Онлайн цаг захиалгын slot тохиргоо (заавал биш)
   const slotMinutesRaw = s(fd, "slotMinutes");
@@ -134,7 +139,8 @@ function validate(fd: FormData): Parsed {
     else slotCapacity = n;
   }
 
-  // Ажиллах өдрүүд (workDays нь олон утгатай checkbox-уудаар Weekday enum-ээр ирнэ)
+  // Өдөр тус бүрийн хуваарь. Хуучин form/post-оос ирсэн workDays-ийг fallback
+  // болгон дэмжинэ — шинэ form бүх долоо хоногийн мөрийг илгээнэ.
   const rawDays = fd.getAll("workDays");
   const openDaysSet = new Set<Weekday>();
   for (const d of rawDays) {
@@ -142,6 +148,33 @@ function validate(fd: FormData): Parsed {
   }
   const openDays =
     openDaysSet.size > 0 ? Array.from(openDaysSet) : DEFAULT_OPEN_DAYS.slice();
+  const daySchedules = {} as Parsed["daySchedules"];
+  for (const wd of ALL_WEEKDAYS) {
+    const hasNewField = fd.has(`schedule_${wd}_isOpen`);
+    const isOpen = hasNewField
+      ? fd.get(`schedule_${wd}_isOpen`) === "on"
+      : openDaysSet.size > 0
+        ? openDaysSet.has(wd)
+        : DEFAULT_OPEN_DAYS.includes(wd);
+    const dayOpen = s(fd, `schedule_${wd}_openTime`) || openTime;
+    const dayClose = s(fd, `schedule_${wd}_closeTime`) || closeTime;
+    daySchedules[wd] = {
+      isOpen,
+      openTime: dayOpen || null,
+      closeTime: dayClose || null,
+    };
+    if (isOpen) {
+      if (!dayOpen || !isValidTime(dayOpen)) {
+        errors[`schedule_${wd}_openTime`] = "Нээлттэй өдөр эхлэх цаг шаардлагатай.";
+      }
+      if (!dayClose || !isValidTime(dayClose)) {
+        errors[`schedule_${wd}_closeTime`] = "Нээлттэй өдөр дуусах цаг шаардлагатай.";
+      }
+      if (dayOpen && dayClose && isValidTime(dayOpen) && isValidTime(dayClose) && dayClose <= dayOpen) {
+        errors[`schedule_${wd}_closeTime`] = "Дуусах цаг эхлэх цагаас хойш байна.";
+      }
+    }
+  }
 
   return {
     name,
@@ -157,6 +190,7 @@ function validate(fd: FormData): Parsed {
     slotMinutes,
     slotCapacity,
     openDays,
+    daySchedules,
     isPrimary: fd.get("isPrimary") === "on",
     errors,
   };
@@ -180,12 +214,14 @@ function toBranchData(p: Parsed) {
   };
 }
 
-function scheduleCreateMany(branchId: string, openDays: Weekday[]) {
-  const open = new Set(openDays);
+function scheduleCreateMany(
+  branchId: string,
+  daySchedules: Parsed["daySchedules"],
+) {
   return ALL_WEEKDAYS.map((wd) => ({
     branchId,
     weekday: wd,
-    isOpen: open.has(wd),
+    ...daySchedules[wd],
   }));
 }
 
@@ -236,7 +272,7 @@ export async function createBranchAction(
       });
       createdId = branch.id;
       await tx.branchSchedule.createMany({
-        data: scheduleCreateMany(branch.id, p.openDays),
+        data: scheduleCreateMany(branch.id, p.daySchedules),
       });
     });
   } catch (e) {
@@ -280,13 +316,21 @@ export async function updateBranchAction(
     return { ok: false, fieldErrors: p.errors };
   }
 
+  let updateResult: { count: number; clipped: number };
   try {
-    const updatedCount = await prisma.$transaction(async (tx) => {
+    updateResult = await prisma.$transaction(async (tx) => {
       const current = await tx.branch.findFirst({
         where: { id, tenantId: user.tenantId },
-        select: { isPrimary: true },
+        select: {
+          isPrimary: true,
+          openTime: true,
+          closeTime: true,
+          schedules: true,
+          scheduleExceptions: true,
+          scheduleSeasons: { include: { days: true } },
+        },
       });
-      if (!current) return 0;
+      if (!current) return { count: 0, clipped: 0 };
 
       // Үндсэнийг нь өөр болгох гэж байвал зөвшөөрөхгүй
       // (үндсэн салбарыг хасах нь тенантэд нэгээс ч бага үлдээх эрсдэлтэй)
@@ -303,24 +347,48 @@ export async function updateBranchAction(
         });
       }
 
+      const proposedBranch = {
+        openTime: p.openTime,
+        closeTime: p.closeTime,
+        schedules: ALL_WEEKDAYS.map((weekday) => ({
+          weekday,
+          ...p.daySchedules[weekday],
+        })),
+        scheduleExceptions: current.scheduleExceptions,
+        scheduleSeasons: current.scheduleSeasons,
+      };
+      const now = new Date();
+      const impact = await inspectScheduleImpact(tx, {
+        tenantId: user.tenantId,
+        branchId: id,
+        from: now,
+        to: new Date(now.getTime() + 366 * 86400000),
+        resolve: (dateStr) => resolveEffectiveSchedule({ dateStr, branch: proposedBranch }),
+        fallbackDurationMinutes: p.slotMinutes ?? 30,
+      });
+      if (impact.erased.length > 0) {
+        const dates = impact.erased.slice(0, 3).map((item) => item.requestedAt.toISOString().slice(0, 10)).join(", ");
+        throw new Error(`Хуваарь хадгалахад ${impact.erased.length} захиалгыг ажилтан эхлээд шийдэх шаардлагатай (${dates}).`);
+      }
+
       const r = await tx.branch.updateMany({
         where: { id, tenantId: user.tenantId },
         data: toBranchData(p),
       });
       if (r.count > 0) {
-        const openSet = new Set<Weekday>(p.openDays);
         for (const wd of ALL_WEEKDAYS) {
           await tx.branchSchedule.upsert({
             where: { branchId_weekday: { branchId: id, weekday: wd } },
-            create: { branchId: id, weekday: wd, isOpen: openSet.has(wd) },
-            update: { isOpen: openSet.has(wd) },
+            create: { branchId: id, weekday: wd, ...p.daySchedules[wd] },
+            update: p.daySchedules[wd],
           });
         }
       }
-      return r.count;
+      if (r.count > 0) await applyScheduleClips(tx, impact);
+      return { count: r.count, clipped: impact.clipped.length };
     });
 
-    if (updatedCount === 0) {
+    if (updateResult.count === 0) {
       return { ok: false, message: "Салбар олдсонгүй." };
     }
   } catch (e) {
@@ -342,7 +410,7 @@ export async function updateBranchAction(
 
   revalidatePath("/dashboard/branches");
   revalidatePath(`/dashboard/branches/${id}`);
-  redirect("/dashboard/branches");
+  redirect(`/dashboard/branches${updateResult.clipped ? `?scheduleWarning=${updateResult.clipped}` : ""}`);
 }
 
 export async function toggleBranchActiveAction(formData: FormData): Promise<void> {

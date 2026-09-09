@@ -30,6 +30,10 @@ import {
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { enforceCountLimit } from "@/lib/plan-limits-server";
 import { prisma, type PrismaTransactionClient } from "@/lib/prisma";
+import { bookingDateKey, bookingDayBounds } from "@/lib/booking-time";
+import { resolveEffectiveSchedule } from "@/lib/branch-effective-schedule";
+import { branchScheduleForDateSelect } from "@/lib/branch-effective-schedule-server";
+import { timeToMinutes } from "@/lib/branches";
 import { safeNext } from "@/lib/safe-redirect";
 import { ensureTenantVehicle } from "@/lib/vehicles";
 
@@ -205,6 +209,31 @@ function parseOrderInput(fd: FormData): {
   };
 }
 
+async function validateScheduledOrderHours(
+  tenantId: string,
+  branchId: string,
+  scheduledAt: Date | null,
+  durationMinutes: number,
+): Promise<string | null> {
+  if (!scheduledAt) return null;
+  if (!Number.isFinite(scheduledAt.getTime())) return "Товлосон огноо буруу.";
+  const dateStr = bookingDateKey(scheduledAt);
+  const branch = await prisma.branch.findFirst({
+    where: { id: branchId, tenantId, isActive: true },
+    select: { ...branchScheduleForDateSelect(dateStr) },
+  });
+  if (!branch) return "Салбар олдсонгүй.";
+  const schedule = resolveEffectiveSchedule({ dateStr, branch });
+  const start = timeToMinutes(schedule.openTime);
+  const end = timeToMinutes(schedule.closeTime);
+  const dayStart = bookingDayBounds(dateStr).start.getTime();
+  const minutes = Math.floor((scheduledAt.getTime() - dayStart) / 60000);
+  if (!schedule.open || start == null || end == null || minutes < start || minutes + durationMinutes > end) {
+    return "Товлосон ажиллах цагийн гадуур байна.";
+  }
+  return null;
+}
+
 async function validateRefs(
   tenantId: string,
   data: OrderInput,
@@ -364,6 +393,18 @@ export async function createOrderAction(
       ok: false,
       fieldErrors: { branchId: "Зөвхөн өөрийн салбарт засварын хуудас үүсгэх боломжтой." },
     };
+  }
+
+  const scheduledHoursError = await validateScheduledOrderHours(
+    user.tenantId,
+    data.branchId,
+    data.scheduledAt,
+    appointmentId
+      ? appointmentEstimatedDurationMinutes ?? 60
+      : walkInEstimatedDurationMinutes ?? 60,
+  );
+  if (scheduledHoursError) {
+    return { ok: false, fieldErrors: { scheduledAt: scheduledHoursError } };
   }
 
   // Багцын хязгаар: daily_orders + max_active_orders
@@ -577,6 +618,16 @@ export async function updateOrderAction(
       ok: false,
       message: "Дууссан / цуцлагдсан засварын хуудасны мэдээллийг засаж болохгүй.",
     };
+  }
+
+  const scheduledHoursError = await validateScheduledOrderHours(
+    user.tenantId,
+    data.branchId,
+    data.scheduledAt,
+    existing.estimatedDurationMinutes ?? 60,
+  );
+  if (scheduledHoursError) {
+    return { ok: false, fieldErrors: { scheduledAt: scheduledHoursError } };
   }
 
   // Товлосон огноог өөрчилж байгаа бөгөөд захиалга хараахан эхлээгүй (эсвэл

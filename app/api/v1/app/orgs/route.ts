@@ -1,10 +1,11 @@
 import { jsonOk } from "@/lib/api";
 import {
   distanceKm,
-  isBranchOpenAt,
   nowInZone,
 } from "@/lib/branch-filters";
-import { worksWeekends } from "@/lib/branches";
+import { timeToMinutes, worksEffectiveWeekends } from "@/lib/branches";
+import { businessDateKey, resolveEffectiveSchedule } from "@/lib/branch-effective-schedule";
+import { branchScheduleDisplaySelect } from "@/lib/branch-effective-schedule-server";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { plansWithFeature } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
@@ -74,19 +75,7 @@ export async function GET(request: Request) {
           district: true,
           latitude: true,
           longitude: true,
-          // Шүүлтэд ашиглана — хариунд буцаахгүй (openNow/weekend-д).
-          openTime: needsSchedule,
-          closeTime: needsSchedule,
-          schedules: needsSchedule
-            ? {
-                select: {
-                  weekday: true,
-                  isOpen: true,
-                  openTime: true,
-                  closeTime: true,
-                },
-              }
-            : false,
+          ...(needsSchedule ? branchScheduleDisplaySelect() : {}),
         },
       },
     },
@@ -95,7 +84,9 @@ export async function GET(request: Request) {
   // Шүүлтгүй бол хуучин зан төлөв яг хэвээр.
   if (!nearMe && !openNow && !weekend) return jsonOk({ orgs });
 
-  const now = openNow ? nowInZone() : null;
+  const nowDate = new Date();
+  const now = openNow ? nowInZone(nowDate) : null;
+  const todayKey = businessDateKey(nowDate);
 
   type BranchOut = {
     id: string;
@@ -127,23 +118,22 @@ export async function GET(request: Request) {
     for (const b of org.branches) {
       // "Одоо нээлттэй" шүүлт.
       if (openNow && now) {
-        const open = isBranchOpenAt(
-          {
-            openTime: b.openTime ?? null,
-            closeTime: b.closeTime ?? null,
-            schedules: b.schedules || [],
-          },
-          now.weekday,
-          now.minutes,
-        );
+        const schedule = resolveEffectiveSchedule({ dateStr: todayKey, branch: b });
+        const open = schedule.open && (() => {
+          const start = timeToMinutes(schedule.openTime);
+          const end = timeToMinutes(schedule.closeTime);
+          return start != null && end != null && end > start && now.minutes >= start && now.minutes < end;
+        })();
         if (!open) continue;
       }
 
       if (weekend) {
-        const worksWeekend = worksWeekends({
+        const worksWeekend = worksEffectiveWeekends({
           openTime: b.openTime ?? null,
           closeTime: b.closeTime ?? null,
           schedules: b.schedules || [],
+          scheduleExceptions: b.scheduleExceptions || [],
+          scheduleSeasons: b.scheduleSeasons || [],
         });
         if (worksWeekend) anyWeekendBranch = true;
       }

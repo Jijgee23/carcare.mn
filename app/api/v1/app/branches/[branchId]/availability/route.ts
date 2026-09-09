@@ -1,10 +1,11 @@
 import { jsonError, jsonOk } from "@/lib/api";
 import { bookingDayBounds } from "@/lib/booking-time";
+import { resolveEffectiveSchedule } from "@/lib/branch-effective-schedule";
+import { branchScheduleForDateSelect } from "@/lib/branch-effective-schedule-server";
 import {
   buildDaySlots,
   DEFAULT_SLOT_CAPACITY,
   DEFAULT_SLOT_MINUTES,
-  weekdayFromDate,
 } from "@/lib/appointment-slots";
 import {
   resolveBranchCategoryDurations,
@@ -40,19 +41,10 @@ export async function GET(
     select: {
       id: true,
       tenantId: true,
-      openTime: true,
-      closeTime: true,
       slotMinutes: true,
       slotCapacity: true,
       tenant: { select: { acceptsOnlineBooking: true, suspended: true } },
-      schedules: {
-        select: {
-          weekday: true,
-          isOpen: true,
-          openTime: true,
-          closeTime: true,
-        },
-      },
+      ...branchScheduleForDateSelect(dateStr),
     },
   });
   if (!branch) return jsonError(404, "Салбар олдсонгүй.");
@@ -67,16 +59,8 @@ export async function GET(
 
   let bounds;
   try { bounds = bookingDayBounds(dateStr); } catch { return jsonError(400, "Буруу өдөр."); }
-  const weekday = weekdayFromDate(bounds.start);
-  const sched = branch.schedules.find((s) => s.weekday === weekday);
-  // Тухайн өдрийн хуваарь байвал баримтална; байхгүй бол branch-ийн default цаг.
-  const open = sched
-    ? sched.isOpen
-    : branch.openTime != null && branch.closeTime != null;
-  const openTime = sched ? (sched.openTime ?? branch.openTime) : branch.openTime;
-  const closeTime = sched
-    ? (sched.closeTime ?? branch.closeTime)
-    : branch.closeTime;
+  const schedule = resolveEffectiveSchedule({ dateStr, branch });
+  const { open, openTime, closeTime } = schedule;
 
   // Сонгосон ангилалуудын нийт хугацаа (booking v2). Хоосон бол default slot урт.
   const slotMin = branch.slotMinutes ?? DEFAULT_SLOT_MINUTES;
@@ -123,5 +107,11 @@ export async function GET(
     appointmentMinutes,
   });
 
-  return jsonOk({ date: dateStr, durationMinutes: appointmentMinutes, ...availability });
+  return jsonOk({
+    date: dateStr,
+    durationMinutes: appointmentMinutes,
+    scheduleSource: schedule.source,
+    scheduleLabel: schedule.label,
+    ...availability,
+  });
 }

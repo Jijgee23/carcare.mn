@@ -198,6 +198,8 @@ model Branch {
   serviceOrders     ServiceOrder[]
   diagnosticReports DiagnosticReport[]
   schedules         BranchSchedule[]
+  scheduleExceptions BranchScheduleException[]
+  scheduleSeasons   BranchScheduleSeason[]
   auditLogs         AuditLog[]
   appointments      Appointment[]
   categories        Category[] // олон-олон: энэ салбарт санал болгох ангилалууд
@@ -236,6 +238,58 @@ model BranchSchedule {
   updatedAt DateTime @updatedAt
 
   @@unique([branchId, weekday])
+  @@index([weekday, isOpen])
+}
+
+// Нэг удаагийн онцгой өдөр — баяр, амралт, эсвэл тухайн өдрийн тусгай цаг.
+// Нээлттэй бол цагийг заавал тодорхойлно; хаалттай бол цаг null байна.
+model BranchScheduleException {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  isOpen    Boolean  @default(false)
+  openTime  String?
+  closeTime String?
+  label     String?
+
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([branchId, date])
+  @@index([branchId, date])
+}
+
+// Нэг салбарын давхцахгүй улирлын хүрээ. Өдрийн мөргүй бол үндсэн долоо
+// хоногийн дүрмийг өвлөнө.
+model BranchScheduleSeason {
+  id        String   @id @default(cuid())
+  name      String
+  startsOn  DateTime @db.Date
+  endsOn    DateTime @db.Date
+  isActive  Boolean  @default(true)
+
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  days      BranchScheduleSeasonDay[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([branchId, startsOn, endsOn])
+  @@index([branchId, isActive])
+}
+
+model BranchScheduleSeasonDay {
+  seasonId  String
+  season    BranchScheduleSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  weekday   Weekday
+  isOpen    Boolean @default(false)
+  openTime  String?
+  closeTime String?
+
+  @@id([seasonId, weekday])
   @@index([weekday, isOpen])
 }
 

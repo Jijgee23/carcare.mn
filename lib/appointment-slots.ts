@@ -42,6 +42,8 @@ export type DayAvailability = {
   open: boolean;
   reason?: string;
   slots: DaySlot[];
+  scheduleSource?: "exception" | "season" | "weekday" | "default";
+  scheduleLabel?: string | null;
 };
 
 export function weekdayFromDate(d: Date): Weekday {

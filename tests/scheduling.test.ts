@@ -5,6 +5,7 @@ import { buildDaySlots } from "../lib/appointment-slots";
 import { buildBranchSchedule, type ScheduleOrder, type ScheduleAppointment } from "../lib/branch-schedule";
 import { isSlotAvailable, resolveTakenAppointmentIntervals } from "../lib/category-duration";
 import type { PrismaTransactionClient } from "../lib/prisma";
+import { resolveEffectiveSchedule } from "../lib/branch-effective-schedule";
 
 const at = (time: string) => new Date(`2030-01-07T${time}:00+08:00`);
 const scope = { tenantId: "tenant", branchId: "branch" };
@@ -19,6 +20,26 @@ const order = (over: Partial<ScheduleOrder> = {}): ScheduleOrder => ({
 });
 const project = (orders: ScheduleOrder[], appointments: ScheduleAppointment[] = []) =>
   buildBranchSchedule({ ...scope, orders, appointments, now: at("10:30"), rangeStart: at("09:00"), rangeEnd: at("18:00") });
+
+const scheduleBranch = {
+  openTime: "09:00", closeTime: "18:00",
+  schedules: [
+    { weekday: "MON" as const, isOpen: true, openTime: "10:00", closeTime: "17:00" },
+    { weekday: "TUE" as const, isOpen: false, openTime: null, closeTime: null },
+  ],
+};
+
+test("effective schedule applies exception, season, weekday, then default precedence", () => {
+  const season = { name: "Summer", startsOn: "2030-01-01", endsOn: "2030-02-01", isActive: true,
+    days: [{ weekday: "MON" as const, isOpen: true, openTime: "11:00", closeTime: "16:00" }] };
+  const exception = { date: "2030-01-07", isOpen: true, openTime: "12:00", closeTime: "15:00", label: "Holiday opening" };
+  assert.deepEqual(resolveEffectiveSchedule({ dateStr: "2030-01-07", branch: { ...scheduleBranch, scheduleSeasons: [season], scheduleExceptions: [exception] } }), {
+    date: "2030-01-07", weekday: "MON", open: true, openTime: "12:00", closeTime: "15:00", source: "exception", label: "Holiday opening",
+  });
+  assert.equal(resolveEffectiveSchedule({ dateStr: "2030-01-14", branch: { ...scheduleBranch, scheduleSeasons: [season] } }).openTime, "11:00");
+  assert.equal(resolveEffectiveSchedule({ dateStr: "2030-02-04", branch: scheduleBranch }).openTime, "10:00");
+  assert.equal(resolveEffectiveSchedule({ dateStr: "2030-01-08", branch: scheduleBranch }).open, false);
+});
 
 test("consecutive jobs consume one place across a longer candidate", () => {
   assert.equal(peakOccupancy([{ startMs: 0, endMs: 30 }, { startMs: 30, endMs: 60 }], 0, 60), 1);

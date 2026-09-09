@@ -20,6 +20,7 @@ import {
   loadBranchAttentionOrders,
 } from "@/lib/branch-schedule-loader";
 import { branchHoursForDate } from "@/lib/branches";
+import { branchScheduleDisplaySelect } from "@/lib/branch-effective-schedule-server";
 import { bookingSlotTime } from "@/lib/booking-time";
 import { ORDER_STATUS_BADGE, ORDER_STATUS_LABEL, ORDER_STATUS_TRANSITIONS } from "@/lib/orders";
 import {
@@ -141,9 +142,7 @@ export default async function AppointmentsCalendarPage({
       ? await prisma.branch.findFirst({
           where: { id: dayBranchId, tenantId: user.tenantId },
           select: {
-            openTime: true,
-            closeTime: true,
-            schedules: { select: { weekday: true, isOpen: true, openTime: true, closeTime: true } },
+            ...branchScheduleDisplaySelect(),
           },
         })
       : null;
@@ -717,6 +716,25 @@ function DayScheduleGrid({
       isOpen: boolean;
       openTime: string | null;
       closeTime: string | null;
+    }>;
+    scheduleExceptions?: Array<{
+      date: Date;
+      isOpen: boolean;
+      openTime: string | null;
+      closeTime: string | null;
+      label: string | null;
+    }>;
+    scheduleSeasons?: Array<{
+      name: string;
+      startsOn: Date;
+      endsOn: Date;
+      isActive: boolean;
+      days: Array<{
+        weekday: "SUN" | "MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT";
+        isOpen: boolean;
+        openTime: string | null;
+        closeTime: string | null;
+      }>;
     }>;
   } | null;
   dateKey: string;

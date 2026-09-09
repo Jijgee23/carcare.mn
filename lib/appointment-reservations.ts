@@ -1,6 +1,7 @@
 import type { Prisma } from "@/app/generated/prisma/client";
-import { buildDaySlots, DEFAULT_SLOT_MINUTES, weekdayFromDate } from "@/lib/appointment-slots";
-import { bookingDateKey } from "@/lib/booking-time";
+import { buildDaySlots, DEFAULT_SLOT_MINUTES } from "@/lib/appointment-slots";
+import { bookingDateKey, bookingDayBounds } from "@/lib/booking-time";
+import { resolveEffectiveSchedule } from "@/lib/branch-effective-schedule";
 import { isSlotAvailable, resolveBranchCategoryDurations } from "@/lib/category-duration";
 
 export class ReservationError extends Error {
@@ -29,14 +30,24 @@ export async function reserveAppointmentInTransaction(
     SELECT id FROM "Branch" WHERE id = ${input.branchId} AND "tenantId" = ${input.tenantId} FOR UPDATE
   `;
   if (!locked.length) throw new ReservationError(403, "Салбар олдсонгүй.");
+  if (!Number.isFinite(input.requestedAt.getTime())) throw new ReservationError(400, "Огноо буруу.");
+  const dateStr = bookingDateKey(input.requestedAt);
+  const day = bookingDayBounds(dateStr).start;
   const branch = await tx.branch.findFirst({
     where: { id: input.branchId, tenantId: input.tenantId, isActive: true },
-    include: { schedules: true, tenant: { select: { suspended: true, acceptsOnlineBooking: true } } },
+    include: {
+      schedules: true,
+      scheduleExceptions: { where: { date: day } },
+      scheduleSeasons: {
+        where: { isActive: true, startsOn: { lte: day }, endsOn: { gt: day } },
+        include: { days: true },
+      },
+      tenant: { select: { suspended: true, acceptsOnlineBooking: true } },
+    },
   });
   if (!branch || branch.tenant.suspended || (!input.staffUserId && !branch.tenant.acceptsOnlineBooking)) {
     throw new ReservationError(403, "Энэ салбар цаг захиалга хүлээн авахгүй.");
   }
-  if (!Number.isFinite(input.requestedAt.getTime())) throw new ReservationError(400, "Огноо буруу.");
   if (input.accountVehicleId) {
     if (!input.accountId || !await tx.accountVehicle.findFirst({
       where: { id: input.accountVehicleId, accountId: input.accountId }, select: { id: true },
@@ -56,12 +67,12 @@ export async function reserveAppointmentInTransaction(
   }
   const resolved = await resolveBranchCategoryDurations(tx, branch.id, categoryIds);
   const duration = resolved.totalMinutes || branch.slotMinutes || DEFAULT_SLOT_MINUTES;
-  const schedule = branch.schedules.find((s) => s.weekday === weekdayFromDate(input.requestedAt));
+  const schedule = resolveEffectiveSchedule({ dateStr, branch });
   const slots = buildDaySlots({
-    dateStr: bookingDateKey(input.requestedAt),
-    open: schedule ? schedule.isOpen : Boolean(branch.openTime && branch.closeTime),
-    openTime: schedule?.openTime ?? branch.openTime,
-    closeTime: schedule?.closeTime ?? branch.closeTime,
+    dateStr,
+    open: schedule.open,
+    openTime: schedule.openTime,
+    closeTime: schedule.closeTime,
     slotMinutes: branch.slotMinutes ?? DEFAULT_SLOT_MINUTES,
     capacity: branch.slotCapacity ?? 1, appointmentMinutes: duration,
     taken: [], now,

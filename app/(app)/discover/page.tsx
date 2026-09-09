@@ -2,8 +2,9 @@ import {
   type Weekday,
   branchStatusNow,
   formatAddress,
-  worksWeekends,
+  worksEffectiveWeekends,
 } from "@/lib/branches";
+import { branchScheduleDisplaySelect } from "@/lib/branch-effective-schedule-server";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { plansWithFeature } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
@@ -22,6 +23,7 @@ export default async function DiscoverPage() {
   setBypassContext();
   // Багц нь онлайн захиалга дэмждэг tenant-уудыг л харуулна.
   const allowedPlans = await plansWithFeature(PLAN_LIMIT_CODES.ONLINE_BOOKING);
+  const now = new Date();
   const tenants = await prisma.tenant.findMany({
     where: {
       acceptsOnlineBooking: true,
@@ -47,16 +49,7 @@ export default async function DiscoverPage() {
           address: true,
           latitude: true,
           longitude: true,
-          openTime: true,
-          closeTime: true,
-          schedules: {
-            select: {
-              weekday: true,
-              isOpen: true,
-              openTime: true,
-              closeTime: true,
-            },
-          },
+          ...branchScheduleDisplaySelect(),
         },
       },
       // Идэвхтэй ангилал + аль салбарт хамаарах (хоосон бол бүх салбарт) —
@@ -70,7 +63,6 @@ export default async function DiscoverPage() {
     },
   });
 
-  const now = new Date();
   const orgs: DiscoverOrg[] = tenants.map((t) => ({
     slug: t.slug,
     name: t.name,
@@ -87,14 +79,20 @@ export default async function DiscoverPage() {
             openTime: s.openTime,
             closeTime: s.closeTime,
           })),
+          scheduleExceptions: b.scheduleExceptions,
+          scheduleSeasons: b.scheduleSeasons,
         },
         now,
       );
-      const weekend = worksWeekends({
+      const weekend = worksEffectiveWeekends({
         openTime: b.openTime,
         closeTime: b.closeTime,
         schedules: b.schedules,
-      });
+        scheduleExceptions: b.scheduleExceptions,
+        scheduleSeasons: b.scheduleSeasons,
+      },
+        now,
+      );
       // Энэ салбарт хамаарах ангилал: хамаарах салбаргүй (бүх салбарт) эсвэл
       // энэ салбарыг шууд сонгосон ангилал.
       const services = t.categories
