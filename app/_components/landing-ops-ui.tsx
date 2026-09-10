@@ -279,7 +279,7 @@ export function ToggleChip({
 }) {
   return (
     <label
-      className={`inline-flex h-11 items-center gap-1.5 rounded-full border border-[var(--oc-line)] bg-[var(--oc-panel2)] px-3.5 text-xs text-[var(--oc-muted3)] whitespace-nowrap cursor-pointer transition-colors has-checked:border-[var(--oc-ok)]/40 has-checked:bg-[var(--oc-ok)]/10 has-checked:text-[var(--oc-ok)] ${className}`}
+      className={`inline-flex h-11 items-center gap-1.5 rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-3.5 text-xs text-[var(--oc-muted3)] whitespace-nowrap cursor-pointer transition-colors has-checked:border-[var(--oc-ok)]/40 has-checked:bg-[var(--oc-ok)]/10 has-checked:text-[var(--oc-ok)] ${className}`}
     >
       <input
         type="checkbox"

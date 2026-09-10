@@ -17,7 +17,7 @@ type Initial = {
   acceptsOnlineBooking: boolean;
 };
 
-const FIELD_MW = "w-full max-w-xs";
+const FIELD_MW = "w-full";
 
 export function TenantForm({ initial }: { initial: Initial }) {
   const [state, formAction, pending] = useActionState<
@@ -38,7 +38,7 @@ export function TenantForm({ initial }: { initial: Initial }) {
         message={state?.message && !state.ok ? state.message : undefined}
       />
 
-      <div className="flex flex-wrap justify-between gap-3.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
         <Field label="Байгууллагын нэр" htmlFor="name" error={fe.name} className={FIELD_MW}>
           <input
             id="name"
@@ -78,15 +78,7 @@ export function TenantForm({ initial }: { initial: Initial }) {
             className={`auth-input h-11 ${fe.email ? "border-red-500/50" : ""}`}
           />
         </Field>
-      </div>
-
-      <div className="flex flex-wrap items-start gap-3">
-        <Field
-          label="Утас 1"
-          htmlFor="phone1"
-          error={fe.phone1}
-          className={`${FIELD_MW} flex-1 min-w-[8rem]`}
-        >
+        <Field label="Утас 1" htmlFor="phone1" error={fe.phone1} className={FIELD_MW}>
           <input
             id="phone1"
             name="phone1"
@@ -104,7 +96,7 @@ export function TenantForm({ initial }: { initial: Initial }) {
           htmlFor="phone2"
           hint="заавал биш"
           error={fe.phone2}
-          className={`${FIELD_MW} flex-1 min-w-[8rem]`}
+          className={FIELD_MW}
         >
           <input
             id="phone2"
@@ -121,7 +113,7 @@ export function TenantForm({ initial }: { initial: Initial }) {
         {/* Утас талбаруудын label-тэй мөр зэрэгцэхийн тулд толгойд адил
             өндөртэй хоосон spacer нэмнэ (Утас 2 доор hint байгаа эсэхээс үл
             хамааран toggle/товч INPUT-той нэг эгнээнд зогсоно). */}
-        <div className="flex flex-col gap-1.5 shrink-0">
+        <div className="flex flex-col gap-1.5">
           <span aria-hidden="true" className="text-sm font-medium select-none">
             &nbsp;
           </span>
@@ -129,14 +121,15 @@ export function TenantForm({ initial }: { initial: Initial }) {
             name="acceptsOnlineBooking"
             label="Онлайн цаг захиалга"
             defaultChecked={initial.acceptsOnlineBooking}
+            className="rounded-lg "
           />
         </div>
 
-        <div className="flex flex-col gap-1.5 shrink-0">
+        <div className="flex flex-col gap-1.5">
           <span aria-hidden="true" className="text-sm font-medium select-none">
             &nbsp;
           </span>
-          <Btn type="submit" disabled={pending} size="sm" className="h-11">
+          <Btn type="submit" disabled={pending} size="md" className="h-11 w-full">
             {pending ? "..." : "Хадгалах"}
           </Btn>
         </div>
