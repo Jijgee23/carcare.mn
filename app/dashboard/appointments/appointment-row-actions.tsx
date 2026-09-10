@@ -220,7 +220,7 @@ export function AppointmentRescheduleButton({
       />
       <input type="hidden" name="requestedAt" value={value} />
       {conflictMessage ? (
-        <span className="text-[11px] text-amber-400 light:text-amber-700 max-w-[180px]">
+        <span className="text-[11px] text-[var(--oc-warn)] max-w-[180px]">
           {conflictMessage}
         </span>
       ) : null}
@@ -228,7 +228,7 @@ export function AppointmentRescheduleButton({
         type="submit"
         disabled={pending || !value}
         className={`rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-colors hover:opacity-90 disabled:opacity-60 whitespace-nowrap ${
-          confirmArmed ? "bg-amber-600" : "bg-[var(--oc-accent)]"
+          confirmArmed ? "bg-[var(--oc-warn)]" : "bg-[var(--oc-accent)]"
         }`}
       >
         {pending ? "..." : confirmArmed ? "Тийм, хадгалах" : "Хадгалах"}

@@ -232,14 +232,14 @@ function RescheduleControl({
           />
           <input type="hidden" name="scheduledAt" value={value} />
           {conflictMessage ? (
-            <p className="text-xs text-amber-400 light:text-amber-700">{conflictMessage}</p>
+            <p className="text-xs text-[var(--oc-warn)]">{conflictMessage}</p>
           ) : null}
           <div className="flex items-center gap-2">
             <button
               type="submit"
               disabled={pending || !value}
               className={`rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-colors hover:opacity-90 disabled:opacity-60 ${
-                confirmArmed ? "bg-amber-600" : "bg-[var(--oc-accent)]"
+                confirmArmed ? "bg-[var(--oc-warn)]" : "bg-[var(--oc-accent)]"
               }`}
             >
               {pending ? "Хадгалж байна..." : confirmArmed ? "Тийм, хадгалах" : "Хадгалах"}

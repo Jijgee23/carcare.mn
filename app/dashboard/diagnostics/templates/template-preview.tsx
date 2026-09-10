@@ -14,7 +14,7 @@ import {
 
 const TONE_DOT: Record<CheckTone, string> = {
   good: "border-emerald-400 bg-emerald-500",
-  warn: "border-amber-400 bg-amber-500",
+  warn: "border-[var(--oc-warn)] bg-[var(--oc-warn)]",
   bad: "border-red-400 bg-red-500",
 };
 

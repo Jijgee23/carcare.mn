@@ -47,7 +47,7 @@ export function stockLevel(stock: number): StockLevel {
 
 export const STOCK_BADGE: Record<StockLevel, string> = {
   out: "bg-red-500/15 text-red-400 border border-red-500/25 light:bg-red-100 light:border-red-300 light:text-red-700",
-  low: "bg-amber-500/15 text-amber-400 border border-amber-500/25 light:bg-amber-100 light:border-amber-300 light:text-amber-700",
+  low: "bg-[var(--oc-warn)]/15 text-[var(--oc-warn)] border border-[var(--oc-warn)]/25",
   ok: "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700",
 };
 

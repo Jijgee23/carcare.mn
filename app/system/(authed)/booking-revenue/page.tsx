@@ -109,7 +109,7 @@ export default async function BookingRevenuePage({
           <div className="text-sm text-[var(--oc-muted3)] mt-1">Нийт invoice</div>
         </div>
         <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5">
-          <div className="text-2xl sm:text-3xl font-bold text-amber-400">
+          <div className="text-2xl sm:text-3xl font-bold text-[var(--oc-warn)]">
             {formatTugrik(refundedTotal)}
           </div>
           <div className="text-sm text-[var(--oc-muted3)] mt-1">
@@ -119,9 +119,9 @@ export default async function BookingRevenuePage({
       </div>
 
       {underpaid.length > 0 ? (
-        <div className="rounded-[10px] border border-amber-500/20 bg-[var(--oc-panel)] overflow-hidden mb-6">
+        <div className="rounded-[10px] border border-[var(--oc-warn)]/20 bg-[var(--oc-panel)] overflow-hidden mb-6">
           <div className="px-5 py-3 border-b border-[var(--oc-line2)]">
-            <h2 className="text-sm font-semibold text-amber-300">
+            <h2 className="text-sm font-semibold text-[var(--oc-warn)]">
               Дутуу төлбөр илэрсэн ({underpaid.length})
             </h2>
             <p className="text-xs text-[var(--oc-muted3)] mt-0.5">
@@ -140,7 +140,7 @@ export default async function BookingRevenuePage({
                     <td className="px-5 py-2.5 text-xs text-[var(--oc-muted)]">
                       {a.account?.name?.trim() || a.account?.phone || "—"}
                     </td>
-                    <td className="px-5 py-2.5 font-plex-mono text-xs text-amber-300">
+                    <td className="px-5 py-2.5 font-plex-mono text-xs text-[var(--oc-warn)]">
                       {formatTugrik(a.feeUnderpaidAmount?.toString())} /{" "}
                       {formatTugrik(a.feeAmount?.toString())}
                     </td>

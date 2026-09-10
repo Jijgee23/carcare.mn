@@ -194,7 +194,7 @@ export const BranchTimePicker = forwardRef<
           </div>
         )}
         {availability?.scheduleLabel ? (
-          <p className="text-xs text-amber-300/80">{availability.scheduleLabel}</p>
+          <p className="text-xs text-[#dc7f4f]/80">{availability.scheduleLabel}</p>
         ) : null}
         {availability?.open && availability.slots.length > 0 ? (
           <div className="flex items-center gap-3 text-[11px] text-white/40">

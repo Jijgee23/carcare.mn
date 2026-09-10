@@ -106,7 +106,7 @@ export default async function BranchesPage({
       </StatGrid>
 
       {scheduleWarning && Number(scheduleWarning) > 0 ? (
-        <div className="mt-5 rounded-[10px] border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">
+        <div className="mt-5 rounded-[10px] border border-[var(--oc-warn)]/30 bg-[var(--oc-warn)]/10 px-4 py-3 text-sm text-[var(--oc-warn)]">
           Хуваарь хадгалагдлаа. {scheduleWarning} захиалгын үргэлжлэх хугацааг шинэ хаах цагт тааруулан богиносголоо.
         </div>
       ) : null}

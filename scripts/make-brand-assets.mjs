@@ -1,5 +1,5 @@
-// Шинэ брэнд лого (app/carservice-icon-amber.png, app/carservice-1f-amber.png)-оос
-// UI asset-уудыг үүсгэнэ (нэг л өнгийн хувилбар — амбер, dark/light хуваагдалгүй):
+// Шинэ брэнд лого (app/carservice-icon-cyan.png, app/carservice-1f-cyan.png)-оос
+// UI asset-уудыг үүсгэнэ (нэг л өнгийн хувилбар — cyan, dark/light хуваагдалгүй):
 //   - public/brand/mark.png  (тэмдэг дангаараа, 512x512)
 //   - public/brand/logo.png  (бүтэн lockup — тэмдэг + Carservice үг)
 //   - app/icon.png           (favicon-ы эх)
@@ -34,17 +34,17 @@ async function main() {
   await mkdir(OUT, { recursive: true });
 
   // Бүтэн lockup (тэмдэг + "carservice" үг нэг зурагт) — тунгалаг захыг л тайрна.
-  const logoSrc = path.join(root, "app", "carservice-1f-amber.png");
+  const logoSrc = path.join(root, "app", "carservice-1f-cyan.png");
   await sharp(logoSrc).trim().png().toFile(path.join(OUT, "logo.png"));
   console.log("✓ public/brand/logo.png");
 
   // Тэмдэг дангаараа — аль хэдийн квадрат ирсэн ч, тайрч/төвлөрүүлж 512x512 болгоно.
-  const iconSrc = path.join(root, "app", "carservice-icon-amber.png");
+  const iconSrc = path.join(root, "app", "carservice-icon-cyan.png");
   const mark = await toSquare(await sharp(iconSrc).toBuffer(), 512);
   await sharp(mark).toFile(path.join(OUT, "mark.png"));
   console.log("✓ public/brand/mark.png");
 
-  // Favicon-ы эх — амбер тэмдэг цагаан ч, бараан ч tab дээр уншигдана (тунгалаг арктай).
+  // Favicon-ы эх — cyan тэмдэг цагаан ч, бараан ч tab дээр уншигдана (тунгалаг арктай).
   await sharp(mark).toFile(path.join(root, "app", "icon.png"));
   console.log("✓ app/icon.png (favicon-ы эх)");
 }

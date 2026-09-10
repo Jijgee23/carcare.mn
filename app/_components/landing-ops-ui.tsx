@@ -251,16 +251,47 @@ const CHIP_TONE: Record<ChipTone, string> = {
   accent: "bg-[var(--oc-accent)]/15 text-[var(--oc-accent)]",
   ok: "bg-[var(--oc-ok)]/15 text-[var(--oc-ok)]",
   danger: "bg-red-500/15 text-red-400 light:text-red-600",
-  warn: "bg-amber-500/15 text-amber-400 light:text-amber-700",
+  warn: "bg-[var(--oc-warn)]/15 text-[var(--oc-warn)]",
   neutral: "bg-[var(--oc-panel2)] text-[var(--oc-muted2)]",
 };
 const CHIP_BORDER: Record<ChipTone, string> = {
   accent: "border border-[var(--oc-accent)]/30",
   ok: "border border-[var(--oc-ok)]/30",
   danger: "border border-red-500/30",
-  warn: "border border-amber-500/30",
+  warn: "border border-[var(--oc-warn)]/30",
   neutral: "border border-[var(--oc-line)]",
 };
+
+/** Checkbox-оор удирдагддаг компакт pill toggle — form мөрөнд бусад талбар
+ * (input, товч)-тай ижил өндөртэй (`h-11`) зэрэгцэн зогсохоор зохиогдсон.
+ * Сонгогдоход (`has-checked:`) ногоон өнгөөр тодрано. Урт тайлбар текст
+ * шаардлагатай бол дуудагч тал `<p>`-ээр мөрнөөс гадна тусад нь харуулна. */
+export function ToggleChip({
+  name,
+  label,
+  defaultChecked,
+  className = "",
+}: {
+  name: string;
+  label: ReactNode;
+  defaultChecked?: boolean;
+  className?: string;
+}) {
+  return (
+    <label
+      className={`inline-flex h-11 items-center gap-1.5 rounded-full border border-[var(--oc-line)] bg-[var(--oc-panel2)] px-3.5 text-xs text-[var(--oc-muted3)] whitespace-nowrap cursor-pointer transition-colors has-checked:border-[var(--oc-ok)]/40 has-checked:bg-[var(--oc-ok)]/10 has-checked:text-[var(--oc-ok)] ${className}`}
+    >
+      <input
+        type="checkbox"
+        name={name}
+        defaultChecked={defaultChecked}
+        className="sr-only"
+      />
+      <span className="w-1.5 h-1.5 rounded-full bg-current shrink-0" />
+      {label}
+    </label>
+  );
+}
 
 /** Жижиг badge/pill — төлөв (Идэвхтэй/Хугацаа дууссан), үүрэг (Админ), тэмдэг
  * (Үндсэн) зэрэгт ашиглана. Хэмжээ ганцхан — хуудас бүр өөр px/text-size

@@ -16,7 +16,7 @@ import type { OrderStatus } from "@/lib/orders";
 
 const STATUS_BTN_STYLE: Record<OrderStatus, string> = {
   SCHEDULED:
-    "bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/30 light:text-amber-700",
+    "bg-[var(--oc-warn)]/20 hover:bg-[var(--oc-warn)]/30 text-[var(--oc-warn)] border border-[var(--oc-warn)]/30",
   IN_PROGRESS:
     "bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30 light:text-blue-700",
   WAITING_PARTS:
@@ -259,13 +259,13 @@ export function StatusControls({
               />
               {finishConflict ? (
                 <div className="space-y-1">
-                  <p className="text-xs text-amber-400 light:text-amber-700">
+                  <p className="text-xs text-[var(--oc-warn)]">
                     {finishConflict}
                   </p>
                   {finishConflictIsPossible && attentionHref ? (
                     <Link
                       href={attentionHref}
-                      className="inline-block text-xs text-amber-300 underline underline-offset-2 hover:text-amber-200 light:text-amber-700 light:hover:text-amber-800"
+                      className="inline-block text-xs text-[var(--oc-warn)] underline underline-offset-2 hover:opacity-80"
                     >
                       Хоцорсон ажлуудыг шалгах →
                     </Link>
@@ -277,7 +277,7 @@ export function StatusControls({
                   type="submit"
                   disabled={finishPending}
                   className={`rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-colors hover:opacity-90 disabled:opacity-60 ${
-                    finishConflict ? "bg-amber-600" : "bg-[var(--oc-accent)]"
+                    finishConflict ? "bg-[var(--oc-warn)]" : "bg-[var(--oc-accent)]"
                   }`}
                 >
                   {finishPending

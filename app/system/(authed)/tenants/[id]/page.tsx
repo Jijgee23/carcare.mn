@@ -102,7 +102,7 @@ export default async function SystemTenantDetailPage({
         description={`#${tenant.registerNumber} · ${tenant.email}`}
         actions={
           tenant.suspended ? (
-            <span className="text-xs px-3 py-1.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 light:bg-amber-100 light:border-amber-300 light:text-amber-700">
+            <span className="text-xs px-3 py-1.5 rounded-full bg-[var(--oc-warn)]/15 text-[var(--oc-warn)] border border-[var(--oc-warn)]/25">
               Зогссон
             </span>
           ) : (
@@ -435,10 +435,10 @@ export default async function SystemTenantDetailPage({
           ) : (
             <ConfirmForm
               action={suspendTenantAction}
-              className="rounded-[10px] border border-amber-500/20 bg-[var(--oc-panel)] p-5"
+              className="rounded-[10px] border border-[var(--oc-warn)]/20 bg-[var(--oc-panel)] p-5"
               message="Энэ байгууллагыг түр зогсоох уу? Хэрэглэгчид нэвтэрч чадахгүй болно."
             >
-              <h2 className="font-semibold mb-1 text-sm text-amber-300 light:text-amber-700">
+              <h2 className="font-semibold mb-1 text-sm text-[var(--oc-warn)]">
                 Түр зогсоох
               </h2>
               <p className="text-xs text-[var(--oc-muted3)] mb-4">
@@ -447,7 +447,7 @@ export default async function SystemTenantDetailPage({
               <input type="hidden" name="id" value={tenant.id} />
               <button
                 type="submit"
-                className="w-full bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 transition-colors py-2.5 rounded-xl text-sm font-medium light:bg-amber-100 light:hover:bg-amber-200 light:border-amber-300 light:text-amber-700"
+                className="w-full bg-[var(--oc-warn)]/15 hover:bg-[var(--oc-warn)]/25 text-[var(--oc-warn)] border border-[var(--oc-warn)]/30 transition-colors py-2.5 rounded-xl text-sm font-medium"
               >
                 Зогсоох
               </button>

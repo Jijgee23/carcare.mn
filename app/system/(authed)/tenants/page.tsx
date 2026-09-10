@@ -214,7 +214,7 @@ export default async function SystemTenantsPage({
                     </td>
                     <td className="px-5 py-4">
                       {t.suspended ? (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 light:bg-amber-100 light:border-amber-300 light:text-amber-700">
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--oc-warn)]/15 text-[var(--oc-warn)] border border-[var(--oc-warn)]/25">
                           Зогссон
                         </span>
                       ) : (

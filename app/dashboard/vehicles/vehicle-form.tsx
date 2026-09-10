@@ -512,7 +512,7 @@ export function VehicleForm({
       </div>
 
       {alreadyRegistered ? (
-        <div className="rounded-[10px] border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-400 light:bg-amber-100 light:border-amber-300 light:text-amber-700 max-w-3xl">
+        <div className="rounded-[10px] border border-[var(--oc-warn)]/30 bg-[var(--oc-warn)]/10 px-4 py-3 text-xs text-[var(--oc-warn)] max-w-3xl">
           Энэ улсын дугаартай машин танай бүртгэлд аль хэдийн байна — дахин
           үүсгэх боломжгүй.{" "}
           <Link

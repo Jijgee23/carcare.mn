@@ -21,7 +21,7 @@ export const APPOINTMENT_STATUS_LABEL: Record<AppointmentStatus, string> = {
 
 export const APPOINTMENT_STATUS_BADGE: Record<AppointmentStatus, string> = {
   PENDING:
-    "bg-amber-500/15 text-amber-400 border border-amber-500/25 light:bg-amber-100 light:border-amber-300 light:text-amber-700",
+    "bg-[var(--oc-warn)]/15 text-[var(--oc-warn)] border border-[var(--oc-warn)]/25",
   CONFIRMED:
     "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700",
   REJECTED:

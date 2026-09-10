@@ -165,20 +165,20 @@ export function checkOptionTone(option: string): CheckTone {
 /** Radio агуулсан чип — сонгогдоход (`:has(:checked)`) өнгө авна. */
 export const CHECK_TONE_CHIP: Record<CheckTone, string> = {
   good: "has-checked:bg-emerald-500/15 has-checked:border-emerald-500/40 has-checked:text-emerald-300 light:has-checked:bg-emerald-100 light:has-checked:border-emerald-300 light:has-checked:text-emerald-700",
-  warn: "has-checked:bg-amber-500/15 has-checked:border-amber-500/40 has-checked:text-amber-300 light:has-checked:bg-amber-100 light:has-checked:border-amber-300 light:has-checked:text-amber-700",
+  warn: "has-checked:bg-[var(--oc-warn)]/15 has-checked:border-[var(--oc-warn)]/40 has-checked:text-[var(--oc-warn)]",
   bad: "has-checked:bg-red-500/15 has-checked:border-red-500/40 has-checked:text-red-300 light:has-checked:bg-red-100 light:has-checked:border-red-300 light:has-checked:text-red-600",
 };
 
 export const CHECK_TONE_ACCENT: Record<CheckTone, string> = {
   good: "accent-emerald-500",
-  warn: "accent-amber-500",
+  warn: "accent-[var(--oc-warn)]",
   bad: "accent-red-500",
 };
 
 /** State-ээр удирддаг чипийн идэвхтэй үеийн өнгө (preview г.м.). */
 export const CHECK_TONE_ACTIVE: Record<CheckTone, string> = {
   good: "bg-emerald-500/15 border-emerald-500/40 text-emerald-300 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700",
-  warn: "bg-amber-500/15 border-amber-500/40 text-amber-300 light:bg-amber-100 light:border-amber-300 light:text-amber-700",
+  warn: "bg-[var(--oc-warn)]/15 border-[var(--oc-warn)]/40 text-[var(--oc-warn)]",
   bad: "bg-red-500/15 border-red-500/40 text-red-300 light:bg-red-100 light:border-red-300 light:text-red-600",
 };
 

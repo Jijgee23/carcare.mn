@@ -21,7 +21,7 @@ export const dynamic = "force-dynamic";
 
 const STATUS_BADGE: Record<string, string> = {
   NEW: "bg-red-500/15 text-red-300 border border-red-500/25 light:bg-red-100 light:border-red-300 light:text-red-700",
-  IN_REVIEW: "bg-amber-500/15 text-amber-300 border border-amber-500/25 light:bg-amber-100 light:border-amber-300 light:text-amber-700",
+  IN_REVIEW: "bg-[var(--oc-warn)]/15 text-[var(--oc-warn)] border border-[var(--oc-warn)]/25",
   RESOLVED: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700",
   DISMISSED: "bg-zinc-500/15 text-zinc-300 border border-zinc-500/25 light:bg-zinc-100 light:border-zinc-300 light:text-zinc-600",
 };

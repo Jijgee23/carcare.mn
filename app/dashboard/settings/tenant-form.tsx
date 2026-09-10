@@ -6,7 +6,7 @@ import {
   updateTenantAction,
 } from "@/app/_actions/tenant";
 import { Field, FormError } from "@/app/_components/auth-shell";
-import { Btn } from "@/app/_components/landing-ops-ui";
+import { Btn, ToggleChip } from "@/app/_components/landing-ops-ui";
 
 type Initial = {
   name: string;
@@ -17,7 +17,7 @@ type Initial = {
   acceptsOnlineBooking: boolean;
 };
 
-const FIELD_MW = "max-w-xs";
+const FIELD_MW = "w-full max-w-xs";
 
 export function TenantForm({ initial }: { initial: Initial }) {
   const [state, formAction, pending] = useActionState<
@@ -38,7 +38,7 @@ export function TenantForm({ initial }: { initial: Initial }) {
         message={state?.message && !state.ok ? state.message : undefined}
       />
 
-      <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="flex flex-wrap justify-between gap-3.5">
         <Field label="Байгууллагын нэр" htmlFor="name" error={fe.name} className={FIELD_MW}>
           <input
             id="name"
@@ -46,7 +46,7 @@ export function TenantForm({ initial }: { initial: Initial }) {
             type="text"
             required
             defaultValue={initial.name}
-            className={`auth-input ${fe.name ? "border-red-500/50" : ""}`}
+            className={`auth-input h-11 ${fe.name ? "border-red-500/50" : ""}`}
           />
         </Field>
         <Field
@@ -65,7 +65,7 @@ export function TenantForm({ initial }: { initial: Initial }) {
             maxLength={7}
             required
             defaultValue={initial.registerNumber}
-            className={`auth-input font-plex-mono ${fe.registerNumber ? "border-red-500/50" : ""}`}
+            className={`auth-input h-11 font-plex-mono ${fe.registerNumber ? "border-red-500/50" : ""}`}
           />
         </Field>
         <Field label="Имэйл" htmlFor="email" error={fe.email} className={FIELD_MW}>
@@ -75,10 +75,18 @@ export function TenantForm({ initial }: { initial: Initial }) {
             type="email"
             required
             defaultValue={initial.email}
-            className={`auth-input ${fe.email ? "border-red-500/50" : ""}`}
+            className={`auth-input h-11 ${fe.email ? "border-red-500/50" : ""}`}
           />
         </Field>
-        <Field label="Утас 1" htmlFor="phone1" error={fe.phone1} className={FIELD_MW}>
+      </div>
+
+      <div className="flex flex-wrap items-start gap-3">
+        <Field
+          label="Утас 1"
+          htmlFor="phone1"
+          error={fe.phone1}
+          className={`${FIELD_MW} flex-1 min-w-[8rem]`}
+        >
           <input
             id="phone1"
             name="phone1"
@@ -88,7 +96,7 @@ export function TenantForm({ initial }: { initial: Initial }) {
             pattern="[0-9]{8}"
             required
             defaultValue={initial.phone1}
-            className={`auth-input font-plex-mono ${fe.phone1 ? "border-red-500/50" : ""}`}
+            className={`auth-input h-11 font-plex-mono ${fe.phone1 ? "border-red-500/50" : ""}`}
           />
         </Field>
         <Field
@@ -96,7 +104,7 @@ export function TenantForm({ initial }: { initial: Initial }) {
           htmlFor="phone2"
           hint="заавал биш"
           error={fe.phone2}
-          className={FIELD_MW}
+          className={`${FIELD_MW} flex-1 min-w-[8rem]`}
         >
           <input
             id="phone2"
@@ -106,34 +114,38 @@ export function TenantForm({ initial }: { initial: Initial }) {
             maxLength={8}
             pattern="[0-9]{8}"
             defaultValue={initial.phone2 ?? ""}
-            className="auth-input font-plex-mono"
+            className="auth-input h-11 font-plex-mono"
           />
         </Field>
+
+        {/* Утас талбаруудын label-тэй мөр зэрэгцэхийн тулд толгойд адил
+            өндөртэй хоосон spacer нэмнэ (Утас 2 доор hint байгаа эсэхээс үл
+            хамааран toggle/товч INPUT-той нэг эгнээнд зогсоно). */}
+        <div className="flex flex-col gap-1.5 shrink-0">
+          <span aria-hidden="true" className="text-sm font-medium select-none">
+            &nbsp;
+          </span>
+          <ToggleChip
+            name="acceptsOnlineBooking"
+            label="Онлайн цаг захиалга"
+            defaultChecked={initial.acceptsOnlineBooking}
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5 shrink-0">
+          <span aria-hidden="true" className="text-sm font-medium select-none">
+            &nbsp;
+          </span>
+          <Btn type="submit" disabled={pending} size="sm" className="h-11">
+            {pending ? "..." : "Хадгалах"}
+          </Btn>
+        </div>
       </div>
 
-      <label className="flex items-start gap-3 p-3.5 rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel2)] cursor-pointer hover:border-[var(--oc-line2)] max-w-md">
-        <input
-          type="checkbox"
-          name="acceptsOnlineBooking"
-          defaultChecked={initial.acceptsOnlineBooking}
-          className="mt-0.5 h-4 w-4 accent-[var(--oc-accent)]"
-        />
-        <span className="flex flex-col gap-0.5">
-          <span className="text-sm font-medium text-[var(--oc-ink2)]">
-            Онлайн цаг захиалга хүлээн авах
-          </span>
-          <span className="text-xs text-[var(--oc-muted3)]">
-            Идэвхжүүлбэл байгууллага хэрэглэгчийн вэб дэх каталог
-            (/discover)-т харагдаж, үйлчлүүлэгчид онлайнаар цаг захиална.
-          </span>
-        </span>
-      </label>
-
-      <div className="flex pt-2">
-        <Btn type="submit" disabled={pending}>
-          {pending ? "..." : "Хадгалах"}
-        </Btn>
-      </div>
+      <p className="text-xs text-[var(--oc-muted3)] max-w-lg">
+        Онлайн цаг захиалга идэвхжүүлбэл байгууллага хэрэглэгчийн вэб дэх каталог
+        (/discover)-т харагдаж, үйлчлүүлэгчид онлайнаар цаг захиална.
+      </p>
     </form>
   );
 }

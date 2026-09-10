@@ -113,7 +113,7 @@ const KIND_STYLES: Record<ToastKind, string> = {
     "border-emerald-500/30 bg-emerald-500/[0.12] text-emerald-100",
   error: "border-red-500/30 bg-red-500/[0.12] text-red-100",
   info: "border-violet-500/30 bg-violet-500/[0.12] text-violet-100",
-  warning: "border-amber-500/30 bg-amber-500/[0.12] text-amber-100",
+  warning: "border-[#dc7f4f]/30 bg-[#dc7f4f]/[0.12] text-[#f3d3bd]",
 };
 
 const KIND_ICON: Record<ToastKind, ReactNode> = {

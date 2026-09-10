@@ -189,7 +189,7 @@ export default async function OrdersPage({
         <StatCard
           label={ORDER_STATUS_LABEL.SCHEDULED}
           value={countByStatus.SCHEDULED ?? 0}
-          color="text-amber-400 light:text-amber-600"
+          color="text-[var(--oc-warn)]"
         />
         <StatCard
           label={ORDER_STATUS_LABEL.IN_PROGRESS}

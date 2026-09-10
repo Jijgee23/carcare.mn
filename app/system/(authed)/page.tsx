@@ -82,7 +82,7 @@ export default async function SystemOverviewPage() {
         <BigStat
           label="Түр зогссон"
           value={suspendedTenants.toLocaleString("mn-MN")}
-          color="text-amber-400 light:text-amber-700"
+          color="text-[var(--oc-warn)]"
         />
         <BigStat
           label="Нийт хэрэглэгч"
@@ -130,7 +130,7 @@ export default async function SystemOverviewPage() {
                       <div className="text-sm font-medium text-[var(--oc-ink2)] truncate">
                         {t.name}
                         {t.suspended ? (
-                          <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 light:bg-amber-100 light:text-amber-700">
+                          <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-[var(--oc-warn)]/20 text-[var(--oc-warn)]">
                             ЗОГССОН
                           </span>
                         ) : null}

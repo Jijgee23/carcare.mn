@@ -48,7 +48,7 @@ export const SUBSCRIPTION_STATUS_LABEL: Record<SubscriptionStatus, string> = {
 
 export const SUBSCRIPTION_STATUS_BADGE: Record<SubscriptionStatus, string> = {
   TRIAL:
-    "bg-amber-500/15 text-amber-300 border border-amber-500/30 light:bg-amber-100 light:border-amber-300 light:text-amber-700",
+    "bg-[var(--oc-warn)]/15 text-[var(--oc-warn)] border border-[var(--oc-warn)]/30",
   ACTIVE:
     "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700",
   EXPIRED:

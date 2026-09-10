@@ -98,8 +98,8 @@ export function EmployeeForm({
   const [activeUntil, setActiveUntil] = useState(
     initial?.activeUntil
       ? new Date(initial.activeUntil.getTime() - initial.activeUntil.getTimezoneOffset() * 60000)
-          .toISOString()
-          .slice(0, 10)
+        .toISOString()
+        .slice(0, 10)
       : "",
   );
 
@@ -206,7 +206,7 @@ export function EmployeeForm({
             />
           </Field>
           <Field
-            label="Ажиллах хугацаа дуусах огноо"
+            label="Ажиллаж хугацаа дуусах огноо"
             htmlFor="activeUntil"
             hint="Түр ажилтан бол огноо. Хоосон бол байнгын."
             error={fe.activeUntil}
@@ -240,11 +240,10 @@ export function EmployeeForm({
                   return (
                     <label
                       key={b.id}
-                      className={`flex items-center gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors ${
-                        checked
+                      className={`flex items-center gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors ${checked
                           ? "border-[var(--oc-accent)] bg-[var(--oc-accent)]/[0.08]"
                           : "border-[var(--oc-line)] bg-[var(--oc-panel2)] hover:border-[var(--oc-line2)]"
-                      }`}
+                        }`}
                     >
                       <input
                         type="checkbox"
@@ -283,11 +282,10 @@ export function EmployeeForm({
 
       <SectionPanel index={3} total={3} title="Хандалт">
         <label
-          className={`flex items-start gap-3 p-3.5 rounded-[10px] border cursor-pointer transition-colors ${
-            isActive
+          className={`flex items-start gap-3 p-3.5 rounded-[10px] border cursor-pointer transition-colors ${isActive
               ? "border-[var(--oc-accent)] bg-[var(--oc-accent)]/[0.08]"
               : "border-[var(--oc-line)] bg-[var(--oc-panel2)] hover:border-[var(--oc-line2)]"
-          }`}
+            }`}
         >
           <input
             type="checkbox"

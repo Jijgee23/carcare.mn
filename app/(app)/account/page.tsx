@@ -204,7 +204,7 @@ export default async function AccountPage() {
                         className={`font-plex-mono text-[11px] px-2.5 py-1 rounded-full whitespace-nowrap transition-colors ${
                           a.payment
                             ? "bg-emerald-500/15 text-emerald-400 light:bg-emerald-100 light:text-emerald-700"
-                            : "bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 light:bg-amber-100 light:text-amber-700"
+                            : "bg-[var(--oc-warn)]/15 text-[var(--oc-warn)] hover:bg-[var(--oc-warn)]/25"
                         }`}
                       >
                         {feeLabel}

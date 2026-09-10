@@ -18,7 +18,7 @@ export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
 
 export const ORDER_STATUS_BADGE: Record<OrderStatus, string> = {
   SCHEDULED:
-    "bg-amber-500/15 text-amber-400 border border-amber-500/25 light:bg-amber-100 light:border-amber-300 light:text-amber-700",
+    "bg-[var(--oc-warn)]/15 text-[var(--oc-warn)] border border-[var(--oc-warn)]/25",
   IN_PROGRESS:
     "bg-blue-500/15 text-blue-400 border border-blue-500/25 light:bg-blue-100 light:border-blue-300 light:text-blue-700",
   WAITING_PARTS:
@@ -62,7 +62,7 @@ export const PAYMENT_STATUS_BADGE: Record<PaymentStatus, string> = {
   UNPAID:
     "bg-red-500/15 text-red-300 border border-red-500/25 light:bg-red-100 light:border-red-300 light:text-red-700",
   PARTIAL:
-    "bg-amber-500/15 text-amber-300 border border-amber-500/25 light:bg-amber-100 light:border-amber-300 light:text-amber-700",
+    "bg-[var(--oc-warn)]/15 text-[var(--oc-warn)] border border-[var(--oc-warn)]/25",
   PAID:
     "bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700",
 };

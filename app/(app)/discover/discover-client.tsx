@@ -736,7 +736,7 @@ export function DiscoverClient({
           </span>
         ) : null}
         {filterError ? (
-          <div className="basis-full text-xs text-amber-300 light:text-amber-700">
+          <div className="basis-full text-xs text-[var(--oc-warn)]">
             {filterError}
           </div>
         ) : null}

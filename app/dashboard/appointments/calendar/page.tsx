@@ -542,14 +542,14 @@ function DaySchedule({
       ) : null}
 
       {carriedOverCount > 0 ? (
-        <div className="rounded-[10px] border border-amber-500/25 bg-amber-500/[0.06] p-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <span className="text-sm text-amber-200 light:text-amber-800">
+        <div className="rounded-[10px] border border-[var(--oc-warn)]/25 bg-[var(--oc-warn)]/[0.06] p-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <span className="text-sm text-[var(--oc-warn)]">
             {carriedOverCount} идэвхтэй ажил тодорхойгүй хугацаатай тул энэ өдөртэй
             давхцах магадлалтай.
           </span>
           <Link
             href={attentionHref}
-            className="text-sm text-amber-400 hover:text-amber-300 transition-colors"
+            className="text-sm text-[var(--oc-warn)] hover:opacity-80 transition-opacity"
           >
             Хоцорсон ажлуудыг шалгах →
           </Link>
@@ -557,11 +557,11 @@ function DaySchedule({
       ) : null}
 
       {issues.length > 0 ? (
-        <div className="rounded-[10px] border border-amber-500/25 bg-amber-500/[0.06] p-3 flex flex-wrap gap-1.5">
+        <div className="rounded-[10px] border border-[var(--oc-warn)]/25 bg-[var(--oc-warn)]/[0.06] p-3 flex flex-wrap gap-1.5">
           {issues.map((issue, i) => (
             <span
               key={`${issue.source}-${issue.id}-${i}`}
-              className="font-plex-mono text-[10.5px] px-2 py-1 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25"
+              className="font-plex-mono text-[10.5px] px-2 py-1 rounded-full bg-[var(--oc-warn)]/15 text-[var(--oc-warn)] border border-[var(--oc-warn)]/25"
             >
               {SCHEDULE_ISSUE_LABEL[issue.reason]}
             </span>
@@ -663,7 +663,7 @@ function DaySchedule({
                     {name}
                   </span>
                   {row.uncertain ? (
-                    <span className="font-plex-mono text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 shrink-0">
+                    <span className="font-plex-mono text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--oc-warn)]/15 text-[var(--oc-warn)] border border-[var(--oc-warn)]/25 shrink-0">
                       Тодорхойгүй
                     </span>
                   ) : null}
@@ -823,14 +823,14 @@ function DayScheduleGrid({
         </div>
       ) : null}
       {carriedOverCount > 0 ? (
-        <div className="rounded-[10px] border border-amber-500/25 bg-amber-500/[0.06] p-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <span className="text-sm text-amber-200 light:text-amber-800">
+        <div className="rounded-[10px] border border-[var(--oc-warn)]/25 bg-[var(--oc-warn)]/[0.06] p-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <span className="text-sm text-[var(--oc-warn)]">
             {carriedOverCount} идэвхтэй ажил тодорхойгүй хугацаатай тул энэ өдөртэй
             давхцах магадлалтай.
           </span>
           <Link
             href={`/dashboard/appointments/calendar?view=attention&branchId=${encodeURIComponent(branchId)}`}
-            className="text-sm text-amber-400 hover:text-amber-300 transition-colors"
+            className="text-sm text-[var(--oc-warn)] hover:opacity-80 transition-opacity"
           >
             Хоцорсон ажлуудыг шалгах →
           </Link>

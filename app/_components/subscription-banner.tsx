@@ -117,7 +117,7 @@ function BannerShell({
       className={`flex items-center gap-3 rounded-xl border px-3.5 py-2 ${
         urgent
           ? "border-red-500/30 bg-red-500/[0.08] text-red-200 light:border-red-300 light:bg-red-50 light:text-red-700"
-          : "border-amber-500/30 bg-amber-500/[0.08] text-amber-200 light:border-amber-300 light:bg-amber-50 light:text-amber-800"
+          : "border-[var(--oc-warn)]/30 bg-[var(--oc-warn)]/[0.08] text-[var(--oc-warn)]"
       } ${className}`}
     >
       <svg

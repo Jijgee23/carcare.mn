@@ -733,7 +733,7 @@ function ItemRow({
           ) : null}
 
           {showWhenInvalid ? (
-            <p className="text-[11px] text-amber-400 light:text-amber-700">
+            <p className="text-[11px] text-[var(--oc-warn)]">
               Хамаарал тогтоосон асуулт алга болсон байна — дахин сонгоно уу.
             </p>
           ) : null}

@@ -307,7 +307,7 @@ function CreateVehicleForm({
       </Field>
 
       {alreadyRegistered ? (
-        <div className="rounded-[10px] border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-400 light:bg-amber-100 light:border-amber-300 light:text-amber-700">
+        <div className="rounded-[10px] border border-[var(--oc-warn)]/30 bg-[var(--oc-warn)]/10 px-4 py-3 text-xs text-[var(--oc-warn)]">
           Энэ улсын дугаартай машин танай бүртгэлд аль хэдийн байна.{" "}
           <Link
             href={`/dashboard/vehicles?q=${encodeURIComponent(trimmedPlate)}`}

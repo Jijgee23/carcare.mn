@@ -9,7 +9,7 @@ import {
 } from "@/app/_actions/units";
 import { Field, FormError } from "@/app/_components/auth-shell";
 import { ConfirmForm } from "@/app/_components/confirm-form";
-import { Btn, Chip, TagChip } from "@/app/_components/landing-ops-ui";
+import { Btn, Chip, TagChip, ToggleChip } from "@/app/_components/landing-ops-ui";
 import { SYSTEM_UNIT_NAMES } from "@/lib/units";
 
 export type UnitRow = {
@@ -217,15 +217,20 @@ function CreateForm() {
         <FormError message={state.message} />
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-[1fr_140px_auto_auto]">
-        <Field label="Нэр" htmlFor="unit-name" error={fe.name}>
+      <div className="flex flex-wrap items-start gap-3">
+        <Field
+          label="Нэр"
+          htmlFor="unit-name"
+          error={fe.name}
+          className="flex-1 min-w-[10rem]"
+        >
           <input
             id="unit-name"
             name="name"
             type="text"
             required
             placeholder="ширхэг, цаг, литр..."
-            className={`auth-input ${fe.name ? "border-red-500/50" : ""}`}
+            className={`auth-input h-11 ${fe.name ? "border-red-500/50" : ""}`}
           />
         </Field>
         <Field
@@ -233,26 +238,32 @@ function CreateForm() {
           htmlFor="unit-code"
           hint="заавал биш"
           error={fe.code}
+          className="w-28 shrink-0"
         >
           <input
             id="unit-code"
             name="code"
             type="text"
             placeholder="ш, ц, л"
-            className={`auth-input ${fe.code ? "border-red-500/50" : ""}`}
+            className={`auth-input h-11 ${fe.code ? "border-red-500/50" : ""}`}
           />
         </Field>
-        <label className="flex items-end gap-2 text-sm text-[var(--oc-ink2)] pb-2.5">
-          <input
-            type="checkbox"
-            name="isActive"
-            defaultChecked
-            className="accent-[var(--oc-accent)]"
-          />
-          Идэвхтэй
-        </label>
-        <div className="flex items-end pb-0.5">
-          <Btn type="submit" disabled={pending} size="sm" className="w-full sm:w-auto">
+
+        {/* Нэр/Богино-гийн label-тэй мөр зэрэгцэхийн тулд толгойд нь адил
+            өндөртэй (мөн текстгүй) хоосон spacer нэмнэ — Богино доор hint
+            байгаа эсэхээс үл хамааран toggle/товч INPUT-той нэг эгнээнд зогсоно. */}
+        <div className="flex flex-col gap-1.5 shrink-0">
+          <span aria-hidden="true" className="text-sm font-medium select-none">
+            &nbsp;
+          </span>
+          <ToggleChip name="isActive" label="Идэвхтэй" defaultChecked />
+        </div>
+
+        <div className="flex flex-col gap-1.5 shrink-0 ml-auto">
+          <span aria-hidden="true" className="text-sm font-medium select-none">
+            &nbsp;
+          </span>
+          <Btn type="submit" disabled={pending} size="sm" className="h-11 w-32">
             {pending ? "Нэмж..." : "Нэмэх"}
           </Btn>
         </div>

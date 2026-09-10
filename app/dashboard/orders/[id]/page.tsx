@@ -403,7 +403,7 @@ export default async function OrderDetailPage({
                             <div className="text-sm text-[var(--oc-ink)]">
                               {it.description}
                             </div>
-                            <div className="text-xs text-amber-400/80 light:text-amber-700">
+                            <div className="text-xs text-[var(--oc-warn)]/80">
                               Бөглөгдөөгүй
                             </div>
                           </div>

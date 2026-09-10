@@ -88,7 +88,7 @@ function BrandPanel() {
                 plate: "5678 УНМ",
                 job: "Тоормосны наклад",
                 status: "Явцтай",
-                pill: "bg-amber-400/20 text-amber-100",
+                pill: "bg-[#dc7f4f]/20 text-[#f3d3bd]",
               },
               {
                 plate: "9012 УВД",

@@ -221,7 +221,7 @@ export function InlineAccountVehicleForm({
       </div>
 
       {alreadyRegistered ? (
-        <p className="text-xs text-amber-400 light:text-amber-700">
+        <p className="text-xs text-[var(--oc-warn)]">
           Энэ дугаартай машин таны бүртгэлд аль хэдийн байна.
         </p>
       ) : null}

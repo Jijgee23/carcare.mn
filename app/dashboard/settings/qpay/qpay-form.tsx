@@ -38,7 +38,7 @@ export function TenantQPayForm({ initial }: { initial: Initial | null }) {
 
   return (
     <>
-    <form action={formAction} className="flex flex-col gap-4" noValidate>
+    <form id="qpay-form" action={formAction} className="flex flex-col gap-4" noValidate>
       {state?.ok && state.message ? (
         <div className="bg-[var(--oc-ok)]/10 border border-[var(--oc-ok)]/25 rounded-lg px-3 py-2 text-sm text-[var(--oc-ok)]">
           {state.message}
@@ -155,24 +155,24 @@ export function TenantQPayForm({ initial }: { initial: Initial | null }) {
         </div>
       </label>
       {!enabled ? <input type="hidden" name="enabled" value="off" /> : null}
-
-      <div className="flex gap-2 pt-3 border-t border-[var(--oc-line2)]">
-        <Btn type="submit" disabled={pending}>
-          {pending ? "..." : "Хадгалах"}
-        </Btn>
-      </div>
     </form>
-    {isConfigured ? (
-      <ConfirmForm
-        action={deleteTenantQPayAction}
-        className="pt-2"
-        message="QPay тохиргоог устгах уу?"
-      >
-        <Btn type="submit" variant="danger">
-          Тохиргоог устгах
-        </Btn>
-      </ConfirmForm>
-    ) : null}
+
+    <div className="flex gap-2 pt-3 border-t border-[var(--oc-line2)]">
+      <Btn type="submit" form="qpay-form" disabled={pending} className="flex-1">
+        {pending ? "..." : "Хадгалах"}
+      </Btn>
+      {isConfigured ? (
+        <ConfirmForm
+          action={deleteTenantQPayAction}
+          className="flex-1"
+          message="QPay тохиргоог устгах уу?"
+        >
+          <Btn type="submit" variant="danger" className="w-full">
+            Тохиргоог устгах
+          </Btn>
+        </ConfirmForm>
+      ) : null}
+    </div>
     </>
   );
 }

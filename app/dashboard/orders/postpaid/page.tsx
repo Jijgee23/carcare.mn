@@ -165,7 +165,7 @@ export default async function PostpaidOrdersPage({
           value={formatTugrik(grandBalance.toString())}
           color={
             grandBalance.gt(0)
-              ? "text-amber-400 light:text-amber-600"
+              ? "text-[var(--oc-warn)]"
               : "text-emerald-400 light:text-emerald-600"
           }
         />
@@ -255,7 +255,7 @@ export default async function PostpaidOrdersPage({
                         <span
                           className={
                             v.balance.gt(0)
-                              ? "text-amber-300 light:text-amber-700 font-medium"
+                              ? "text-[var(--oc-warn)] font-medium"
                               : "text-emerald-300 light:text-emerald-700"
                           }
                         >

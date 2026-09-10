@@ -93,7 +93,7 @@ export function AppointmentPaymentPanel({
       </div>
 
       {!paid && underpaidAmount != null ? (
-        <div className="mt-6 bg-amber-500/10 border border-amber-500/25 text-amber-400 rounded-[10px] px-4 py-3 text-sm text-center">
+        <div className="mt-6 bg-[var(--oc-warn)]/10 border border-[var(--oc-warn)]/25 text-[var(--oc-warn)] rounded-[10px] px-4 py-3 text-sm text-center">
           Дутуу төлбөр ирсэн: {Number.parseFloat(underpaidAmount).toLocaleString("mn-MN")}₮
           / {Number.parseFloat(amount).toLocaleString("mn-MN")}₮. Үлдэгдлийг
           дахин уншуулж нөхнө үү.

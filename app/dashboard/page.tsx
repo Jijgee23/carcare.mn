@@ -12,6 +12,9 @@ import {
 import { DatePicker } from "@/app/_components/date-picker";
 import { Sparkline } from "@/app/_components/sparkline";
 import { IncomeBarChart } from "./income-bar-chart";
+import { PlanUsageRing } from "./plan-usage-ring";
+import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
+import { getLimitsMap } from "@/lib/plan-limits-server";
 import { type Trend, dailyTrend } from "./trend";
 import {
   INCOME_QUICK_RANGES,
@@ -56,6 +59,7 @@ export default async function DashboardPage({
     tenantId: user.tenantId,
     createdAt: { gte: trendStart },
   };
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
   // Салбараар хязгаарлагдсан ажилтны хувьд захиалга/орлогын тоог салбараар нь шүүнэ.
   const scopeBranchId = workingBranchScopeId(user);
@@ -79,6 +83,8 @@ export default async function DashboardPage({
     recentlyUpdatedOrders,
     postpaidVehicleCount,
     postpaidSums,
+    todayOrderCount,
+    planLimits,
   ] = await Promise.all([
     prisma.branch.count({ where: { tenantId: user.tenantId } }),
     prisma.user.count({ where: { tenantId: user.tenantId } }),
@@ -176,6 +182,15 @@ export default async function DashboardPage({
       },
       _sum: { totalAmount: true, paidAmount: true },
     }),
+    prisma.serviceOrder.count({
+      where: { tenantId: user.tenantId, createdAt: { gte: todayStart } },
+    }),
+    getLimitsMap(user.tenant.plan, [
+      PLAN_LIMIT_CODES.DAILY_ORDERS,
+      PLAN_LIMIT_CODES.MAX_VEHICLES,
+      PLAN_LIMIT_CODES.MAX_USERS,
+      PLAN_LIMIT_CODES.MAX_BRANCHES,
+    ]),
   ]);
   const activeSub = resolveActiveSubscription(subscriptions);
 
@@ -261,6 +276,49 @@ export default async function DashboardPage({
           />
         ) : null}
       </div>
+
+      <section className="mt-6 rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-4 sm:p-6 lg:p-8">
+        <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
+          <div>
+            <h2 className="font-semibold text-[var(--oc-ink)] mb-1">Багцын хэрэглээ</h2>
+            <p className="text-xs text-[var(--oc-muted3)]">
+              {PLAN_LABEL[user.tenant.plan]} багцын лимитүүд одоогийн хэрэглээтэй харьцуулав
+            </p>
+          </div>
+          <Link
+            href="/dashboard/settings/subscription"
+            className="font-plex-mono text-[11px] text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors shrink-0"
+          >
+            Багц удирдах →
+          </Link>
+        </div>
+        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-6">
+          <PlanUsageRing
+            label="Өнөөдрийн засвар"
+            current={todayOrderCount}
+            limit={planLimits.daily_orders}
+            href="/dashboard/orders"
+          />
+          <PlanUsageRing
+            label="Машин"
+            current={vehicleCount}
+            limit={planLimits.max_vehicles}
+            href="/dashboard/vehicles"
+          />
+          <PlanUsageRing
+            label="Ажилтан"
+            current={employeeCount}
+            limit={planLimits.max_users}
+            href="/dashboard/employees"
+          />
+          <PlanUsageRing
+            label="Салбар"
+            current={branchCount}
+            limit={planLimits.max_branches}
+            href="/dashboard/branches"
+          />
+        </div>
+      </section>
 
       <section className="mt-6 rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-4 sm:p-6 lg:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
@@ -519,7 +577,7 @@ function StatCard({
   const up = pct == null ? true : pct >= 0;
   const toneClass =
     tone === "warn"
-      ? "text-amber-400 light:text-amber-600"
+      ? "text-[var(--oc-warn)]"
       : tone === "ok"
         ? "text-emerald-400 light:text-emerald-600"
         : "text-[var(--oc-ink)]";

@@ -1,5 +1,5 @@
-/* Брэнд лого — нэг л (амбер) хувилбар, theme-ээс үл хамааран.
-   Эх зураг: app/carservice-icon-amber.png → scripts/make-brand-assets.mjs. */
+/* Брэнд лого — нэг л (cyan) хувилбар, theme-ээс үл хамааран.
+   Эх зураг: app/carservice-icon-cyan.png → scripts/make-brand-assets.mjs. */
 export function BrandMark({ size = "md" }: { size?: "sm" | "md" }) {
   const cls = size === "sm" ? "w-7 h-7" : "w-8 h-8";
   return (

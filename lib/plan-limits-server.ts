@@ -68,6 +68,30 @@ export async function enforceCountLimit(
 }
 
 /**
+ * Хэд хэдэн COUNT хязгаарыг НЭГ query-ээр авна (dashboard-ийн хэрэглээний
+ * заагуур мэт олон код зэрэг хэрэгтэй үед `getLimit`-ийг давтан дуудахаас
+ * зайлсхийнэ). `plan`-г дуудагч тал өөрөө дамжуулна (ихэвчлэн аль хэдийн
+ * ачаалсан `user.tenant.plan`) — нэмэлт tenant.findUnique хийхгүй.
+ */
+export async function getLimitsMap<T extends PlanLimitCode>(
+  plan: Plan,
+  codes: T[],
+): Promise<Record<T, number | null>> {
+  const overrides = await prisma.planLimit.findMany({
+    where: { plan, code: { in: codes } },
+    select: { code: true, intValue: true },
+  });
+  const overrideMap = new Map(overrides.map((o) => [o.code, o.intValue]));
+  const result = {} as Record<T, number | null>;
+  for (const code of codes) {
+    result[code] = overrideMap.has(code)
+      ? overrideMap.get(code)!
+      : DEFAULT_PLAN_LIMITS[plan][code].intValue;
+  }
+  return result;
+}
+
+/**
  * BOOLEAN хязгаарыг шалгана.
  */
 export async function isFeatureEnabled(

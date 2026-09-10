@@ -58,7 +58,7 @@ function ConfirmationDialog({
         className="fixed left-1/2 top-1/2 z-[110] w-[min(92vw,26rem)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-white/10 bg-[var(--surface)] p-5 shadow-2xl backdrop-blur-xl"
       >
         <div className="flex items-start gap-3">
-          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-amber-500/15 text-amber-300 light:text-amber-700">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[var(--oc-warn)]/15 text-[var(--oc-warn)]">
             <svg
               width="18"
               height="18"
