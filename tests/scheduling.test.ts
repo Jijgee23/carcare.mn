@@ -115,9 +115,31 @@ test("linked appointment and order count once", () => {
 test("walk-in without appointment consumes capacity", () => {
   assert.equal(project([order()]).intervals.length, 1);
 });
-test("completed and explicitly released work frees its linked reservation", () => {
-  assert.equal(project([order({ status: "COMPLETED", occupiesCapacity: false })],
-    [appointment({ serviceOrderId: "order" })]).intervals.length, 0);
+test("completed and explicitly released work clears its linked appointment quietly", () => {
+  // A COMPLETED order is the normal, successful outcome — not an issue.
+  // Appointment status has no terminal "done" state of its own, so the
+  // ordinary same-day book -> convert -> finish path must not flag every
+  // completed job as a "linked order not occupying" issue.
+  const result = project([order({ status: "COMPLETED", occupiesCapacity: false })],
+    [appointment({ serviceOrderId: "order" })]);
+  assert.equal(result.intervals.length, 0);
+  assert.ok(!result.issues.some((issue) => issue.reason === "linked-order-not-occupying"));
+});
+test("cancelled linked order still flags its appointment for attention", () => {
+  const result = project([order({ status: "CANCELLED", occupiesCapacity: false })],
+    [appointment({ serviceOrderId: "order" })]);
+  assert.equal(result.intervals.length, 1);
+  assert.equal(result.intervals[0].source, "appointment");
+  assert.ok(result.issues.some((issue) => issue.reason === "linked-order-not-occupying"));
+});
+test("explicitly released waiting-for-parts order clears its linked appointment quietly", () => {
+  // Freeing the bay while waiting on a part (setOrderCapacityAction) is a
+  // normal, everyday choice, not a broken link — the order stays fully
+  // visible on /dashboard/orders regardless.
+  const result = project([order({ status: "WAITING_PARTS", occupiesCapacity: false })],
+    [appointment({ serviceOrderId: "order" })]);
+  assert.equal(result.intervals.length, 0);
+  assert.ok(!result.issues.some((issue) => issue.reason === "linked-order-not-occupying"));
 });
 test("completed car still in workspace continues to consume capacity", () => {
   assert.equal(project([order({ status: "COMPLETED" })]).intervals.length, 1);

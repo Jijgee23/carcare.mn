@@ -30,7 +30,15 @@ export type ScheduleOrder = Scope & {
 export type ScheduleIssue = {
   source: "appointment" | "order";
   id: string;
-  reason: "missing-estimate" | "unknown-occupancy" | "overdue" | "missing-order" | "missing-start" | "invalid-interval" | "payment-expired";
+  reason:
+    | "missing-estimate"
+    | "unknown-occupancy"
+    | "overdue"
+    | "missing-order"
+    | "linked-order-not-occupying"
+    | "missing-start"
+    | "invalid-interval"
+    | "payment-expired";
 };
 export type ScheduleInterval = CapacityInterval & {
   source: "appointment" | "order";
@@ -40,6 +48,16 @@ export type ScheduleInterval = CapacityInterval & {
 
 function minutes(value: number | null): number | null {
   return value != null && Number.isInteger(value) && value > 0 ? value : null;
+}
+
+/** Whether an order's status/occupancy state is eligible to reserve capacity. */
+export function orderCanCountForCapacity(
+  order: Pick<ScheduleOrder, "status" | "occupiesCapacity">,
+): boolean {
+  const terminal = order.status === "COMPLETED" || order.status === "CANCELLED";
+  if (terminal && order.occupiesCapacity !== true) return false;
+  if (order.status !== "SCHEDULED" && order.occupiesCapacity === false) return false;
+  return true;
 }
 
 /**
@@ -75,43 +93,14 @@ export function buildBranchSchedule(input: Scope & {
     if (startMs < endMs) intervals.push({ source, id, startMs, endMs, uncertain });
   };
 
-  for (const a of input.appointments.filter(inScope)) {
-    if (a.status !== "PENDING" && a.status !== "CONFIRMED") continue;
-    if (
-      a.status === "PENDING" &&
-      a.createdAt &&
-      isPendingAppointmentPaymentExpired(
-        { feeAmount: a.feeAmount, feeUnderpaidAmount: a.feeUnderpaidAmount, payment: a.payment ?? null, createdAt: a.createdAt },
-        input.now,
-      )
-    ) {
-      // A dead payment hold is low-priority, stale housekeeping — it belongs
-      // in the Attention view (lib/branch-schedule-loader.ts's
-      // loadBranchAttentionAppointments), not in the day calendar at all, not
-      // even faded. No interval, no "missing-estimate" issue for it either.
-      issue("appointment", a.id, "payment-expired");
-      continue;
-    }
-    if (a.serviceOrderId && orders.has(a.serviceOrderId)) continue;
-    if (a.serviceOrderId) issue("appointment", a.id, "missing-order");
-    const duration = minutes(a.estimatedDurationMinutes);
-    const start = a.requestedAt.getTime();
-    if (!Number.isFinite(start)) throw new RangeError("Invalid appointment start");
-    if (start >= upper) continue;
-    if (duration == null) issue("appointment", a.id, "missing-estimate");
-    const end = duration == null ? null : new Date(start + duration * 60000);
-    if (end && !isValidScheduleInterval(new Date(start), end)) {
-      issue("appointment", a.id, "invalid-interval");
-      continue;
-    }
-    add("appointment", a.id, start, duration == null ? upper : end!.getTime(), duration == null);
-  }
-
+  // Project orders first so a linked appointment is suppressed only when the
+  // linked order actually contributes a visible capacity interval. A terminal
+  // or explicitly released linked order must not make its still-active
+  // appointment disappear from both the calendar and the conflict context.
+  const orderIntervalIds = new Set<string>();
   for (const order of orders.values()) {
-    const terminal = order.status === "COMPLETED" || order.status === "CANCELLED";
     // Terminal legacy orders have no positive evidence of remaining occupancy.
-    if (terminal && order.occupiesCapacity !== true) continue;
-    if (order.status !== "SCHEDULED" && order.occupiesCapacity === false) continue;
+    if (!orderCanCountForCapacity(order)) continue;
     const resolved = resolveOrderEffectiveInterval(order);
     const scheduled = resolved.scheduled;
     const date = resolved.start;
@@ -132,7 +121,64 @@ export function buildBranchSchedule(input: Scope & {
     if (overdue) issue("order", order.id, "overdue");
     const uncertain = !date || unknownOccupancy || end == null || overdue;
     if (uncertain) end = upper;
+    const intervalCount = intervals.length;
     add("order", order.id, start, end!, uncertain);
+    if (intervals.length > intervalCount) orderIntervalIds.add(order.id);
+  }
+
+  for (const a of input.appointments.filter(inScope)) {
+    if (a.status !== "PENDING" && a.status !== "CONFIRMED") continue;
+    if (
+      a.status === "PENDING" &&
+      a.createdAt &&
+      isPendingAppointmentPaymentExpired(
+        { feeAmount: a.feeAmount, feeUnderpaidAmount: a.feeUnderpaidAmount, payment: a.payment ?? null, createdAt: a.createdAt },
+        input.now,
+      )
+    ) {
+      // A dead payment hold is low-priority, stale housekeeping — it belongs
+      // in the Attention view (lib/branch-schedule-loader.ts's
+      // loadBranchAttentionAppointments), not in the day calendar at all, not
+      // even faded. No interval, no "missing-estimate" issue for it either.
+      issue("appointment", a.id, "payment-expired");
+      continue;
+    }
+    if (a.serviceOrderId && orderIntervalIds.has(a.serviceOrderId)) continue;
+    if (a.serviceOrderId) {
+      const linkedOrder = orders.get(a.serviceOrderId);
+      // A COMPLETED order, or a WAITING_PARTS order whose bay was explicitly
+      // released (setOrderCapacityAction), is an intentional, normal state —
+      // not an issue. Appointment status has no terminal "done" state of its
+      // own (see AppointmentStatus), so without this the ordinary same-day
+      // book → convert → finish path, or the everyday "free the bay while
+      // waiting on a part" action, would flag the appointment as if its link
+      // were broken. Neither order disappears from the app: both remain
+      // fully visible (and filterable) on /dashboard/orders. A CANCELLED
+      // (or missing) linked order still needs staff attention, so keep
+      // flagging those.
+      if (
+        linkedOrder?.status === "COMPLETED" ||
+        (linkedOrder?.status === "WAITING_PARTS" && linkedOrder.occupiesCapacity === false)
+      ) {
+        continue;
+      }
+      issue(
+        "appointment",
+        a.id,
+        linkedOrder ? "linked-order-not-occupying" : "missing-order",
+      );
+    }
+    const duration = minutes(a.estimatedDurationMinutes);
+    const start = a.requestedAt.getTime();
+    if (!Number.isFinite(start)) throw new RangeError("Invalid appointment start");
+    if (start >= upper) continue;
+    if (duration == null) issue("appointment", a.id, "missing-estimate");
+    const end = duration == null ? null : new Date(start + duration * 60000);
+    if (end && !isValidScheduleInterval(new Date(start), end)) {
+      issue("appointment", a.id, "invalid-interval");
+      continue;
+    }
+    add("appointment", a.id, start, duration == null ? upper : end!.getTime(), duration == null);
   }
   return { intervals, issues };
 }

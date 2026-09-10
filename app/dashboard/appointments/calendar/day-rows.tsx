@@ -32,6 +32,7 @@ export const SCHEDULE_ISSUE_LABEL: Record<ScheduleIssue["reason"], string> = {
   "unknown-occupancy": "Ажлын байрны эзэмшил тодорхойгүй",
   overdue: "Тооцоолсон хугацаанаас хэтэрсэн",
   "missing-order": "Холбогдсон захиалга олдсонгүй",
+  "linked-order-not-occupying": "Холбогдсон захиалга ажлын байр эзлэхгүй байна",
   "missing-start": "Эхэлсэн цаг тэмдэглэгдээгүй",
   "invalid-interval": "Хугацааны муж буруу",
   "payment-expired": "Хураамж төлөгдөөгүй тул хугацаа дууссан",

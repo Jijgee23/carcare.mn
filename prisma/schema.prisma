@@ -38,6 +38,7 @@ model Tenant {
   services             Service[]
   serviceOrders        ServiceOrder[]
   serviceOrderCategories ServiceOrderCategory[]
+  orderTimeBookings    OrderTimeBooking[]
   diagnosticTemplates  DiagnosticTemplate[]
   diagnosticReports    DiagnosticReport[]
   units                Unit[]
@@ -124,6 +125,7 @@ model User {
   auditLogs             AuditLog[]           @relation("AuditLogActor")
   appointmentsResponded Appointment[]        @relation("AppointmentRespondedBy")
   feedback              Feedback[]
+  createdOrderTimeBookings OrderTimeBooking[] @relation("OrderTimeBookingCreatedBy")
 
   @@index([tenantId])
   @@index([tenantId, isActive])
@@ -205,6 +207,7 @@ model Branch {
   appointments      Appointment[]
   categories        Category[] // олон-олон: энэ салбарт санал болгох ангилалууд
   categoryDurations BranchCategoryDuration[] // ангилал бүрийн салбар-тусгай хугацаа
+  orderTimeBookings OrderTimeBooking[]
 
   @@index([tenantId])
 }
@@ -454,11 +457,12 @@ model ServiceOrder {
   assignedToId String?
   assignedTo   User?   @relation("AssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
 
-  items       ServiceItem[]
-  categories  ServiceOrderCategory[]
-  reports     DiagnosticReport[]
-  payments    OrderPayment[]
-  appointment Appointment?
+  items        ServiceItem[]
+  categories   ServiceOrderCategory[]
+  timeBookings OrderTimeBooking[]
+  reports      DiagnosticReport[]
+  payments     OrderPayment[]
+  appointment  Appointment?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -770,6 +774,50 @@ model ServiceOrderCategory {
   @@unique([orderId, categoryId])
   @@index([tenantId, orderId])
   @@index([categoryId])
+}
+
+// --- OrderTimeBooking (D-068: захиалгын олон удаагийн цаг эзэмшил) --------
+// ServiceOrder.scheduledAt/startedAt/expectedFinishAt/occupiesCapacity нь нэг
+// боломжит хугацааг л илэрхийлдэг байсан (тэдгээр талбар одоо ч хадгалагдана,
+// хамгийн сүүлийн/одоогийн OrderTimeBooking мөрийн денормализацитай кэш болно —
+// шууд харах/эрэмбэлэхэд л ашиглагдана, багтаамж тооцоололд биш). Энэ хүснэгт
+// тэр захиалгыг ХЭДЭН ч удаа тусад нь эзэмшсэн бодит, өөрчлөгдөшгүй (append-only)
+// хугацааны мөрүүдээр илэрхийлнэ — сэлбэг хүлээж ажлын байрыг суллаад дараа нь
+// сэргээх, эсвэл машин өөр өдөр буцаж ирэх мэт тохиолдлыг нэг мутацлагддаг
+// snapshot биш, бие даасан түүхэн мөрүүдээр бүртгэнэ. Хаагдсан (closedAt !=
+// null) мөрийг хэзээ ч дахин засахгүй — шинэ үе шат бол шинэ мөр.
+model OrderTimeBooking {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orderId  String
+  order    ServiceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  // Order.branchId-аас үүсгэх үед хуулж авсан снапшот — захиалга хожим өөр
+  // салбар руу шилжсэн ч энэ мөрийн түүхэн бодит байршил өөрчлөгдөхгүй.
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  kind    OrderBookingKind
+  startAt DateTime
+  // NULL = дуусах хугацаа тодорхойгүй (одоогийн "тооцоолол алга" төлөвтэй адил)
+  endAt   DateTime?
+  // Энэ мөр хэзээ идэвхгүй болсныг тэмдэглэнэ (түр зогсоосон/дуусгасан/
+  // цуцалсан) — NULL = хараахан нээлттэй, тухайн захиалгын одоогийн бодит
+  // эзэмшил. Нэг захиалгад нэгэн зэрэг нэгээс олон нээлттэй мөр байх ёсгүй
+  // (аппликэйшн түвшинд хамгаалагдана, DB constraint-гүй).
+  closedAt DateTime?
+
+  createdById String?
+  createdBy   User?    @relation("OrderTimeBookingCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, branchId, startAt])
+  @@index([orderId])
+}
+
+enum OrderBookingKind {
+  SCHEDULED // Ирээгүй, товлогдсон цаг — startAt ирээдүйд, ажил хараахан эхлээгүй
+  ACTIVE // Машин бодитоор ажлын байранд байгаа хугацаа
 }
 
 // --- BranchCategoryDuration (ангилал бүрийн салбар-тусгай хугацааны override)

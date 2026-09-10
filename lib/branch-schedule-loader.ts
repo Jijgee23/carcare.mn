@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { bookingDayBounds } from "@/lib/booking-time";
 import {
   buildBranchSchedule,
+  orderCanCountForCapacity,
   type ScheduleIssue,
   type ScheduleInterval,
 } from "@/lib/branch-schedule";
@@ -53,6 +54,11 @@ export type AppointmentOrderRepairCandidate = {
   vehicleId: string;
   customer: { fullName: string | null; phone: string | null } | null;
   vehicle: { plate: string; make: string; model: string } | null;
+};
+
+export type BranchScheduleAttentionAppointment = {
+  appointment: BranchScheduleAppointmentRow;
+  reason: "missing-order" | "linked-order-not-occupying";
 };
 
 // Тухайн файлд зөвхөн carriedOver/continuesIntoDay тэмдэглэхэд ашиглана;
@@ -310,27 +316,85 @@ export async function loadBranchAttentionOrders(input: {
 
 /**
  * PENDING appointments whose booking fee has gone unpaid past
- * PENDING_APPOINTMENT_PAYMENT_TTL_MINUTES — the appointment equivalent of
- * loadBranchAttentionOrders's stale-order bucket. Deliberately a low-priority,
- * separate list rather than anything shown in the day calendar (faded row or
- * otherwise): unlike a stuck order, a dead payment hold isn't operationally
- * urgent — the slot is already free again (see lib/category-duration.ts) —
- * it's just housekeeping staff can clear whenever convenient.
+ * PENDING_APPOINTMENT_PAYMENT_TTL_MINUTES, plus active appointments whose
+ * linked order is missing or no longer contributes capacity. These are kept
+ * separate from uncertain/overdue order occupancy because they are appointment
+ * or relationship housekeeping rather than a stuck order interval.
  */
 export async function loadBranchAttentionAppointments(input: {
   tenantId: string;
   branchId: string;
   now?: Date;
-}): Promise<{ appointments: BranchScheduleAppointmentRow[] }> {
+}): Promise<{
+  appointments: BranchScheduleAppointmentRow[];
+  inconsistentAppointments: BranchScheduleAttentionAppointment[];
+}> {
   const now = input.now ?? new Date();
-  const rows = await prisma.appointment.findMany({
-    where: {
-      tenantId: input.tenantId,
-      branchId: input.branchId,
-      status: "PENDING",
-      feeAmount: { not: null },
-    },
-    select: APPOINTMENT_ROW_SELECT,
-  });
-  return { appointments: rows.filter((a) => isPendingAppointmentPaymentExpired(a, now)) };
+  const [expiredRows, linkedRows] = await Promise.all([
+    prisma.appointment.findMany({
+      where: {
+        tenantId: input.tenantId,
+        branchId: input.branchId,
+        status: "PENDING",
+        feeAmount: { not: null },
+      },
+      select: APPOINTMENT_ROW_SELECT,
+    }),
+    prisma.appointment.findMany({
+      where: {
+        tenantId: input.tenantId,
+        branchId: input.branchId,
+        status: { in: ["PENDING", "CONFIRMED"] },
+        serviceOrderId: { not: null },
+      },
+      select: {
+        ...APPOINTMENT_ROW_SELECT,
+        serviceOrder: {
+          select: {
+            tenantId: true,
+            branchId: true,
+            status: true,
+            occupiesCapacity: true,
+          },
+        },
+      },
+    }),
+  ]);
+  const appointments = expiredRows.filter((a) => isPendingAppointmentPaymentExpired(a, now));
+  const expiredIds = new Set(appointments.map((a) => a.id));
+  const linkedOrderContributesCapacity = (order: {
+    tenantId: string;
+    branchId: string;
+    status: string;
+    occupiesCapacity: boolean | null;
+  } | null) => {
+    if (!order) return false;
+    return (
+      order.tenantId === input.tenantId &&
+      order.branchId === input.branchId &&
+      orderCanCountForCapacity(order as Parameters<typeof orderCanCountForCapacity>[0])
+    );
+  };
+  const linkedOrderMatchesScope = (order: {
+    tenantId: string;
+    branchId: string;
+  } | null) =>
+    Boolean(
+      order &&
+      order.tenantId === input.tenantId &&
+      order.branchId === input.branchId,
+    );
+  const inconsistentAppointments = linkedRows
+    .filter(
+      (row) =>
+        !expiredIds.has(row.id) &&
+        !linkedOrderContributesCapacity(row.serviceOrder),
+    )
+    .map((row) => ({
+      appointment: row,
+      reason: row.serviceOrder && linkedOrderMatchesScope(row.serviceOrder)
+        ? ("linked-order-not-occupying" as const)
+        : ("missing-order" as const),
+    }));
+  return { appointments, inconsistentAppointments };
 }

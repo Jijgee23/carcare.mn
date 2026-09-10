@@ -69,6 +69,7 @@ export function GridSchedule({
   const now = nowMs();
   const pastFillEndMs = Math.min(now, axisEndMs);
   const showPastFill = pastFillEndMs > axisStartMs;
+  const showNowMarker = now > axisStartMs && now < axisEndMs;
 
   // Босоо саарал шугам харуулах цагийн тэмдэглэгээ — цаг тутам.
   const hourMarks = useMemo(
@@ -157,10 +158,21 @@ export function GridSchedule({
           >
             {showPastFill ? (
               <div
-                className="absolute top-0 bottom-0 left-0 bg-[var(--oc-muted4)]/10 pointer-events-none"
+                className="absolute top-0 bottom-0 left-0 bg-[var(--oc-muted2)]/[0.16] pointer-events-none"
                 style={{ width: `${pct(pastFillEndMs)}%` }}
                 title="Өнгөрсөн цаг"
               />
+            ) : null}
+
+            {showNowMarker ? (
+              <div
+                className="absolute top-0 bottom-0 w-0.5 bg-[var(--oc-muted)]/80 pointer-events-none"
+                style={{ left: `${pct(now)}%` }}
+              >
+                <span className="absolute -top-0.5 left-1.5 whitespace-nowrap rounded-full bg-[var(--oc-muted2)] px-1.5 py-0.5 font-plex-mono text-[9px] text-[var(--oc-carbon)]">
+                  Одоо · {fmtUbTime(now)}
+                </span>
+              </div>
             ) : null}
 
             {hourMarks.map((t) => (

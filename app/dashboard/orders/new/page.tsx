@@ -49,6 +49,7 @@ export default async function NewOrderPage({
           customerId: true,
           vehicleId: true,
           serviceOrderId: true,
+          estimatedDurationMinutes: true,
           categoryId: true,
           category: { select: { name: true } },
           categories: {
@@ -232,6 +233,7 @@ export default async function NewOrderPage({
           vehicles={vehicles}
           technicians={technicians}
           bookingCategories={bookingCategories}
+          bookingDurationMinutes={appointment?.estimatedDurationMinutes ?? null}
           backHref={backTarget}
           next={sp.next ? backTarget : undefined}
         />

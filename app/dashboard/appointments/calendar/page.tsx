@@ -173,6 +173,10 @@ export default async function AppointmentsCalendarPage({
         branchId: dayBranchId,
       })
     : null;
+  const attentionCount =
+    (attentionData?.orders.length ?? 0) +
+    (attentionAppointments?.appointments.length ?? 0) +
+    (attentionAppointments?.inconsistentAppointments.length ?? 0);
 
   type Appt = (typeof appointments)[number];
   const byDay = new Map<string, Appt[]>();
@@ -312,9 +316,9 @@ export default async function AppointmentsCalendarPage({
           }`}
         >
           Хоцорсон ажлууд
-          {attentionData && attentionData.orders.length > 0 ? (
+          {attentionCount > 0 ? (
             <span className="font-plex-mono text-[11px] px-1.5 py-0.5 rounded-full bg-red-500/25 text-red-300">
-              {attentionData.orders.length}
+              {attentionCount}
             </span>
           ) : null}
         </Link>
@@ -927,6 +931,7 @@ function AttentionView({
       <p className="text-sm text-[var(--oc-muted3)]">
         Тодорхой огноогүй, тооцоолол дутуу, эсвэл хугацаа хэтэрсэн ажлын
         байрны эзэмшил — өдрийн хуваарьт биш, энд тогтмол харагдана.
+        Холбоосын зөрчилтэй цаг захиалга мөн энд засварлахад зориулж харагдана.
       </p>
 
       <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden">
@@ -970,6 +975,39 @@ function AttentionView({
           </div>
         )}
       </div>
+
+      {expiredAppointments && expiredAppointments.inconsistentAppointments.length > 0 ? (
+        <details className="rounded-[10px] border border-red-500/25 bg-red-500/[0.04] overflow-hidden group">
+          <summary className="cursor-pointer select-none px-3 py-2 text-xs text-red-300 light:text-red-700 hover:opacity-80 transition-opacity list-none flex items-center gap-1.5">
+            <span className="inline-block transition-transform group-open:rotate-90">›</span>
+            Холбоосын зөрчилтэй цаг захиалга ({expiredAppointments.inconsistentAppointments.length})
+          </summary>
+          <div className="divide-y divide-[var(--oc-line)] border-t border-red-500/15">
+            {expiredAppointments.inconsistentAppointments.map(({ appointment, reason }) => (
+              <div
+                key={appointment.id}
+                className="px-3 py-2 flex flex-wrap items-center gap-2 text-xs"
+              >
+                <span className={`font-plex-mono text-[10px] px-1.5 py-0.5 rounded-full ${APPOINTMENT_STATUS_BADGE[appointment.status]}`}>
+                  {APPOINTMENT_STATUS_LABEL[appointment.status]}
+                </span>
+                <span className="truncate flex-1 text-[var(--oc-muted2)]">
+                  {appointmentDisplayName(appointment)}
+                </span>
+                <span className="font-plex-mono text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
+                  {SCHEDULE_ISSUE_LABEL[reason]}
+                </span>
+                <Link
+                  href={`/dashboard/appointments?highlight=${encodeURIComponent(appointment.id)}`}
+                  className="shrink-0 hover:text-[var(--oc-muted3)] underline underline-offset-2 text-[var(--oc-muted4)] transition-colors"
+                >
+                  Цаг захиалга руу →
+                </Link>
+              </div>
+            ))}
+          </div>
+        </details>
+      ) : null}
 
       {expiredAppointments && expiredAppointments.appointments.length > 0 ? (
         <details className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)]/60 overflow-hidden group">

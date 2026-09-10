@@ -71,6 +71,7 @@ export function OrderForm({
   vehicles: initialVehicles,
   technicians,
   bookingCategories = [],
+  bookingDurationMinutes = null,
   backHref = "/dashboard/orders",
   appointmentId,
   next,
@@ -81,6 +82,7 @@ export function OrderForm({
   vehicles: Vehicle[];
   technicians: Tech[];
   bookingCategories?: Array<{ id: string; name: string }>;
+  bookingDurationMinutes?: number | null;
   backHref?: string;
   // Цаг захиалгаас үүсгэж буй бол — үүсгэсэн захиалгыг буцаан холбоно.
   appointmentId?: string;
@@ -165,15 +167,21 @@ export function OrderForm({
   }, [branchId, scheduledDateKey]);
 
   // Одоо бөглөж буй захиалгын "ghost" блок — сонгосон цаг байхгүй бол алга.
-  // Хугацаа хоосон бол салбарын анхдагч slot урттай (30 мин) тэнцүү гэж үзнэ —
-  // сервер тал (lib/category-duration.ts) яг адил fallback ашигладаг.
+  // Цаг захиалгаас үүссэн бол booking-ийн category-уудаар тооцсон immutable
+  // хугацааны snapshot-ыг ашиглана. Шууд walk-in захиалгад хугацаа хоосон
+  // байвал сервер талын default-той адил 30 минутын ghost харуулна.
   const ghost = useMemo(() => {
     if (!scheduledAtLocal) return null;
     const startMs = new Date(scheduledAtLocal).getTime();
     if (!Number.isFinite(startMs)) return null;
-    const minutes = durationMinutes && durationMinutes > 0 ? durationMinutes : 30;
+    const minutes =
+      durationMinutes && durationMinutes > 0
+        ? durationMinutes
+        : bookingDurationMinutes && bookingDurationMinutes > 0
+          ? bookingDurationMinutes
+          : 30;
     return { startMs, endMs: startMs + minutes * 60000, label: "Энэ захиалга" };
-  }, [scheduledAtLocal, durationMinutes]);
+  }, [scheduledAtLocal, durationMinutes, bookingDurationMinutes]);
 
   const customerById = useMemo(
     () => new Map(customers.map((c) => [c.id, c])),
