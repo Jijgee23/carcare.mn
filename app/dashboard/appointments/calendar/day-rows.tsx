@@ -4,7 +4,7 @@ import {
   APPOINTMENT_STATUS_LABEL,
 } from "@/lib/appointments";
 import { customerLabel } from "@/lib/customers";
-import type { ScheduleIssue } from "@/lib/branch-schedule";
+import type { ScheduleInterval, ScheduleIssue } from "@/lib/branch-schedule";
 import {
   type BranchScheduleAppointmentRow,
   type BranchScheduleOrderRow,
@@ -18,6 +18,10 @@ import {
 } from "@/app/dashboard/appointments/appointment-row-actions";
 import { StatusControls } from "@/app/dashboard/orders/[id]/status-controls";
 import {
+  AppointmentOrderLinkRepair,
+  type AppointmentOrderRepairCandidateView,
+} from "./appointment-order-link-repair";
+import {
   APPOINTMENT_BOOKING_PAYMENT_BADGE,
   APPOINTMENT_BOOKING_PAYMENT_LABEL,
   appointmentBookingPaymentStatus,
@@ -28,8 +32,10 @@ export const SCHEDULE_ISSUE_LABEL: Record<ScheduleIssue["reason"], string> = {
   "unknown-occupancy": "Ажлын байрны эзэмшил тодорхойгүй",
   overdue: "Тооцоолсон хугацаанаас хэтэрсэн",
   "missing-order": "Холбогдсон захиалга олдсонгүй",
+  "linked-order-not-occupying": "Холбогдсон захиалга ажлын байр эзлэхгүй байна",
   "missing-start": "Эхэлсэн цаг тэмдэглэгдээгүй",
   "invalid-interval": "Хугацааны муж буруу",
+  "payment-expired": "Хураамж төлөгдөөгүй тул хугацаа дууссан",
 };
 
 export function appointmentDisplayName(a: BranchScheduleAppointmentRow): string {
@@ -47,6 +53,44 @@ export function orderDisplayName(o: BranchScheduleOrderRow): string {
     fullName: o.customer?.fullName,
     phone: o.customer?.phone,
   });
+  return vehicle ? `${customer} — ${vehicle}` : customer;
+}
+
+/**
+ * Counts only hidden carry-over orders that the schedule projection actually
+ * marked uncertain. The loader may include terminal linked orders for
+ * relationship resolution, and orders released from capacity can still be in
+ * `schedule.orders`; neither should produce an attention warning.
+ */
+export function countHiddenUncertainCarryOverOrders(schedule: {
+  intervals: Pick<ScheduleInterval, "id" | "source" | "uncertain">[];
+  orders: Pick<BranchScheduleOrderRow, "id" | "carriedOver" | "continuesIntoDay">[];
+}): number {
+  const uncertainOrderIds = new Set(
+    schedule.intervals
+      .filter((row) => row.source === "order" && row.uncertain)
+      .map((row) => row.id),
+  );
+
+  return schedule.orders.filter(
+    (order) =>
+      order.carriedOver &&
+      !order.continuesIntoDay &&
+      uncertainOrderIds.has(order.id),
+  ).length;
+}
+
+export function repairCandidateDisplayName(candidate: {
+  customer: { fullName: string | null; phone: string | null } | null;
+  vehicle: { plate: string; make: string; model: string } | null;
+}): string {
+  const customer = customerLabel({
+    fullName: candidate.customer?.fullName,
+    phone: candidate.customer?.phone,
+  });
+  const vehicle = candidate.vehicle
+    ? `${candidate.vehicle.plate} · ${candidate.vehicle.make} ${candidate.vehicle.model}`
+    : null;
   return vehicle ? `${customer} — ${vehicle}` : customer;
 }
 
@@ -83,6 +127,15 @@ export function buildDayRows(
     issues: ScheduleIssue[];
     appointments: BranchScheduleAppointmentRow[];
     orders: BranchScheduleOrderRow[];
+    repairCandidates: Array<{
+      id: string;
+      number: string;
+      status: "SCHEDULED" | "IN_PROGRESS" | "WAITING_PARTS";
+      customerId: string;
+      vehicleId: string;
+      customer: { fullName: string | null; phone: string | null } | null;
+      vehicle: { plate: string; make: string; model: string } | null;
+    }>;
     rangeEnd: Date;
   },
   canRespondAppointments: boolean,
@@ -106,9 +159,7 @@ export function buildDayRows(
     (issue) => issue.source !== "order" || !isHiddenCarryOverOrder(issue.id),
   );
   const issueBySourceId = new Map(issues.map((issue) => [`${issue.source}:${issue.id}`, issue]));
-  const carriedOverCount = schedule.orders.filter(
-    (o) => o.carriedOver && !o.continuesIntoDay,
-  ).length;
+  const carriedOverCount = countHiddenUncertainCarryOverOrders(schedule);
 
   const rows: DayRow[] = filteredIntervals
     .sort((a, b) => a.startMs - b.startMs)
@@ -138,10 +189,35 @@ export function buildDayRows(
         appt?.status === "CONFIRMED" && canRespondAppointments && !appt.arrivedAt;
       const showCreateOrderLink =
         appt?.status === "CONFIRMED" && canRespondAppointments && !appt.serviceOrderId;
+      const repairCandidates: AppointmentOrderRepairCandidateView[] =
+        appt?.serviceOrderId && issue?.reason === "missing-order"
+          ? schedule.repairCandidates
+              .filter(
+                (candidate) =>
+                  candidate.customerId === appt.customerId &&
+                  candidate.vehicleId === appt.vehicleId,
+              )
+              .map((candidate) => ({
+                id: candidate.id,
+                number: candidate.number,
+                label: repairCandidateDisplayName(candidate),
+                statusLabel: ORDER_STATUS_LABEL[candidate.status],
+                statusClass: ORDER_STATUS_BADGE[candidate.status],
+              }))
+          : [];
+      const showRepairAction =
+        Boolean(appt?.serviceOrderId) &&
+        issue?.reason === "missing-order" &&
+        canRespondAppointments &&
+        canEditOrders;
       const orderTransitions = order ? ORDER_STATUS_TRANSITIONS[order.status] : [];
       const showOrderControls = Boolean(order) && canEditOrders && orderTransitions.length > 0;
       const hasActions =
-        showConfirmReject || showArrivalActions || showCreateOrderLink || showOrderControls;
+        showConfirmReject ||
+        showArrivalActions ||
+        showCreateOrderLink ||
+        showOrderControls ||
+        showRepairAction;
       const orderHref = appt
         ? `/dashboard/orders/new?${new URLSearchParams({
             customerId: appt.customerId ?? "",
@@ -180,6 +256,12 @@ export function buildDayRows(
               Засварын хуудас үүсгэх →
             </Link>
           ) : null}
+          {showRepairAction && appt ? (
+            <AppointmentOrderLinkRepair
+              appointmentId={appt.id}
+              candidates={repairCandidates}
+            />
+          ) : null}
           {showOrderControls && order ? (
             <div className="w-64">
               <StatusControls
@@ -189,6 +271,7 @@ export function buildDayRows(
                 currentStatus={order.status}
                 occupiesCapacity={order.occupiesCapacity}
                 expectedFinishAt={order.expectedFinishAt}
+                estimatedDurationMinutes={order.estimatedDurationMinutes}
                 attentionHref={`/dashboard/appointments/calendar?view=attention&branchId=${encodeURIComponent(order.branchId)}`}
               />
             </div>

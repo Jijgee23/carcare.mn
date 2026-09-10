@@ -34,6 +34,36 @@ export const APPOINTMENT_BOOKING_PAYMENT_LABEL: Record<
   PAID: "Төлбөр төлөгдсөн",
 };
 
+// Global fixed window: an online booking fee unpaid this long after the
+// appointment was created no longer holds its slot. Not tenant/branch
+// configurable yet — see COWORK.md for the deferred admin-override design.
+export const PENDING_APPOINTMENT_PAYMENT_TTL_MINUTES = 15;
+
+/**
+ * True once a booking that required a fee and has not been paid has sat
+ * unpaid past PENDING_APPOINTMENT_PAYMENT_TTL_MINUTES since creation. An
+ * expired hold no longer counts toward slot capacity — see
+ * lib/branch-schedule.ts and lib/category-duration.ts. A partial
+ * ("underpaid") payment is deliberately excluded: money has already changed
+ * hands, so the slot stays reserved for staff to resolve manually rather than
+ * being silently released.
+ */
+export function isPendingAppointmentPaymentExpired(
+  input: {
+    feeAmount: unknown;
+    feeUnderpaidAmount?: unknown;
+    payment: { status: string } | null;
+    createdAt: Date;
+  },
+  now: Date = new Date(),
+): boolean {
+  if (input.feeAmount == null) return false;
+  if (input.feeUnderpaidAmount != null) return false;
+  if (input.payment?.status === "PAID") return false;
+  const ttlMs = PENDING_APPOINTMENT_PAYMENT_TTL_MINUTES * 60000;
+  return now.getTime() - input.createdAt.getTime() > ttlMs;
+}
+
 export const APPOINTMENT_BOOKING_PAYMENT_BADGE: Record<
   AppointmentBookingPaymentStatus,
   string

@@ -1,6 +1,8 @@
 import { bookingDateKey, bookingDayBounds } from "@/lib/booking-time";
 import { peakOccupancy } from "@/lib/schedule-capacity";
 import { DEFAULT_SLOT_CAPACITY, DEFAULT_SLOT_MINUTES } from "@/lib/appointment-slots";
+import { resolveOrderEffectiveInterval } from "@/lib/schedule-order-interval";
+import { isPendingAppointmentPaymentExpired } from "@/lib/appointment-payment-status";
 // Concrete read shapes accept both the RLS-extended client and a real transaction
 // without casting away Prisma's generic extension types.
 type PrismaTransactionClient = {
@@ -16,8 +18,13 @@ type PrismaTransactionClient = {
   }): Promise<{ slotMinutes: number | null; slotCapacity: number | null } | null> };
   appointment: { findMany(args: {
     where: { branchId: string; status: { in: ("PENDING" | "CONFIRMED")[] }; requestedAt: { gte: Date; lt: Date } };
-    select: { requestedAt: true; estimatedDurationMinutes: true; categoryId: true; serviceOrderId: true; categories: { select: { categoryId: true } } };
-  }): Promise<TakenAppointmentRow[]> };
+    select: {
+      requestedAt: true; estimatedDurationMinutes: true; categoryId: true; serviceOrderId: true;
+      categories: { select: { categoryId: true } };
+      status: true; createdAt: true; feeAmount: true; feeUnderpaidAmount: true;
+      payment: { select: { status: true } };
+    };
+  }): Promise<TakenAppointmentCandidateRow[]> };
   serviceOrder?: { findMany(args: {
     where: {
       branchId: string;
@@ -186,6 +193,15 @@ export type TakenAppointmentRow = {
   categories: { categoryId: string }[];
 };
 
+/** TakenAppointmentRow plus the fields needed to detect an expired unpaid hold. */
+type TakenAppointmentCandidateRow = TakenAppointmentRow & {
+  status: string;
+  createdAt: Date;
+  feeAmount: unknown;
+  feeUnderpaidAmount: unknown;
+  payment: { status: string } | null;
+};
+
 type TakenOrderRow = {
   id: string;
   status: string;
@@ -264,6 +280,11 @@ export async function resolveTakenCapacityIntervals(
         categoryId: true,
         serviceOrderId: true,
         categories: { select: { categoryId: true } },
+        status: true,
+        createdAt: true,
+        feeAmount: true,
+        feeUnderpaidAmount: true,
+        payment: { select: { status: true } },
       },
     }),
     client.serviceOrder
@@ -287,22 +308,31 @@ export async function resolveTakenCapacityIntervals(
   ]);
 
   const orderIds = new Set(orderCandidates.map((o) => o.id));
+  const liveCandidates = candidates.filter(
+    (a) =>
+      (!a.serviceOrderId || !orderIds.has(a.serviceOrderId)) &&
+      !(a.status === "PENDING" && isPendingAppointmentPaymentExpired(a)),
+  );
   const appointmentIntervals = await resolveTakenAppointmentIntervals(
     client,
     branchId,
-    candidates.filter((a) => !a.serviceOrderId || !orderIds.has(a.serviceOrderId)),
+    liveCandidates,
     fallbackMinutes,
   );
   const orderIntervals = orderCandidates.flatMap((o) => {
     if (o.status !== "SCHEDULED" && o.occupiesCapacity === false) return [];
-    const scheduled = o.status === "SCHEDULED" && o.occupiesCapacity !== true;
-    const start = (scheduled ? o.scheduledAt : o.startedAt)?.getTime();
-    if (start == null || !Number.isFinite(start) || start >= dayEnd.getTime()) return [];
-    let end = o.expectedFinishAt?.getTime() ??
-      (scheduled && o.estimatedDurationMinutes != null && o.estimatedDurationMinutes > 0
-        ? start + o.estimatedDurationMinutes * 60000
-        : dayEnd.getTime());
-    if (!Number.isFinite(end) || end <= start) end = dayEnd.getTime();
+    const resolved = resolveOrderEffectiveInterval(o);
+    // Corrupt data (a computed end <= start) has no positive evidence of
+    // occupancy, same as buildBranchSchedule's "invalid-interval" issue —
+    // exclude rather than silently reserving the rest of the day for it.
+    if (resolved.invalid || !resolved.start) return [];
+    const start = resolved.start.getTime();
+    if (!Number.isFinite(start) || start >= dayEnd.getTime()) return [];
+    // Missing/unknown estimate: conservatively occupy through end of day,
+    // matching buildBranchSchedule's "uncertain" fallback.
+    const end = resolved.end != null && Number.isFinite(resolved.end.getTime())
+      ? resolved.end.getTime()
+      : dayEnd.getTime();
     if (end <= dayStart.getTime()) return [];
     return [{ startMs: start, endMs: end }];
   });

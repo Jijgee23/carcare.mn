@@ -49,9 +49,27 @@ export default async function NewOrderPage({
           customerId: true,
           vehicleId: true,
           serviceOrderId: true,
+          estimatedDurationMinutes: true,
+          categoryId: true,
+          category: { select: { name: true } },
+          categories: {
+            orderBy: { createdAt: "asc" },
+            select: {
+              categoryId: true,
+              category: { select: { name: true } },
+            },
+          },
         },
       })
     : null;
+  const bookingCategories = appointment?.categories.length
+    ? appointment.categories.map((entry) => ({
+        id: entry.categoryId,
+        name: entry.category.name,
+      }))
+    : appointment?.categoryId && appointment.category
+      ? [{ id: appointment.categoryId, name: appointment.category.name }]
+      : [];
   const prefillCustomerId = sp.customerId || appointment?.customerId || "";
   const prefillVehicleId = sp.vehicleId || appointment?.vehicleId || "";
   // Цаг захиалгаас ирсэн prefill (customer/branch/цаг), эсвэл ажиллах
@@ -214,6 +232,8 @@ export default async function NewOrderPage({
           customers={customers}
           vehicles={vehicles}
           technicians={technicians}
+          bookingCategories={bookingCategories}
+          bookingDurationMinutes={appointment?.estimatedDurationMinutes ?? null}
           backHref={backTarget}
           next={sp.next ? backTarget : undefined}
         />

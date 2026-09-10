@@ -18,6 +18,7 @@ import { prisma } from "@/lib/prisma";
 import {
   loadBranchSchedule,
   loadBranchAttentionOrders,
+  loadBranchAttentionAppointments,
 } from "@/lib/branch-schedule-loader";
 import { branchHoursForDate } from "@/lib/branches";
 import { branchScheduleDisplaySelect } from "@/lib/branch-effective-schedule-server";
@@ -38,9 +39,15 @@ import { RowExpand } from "./row-expand";
 import {
   appointmentDisplayName,
   orderDisplayName,
+  repairCandidateDisplayName,
   buildDayRows,
+  countHiddenUncertainCarryOverOrders,
   SCHEDULE_ISSUE_LABEL,
 } from "./day-rows";
+import {
+  AppointmentOrderLinkRepair,
+  type AppointmentOrderRepairCandidateView,
+} from "./appointment-order-link-repair";
 import { GridSchedule } from "./grid-schedule";
 import { OrderDetailPanel } from "./order-detail-panel";
 import { CalendarDateJump } from "./calendar-date-jump";
@@ -160,6 +167,16 @@ export default async function AppointmentsCalendarPage({
         branchId: dayBranchId,
       })
     : null;
+  const attentionAppointments = dayBranchId
+    ? await loadBranchAttentionAppointments({
+        tenantId: user.tenantId,
+        branchId: dayBranchId,
+      })
+    : null;
+  const attentionCount =
+    (attentionData?.orders.length ?? 0) +
+    (attentionAppointments?.appointments.length ?? 0) +
+    (attentionAppointments?.inconsistentAppointments.length ?? 0);
 
   type Appt = (typeof appointments)[number];
   const byDay = new Map<string, Appt[]>();
@@ -299,9 +316,9 @@ export default async function AppointmentsCalendarPage({
           }`}
         >
           Хоцорсон ажлууд
-          {attentionData && attentionData.orders.length > 0 ? (
+          {attentionCount > 0 ? (
             <span className="font-plex-mono text-[11px] px-1.5 py-0.5 rounded-full bg-red-500/25 text-red-300">
-              {attentionData.orders.length}
+              {attentionCount}
             </span>
           ) : null}
         </Link>
@@ -345,6 +362,7 @@ export default async function AppointmentsCalendarPage({
       {isAttention ? (
         <AttentionView
           data={attentionData}
+          expiredAppointments={attentionAppointments}
           branchName={branches.find((b) => b.id === dayBranchId)?.name ?? null}
         />
       ) : cal.interval === "day" && isGrid ? (
@@ -529,9 +547,7 @@ function DaySchedule({
   const issueBySourceId = new Map(
     issues.map((issue) => [`${issue.source}:${issue.id}`, issue]),
   );
-  const carriedOverCount = schedule.orders.filter(
-    (o) => o.carriedOver && !o.continuesIntoDay,
-  ).length;
+  const carriedOverCount = countHiddenUncertainCarryOverOrders(schedule);
 
   return (
     <div className="flex flex-col gap-3">
@@ -615,6 +631,27 @@ function DaySchedule({
                 appt?.status === "CONFIRMED" &&
                 canRespondAppointments &&
                 !appt.serviceOrderId;
+              const repairCandidates: AppointmentOrderRepairCandidateView[] =
+                appt?.serviceOrderId && issue?.reason === "missing-order"
+                  ? schedule.repairCandidates
+                      .filter(
+                        (candidate) =>
+                          candidate.customerId === appt.customerId &&
+                          candidate.vehicleId === appt.vehicleId,
+                      )
+                      .map((candidate) => ({
+                        id: candidate.id,
+                        number: candidate.number,
+                        label: repairCandidateDisplayName(candidate),
+                        statusLabel: ORDER_STATUS_LABEL[candidate.status],
+                        statusClass: ORDER_STATUS_BADGE[candidate.status],
+                      }))
+                  : [];
+              const showRepairAction =
+                Boolean(appt?.serviceOrderId) &&
+                issue?.reason === "missing-order" &&
+                canRespondAppointments &&
+                canEditOrders;
               const orderTransitions = order
                 ? ORDER_STATUS_TRANSITIONS[order.status]
                 : [];
@@ -625,6 +662,7 @@ function DaySchedule({
                 showArrivalActions ||
                 showCreateOrderLink ||
                 showOrderControls ||
+                showRepairAction ||
                 Boolean(order);
               const orderHref = appt
                 ? `/dashboard/orders/new?${new URLSearchParams({
@@ -702,6 +740,12 @@ function DaySchedule({
                           Засварын хуудас үүсгэх →
                         </Link>
                       ) : null}
+                      {showRepairAction && appt ? (
+                        <AppointmentOrderLinkRepair
+                          appointmentId={appt.id}
+                          candidates={repairCandidates}
+                        />
+                      ) : null}
                       {showOrderControls && order ? (
                         <div className="w-64">
                           <StatusControls
@@ -711,6 +755,7 @@ function DaySchedule({
                             currentStatus={order.status}
                             occupiesCapacity={order.occupiesCapacity}
                             expectedFinishAt={order.expectedFinishAt}
+                            estimatedDurationMinutes={order.estimatedDurationMinutes}
                             attentionHref={`/dashboard/appointments/calendar?view=attention&branchId=${encodeURIComponent(order.branchId)}`}
                           />
                         </div>
@@ -849,14 +894,17 @@ function DayScheduleGrid({
 }
 
 type AttentionData = Awaited<ReturnType<typeof loadBranchAttentionOrders>>;
+type AttentionAppointmentsData = Awaited<ReturnType<typeof loadBranchAttentionAppointments>>;
 
 // Огноогоос үл хамааран одоо тодорхойгүй/хэтэрсэн эзэмшилтэй бүх захиалга —
 // өдрийн жагсаалтад давтагдан харагдахгүй, энд нэг л удаа, тогтмол харагдана.
 function AttentionView({
   data,
+  expiredAppointments,
   branchName,
 }: {
   data: AttentionData | null;
+  expiredAppointments: AttentionAppointmentsData | null;
   branchName: string | null;
 }) {
   if (!data) {
@@ -883,6 +931,7 @@ function AttentionView({
       <p className="text-sm text-[var(--oc-muted3)]">
         Тодорхой огноогүй, тооцоолол дутуу, эсвэл хугацаа хэтэрсэн ажлын
         байрны эзэмшил — өдрийн хуваарьт биш, энд тогтмол харагдана.
+        Холбоосын зөрчилтэй цаг захиалга мөн энд засварлахад зориулж харагдана.
       </p>
 
       <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden">
@@ -926,6 +975,64 @@ function AttentionView({
           </div>
         )}
       </div>
+
+      {expiredAppointments && expiredAppointments.inconsistentAppointments.length > 0 ? (
+        <details className="rounded-[10px] border border-red-500/25 bg-red-500/[0.04] overflow-hidden group">
+          <summary className="cursor-pointer select-none px-3 py-2 text-xs text-red-300 light:text-red-700 hover:opacity-80 transition-opacity list-none flex items-center gap-1.5">
+            <span className="inline-block transition-transform group-open:rotate-90">›</span>
+            Холбоосын зөрчилтэй цаг захиалга ({expiredAppointments.inconsistentAppointments.length})
+          </summary>
+          <div className="divide-y divide-[var(--oc-line)] border-t border-red-500/15">
+            {expiredAppointments.inconsistentAppointments.map(({ appointment, reason }) => (
+              <div
+                key={appointment.id}
+                className="px-3 py-2 flex flex-wrap items-center gap-2 text-xs"
+              >
+                <span className={`font-plex-mono text-[10px] px-1.5 py-0.5 rounded-full ${APPOINTMENT_STATUS_BADGE[appointment.status]}`}>
+                  {APPOINTMENT_STATUS_LABEL[appointment.status]}
+                </span>
+                <span className="truncate flex-1 text-[var(--oc-muted2)]">
+                  {appointmentDisplayName(appointment)}
+                </span>
+                <span className="font-plex-mono text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
+                  {SCHEDULE_ISSUE_LABEL[reason]}
+                </span>
+                <Link
+                  href={`/dashboard/appointments?highlight=${encodeURIComponent(appointment.id)}`}
+                  className="shrink-0 hover:text-[var(--oc-muted3)] underline underline-offset-2 text-[var(--oc-muted4)] transition-colors"
+                >
+                  Цаг захиалга руу →
+                </Link>
+              </div>
+            ))}
+          </div>
+        </details>
+      ) : null}
+
+      {expiredAppointments && expiredAppointments.appointments.length > 0 ? (
+        <details className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)]/60 overflow-hidden group">
+          <summary className="cursor-pointer select-none px-3 py-2 text-xs text-[var(--oc-muted4)] hover:text-[var(--oc-muted3)] transition-colors list-none flex items-center gap-1.5">
+            <span className="inline-block transition-transform group-open:rotate-90">›</span>
+            Хугацаа дууссан төлбөрийн захиалга ({expiredAppointments.appointments.length})
+          </summary>
+          <div className="divide-y divide-[var(--oc-line)] border-t border-[var(--oc-line)]">
+            {expiredAppointments.appointments.map((a) => (
+              <div
+                key={a.id}
+                className="px-3 py-2 flex items-center gap-3 text-xs text-[var(--oc-muted4)]"
+              >
+                <span className="truncate flex-1">{appointmentDisplayName(a)}</span>
+                <Link
+                  href={`/dashboard/appointments?status=PENDING&branchId=${encodeURIComponent(a.branchId)}`}
+                  className="shrink-0 hover:text-[var(--oc-muted3)] underline underline-offset-2 transition-colors"
+                >
+                  Цаг захиалгын жагсаалт руу →
+                </Link>
+              </div>
+            ))}
+          </div>
+        </details>
+      ) : null}
     </div>
   );
 }

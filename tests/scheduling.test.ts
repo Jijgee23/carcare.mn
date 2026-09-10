@@ -115,9 +115,31 @@ test("linked appointment and order count once", () => {
 test("walk-in without appointment consumes capacity", () => {
   assert.equal(project([order()]).intervals.length, 1);
 });
-test("completed and explicitly released work frees its linked reservation", () => {
-  assert.equal(project([order({ status: "COMPLETED", occupiesCapacity: false })],
-    [appointment({ serviceOrderId: "order" })]).intervals.length, 0);
+test("completed and explicitly released work clears its linked appointment quietly", () => {
+  // A COMPLETED order is the normal, successful outcome — not an issue.
+  // Appointment status has no terminal "done" state of its own, so the
+  // ordinary same-day book -> convert -> finish path must not flag every
+  // completed job as a "linked order not occupying" issue.
+  const result = project([order({ status: "COMPLETED", occupiesCapacity: false })],
+    [appointment({ serviceOrderId: "order" })]);
+  assert.equal(result.intervals.length, 0);
+  assert.ok(!result.issues.some((issue) => issue.reason === "linked-order-not-occupying"));
+});
+test("cancelled linked order still flags its appointment for attention", () => {
+  const result = project([order({ status: "CANCELLED", occupiesCapacity: false })],
+    [appointment({ serviceOrderId: "order" })]);
+  assert.equal(result.intervals.length, 1);
+  assert.equal(result.intervals[0].source, "appointment");
+  assert.ok(result.issues.some((issue) => issue.reason === "linked-order-not-occupying"));
+});
+test("explicitly released waiting-for-parts order clears its linked appointment quietly", () => {
+  // Freeing the bay while waiting on a part (setOrderCapacityAction) is a
+  // normal, everyday choice, not a broken link — the order stays fully
+  // visible on /dashboard/orders regardless.
+  const result = project([order({ status: "WAITING_PARTS", occupiesCapacity: false })],
+    [appointment({ serviceOrderId: "order" })]);
+  assert.equal(result.intervals.length, 0);
+  assert.ok(!result.issues.some((issue) => issue.reason === "linked-order-not-occupying"));
 });
 test("completed car still in workspace continues to consume capacity", () => {
   assert.equal(project([order({ status: "COMPLETED" })]).intervals.length, 1);
@@ -191,4 +213,53 @@ test("invalid order interval is surfaced and does not occupy the rest of the day
   const result = project([order({ expectedFinishAt: at("09:30"), startedAt: at("10:00") })]);
   assert.deepEqual(result.intervals, []);
   assert.ok(result.issues.some((issue) => issue.reason === "invalid-interval"));
+});
+
+test("an unpaid PENDING appointment past the 15-minute window releases its slot and drops out of the day calendar entirely", () => {
+  const result = buildBranchSchedule({
+    ...scope,
+    orders: [],
+    appointments: [appointment({
+      status: "PENDING", feeAmount: 5000, payment: null,
+      createdAt: new Date(at("10:30").getTime() - 16 * 60000),
+    })],
+    now: at("10:30"), rangeStart: at("09:00"), rangeEnd: at("18:00"),
+  });
+  assert.deepEqual(result.intervals, []);
+  assert.ok(result.issues.some((issue) => issue.reason === "payment-expired"));
+});
+test("a PENDING appointment still inside the payment window keeps its slot", () => {
+  const result = buildBranchSchedule({
+    ...scope,
+    orders: [],
+    appointments: [appointment({
+      status: "PENDING", feeAmount: 5000, payment: null,
+      createdAt: new Date(at("10:30").getTime() - 5 * 60000),
+    })],
+    now: at("10:30"), rangeStart: at("09:00"), rangeEnd: at("18:00"),
+  });
+  assert.equal(result.intervals.length, 1);
+});
+test("a paid appointment never expires regardless of age", () => {
+  const result = buildBranchSchedule({
+    ...scope,
+    orders: [],
+    appointments: [appointment({
+      status: "PENDING", feeAmount: 5000, payment: { status: "PAID" },
+      createdAt: new Date(at("10:30").getTime() - 60 * 60000),
+    })],
+    now: at("10:30"), rangeStart: at("09:00"), rangeEnd: at("18:00"),
+  });
+  assert.equal(result.intervals.length, 1);
+});
+test("live availability check also releases an expired unpaid appointment's slot", async () => {
+  const expiredRow = {
+    requestedAt: new Date(2030, 0, 7, 10), categoryId: null, categories: [],
+    status: "PENDING", feeAmount: 5000, feeUnderpaidAmount: null, payment: null,
+    createdAt: new Date(new Date(2030, 0, 7, 10).getTime() - 20 * 60000),
+  };
+  assert.equal(
+    await isSlotAvailable(client([expiredRow]), "branch", new Date(2030, 0, 7, 10), 60),
+    true,
+  );
 });

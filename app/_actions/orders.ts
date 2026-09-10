@@ -15,7 +15,8 @@ import {
   workingBranchScopeId,
 } from "@/lib/auth/roles";
 import { assertActiveSubscription } from "@/lib/subscription-server";
-import { parseDurationInput } from "@/lib/category-duration";
+import { parseDurationInput, MAX_CATEGORY_DURATION_MINUTES } from "@/lib/category-duration";
+import { isPendingAppointmentPaymentExpired } from "@/lib/appointment-payment-status";
 import {
   ITEM_KINDS,
   ORDER_STATUS_TRANSITIONS,
@@ -271,6 +272,15 @@ async function validateRefs(
             serviceOrderId: true,
             estimatedDurationMinutes: true,
             arrivedAt: true,
+            categoryId: true,
+            category: { select: { name: true } },
+            categories: {
+              orderBy: { createdAt: "asc" },
+              select: {
+                categoryId: true,
+                category: { select: { name: true } },
+              },
+            },
           },
         })
       : Promise.resolve(null),
@@ -328,6 +338,15 @@ async function validateRefs(
     appointmentAccountId: appointment?.accountId ?? null,
     appointmentEstimatedDurationMinutes: appointment?.estimatedDurationMinutes ?? null,
     appointmentNeedsArrival: Boolean(appointment) && !appointment?.arrivedAt,
+    appointmentCategorySnapshots:
+      appointment?.categories.length
+        ? appointment.categories.map((entry) => ({
+            categoryId: entry.categoryId,
+            name: entry.category.name,
+          }))
+        : appointment?.categoryId && appointment.category
+          ? [{ categoryId: appointment.categoryId, name: appointment.category.name }]
+          : [],
   };
 }
 
@@ -370,6 +389,7 @@ export async function createOrderAction(
     appointmentAccountId,
     appointmentEstimatedDurationMinutes,
     appointmentNeedsArrival,
+    appointmentCategorySnapshots,
   } = await validateRefs(
     user.tenantId,
     data,
@@ -466,6 +486,15 @@ export async function createOrderAction(
             estimatedDurationMinutes: appointmentId
               ? appointmentEstimatedDurationMinutes
               : walkInEstimatedDurationMinutes,
+            categories: appointmentCategorySnapshots.length
+              ? {
+                  create: appointmentCategorySnapshots.map((category) => ({
+                    tenantId: user.tenantId,
+                    categoryId: category.categoryId,
+                    name: category.name,
+                  })),
+                }
+              : undefined,
           },
           select: { id: true },
         });
@@ -758,13 +787,43 @@ export async function changeOrderStatusAction(
     }
   }
 
+  const now = new Date();
+  const enteringInProgress = next === "IN_PROGRESS";
+  const startingFresh = enteringInProgress && order.status === "SCHEDULED";
+  const resuming = enteringInProgress && order.status === "WAITING_PARTS";
+
+  // Ажил эхлэхэд (эсвэл сэлбэгээс сэргэхэд) үргэлжлэх хугацааны тооцоолол
+  // байх ёстой — эс бөгөөс энэ захиалга хугацаагүй, тодорхойгүй хугацаагаар
+  // ажлын байрыг эзэлж, cap=1 мэт бага багтаамжтай салбарт БҮХ цаг захиалгыг
+  // бүрмөсөн хаадаг байсан (D-хугацааны шийдвэр). Аль хэдийн тооцоолол байвал
+  // (жишээ нь холбогдсон цаг захиалгаас өвлөгдсөн) дахин асуухгүй.
+  let effectiveDurationMinutes = order.estimatedDurationMinutes;
+  if (enteringInProgress && effectiveDurationMinutes == null) {
+    const parsed = parseDurationInput(
+      s(formData, "durationHours"),
+      s(formData, "durationMinutes"),
+    );
+    if (!parsed.ok) {
+      return { ok: false, fieldErrors: { duration: parsed.error } };
+    }
+    if (parsed.minutes == null) {
+      return {
+        ok: false,
+        fieldErrors: {
+          duration: "Ажлыг эхлүүлэхийн өмнө ойролцоо үргэлжлэх хугацааг оруулна уу.",
+        },
+      };
+    }
+    effectiveDurationMinutes = parsed.minutes;
+  }
+
   const updates: Prisma.ServiceOrderUpdateInput = { status: next };
-  const startedAt =
-    next === "IN_PROGRESS" && order.status === "SCHEDULED"
-      ? new Date()
-      : order.startedAt;
-  if (next === "IN_PROGRESS" && order.status === "SCHEDULED") {
+  const startedAt = startingFresh ? now : order.startedAt;
+  if (startingFresh) {
     updates.startedAt = startedAt;
+  }
+  if (startingFresh && effectiveDurationMinutes !== order.estimatedDurationMinutes) {
+    updates.estimatedDurationMinutes = effectiveDurationMinutes;
   }
   if (next === "COMPLETED") {
     updates.completedAt = new Date();
@@ -780,10 +839,16 @@ export async function changeOrderStatusAction(
   } else {
     updates.occupiesCapacity = true;
   }
-  if (next === "IN_PROGRESS" && startedAt && order.estimatedDurationMinutes) {
-    updates.expectedFinishAt = new Date(
-      startedAt.getTime() + order.estimatedDurationMinutes * 60000,
-    );
+  if (enteringInProgress && effectiveDurationMinutes != null) {
+    // Сэлбэг хүлээснээс сэргэхэд анхны эхэлсэн цагаас биш, ОДООгоос тоолж
+    // дуусах хугацааг дахин тооцоолно — эс бөгөөс хүлээсэн хугацаа тооцогдохгүй,
+    // дуусах хугацаа хуучирсан хэвээр үлдэнэ.
+    const anchor = resuming ? now : startedAt;
+    if (anchor) {
+      updates.expectedFinishAt = new Date(
+        anchor.getTime() + effectiveDurationMinutes * 60000,
+      );
+    }
   }
 
   await prisma.$transaction(async (tx) => {
@@ -915,6 +980,15 @@ async function findScheduleConflict(
   start: Date,
   end: Date,
 ): Promise<ScheduleConflict | null> {
+  // An appointment with no saved duration is treated as a "possible" conflict
+  // for as long as it could still be running — but never floors ago: a stale
+  // PENDING/CONFIRMED appointment from months back must not read as an
+  // indefinite, still-ongoing conflict against a revision made today. Floor
+  // at MAX_CATEGORY_DURATION_MINUTES (the platform's own definition of the
+  // longest a single booking can legitimately run) before `start`, the same
+  // stale-row guard lib/branch-schedule-loader.ts applies for the day view.
+  const conflictFloor = new Date(start.getTime() - MAX_CATEGORY_DURATION_MINUTES * 60000);
+
   const [appts, orders] = await Promise.all([
     prisma.appointment.findMany({
       where: {
@@ -922,11 +996,16 @@ async function findScheduleConflict(
         branchId,
         status: { in: ["PENDING", "CONFIRMED"] },
         OR: [{ serviceOrderId: null }, { serviceOrderId: { not: excludeOrderId } }],
-        requestedAt: { lt: end },
+        requestedAt: { gte: conflictFloor, lt: end },
       },
       select: {
         requestedAt: true,
         estimatedDurationMinutes: true,
+        status: true,
+        createdAt: true,
+        feeAmount: true,
+        feeUnderpaidAmount: true,
+        payment: { select: { status: true } },
         account: { select: { name: true, phone: true } },
         customer: { select: { fullName: true, phone: true } },
       },
@@ -955,6 +1034,7 @@ async function findScheduleConflict(
   const endMs = end.getTime();
 
   for (const a of appts) {
+    if (a.status === "PENDING" && isPendingAppointmentPaymentExpired(a)) continue;
     const s0 = a.requestedAt.getTime();
     const e0 = a.estimatedDurationMinutes
       ? s0 + a.estimatedDurationMinutes * 60000
@@ -969,7 +1049,13 @@ async function findScheduleConflict(
 
   for (const o of orders) {
     if (o.status !== "SCHEDULED" && o.occupiesCapacity === false) continue;
-    const scheduled = o.status === "SCHEDULED" && o.occupiesCapacity !== true;
+    // Which timestamp is authoritative depends only on whether work has
+    // actually started (status), never on occupiesCapacity — that flag only
+    // decides above whether the row is excluded at all. A SCHEDULED order has
+    // no startedAt yet; falling back to it here would silently drop the order
+    // from conflict detection (s0 == null → continue below) if occupiesCapacity
+    // were ever true while still SCHEDULED.
+    const scheduled = o.status === "SCHEDULED";
     const s0 = (scheduled ? o.scheduledAt : o.startedAt)?.getTime();
     if (s0 == null) continue;
     const e0 =

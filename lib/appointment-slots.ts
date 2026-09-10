@@ -44,6 +44,9 @@ export type DayAvailability = {
   slots: DaySlot[];
   scheduleSource?: "exception" | "season" | "weekday" | "default";
   scheduleLabel?: string | null;
+  // Захиалгын нийт үргэлжлэх хугацаа (энэ өдрийн бодит утга) — сонгосон
+  // цагийн блок хэр өргөн байхыг ("ghost" preview) тооцоход ашиглана.
+  durationMinutes?: number;
 };
 
 export function weekdayFromDate(d: Date): Weekday {

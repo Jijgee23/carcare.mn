@@ -1,15 +1,20 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import {
   type OrderActionState,
   createOrderAction,
   updateOrderAction,
 } from "@/app/_actions/orders";
+import {
+  getBranchDaySchedulePreview,
+  type BranchDaySchedulePreview,
+} from "@/app/_actions/schedule-preview";
 import { Field, FormError } from "@/app/_components/auth-shell";
 import { DatePicker, todayStr } from "@/app/_components/date-picker";
 import { Btn, BtnLink, SquareAddButton } from "@/app/_components/landing-ops-ui";
 import { Select } from "@/app/_components/select";
+import { SchedulePreviewGrid } from "@/app/_components/schedule-preview-grid";
 import { customerLabel } from "@/lib/customers";
 import { DurationHmInput } from "@/app/dashboard/services/duration-input";
 import {
@@ -65,6 +70,8 @@ export function OrderForm({
   customers: initialCustomers,
   vehicles: initialVehicles,
   technicians,
+  bookingCategories = [],
+  bookingDurationMinutes = null,
   backHref = "/dashboard/orders",
   appointmentId,
   next,
@@ -74,6 +81,8 @@ export function OrderForm({
   customers: Customer[];
   vehicles: Vehicle[];
   technicians: Tech[];
+  bookingCategories?: Array<{ id: string; name: string }>;
+  bookingDurationMinutes?: number | null;
   backHref?: string;
   // Цаг захиалгаас үүсгэж буй бол — үүсгэсэн захиалгыг буцаан холбоно.
   appointmentId?: string;
@@ -121,10 +130,58 @@ export function OrderForm({
   const [autoScheduledAt, setAutoScheduledAt] = useState<Date | null>(
     () => initial?.scheduledAt ?? null,
   );
+  // Товлосон огноо/цаг + ойролцоо хугацааг (аль аль нь uncontrolled input,
+  // native form submit-д хэвээр ашиглагдана) зөвхөн доорх "ghost" урьдчилсан
+  // харагдацад зориулж ажиглана — DatePicker/DurationHmInput-ийн жинхэнэ
+  // утгыг удирдахгүй, зөвхөн нэмэлт onChange.
+  const [scheduledAtLocal, setScheduledAtLocal] = useState(() =>
+    toLocalDatetimeInput(initial?.scheduledAt ?? null),
+  );
+  const [durationMinutes, setDurationMinutes] = useState<number | null>(null);
   useEffect(() => {
-    if (!isEdit && !initial?.scheduledAt) setAutoScheduledAt(new Date());
+    if (!isEdit && !initial?.scheduledAt) {
+      const now = new Date();
+      setAutoScheduledAt(now);
+      setScheduledAtLocal(toLocalDatetimeInput(now));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const scheduledDateKey = scheduledAtLocal.slice(0, 10);
+  const [preview, setPreview] = useState<BranchDaySchedulePreview | null>(null);
+  const previewReqIdRef = useRef(0);
+  useEffect(() => {
+    // Салбар/огноо хоосон бол зүгээр татахгүй — доорх render-ийн нөхцөл
+    // (`branchId && scheduledDateKey && preview`) аль хэдийн preview-г
+    // харуулахгүй тул энд `setPreview(null)` дуудаж дахин render үүсгэх
+    // шаардлагагүй.
+    if (!branchId || !scheduledDateKey) return;
+    const id = ++previewReqIdRef.current;
+    getBranchDaySchedulePreview(branchId, scheduledDateKey)
+      .then((res) => {
+        if (id === previewReqIdRef.current) setPreview(res);
+      })
+      .catch(() => {
+        if (id === previewReqIdRef.current) setPreview(null);
+      });
+  }, [branchId, scheduledDateKey]);
+
+  // Одоо бөглөж буй захиалгын "ghost" блок — сонгосон цаг байхгүй бол алга.
+  // Цаг захиалгаас үүссэн бол booking-ийн category-уудаар тооцсон immutable
+  // хугацааны snapshot-ыг ашиглана. Шууд walk-in захиалгад хугацаа хоосон
+  // байвал сервер талын default-той адил 30 минутын ghost харуулна.
+  const ghost = useMemo(() => {
+    if (!scheduledAtLocal) return null;
+    const startMs = new Date(scheduledAtLocal).getTime();
+    if (!Number.isFinite(startMs)) return null;
+    const minutes =
+      durationMinutes && durationMinutes > 0
+        ? durationMinutes
+        : bookingDurationMinutes && bookingDurationMinutes > 0
+          ? bookingDurationMinutes
+          : 30;
+    return { startMs, endMs: startMs + minutes * 60000, label: "Энэ захиалга" };
+  }, [scheduledAtLocal, durationMinutes, bookingDurationMinutes]);
 
   const customerById = useMemo(
     () => new Map(customers.map((c) => [c.id, c])),
@@ -218,6 +275,41 @@ export function OrderForm({
         </div>
       ) : null}
       <FormError message={state?.message && !state.ok ? state.message : undefined} />
+
+      {/* Тухайн өдрийн бодит хуваарь — календарын Өдөр харагдацтай адил
+          дээд хэсэгт, бүтэн өргөнөөр. */}
+      {branchId && scheduledDateKey && preview ? (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-[var(--oc-ink2)]">Өдрийн хуваарь</span>
+          <SchedulePreviewGrid
+            rows={preview.rows}
+            axisStartMs={preview.axisStartMs}
+            axisEndMs={preview.axisEndMs}
+            ghost={ghost}
+          />
+        </div>
+      ) : null}
+
+      {bookingCategories.length > 0 ? (
+        <div className="rounded-lg border border-violet-500/25 bg-violet-500/[0.07] px-4 py-3 max-w-3xl">
+          <div className="text-xs font-medium text-violet-200 light:text-violet-800">
+            Захиалгаар сонгосон ангилал
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {bookingCategories.map((category) => (
+              <span
+                key={category.id}
+                className="rounded-full border border-violet-400/25 bg-violet-400/10 px-2.5 py-1 text-xs text-violet-100 light:text-violet-800"
+              >
+                {category.name}
+              </span>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-[var(--oc-muted3)]">
+            Энэ нь хэрэглэгчийн хүсэлтийн ангилал. Бодит ажил, сэлбэг, оношилгоог доороос нэмж өөрчилнө үү.
+          </p>
+        </div>
+      ) : null}
 
       <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         <Field label="Салбар" htmlFor="branchId" error={fe.branchId} className={FIELD_MW}>
@@ -353,7 +445,10 @@ export function OrderForm({
             withTime
             min={todayStr()}
             defaultValue={toLocalDatetimeInput(autoScheduledAt)}
-            onChange={() => setScheduleConfirmArmed(false)}
+            onChange={(v) => {
+              setScheduleConfirmArmed(false);
+              setScheduledAtLocal(v);
+            }}
             error={Boolean(fe.scheduledAt)}
           />
         </Field>
@@ -373,6 +468,7 @@ export function OrderForm({
             <DurationHmInput
               defaultMinutes={null}
               invalid={Boolean(fe.durationMinutes)}
+              onChange={setDurationMinutes}
             />
           </Field>
         ) : null}
