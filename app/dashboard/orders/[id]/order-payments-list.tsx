@@ -6,7 +6,6 @@ import {
   reverseOrderPaymentAction,
   type OrderPaymentActionState,
 } from "@/app/_actions/order-payments";
-import { ConfirmForm } from "@/app/_components/confirm-form";
 import { Btn } from "@/app/_components/landing-ops-ui";
 import {
   ORDER_PAYMENT_METHODS,
@@ -97,10 +96,7 @@ export function OrderPaymentsList({
                 ) : null}
               </div>
               {canReverse && p.status === "PAID" ? (
-                <ConfirmForm
-                  action={reverseOrderPaymentAction}
-                  message="Энэ төлбөрийн бүртгэлийг цуцлах уу? Санхүүгийн түүхэнд буцаалт тэмдэглэгдэнэ."
-                >
+                <form action={reverseOrderPaymentAction}>
                   <input type="hidden" name="paymentId" value={p.id} />
                   <button
                     type="submit"
@@ -109,7 +105,7 @@ export function OrderPaymentsList({
                   >
                     Цуцлах
                   </button>
-                </ConfirmForm>
+                </form>
               ) : null}
             </li>
           ))}
@@ -117,11 +113,7 @@ export function OrderPaymentsList({
       ) : null}
 
       {canRecord && hasRemaining ? (
-        <ConfirmForm
-          action={formAction}
-          className="flex flex-col gap-2"
-          message="Энэ дүнгээр төлбөрийн бүртгэл үүсгэх үү? Санхүүгийн түүхэнд хадгалагдана."
-        >
+        <form action={formAction} className="flex flex-col gap-2">
           <input type="hidden" name="orderId" value={orderId} />
           {state?.message ? (
             <p className="text-xs text-red-400 light:text-red-600">{state.message}</p>
@@ -150,7 +142,7 @@ export function OrderPaymentsList({
           <Btn type="submit" size="md" disabled={pending}>
             {pending ? "Бүртгэж..." : "Төлбөр бүртгэх"}
           </Btn>
-        </ConfirmForm>
+        </form>
       ) : null}
     </div>
   );

@@ -83,7 +83,7 @@ export default async function DashboardLayout({
                     </>
                   ) : (
                     <>
-                      {user.firstName}, та өнөөдөр {"  "}
+                      {user.firstName}, та өнөөдөр {"  "}a
                       <span className="font-semibold text-[var(--oc-accent)]">
                         {user.workingBranch!.name}
                       </span>{"  "}
