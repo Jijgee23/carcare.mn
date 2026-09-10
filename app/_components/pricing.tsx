@@ -152,7 +152,7 @@ export async function Pricing() {
               key={p.key}
               className={
                 p.highlighted
-                  ? "rounded-[10px] border border-[var(--oc-accent)] bg-[var(--oc-panel2)] px-8 py-[30px] shadow-[0_24px_60px_-30px_rgba(245,165,36,0.35)]"
+                  ? "rounded-[10px] border border-[var(--oc-accent)] bg-[var(--oc-panel2)] px-8 py-[30px] shadow-[0_24px_60px_-30px_rgba(34,211,238,0.35)]"
                   : "rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] px-8 py-[30px]"
               }
             >

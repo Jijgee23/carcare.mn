@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 
 const geist = Geist({
@@ -65,8 +66,13 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         {/* Theme болон sidebar-ийн хумигдсан төлөвийг paint-аас өмнө тогтооно —
-            дараа нь "flash" (буруу өнгө/өргөнөөс гэнэт шилжих) гарахгүй. */}
-        <script
+            дараа нь "flash" (буруу өнгө/өргөнөөс гэнэт шилжих) гарахгүй.
+            `next/script`-ийн `beforeInteractive` — түүхий `<script>` тег шууд
+            JSX-д бичвэл (client transition/redirect үед) React "script tag
+            never executed on client" гэж анхааруулдаг тул үүгээр зайлсхийнэ. */}
+        <Script
+          id="theme-init"
+          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{
             __html: `(function(){try{if(localStorage.getItem('theme')==='light')document.documentElement.classList.add('light');if(localStorage.getItem('carcare:sidebar:collapsed')==='1')document.documentElement.style.setProperty('--sidebar-w','4.5rem')}catch(e){}})()`,
           }}

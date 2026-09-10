@@ -71,11 +71,13 @@ export function OrderItems({
   orderId,
   canEdit,
   canChangeStatus,
+  orderStarted,
 }: {
   items: OrderItemLite[];
   orderId: string;
   canEdit: boolean;
   canChangeStatus: boolean;
+  orderStarted: boolean;
 }) {
   const showActionColumn = canEdit || canChangeStatus;
   const groups = KIND_ORDER.map((kind) => {
@@ -212,9 +214,14 @@ export function OrderItems({
                               <select
                                 name="status"
                                 defaultValue={status}
-                                title="Явц өөрчлөх"
+                                disabled={!orderStarted}
+                                title={
+                                  orderStarted
+                                    ? "Явц өөрчлөх"
+                                    : "Захиалга эхлээгүй байна — эхлүүлсний дараа явц өөрчлөх боломжтой"
+                                }
                                 onChange={(e) => e.currentTarget.form?.requestSubmit()}
-                                className="compact-input !py-1 !px-1.5 !text-[11px] !rounded-lg !w-[9.5rem]"
+                                className="compact-input !py-1 !px-1.5 !text-[11px] !rounded-lg !w-[9.5rem] disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 {rowStatuses.map((s) => (
                                   <option key={s} value={s}>

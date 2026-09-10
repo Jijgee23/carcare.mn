@@ -143,7 +143,7 @@ export default async function ReportsPage({
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-6">
-          <h2 className="font-semibold text-[var(--oc-ink)] mb-1">Орлого — ажил vs сэлбэг</h2>
+          <h2 className="font-semibold text-[var(--oc-ink)] mb-1">Орлого — ажил, оношилгоо, сэлбэг</h2>
           <p className="text-xs text-[var(--oc-muted3)] mb-5">
             Дууссан засварын хуудасны мөрүүдийн хуваарилалт.
           </p>
@@ -361,9 +361,8 @@ function BigStat({
         {label}
       </div>
       <div
-        className={`font-plex-mono text-2xl font-semibold mt-1 tabular-nums ${
-          tone === "accent" ? "text-[var(--oc-accent)]" : "text-[var(--oc-ink)]"
-        }`}
+        className={`font-plex-mono text-2xl font-semibold mt-1 tabular-nums ${tone === "accent" ? "text-[var(--oc-accent)]" : "text-[var(--oc-ink)]"
+          }`}
       >
         {value}
       </div>

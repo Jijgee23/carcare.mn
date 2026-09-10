@@ -533,7 +533,7 @@ function NavTooltip({ label }: { label: string }) {
 }
 
 const activePillClasses =
-  "bg-[var(--oc-accent)] text-[var(--oc-on-accent)] shadow-[0_10px_28px_-12px_rgba(245,165,36,0.55)]";
+  "bg-[var(--oc-accent)] text-[var(--oc-on-accent)] shadow-[0_10px_28px_-12px_rgba(34,211,238,0.55)]";
 const inactivePillClasses =
   "text-[var(--oc-muted)] hover:bg-white/[0.04] hover:text-[var(--oc-ink)]";
 
@@ -785,7 +785,7 @@ function NavGroupItem({
                   href={child.href}
                   onClick={onNavigate}
                   className={`block px-3 py-2 text-[13px] transition-colors ${childActive
-                    ? "bg-[#f5a524]/10 light:bg-[#c9820a]/10 text-[#f5a524] light:text-[#c9820a]"
+                    ? "bg-[#22d3ee]/10 light:bg-[#0e7490]/10 text-[#22d3ee] light:text-[#0e7490]"
                     : "text-[#a7adb6] light:text-[#5c6067] hover:bg-white/[0.06] hover:text-[#edeef0] light:hover:text-[#1e1f24]"
                     }`}
                 >

@@ -38,7 +38,7 @@ export function TenantForm({ initial }: { initial: Initial }) {
         message={state?.message && !state.ok ? state.message : undefined}
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         <Field label="Байгууллагын нэр" htmlFor="name" error={fe.name} className={FIELD_MW}>
           <input
             id="name"

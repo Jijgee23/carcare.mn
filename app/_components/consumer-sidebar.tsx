@@ -109,7 +109,7 @@ function isLeafActive(pathname: string, item: NavLeaf): boolean {
 }
 
 const activePillClasses =
-  "bg-[var(--oc-accent)] text-[var(--oc-on-accent)] shadow-[0_10px_28px_-12px_rgba(245,165,36,0.55)]";
+  "bg-[var(--oc-accent)] text-[var(--oc-on-accent)] shadow-[0_10px_28px_-12px_rgba(34,211,238,0.55)]";
 const inactivePillClasses =
   "text-[var(--oc-muted)] hover:bg-white/[0.04] hover:text-[var(--oc-ink)]";
 

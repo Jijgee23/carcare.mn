@@ -36,8 +36,9 @@ export default async function ChooseBranchPage({
   searchParams: Promise<{ next?: string }>;
 }) {
   const user = await requireUser();
-  // Аль хэдийн сонгосон бол дахин сонгуулахгүй — өөр салбар руу шилжихийн
-  // тулд гарч дахин нэвтрэх ёстой (харах: chooseBranchAction-ийн тайлбар).
+  // Аль хэдийн сонгосон бол энэ (нэвтрэх үеийн) хуудсыг дахин үзүүлэхгүй.
+  // Өөр салбар руу шилжихийг dashboard дотроосоо, гарч нэвтрэхгүйгээр хийнэ
+  // (харах: app/dashboard/branch-switcher.tsx).
   if (user.workingBranchId) redirect("/dashboard");
 
   const { next: nextRaw } = await searchParams;
@@ -73,7 +74,7 @@ export default async function ChooseBranchPage({
     <div className={`${plexSans.variable} ${plexMono.variable}`}>
       <TenantAuthShellWide
         title="Ажиллах салбараа сонгоно уу"
-        subtitle="Өнөөдөр аль салбарт ажиллахаа сонгоно уу — захиалга, цаг захиалга, тайлан цаашид энэ салбараар харагдана. Өөр салбар руу шилжихийн тулд гарч дахин нэвтэрнэ үү."
+        subtitle="Өнөөдөр аль салбарт ажиллахаа сонгоно уу — захиалга, цаг захиалга, тайлан цаашид энэ салбараар харагдана. Дараа нь dashboard-ийн баннераас өөр салбар руу шилжиж болно."
       >
         {branches.length === 0 && !allowAllBranches ? (
           <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-6 text-center text-sm text-[var(--oc-muted3)]">

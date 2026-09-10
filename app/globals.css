@@ -341,59 +341,59 @@ html.light .landing-ops {
    хаа нэгтээ .landing-ops байгаа эсэх"-ийг шалгаж, олдвол body-ийн аль ч
    удамд (portal хамаарна) дарж бичнэ. */
 body:has(.landing-ops) .dp-accent-border {
-  border-color: rgba(245, 165, 36, 0.6) !important;
-  box-shadow: 0 0 0 2px rgba(245, 165, 36, 0.15) !important;
+  border-color: rgba(34, 211, 238, 0.6) !important;
+  box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.15) !important;
 }
 body:has(.landing-ops) .dp-accent-active {
-  background-color: #f5a524 !important;
+  background-color: #22d3ee !important;
   color: #14120c !important;
 }
 body:has(.landing-ops) .dp-accent-inrange {
-  background-color: rgba(245, 165, 36, 0.15) !important;
+  background-color: rgba(34, 211, 238, 0.15) !important;
 }
 body:has(.landing-ops) .dp-accent-ring {
-  --tw-ring-color: rgba(245, 165, 36, 0.5);
+  --tw-ring-color: rgba(34, 211, 238, 0.5);
 }
 body:has(.landing-ops) .dp-accent-text {
-  color: #f5a524 !important;
+  color: #22d3ee !important;
 }
 body:has(.landing-ops) .dp-accent-text:hover {
-  background-color: rgba(245, 165, 36, 0.1) !important;
+  background-color: rgba(34, 211, 238, 0.1) !important;
 }
 body:has(.landing-ops) .dp-accent-btn {
-  background-color: #f5a524 !important;
+  background-color: #22d3ee !important;
   color: #14120c !important;
 }
 body:has(.landing-ops) .dp-accent-btn:hover {
-  background-color: #ffc65c !important;
+  background-color: #67e8f9 !important;
 }
 /* Гэрэлт горим — `.landing-ops`-ийн light override-той тааруулав. */
 html.light body:has(.landing-ops) .dp-accent-border {
-  border-color: rgba(201, 130, 10, 0.55) !important;
-  box-shadow: 0 0 0 2px rgba(201, 130, 10, 0.15) !important;
+  border-color: rgba(14, 116, 144, 0.55) !important;
+  box-shadow: 0 0 0 2px rgba(14, 116, 144, 0.15) !important;
 }
 html.light body:has(.landing-ops) .dp-accent-active {
-  background-color: #c9820a !important;
+  background-color: #0e7490 !important;
   color: #14120c !important;
 }
 html.light body:has(.landing-ops) .dp-accent-inrange {
-  background-color: rgba(201, 130, 10, 0.14) !important;
+  background-color: rgba(14, 116, 144, 0.14) !important;
 }
 html.light body:has(.landing-ops) .dp-accent-ring {
-  --tw-ring-color: rgba(201, 130, 10, 0.45);
+  --tw-ring-color: rgba(14, 116, 144, 0.45);
 }
 html.light body:has(.landing-ops) .dp-accent-text {
-  color: #c9820a !important;
+  color: #0e7490 !important;
 }
 html.light body:has(.landing-ops) .dp-accent-text:hover {
-  background-color: rgba(201, 130, 10, 0.1) !important;
+  background-color: rgba(14, 116, 144, 0.1) !important;
 }
 html.light body:has(.landing-ops) .dp-accent-btn {
-  background-color: #c9820a !important;
+  background-color: #0e7490 !important;
   color: #14120c !important;
 }
 html.light body:has(.landing-ops) .dp-accent-btn:hover {
-  background-color: #e0991f !important;
+  background-color: #0891b2 !important;
 }
 @keyframes float {
   0%, 100% { transform: translateY(0px); }

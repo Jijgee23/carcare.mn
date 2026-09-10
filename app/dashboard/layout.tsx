@@ -7,7 +7,9 @@ import { SubscriptionBanner } from "@/app/_components/subscription-banner";
 import { SubscriptionGuard } from "@/app/_components/subscription-guard";
 import { ToastProvider } from "@/app/_components/toast";
 import { WebPushToggle } from "@/app/_components/web-push";
+import { BranchSwitcher } from "./branch-switcher";
 import { requireUser } from "@/lib/auth";
+import { canChooseAllBranches, eligibleBranchIds } from "@/lib/auth/roles";
 import { ALL_BRANCHES } from "@/lib/auth/session";
 import { prisma } from "@/lib/prisma";
 import { getSubscriptionState } from "@/lib/subscription-server";
@@ -35,10 +37,25 @@ export default async function DashboardLayout({
     (user.firstName[0] ?? "") + (user.lastName[0] ?? "");
   const userName = `${user.firstName} ${user.lastName}`.trim();
 
-  const [subState, unreadNotifications] = await Promise.all([
+  // Ажиллах салбар солих сонголтод зориулж (харах: ./branch-switcher.tsx) —
+  // /page/choose-branch/page.tsx-ийн адил eligible-аар хязгаарлана.
+  const allowAllBranches = canChooseAllBranches(user);
+  const eligible = eligibleBranchIds(user);
+  const restrictToEligible = !user.isOwner && eligible.length > 0;
+
+  const [subState, unreadNotifications, switchableBranches] = await Promise.all([
     getSubscriptionState(user.tenantId),
     prisma.notification.count({
       where: { userId: user.id, readAt: null },
+    }),
+    prisma.branch.findMany({
+      where: {
+        tenantId: user.tenantId,
+        isActive: true,
+        ...(restrictToEligible ? { id: { in: eligible } } : {}),
+      },
+      orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+      select: { id: true, name: true },
     }),
   ]);
 
@@ -72,25 +89,13 @@ export default async function DashboardLayout({
           <div className="px-4 sm:px-6 lg:px-8 pt-3">
             <div className="flex flex-col sm:flex-row items-stretch gap-3">
               {user.workingBranchId === ALL_BRANCHES || user.workingBranch ? (
-                <div className="shrink-0 flex items-center gap-1 rounded-[10px] border border-[var(--oc-accent)]/25 bg-[var(--oc-accent)]/[0.06] px-4 py-2.5 text-sm text-[var(--oc-ink2)]">
-                  {user.workingBranchId === ALL_BRANCHES ? (
-                    <>
-                      {user.firstName}, та өнөөдөр {" "}
-                      <span className="font-semibold text-[var(--oc-accent)]">
-                        БҮХ САЛБАРЫГ
-                      </span>{" "}
-                      хараад байна.
-                    </>
-                  ) : (
-                    <>
-                      {user.firstName}, та өнөөдөр {"  "}a
-                      <span className="font-semibold text-[var(--oc-accent)]">
-                        {user.workingBranch!.name}
-                      </span>{"  "}
-                      салбарт ажиллаж байна.
-                    </>
-                  )}
-                </div>
+                <BranchSwitcher
+                  firstName={user.firstName}
+                  currentBranch={user.workingBranch}
+                  currentIsAll={user.workingBranchId === ALL_BRANCHES}
+                  branches={switchableBranches}
+                  allowAllBranches={allowAllBranches}
+                />
               ) : null}
               <SubscriptionBanner
                 locked={subState.locked}

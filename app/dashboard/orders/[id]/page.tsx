@@ -375,6 +375,7 @@ export default async function OrderDetailPage({
                 orderId={order.id}
                 canEdit={isEditable && canEditOrder}
                 canChangeStatus={isEditable && canChangeItemStatus}
+                orderStarted={orderStarted}
               />
             )}
 

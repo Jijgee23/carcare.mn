@@ -4,7 +4,7 @@ export function CtaBanner() {
   return (
     <Container className="pt-24">
       <div className="relative overflow-hidden rounded-xl border border-[var(--oc-line)] bg-[var(--oc-panel)] p-8 sm:p-14">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(600px_300px_at_85%_20%,rgba(245,165,36,0.14),transparent_70%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(600px_300px_at_85%_20%,rgba(34,211,238,0.14),transparent_70%)]" />
         <div className="relative flex flex-wrap items-center justify-between gap-10 sm:gap-12">
           <div>
             <h2 className="text-2xl sm:text-3xl lg:text-[36px] font-semibold tracking-[-0.03em] text-[var(--oc-ink)] text-balance">

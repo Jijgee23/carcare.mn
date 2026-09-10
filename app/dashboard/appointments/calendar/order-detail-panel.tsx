@@ -15,7 +15,12 @@ import { useToast } from "@/app/_components/toast";
 import { AddItemForm } from "@/app/dashboard/orders/[id]/add-item-form";
 import { OrderItems } from "@/app/dashboard/orders/[id]/order-items";
 import { OrderPaymentsList } from "@/app/dashboard/orders/[id]/order-payments-list";
-import { formatTugrik, PAYMENT_STATUS_BADGE, PAYMENT_STATUS_LABEL } from "@/lib/orders";
+import {
+  canFillDiagnostics,
+  formatTugrik,
+  PAYMENT_STATUS_BADGE,
+  PAYMENT_STATUS_LABEL,
+} from "@/lib/orders";
 
 // Хуваарийн харагдацаас (Grid/List) захиалга дээр дарахад л дуудагдаж
 // дэлгэрэнгүйг татна — бүх өдрийн мөрд урьдчилан ачаалахгүй (харах:
@@ -113,6 +118,7 @@ export function OrderDetailPanel({
           orderId={order.id}
           canEdit={false}
           canChangeStatus={canChangeItemStatus}
+          orderStarted={canFillDiagnostics(order.status)}
         />
       )}
 

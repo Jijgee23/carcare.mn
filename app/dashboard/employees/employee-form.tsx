@@ -194,7 +194,12 @@ export function EmployeeForm({
               options={roles.map((r) => ({ value: r.id, label: r.name }))}
             />
           </Field>
-          <Field label="Үндсэн салбар" htmlFor="branchId" error={fe.branchId}>
+          <Field
+            label="Үндсэн салбар"
+            htmlFor="branchId"
+            hint="Хоосон орхивол бүх салбарт хандах эрхтэй (жишээ: ерөнхий менежер/админ) болно."
+            error={fe.branchId}
+          >
             <Select
               id="branchId"
               name="branchId"

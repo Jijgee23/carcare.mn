@@ -36,7 +36,7 @@ const progressColor: Record<string, string> = {
 export function Hero() {
   return (
     <section className="relative overflow-hidden bg-oc-grid">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(900px_520px_at_20%_0%,rgba(245,165,36,0.12),transparent_70%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(900px_520px_at_20%_0%,rgba(34,211,238,0.12),transparent_70%)]" />
       <Container className="relative grid items-center gap-12 lg:gap-[72px] py-20 lg:py-24 lg:grid-cols-[1.05fr_0.95fr]">
         <div>
           <StatusPill>100+ сервис төв carservice дээр ажиллаж байна</StatusPill>
