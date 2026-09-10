@@ -10,6 +10,7 @@ import {
 import { ConfirmButton } from "@/app/_components/confirm-form";
 import { Btn } from "@/app/_components/landing-ops-ui";
 import { QPayBankGrid } from "@/app/_components/qpay-bank-grid";
+import { QPayDrawer } from "@/app/_components/qpay-drawer";
 import { useToast } from "@/app/_components/toast";
 import type { QPayBankUrl } from "@/lib/qpay";
 import {
@@ -144,6 +145,36 @@ function PlanList({ prices }: { prices: PlanPriceOption[] }) {
 }
 
 function QRPanel({ pending }: { pending: PendingPayment }) {
+  const [drawerOpen, setDrawerOpen] = useState(true);
+
+  return (
+    <>
+      <div className="rounded-[10px] border border-[var(--oc-accent)]/25 bg-[var(--oc-accent)]/[0.05] p-6 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <div className="font-plex-mono text-[10.5px] uppercase tracking-[0.1em] text-[var(--oc-muted3)]">
+            {BILLING_PERIOD_LABEL[pending.period]} · {PLAN_LABEL[pending.plan]}
+          </div>
+          <div className="mt-1 font-plex-mono text-2xl font-bold text-[var(--oc-accent)]">
+            {Number.parseFloat(pending.amount).toLocaleString("mn-MN")}{" "}
+            <span className="text-sm text-[var(--oc-muted3)]">{pending.currency}</span>
+          </div>
+        </div>
+        <Btn type="button" onClick={() => setDrawerOpen(true)}>
+          QR нээх
+        </Btn>
+      </div>
+      <QPayDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        title="QPay-ээр төлөх"
+      >
+        <QRPanelContent pending={pending} />
+      </QPayDrawer>
+    </>
+  );
+}
+
+function QRPanelContent({ pending }: { pending: PendingPayment }) {
   const toast = useToast();
   const [paid, setPaid] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -188,52 +219,51 @@ function QRPanel({ pending }: { pending: PendingPayment }) {
   }
 
   return (
-    <div className="rounded-[10px] border border-[var(--oc-accent)]/25 bg-[var(--oc-accent)]/[0.05] p-6">
+    <div className="flex flex-col items-center gap-4">
       <div className="text-center">
         <div className="font-plex-mono text-[10.5px] uppercase tracking-[0.1em] text-[var(--oc-muted3)]">
           {BILLING_PERIOD_LABEL[pending.period]} · {PLAN_LABEL[pending.plan]}
         </div>
-        <div className="mt-2 font-plex-mono text-3xl font-bold text-[var(--oc-accent)]">
+        <div className="mt-1 font-plex-mono text-2xl font-bold text-[var(--oc-accent)]">
           {Number.parseFloat(pending.amount).toLocaleString("mn-MN")}{" "}
           <span className="text-sm text-[var(--oc-muted3)]">{pending.currency}</span>
         </div>
       </div>
 
       {paid ? (
-        <div className="mt-6 bg-[var(--oc-ok)]/15 border border-[var(--oc-ok)]/30 text-[var(--oc-ok)] rounded-[10px] px-4 py-3 text-sm text-center">
+        <div className="bg-[var(--oc-ok)]/15 border border-[var(--oc-ok)]/30 text-[var(--oc-ok)] rounded-[10px] px-4 py-3 text-sm text-center">
           Төлбөр амжилттай — багц идэвхжиж байна...
         </div>
+      ) : pending.qrImage ? (
+        <div className="bg-white p-3 rounded-[10px]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={`data:image/png;base64,${pending.qrImage}`}
+            alt="QPay QR"
+            className="w-48 h-48 object-contain"
+          />
+        </div>
       ) : (
-        <div className="mt-6 grid gap-6 md:grid-cols-[auto_1fr]">
-          {pending.qrImage ? (
-            <div className="bg-white p-3 rounded-[10px] flex items-center justify-center">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={`data:image/png;base64,${pending.qrImage}`}
-                alt="QPay QR"
-                className="w-48 h-48 md:w-auto md:h-full aspect-square object-contain"
-              />
-            </div>
-          ) : (
-            <div className="w-48 h-48 flex items-center justify-center text-sm text-[var(--oc-muted2)]">
-              QR үүсэхэд хүлээнэ үү...
-            </div>
-          )}
-
-          <div className="flex flex-col gap-4">
-            <QPayBankGrid urls={pending.urls} />
-
-            <p className="text-xs text-[var(--oc-muted3)] text-center md:text-left">
-              Утсаараа банкны апп нээж QR-ыг уншуулна уу. Төлбөр төлөгдмөгц
-              багц автоматаар идэвхжинэ.
-            </p>
-          </div>
+        <div className="w-48 h-48 flex items-center justify-center text-sm text-[var(--oc-muted2)]">
+          QR үүсэхэд хүлээнэ үү...
         </div>
       )}
 
-      <div className="mt-6 flex items-center justify-center gap-3">
-        <Btn type="button" onClick={checkNow} disabled={checking || paid}>
-          {checking ? "Шалгаж байна..." : "Төлбөр шалгах"}
+      {!paid ? (
+        <>
+          <div className="w-full">
+            <QPayBankGrid urls={pending.urls} />
+          </div>
+          <p className="text-xs text-[var(--oc-muted3)] text-center">
+            Утсаараа банкны апп нээж QR-ыг уншуулна уу. Төлбөр төлөгдмөгц
+            багц автоматаар идэвхжинэ.
+          </p>
+        </>
+      ) : null}
+
+      <div className="flex items-center gap-2">
+        <Btn type="button" onClick={checkNow} disabled={checking || paid} size="sm">
+          {checking ? "Шалгаж байна..." : "Шалгах"}
         </Btn>
         <ConfirmButton
           onConfirm={onCancel}

@@ -1,7 +1,6 @@
 import { deleteCustomerAction } from "@/app/_actions/customers";
 import { Prisma } from "@/app/generated/prisma/client";
 import { ClickableRow } from "@/app/_components/clickable-row";
-import { AddLinkButton } from "@/app/_components/landing-ops-ui";
 import { ConfirmForm } from "@/app/_components/confirm-form";
 import { ResetFilters, SearchBox } from "@/app/_components/list-filters";
 import { Pagination } from "@/app/_components/pagination";
@@ -12,6 +11,7 @@ import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canView } from "@/lib/auth/roles";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { CreateCustomerButton } from "./create-customer-modal";
 
 export const metadata = {
   title: "Үйлчлүүлэгчид",
@@ -61,9 +61,7 @@ export default async function CustomersPage({
             Үйлчлүүлэгчдийн харилцагч мэдээлэл, түүх · {total} үйлчлүүлэгч
           </p>
         </div>
-        {canAdd ? (
-          <AddLinkButton href="/dashboard/customers/new">Үйлчлүүлэгч нэмэх</AddLinkButton>
-        ) : null}
+        {canAdd ? <CreateCustomerButton label="Үйлчлүүлэгч нэмэх" /> : null}
       </div>
 
       {total === 0 ? (
@@ -71,9 +69,7 @@ export default async function CustomersPage({
           title="Үйлчлүүлэгч алга"
           description="Эхний үйлчлүүлэгчээ нэмж эхлээрэй."
           cta={
-            canAdd ? (
-              <AddLinkButton href="/dashboard/customers/new">Эхний үйлчлүүлэгч нэмэх</AddLinkButton>
-            ) : null
+            canAdd ? <CreateCustomerButton label="Эхний үйлчлүүлэгч нэмэх" /> : null
           }
         />
       ) : (
@@ -149,7 +145,7 @@ export default async function CustomersPage({
                           <div className="flex items-center justify-end">
                             <ConfirmForm
                               action={deleteCustomerAction}
-                              message={`\"${customerLabel(c)}\" харилцагчийг устгах уу?`}
+                              message={`"${customerLabel(c)}" үйлчлүүлэгчийг устгах уу?`}
                             >
                               <input type="hidden" name="id" value={c.id} />
                               <button

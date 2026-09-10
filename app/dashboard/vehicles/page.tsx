@@ -8,7 +8,8 @@ import {
   SearchBox,
 } from "@/app/_components/list-filters";
 import { EmptyState } from "@/app/_components/page-header";
-import { AddLinkButton, StatCell, StatGrid } from "@/app/_components/landing-ops-ui";
+import { StatCell, StatGrid } from "@/app/_components/landing-ops-ui";
+import { CreateVehicleButton } from "./create-vehicle-modal";
 import { Pagination } from "@/app/_components/pagination";
 import { CarIcon } from "@/app/_components/landing-icons";
 import {
@@ -66,7 +67,7 @@ export default async function VehiclesPage({
   else if (postpaid === "no") where.isPostpaid = false;
 
   const { page, pageSize, skip, take } = getPageInfo(pageParam);
-  const [links, total, totalVehicles, assignedVehicles, postpaidVehicles] =
+  const [links, total, totalVehicles, assignedVehicles, postpaidVehicles, customers] =
     await Promise.all([
       prisma.tenantVehicle.findMany({
         where,
@@ -95,6 +96,11 @@ export default async function VehiclesPage({
       }),
       prisma.tenantVehicle.count({
         where: { tenantId: user.tenantId, isPostpaid: true },
+      }),
+      prisma.customer.findMany({
+        where: { tenantId: user.tenantId },
+        orderBy: { fullName: "asc" },
+        select: { id: true, fullName: true, phone: true },
       }),
     ]);
   const meta = buildMeta(total, page, pageSize);
@@ -135,7 +141,7 @@ export default async function VehiclesPage({
           </p>
         </div>
         {canAdd ? (
-          <AddLinkButton href="/dashboard/vehicles/new">Машин нэмэх</AddLinkButton>
+          <CreateVehicleButton label="Машин нэмэх" customers={customers} />
         ) : null}
       </div>
 
@@ -176,7 +182,7 @@ export default async function VehiclesPage({
           }
           cta={
             canAdd ? (
-              <AddLinkButton href="/dashboard/vehicles/new">Эхний машин нэмэх</AddLinkButton>
+              <CreateVehicleButton label="Эхний машин нэмэх" customers={customers} />
             ) : null
           }
         />

@@ -43,7 +43,7 @@ export default async function ReportDetailPage({
     include: {
       template: { select: { id: true, name: true, schema: true, type: true } },
       filledBy: { select: { firstName: true, lastName: true } },
-      order: { select: { id: true, number: true } },
+      order: { select: { id: true, number: true, status: true } },
       customer: { select: { id: true, fullName: true, phone: true } },
       vehicle: { select: { id: true, plate: true, make: true, model: true, year: true } },
       branch: { select: { name: true } },
@@ -153,6 +153,11 @@ export default async function ReportDetailPage({
             >
               #{report.order.number}
             </Link>
+            {report.order.status === "CANCELLED" ? (
+              <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded-full bg-white/[0.06] text-[var(--oc-muted2)] border border-[var(--oc-line2)] light:bg-zinc-100 light:border-zinc-300 light:text-zinc-600">
+                Цуцлагдсан
+              </span>
+            ) : null}
           </Row>
         ) : null}
         {report.mileageAtReport !== null ? (

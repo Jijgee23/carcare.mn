@@ -793,6 +793,15 @@ export async function changeOrderStatusAction(
       where: { id: order.id },
       data: updates,
     });
+    // Захиалгыг бүхэлд нь цуцлахад дотор нь бөглөгдсөн (COMPLETED) байсан
+    // мөр — тэр дундаа бөглөгдсөн оношилгооны хуудас — идэвхтэй хэвээр
+    // үлдэж, дуусаагүй мэт харагдахаас сэргийлж бүх мөрийг мөн цуцална.
+    if (next === "CANCELLED") {
+      await tx.serviceItem.updateMany({
+        where: { orderId: order.id, status: { not: "CANCELLED" } },
+        data: { status: "CANCELLED", cancelledAt: new Date(), cancelledById: user.id },
+      });
+    }
     await logAudit(
       {
         tenantId: user.tenantId,

@@ -237,7 +237,7 @@ export function SquareAddButton({
   return (
     <button
       type="button"
-      className={`shrink-0 px-2.5 rounded-lg border border-[var(--oc-accent)]/30 bg-[var(--oc-accent)]/10 hover:bg-[var(--oc-accent)]/20 text-[var(--oc-accent)] text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+      className={`shrink-0 h-11 w-11 flex items-center justify-center rounded-lg border border-[var(--oc-accent)]/30 bg-[var(--oc-accent)]/10 hover:bg-[var(--oc-accent)]/20 text-[var(--oc-accent)] text-base font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
       {...rest}
     >
       {active ? "✕" : "+"}
@@ -300,11 +300,10 @@ export function TagChip({ children }: { children: ReactNode }) {
 // header, item-kind таб гэх мэт). `TabLink` (URL-аар шүүдэг) болон
 // `TabButton` (client state-аар шүүдэг) ижил харагдацтай.
 function tabPillClass(active: boolean): string {
-  return `text-xs px-3 py-1.5 rounded-lg font-medium transition-colors whitespace-nowrap ${
-    active
-      ? "bg-[var(--oc-accent)] text-[var(--oc-on-accent)]"
-      : "text-[var(--oc-muted2)] hover:text-[var(--oc-ink2)] hover:bg-white/[0.05]"
-  }`;
+  return `text-xs px-3 py-1.5 rounded-lg font-medium transition-colors whitespace-nowrap ${active
+    ? "bg-[var(--oc-accent)] text-[var(--oc-on-accent)]"
+    : "text-[var(--oc-muted2)] hover:text-[var(--oc-ink2)] hover:bg-white/[0.05]"
+    }`;
 }
 
 export function TabLink({

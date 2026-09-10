@@ -10,9 +10,9 @@ import { BranchTimePicker } from "@/app/_components/branch-time-picker";
 import { Btn, BtnLink, SquareAddButton } from "@/app/_components/landing-ops-ui";
 import { Select } from "@/app/_components/select";
 import {
+  CreateCustomerModal,
   type CreatedCustomer,
-  InlineCustomerForm,
-} from "@/app/dashboard/orders/inline-customer-form";
+} from "@/app/dashboard/customers/create-customer-modal";
 import type { Weekday } from "@/lib/branches";
 import { customerLabel } from "@/lib/customers";
 
@@ -122,6 +122,7 @@ export function AppointmentForm({
               onChange={onBranchChange}
               error={fe.branchId}
               options={branches.map((b) => ({ value: b.id, label: b.name }))}
+              disabled={branches.length <= 1}
             />
           </Field>
 
@@ -188,12 +189,11 @@ export function AppointmentForm({
             </div>
           </Field>
 
-          {showCustomerForm ? (
-            <InlineCustomerForm
-              onCreated={onCustomerCreated}
-              onCancel={() => setShowCustomerForm(false)}
-            />
-          ) : null}
+          <CreateCustomerModal
+            open={showCustomerForm}
+            onClose={() => setShowCustomerForm(false)}
+            onCreated={onCustomerCreated}
+          />
 
           <Field label="Тэмдэглэл" htmlFor="note" hint="заавал биш">
             <textarea

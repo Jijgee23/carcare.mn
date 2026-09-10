@@ -122,8 +122,9 @@ export function StandaloneDiagnosticForm({
             id="branch-select"
             value={branchId}
             onChange={(e) => setBranchId(e.target.value)}
-            className="auth-input"
+            className="auth-input disabled:cursor-not-allowed disabled:opacity-50"
             required
+            disabled={branches.length <= 1}
           >
             <option value="">— Сонгоно уу —</option>
             {branches.map((b) => (

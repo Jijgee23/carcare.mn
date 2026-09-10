@@ -69,13 +69,21 @@ export async function createOrderQPayInvoiceAction(
     return { ok: false, message: "Үлдэгдэл байхгүй." };
   }
 
-  // Pending QR байвал дахин ашиглана
+  // Pending QR байвал — үлдэгдэл өөрчлөгдөөгүй л бол дахин ашиглана. Энэ
+  // хооронд өөр төлбөр бүртгэгдсэн/цуцлагдсан бол үлдэгдэл өөрчлөгдсөн байх
+  // тул хуучин (буруу дүнтэй) QR-ийг цуцалж доор шинээр үүсгэнэ.
   const pending = await prisma.orderPayment.findFirst({
     where: { orderId, status: "PENDING", method: "QPAY" },
     orderBy: { createdAt: "desc" },
   });
   if (pending) {
-    return { ok: true, paymentId: pending.id };
+    if (pending.amount.equals(remaining)) {
+      return { ok: true, paymentId: pending.id };
+    }
+    await prisma.orderPayment.update({
+      where: { id: pending.id },
+      data: { status: "CANCELLED" },
+    });
   }
 
   // SubscriptionPayment-тэй ижил pattern
@@ -358,6 +366,13 @@ export async function recordOrderPaymentAction(
         },
       });
 
+      // Үлдэгдэл өөрчлөгдсөн тул хуучин (буруу дүнтэй) хүлээгдэж буй QPay
+      // QR-ийг хүчингүй болгоно — дараа нь шинэ үлдэгдлээр дахин үүсгэнэ.
+      await tx.orderPayment.updateMany({
+        where: { orderId, status: "PENDING", method: "QPAY" },
+        data: { status: "CANCELLED" },
+      });
+
       await logAudit(
         {
           tenantId: user.tenantId,
@@ -432,6 +447,14 @@ export async function reverseOrderPaymentAction(formData: FormData): Promise<voi
         paymentStatus: nextStatus,
         paidAt: nextStatus === "PAID" ? new Date() : null,
       },
+    });
+
+    // Үлдэгдэл өөрчлөгдсөн (нэмэгдсэн) тул хуучин (буруу дүнтэй) хүлээгдэж
+    // буй QPay QR-ийг хүчингүй болгоно — дараа нь шинэ үлдэгдлээр дахин
+    // үүсгэнэ.
+    await tx.orderPayment.updateMany({
+      where: { orderId: payment.orderId, status: "PENDING", method: "QPAY" },
+      data: { status: "CANCELLED" },
     });
 
     await logAudit(

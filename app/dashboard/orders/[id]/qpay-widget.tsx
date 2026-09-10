@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useRef, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import {
   cancelOrderQPayPaymentAction,
   checkOrderQPayPaymentAction,
@@ -9,6 +9,8 @@ import {
 } from "@/app/_actions/order-payments";
 import { ConfirmButton } from "@/app/_components/confirm-form";
 import { Btn } from "@/app/_components/landing-ops-ui";
+import { QPayBankGrid } from "@/app/_components/qpay-bank-grid";
+import { QPayDrawer } from "@/app/_components/qpay-drawer";
 import type { QPayBankUrl } from "@/lib/qpay-tenant";
 
 export type PendingOrderPayment = {
@@ -27,6 +29,18 @@ export function QPayWidget({
   qpayConfigured: boolean;
   pending: PendingOrderPayment | null;
 }) {
+  // Шинэ pending үүсэх бүрд drawer-ийг автоматаар нээнэ (жишээ нь "QR
+  // үүсгэх"-ийг дарсны дараа), гэхдээ хэрэглэгч хаасан бол дахин зурагтаар
+  // онгойлгож болно ("Нээх" товч).
+  const [drawerOpen, setDrawerOpen] = useState(Boolean(pending));
+  const seenPaymentId = useRef<string | null>(pending?.id ?? null);
+  useEffect(() => {
+    if (pending && pending.id !== seenPaymentId.current) {
+      seenPaymentId.current = pending.id;
+      setDrawerOpen(true);
+    }
+  }, [pending]);
+
   if (!qpayConfigured) {
     return (
       <div className="text-xs text-[var(--oc-muted3)]">
@@ -41,10 +55,32 @@ export function QPayWidget({
     );
   }
 
-  if (pending) {
-    return <QRPanel orderId={orderId} pending={pending} />;
+  if (!pending) {
+    return <CreateButton orderId={orderId} />;
   }
-  return <CreateButton orderId={orderId} />;
+
+  return (
+    <>
+      <div className="rounded-lg border border-[var(--oc-line)] bg-[var(--oc-panel2)] px-3 py-2.5 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[11px] text-[var(--oc-muted3)]">Төлбөр хүлээгдэж байна</div>
+          <div className="font-plex-mono text-sm font-semibold text-[var(--oc-ink2)] tabular-nums">
+            {Number.parseFloat(pending.amount).toLocaleString("mn-MN")}₮
+          </div>
+        </div>
+        <Btn type="button" size="sm" onClick={() => setDrawerOpen(true)}>
+          QR нээх
+        </Btn>
+      </div>
+      <QPayDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        title="QPay-ээр төлөх"
+      >
+        <QRPanel pending={pending} onPaid={() => setDrawerOpen(false)} />
+      </QPayDrawer>
+    </>
+  );
 }
 
 function CreateButton({ orderId }: { orderId: string }) {
@@ -67,11 +103,11 @@ function CreateButton({ orderId }: { orderId: string }) {
 }
 
 function QRPanel({
-  orderId,
   pending,
+  onPaid,
 }: {
-  orderId: string;
   pending: PendingOrderPayment;
+  onPaid: () => void;
 }) {
   const [checking, setChecking] = useState(false);
   const [paid, setPaid] = useState(false);
@@ -90,7 +126,10 @@ function QRPanel({
         setPaid(true);
         stopRef.current = true;
         setMsg("Төлбөр амжилттай — засварын хуудас шинэчилнэ...");
-        setTimeout(() => window.location.reload(), 1500);
+        setTimeout(() => {
+          onPaid();
+          window.location.reload();
+        }, 1500);
       } else if (!res.ok && res.message) {
         setMsg(res.message);
       } else {
@@ -110,7 +149,7 @@ function QRPanel({
   }
 
   return (
-    <div className="flex flex-col items-center gap-3">
+    <div className="flex flex-col items-center gap-4">
       <div className="text-center text-xs text-[var(--oc-muted3)]">
         Үлдэгдэл:{" "}
         <span className="font-plex-mono text-[var(--oc-ink2)] font-semibold">
@@ -123,12 +162,12 @@ function QRPanel({
           ✓ Төлбөр амжилттай
         </div>
       ) : pending.qrImage ? (
-        <div className="bg-white p-2 rounded-lg">
+        <div className="bg-white p-3 rounded-lg">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={`data:image/png;base64,${pending.qrImage}`}
             alt="QPay QR"
-            className="w-40 h-40 object-contain"
+            className="w-48 h-48 object-contain"
           />
         </div>
       ) : (
@@ -136,32 +175,13 @@ function QRPanel({
       )}
 
       {pending.urls.length > 0 ? (
-        <div className="flex flex-wrap justify-center gap-1.5 w-full">
-          {pending.urls.map((bank) => (
-            <a
-              key={bank.link}
-              href={bank.link}
-              title={bank.name_mn || bank.name}
-              className="flex flex-col items-center gap-1 w-14 shrink-0 rounded-lg border border-[var(--oc-line2)] px-1 py-1.5 hover:border-[var(--oc-accent)]/50 hover:bg-[var(--oc-accent)]/[0.04] transition-colors"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={bank.logo}
-                alt={bank.name_mn || bank.name}
-                className="w-6 h-6 object-contain rounded shrink-0"
-              />
-              <span className="text-[9px] text-[var(--oc-muted3)] text-center leading-tight line-clamp-2">
-                {bank.name_mn || bank.name}
-              </span>
-            </a>
-          ))}
+        <div className="w-full">
+          <QPayBankGrid urls={pending.urls} />
         </div>
       ) : null}
 
       {msg ? (
-        <p className="text-[11px] text-[var(--oc-muted2)] text-center max-w-[16rem]">
-          {msg}
-        </p>
+        <p className="text-[11px] text-[var(--oc-muted2)] text-center">{msg}</p>
       ) : null}
 
       <div className="flex items-center gap-2">

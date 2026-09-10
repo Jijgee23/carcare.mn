@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 export type SelectOption = {
   value: string;
@@ -13,6 +14,12 @@ export type SelectOption = {
  * Hidden input-ээр form submission-д утга илгээнэ. Click-outside + ESC
  * хаагдана. Дотоод state ашиглах ч boldог (`value` prop-гүй үед) — энэ
  * тохиолдолд `defaultValue` ажиллана.
+ *
+ * Жагсаалтыг `document.body`-руу portal хийж `position: fixed`-ээр
+ * байрлуулна (button-ийн bounding rect-ээр тооцно) — эцэг element
+ * `overflow-hidden/auto` (жишээ нь modal.tsx-ийн scroll хийдэг content) байсан
+ * ч жагсаалт таслагдахгүй/нуугдахгүй байхын тулд (харах: notification-bell.tsx
+ * ижил зарчим).
  */
 export function Select({
   name,
@@ -46,22 +53,48 @@ export function Select({
   const value = isControlled ? (controlledValue as string) : internalValue;
 
   const [open, setOpen] = useState(false);
-  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(
+    null,
+  );
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const selected = options.find((o) => o.value === value);
+
+  function updatePosition() {
+    const el = btnRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setPos({ top: r.bottom + 4, left: r.left, width: r.width });
+  }
+
+  function toggle() {
+    if (disabled) return;
+    if (!open) updatePosition();
+    setOpen((p) => !p);
+  }
 
   useEffect(() => {
     if (!open) return;
     function onDocMouseDown(e: MouseEvent) {
-      if (!wrapperRef.current?.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (btnRef.current?.contains(t) || listRef.current?.contains(t)) return;
+      setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
     }
+    function onReflow() {
+      updatePosition();
+    }
     document.addEventListener("mousedown", onDocMouseDown);
     document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", onReflow);
+    window.addEventListener("scroll", onReflow, true);
     return () => {
       document.removeEventListener("mousedown", onDocMouseDown);
       document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", onReflow);
+      window.removeEventListener("scroll", onReflow, true);
     };
   }, [open]);
 
@@ -74,10 +107,7 @@ export function Select({
   const hasError = Boolean(error) || ariaInvalid;
 
   return (
-    <div
-      ref={wrapperRef}
-      style={{ position: "relative", width: "100%" }}
-    >
+    <div style={{ position: "relative", width: "100%" }}>
       {/* Hidden field carries value to FormData */}
       <input type="hidden" name={name} value={value} />
 
@@ -85,9 +115,10 @@ export function Select({
           нэг стандарт хэлбэр (харах: globals.css). Зөвхөн flex layout + сонгогдоогүй
           үеийн бүдэг өнгийг энд нэмнэ. */}
       <button
+        ref={btnRef}
         type="button"
         id={id}
-        onClick={() => !disabled && setOpen((p) => !p)}
+        onClick={toggle}
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -132,45 +163,50 @@ export function Select({
         </svg>
       </button>
 
-      {open ? (
-        <div
-          role="listbox"
-          style={{
-            position: "absolute",
-            zIndex: 50,
-            top: "100%",
-            left: 0,
-            right: 0,
-            marginTop: "0.25rem",
-            background: "var(--popover)",
-            border: "1px solid var(--input-border)",
-            borderRadius: "0.625rem",
-            boxShadow: "0 20px 50px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0,0,0,0.4)",
-            overflow: "hidden",
-            padding: "0.25rem 0",
-            maxHeight: "16rem",
-            overflowY: "auto",
-          }}
-        >
-          {!required ? (
-            <SelectOptionRow
-              label={placeholder}
-              active={value === ""}
-              onClick={() => pick("")}
-              muted
-            />
-          ) : null}
-          {options.map((o) => (
-            <SelectOptionRow
-              key={o.value}
-              label={o.label}
-              hint={o.hint}
-              active={o.value === value}
-              onClick={() => pick(o.value)}
-            />
-          ))}
-        </div>
-      ) : null}
+      {open && pos && typeof document !== "undefined"
+        ? createPortal(
+            <div className="landing-ops">
+              <div
+                ref={listRef}
+                role="listbox"
+                style={{
+                  position: "fixed",
+                  zIndex: 200,
+                  top: pos.top,
+                  left: pos.left,
+                  width: pos.width,
+                  background: "var(--popover)",
+                  border: "1px solid var(--input-border)",
+                  borderRadius: "0.625rem",
+                  boxShadow: "0 20px 50px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0,0,0,0.4)",
+                  overflow: "hidden",
+                  padding: "0.25rem 0",
+                  maxHeight: "16rem",
+                  overflowY: "auto",
+                }}
+              >
+                {!required ? (
+                  <SelectOptionRow
+                    label={placeholder}
+                    active={value === ""}
+                    onClick={() => pick("")}
+                    muted
+                  />
+                ) : null}
+                {options.map((o) => (
+                  <SelectOptionRow
+                    key={o.value}
+                    label={o.label}
+                    hint={o.hint}
+                    active={o.value === value}
+                    onClick={() => pick(o.value)}
+                  />
+                ))}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

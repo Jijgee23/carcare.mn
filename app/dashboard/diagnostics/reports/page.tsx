@@ -55,7 +55,7 @@ export default async function ReportsListPage({
         vehicle: { select: { plate: true, make: true, model: true } },
         branch: { select: { name: true } },
         filledBy: { select: { firstName: true, lastName: true } },
-        order: { select: { number: true } },
+        order: { select: { number: true, status: true } },
       },
     }),
     prisma.diagnosticReport.count({ where }),
@@ -175,7 +175,18 @@ export default async function ReportsListPage({
                           : "—"}
                       </td>
                       <td className="px-5 py-3 font-plex-mono text-sm text-[var(--oc-muted2)]">
-                        {r.order ? `#${r.order.number}` : "—"}
+                        {r.order ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            #{r.order.number}
+                            {r.order.status === "CANCELLED" ? (
+                              <span className="font-sans text-[9px] px-1.5 py-0.5 rounded-full bg-white/[0.06] text-[var(--oc-muted2)] border border-[var(--oc-line2)] light:bg-zinc-100 light:border-zinc-300 light:text-zinc-600">
+                                Цуцлагдсан
+                              </span>
+                            ) : null}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
                       </td>
                     </ClickableRow>
                   );

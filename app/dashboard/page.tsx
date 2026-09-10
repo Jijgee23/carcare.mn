@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { userRoleLabel, workingBranchScopeId } from "@/lib/auth/roles";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/app/generated/prisma/client";
 import {
   ORDER_STATUS_BADGE,
   ORDER_STATUS_LABEL,
@@ -76,6 +77,8 @@ export default async function DashboardPage({
     branchDates,
     employeeDates,
     recentlyUpdatedOrders,
+    postpaidVehicleCount,
+    postpaidSums,
   ] = await Promise.all([
     prisma.branch.count({ where: { tenantId: user.tenantId } }),
     prisma.user.count({ where: { tenantId: user.tenantId } }),
@@ -161,8 +164,25 @@ export default async function DashboardPage({
         items: { select: { status: true } },
       },
     }),
+    prisma.tenantVehicle.count({
+      where: { tenantId: user.tenantId, isPostpaid: true },
+    }),
+    prisma.serviceOrder.aggregate({
+      where: {
+        tenantId: user.tenantId,
+        ...orderBranchFilter,
+        isPostpaid: true,
+        status: { not: "CANCELLED" },
+      },
+      _sum: { totalAmount: true, paidAmount: true },
+    }),
   ]);
   const activeSub = resolveActiveSubscription(subscriptions);
+
+  // Дараа төлбөрт (гэрээт) машинуудын төлөгдөөгүй үлдэгдэл — авлага.
+  const receivable = new Prisma.Decimal(
+    postpaidSums._sum.totalAmount ?? 0,
+  ).minus(new Prisma.Decimal(postpaidSums._sum.paidAmount ?? 0));
 
   const income = buildIncomeSeries(incomeOrders, incomeRange);
   const incomeUp = income.changePct == null ? true : income.changePct >= 0;
@@ -175,6 +195,11 @@ export default async function DashboardPage({
   const branchTrend = dailyTrend(branchDates.map((b) => b.createdAt));
   const employeeTrend = dailyTrend(employeeDates.map((e) => e.createdAt));
 
+  // Статистик карт хэдэн ширхэг байгаагаас хамааруулж xl цонхон дээр яг тэр
+  // тоогоор багана үүсгэнэ — ингэснээр (Авлага карт нэмэгдсэн ч) бүгд нэг
+  // мөрөнд багтана, сүүлчийн мөр дутуу (1 картаар) үлдэхгүй.
+  const statCardCount = 6 + (postpaidVehicleCount > 0 ? 1 : 0);
+
   return (
     <div className="p-4 sm:p-6">
       <div className="mb-6">
@@ -186,7 +211,11 @@ export default async function DashboardPage({
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-line)] lg:grid-cols-3 xl:grid-cols-6">
+      <div
+        className={`grid grid-cols-2 gap-px overflow-hidden rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-line)] lg:grid-cols-3 ${
+          statCardCount === 7 ? "xl:grid-cols-7" : "xl:grid-cols-6"
+        }`}
+      >
         <StatCard
           label="Идэвхтэй засварын хуудас"
           value={openOrderCount}
@@ -223,6 +252,14 @@ export default async function DashboardPage({
           href="/dashboard/employees"
           trend={employeeTrend}
         />
+        {postpaidVehicleCount > 0 ? (
+          <StatCard
+            label="Авлага (дараа төлбөрт)"
+            value={formatTugrik(receivable.toString())}
+            href="/dashboard/orders/postpaid"
+            tone={receivable.gt(0) ? "warn" : "ok"}
+          />
+        ) : null}
       </div>
 
       <section className="mt-6 rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-4 sm:p-6 lg:p-8">
@@ -468,16 +505,24 @@ function StatCard({
   value,
   href,
   trend,
+  tone,
 }: {
   label: string;
-  value: number;
+  value: number | string;
   href?: string;
   trend?: Trend;
+  tone?: "warn" | "ok";
 }) {
   const pct = trend?.changePct ?? null;
   // Чиглэл: өссөн/буурсан/өөрчлөлтгүй — өнгө, сумыг бодит утгаар ялгана.
   const dir = pct == null ? null : pct > 0 ? "up" : pct < 0 ? "down" : "flat";
   const up = pct == null ? true : pct >= 0;
+  const toneClass =
+    tone === "warn"
+      ? "text-amber-400 light:text-amber-600"
+      : tone === "ok"
+        ? "text-emerald-400 light:text-emerald-600"
+        : "text-[var(--oc-ink)]";
   const inner = (
     <div className="group bg-[var(--oc-panel)] hover:bg-[var(--oc-panel2)] transition-colors p-3 sm:p-4 flex flex-col gap-2.5 sm:gap-3 h-full">
       <div className="flex items-start justify-between gap-2">
@@ -485,8 +530,8 @@ function StatCard({
           <div className="font-plex-mono text-[10.5px] uppercase tracking-[0.1em] text-[var(--oc-muted3)] truncate">
             {label}
           </div>
-          <div className="font-plex-mono text-xl sm:text-2xl font-semibold mt-1 tabular-nums text-[var(--oc-ink)]">
-            {value.toLocaleString("mn-MN")}
+          <div className={`font-plex-mono text-xl sm:text-2xl font-semibold mt-1 tabular-nums ${toneClass}`}>
+            {typeof value === "number" ? value.toLocaleString("mn-MN") : value}
           </div>
         </div>
         {pct != null ? (

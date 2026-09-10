@@ -184,10 +184,26 @@ export async function PATCH(
       : { disconnect: true };
   }
 
-  const updated = await prisma.serviceOrder.update({
-    where: { id },
-    data: updates,
-    select: ORDER_DETAIL_SELECT,
+  const updated = await prisma.$transaction(async (tx) => {
+    const u = await tx.serviceOrder.update({
+      where: { id },
+      data: updates,
+      select: ORDER_DETAIL_SELECT,
+    });
+    // Захиалгыг бүхэлд нь цуцлахад дотор нь бөглөгдсөн (COMPLETED) байсан
+    // мөр — тэр дундаа бөглөгдсөн оношилгооны хуудас — идэвхтэй хэвээр
+    // үлдэж, дуусаагүй мэт харагдахаас сэргийлж бүх мөрийг мөн цуцална.
+    if (statusChangedTo === "CANCELLED") {
+      await tx.serviceItem.updateMany({
+        where: { orderId: id, status: { not: "CANCELLED" } },
+        data: {
+          status: "CANCELLED",
+          cancelledAt: new Date(),
+          cancelledById: auth.user.id,
+        },
+      });
+    }
+    return u;
   });
 
   if (statusChangedTo) {

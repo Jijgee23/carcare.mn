@@ -13,13 +13,13 @@ import { Select } from "@/app/_components/select";
 import { customerLabel } from "@/lib/customers";
 import { DurationHmInput } from "@/app/dashboard/services/duration-input";
 import {
+  CreateCustomerModal,
   type CreatedCustomer,
-  InlineCustomerForm,
-} from "./inline-customer-form";
+} from "@/app/dashboard/customers/create-customer-modal";
 import {
+  CreateVehicleModal,
   type CreatedVehicle,
-  InlineVehicleForm,
-} from "./inline-vehicle-form";
+} from "@/app/dashboard/vehicles/create-vehicle-modal";
 
 type Initial = {
   id?: string;
@@ -229,6 +229,7 @@ export function OrderForm({
             onChange={onBranchChange}
             error={fe.branchId}
             options={branches.map((b) => ({ value: b.id, label: b.name }))}
+            disabled={branches.length <= 1}
           />
         </Field>
 
@@ -384,20 +385,19 @@ export function OrderForm({
         </div>
       ) : null}
 
-      {showCustomerForm ? (
-        <InlineCustomerForm
-          onCreated={onCustomerCreated}
-          onCancel={() => setShowCustomerForm(false)}
-        />
-      ) : null}
+      <CreateCustomerModal
+        open={showCustomerForm}
+        onClose={() => setShowCustomerForm(false)}
+        onCreated={onCustomerCreated}
+      />
 
-      {showVehicleForm && customerId ? (
-        <InlineVehicleForm
-          customerId={customerId}
-          onCreated={onVehicleCreated}
-          onCancel={() => setShowVehicleForm(false)}
-        />
-      ) : null}
+      <CreateVehicleModal
+        open={showVehicleForm}
+        onClose={() => setShowVehicleForm(false)}
+        onCreated={onVehicleCreated}
+        customers={customers}
+        defaultCustomerId={customerId}
+      />
 
       <Field label="Тэмдэглэл" htmlFor="notes" hint="заавал биш" error={fe.notes} className="max-w-2xl">
         <textarea

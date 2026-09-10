@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { deleteAccountVehicle } from "@/app/_actions/account-vehicles";
-import { TagChip } from "@/app/_components/landing-ops-ui";
 import { ConfirmForm } from "@/app/_components/confirm-form";
+import { TagChip } from "@/app/_components/landing-ops-ui";
 import { requireAccount } from "@/lib/auth/account";
 import { prisma } from "@/lib/prisma";
 import { AddAccountVehicle } from "../add-account-vehicle";
@@ -170,7 +170,7 @@ export default async function AccountVehiclesPage() {
                 {v.removable ? (
                   <ConfirmForm
                     action={deleteAccountVehicle}
-                    message={`\"${v.plate}\" машиныг устгах уу?`}
+                    message={`"${v.plate}" машиныг устгах уу?`}
                     className="shrink-0"
                   >
                     <input type="hidden" name="id" value={v.id} />
