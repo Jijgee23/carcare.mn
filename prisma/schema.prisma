@@ -37,6 +37,7 @@ model Tenant {
   tenantVehicles       TenantVehicle[]
   services             Service[]
   serviceOrders        ServiceOrder[]
+  serviceOrderCategories ServiceOrderCategory[]
   diagnosticTemplates  DiagnosticTemplate[]
   diagnosticReports    DiagnosticReport[]
   units                Unit[]
@@ -454,6 +455,7 @@ model ServiceOrder {
   assignedTo   User?   @relation("AssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
 
   items       ServiceItem[]
+  categories  ServiceOrderCategory[]
   reports     DiagnosticReport[]
   payments    OrderPayment[]
   appointment Appointment?
@@ -719,6 +721,7 @@ model Category {
   diagnosticTemplates DiagnosticTemplate[]
   appointments        Appointment[]
   appointmentLinks    AppointmentCategory[]    // олон-ангилалт захиалгын M2M холбоос
+  orderLinks          ServiceOrderCategory[] // засварын хуудсан дээрх snapshot холбоос
   branchDurations     BranchCategoryDuration[] // салбар-тусгай хугацааны override-ууд
 
   createdAt DateTime @default(now())
@@ -744,6 +747,28 @@ model AppointmentCategory {
   createdAt DateTime @default(now())
 
   @@id([appointmentId, categoryId])
+  @@index([categoryId])
+}
+
+// --- ServiceOrderCategory (засварын хуудасны хүсэлтийн ангиллын snapshot) --
+// Appointment-аас засварын хуудас үүсгэхэд хэрэглэгчийн сонгосон ангиллыг
+// billable ServiceItem үүсгэлгүйгээр хадгална. `name` нь тухайн үеийн нэрийн
+// snapshot тул ангиллын нэр дараа өөрчлөгдсөн ч захиалагчийн хүсэлт түүхэнд
+// хэвээр үлдэнэ. Ажилтан бодит ажил/сэлбэг/оношилгоог ServiceItem-ээр өөрөө
+// нэмж, хасаж, үнэ тооцно.
+model ServiceOrderCategory {
+  id         String       @id @default(cuid())
+  tenantId   String
+  tenant     Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orderId    String
+  order      ServiceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   Category     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  name       String
+  createdAt  DateTime     @default(now())
+
+  @@unique([orderId, categoryId])
+  @@index([tenantId, orderId])
   @@index([categoryId])
 }
 

@@ -32,6 +32,13 @@ export type BranchTimePickerHandle = {
  * шууд (event handler-аас) дуудаж, огноог хэвээр үлдээгээд зөвхөн боломжит
  * цагийг дахин татна — booking v2: сонгосон ангиллуудын нийт хугацаа
  * өөрчлөгдөж болно. (Effect дотор шууд setState дуудахаас зайлсхийв.)
+ *
+ * Сонгосон өдөр/боломжит хугацааг `onDateChange`/`onAvailabilityChange`-ээр
+ * гаднаа (жишээ нь: appointment-form.tsx-ийн бодит хуваарийн preview grid,
+ * order-form.tsx-ийн адил зарчмаар) мэдээлнэ — энэ компонент өөрөө grid
+ * харуулахгүй, зөвхөн сонголтын логикыг эзэмшинэ; харагдацын байршлыг эцэг
+ * шийднэ (жишээ нь: календарын Өдөр харагдацтай адил бүтэн өргөнөөр дээд
+ * хэсэгт).
  */
 export const BranchTimePicker = forwardRef<
   BranchTimePickerHandle,
@@ -54,9 +61,31 @@ export const BranchTimePicker = forwardRef<
     // цагуудын дунд яг таарах слот байвал л автоматаар сонгоно.
     initialDate?: string;
     initialIso?: string;
+    // Сонгосон огноо ("YYYY-MM-DD") болон тухайн өдрийн боломжит
+    // мэдээллийг (тухайлбал нийт үргэлжлэх хугацаа) гаднаа мэдээлнэ.
+    onDateChange?: (dateStr: string) => void;
+    onAvailabilityChange?: (availability: DayAvailability | null) => void;
+    // Зөвхөн ажилтны (утсаар) урсгалд зориулав: дүүрсэн (капацитигаас
+    // давсан) цагийг ч сонгох боломжтой болгоно — өнгөрсөн цаг л хатуу
+    // хориотой хэвээр. Онлайн хэрэглэгчийн урсгалд (энэ prop ирээгүй бол,
+    // анхдагчаар false) хамаарахгүй, хатуу хориглол хэвээр.
+    allowOverbook?: boolean;
   }
 >(function BranchTimePicker(
-  { branchId, categoryIds = [], openWeekdays, schedule, value, onChange, error, initialDate, initialIso },
+  {
+    branchId,
+    categoryIds = [],
+    openWeekdays,
+    schedule,
+    value,
+    onChange,
+    error,
+    initialDate,
+    initialIso,
+    onDateChange,
+    onAvailabilityChange,
+    allowOverbook = false,
+  },
   ref,
 ) {
   const [date, setDate] = useState(initialDate ?? "");
@@ -65,23 +94,29 @@ export const BranchTimePicker = forwardRef<
   const reqIdRef = useRef(0);
   const today = todayKey();
 
+  function applyAvailability(res: DayAvailability | null) {
+    setAvailability(res);
+    onAvailabilityChange?.(res);
+  }
+
   // Эхний ачаалалт: хуваарийн хуудаснаас урьдчилсан огноотой ирсэн бол
   // тухайн өдрийн боломжит цагийг шууд татаж, яг таарах слот байвал сонгоно.
   useEffect(() => {
     if (!initialDate || !branchId) return;
+    onDateChange?.(initialDate);
     const id = ++reqIdRef.current;
     setLoadingSlots(true);
     getBranchDaySlots(branchId, initialDate, categoryIds)
       .then((res) => {
         if (id !== reqIdRef.current) return;
-        setAvailability(res);
+        applyAvailability(res);
         if (initialIso) {
           const match = res.slots.find((s) => s.iso === initialIso && s.available);
           if (match) onChange(match.iso);
         }
       })
       .catch(() => {
-        if (id === reqIdRef.current) setAvailability(null);
+        if (id === reqIdRef.current) applyAvailability(null);
       })
       .finally(() => {
         if (id === reqIdRef.current) setLoadingSlots(false);
@@ -92,24 +127,25 @@ export const BranchTimePicker = forwardRef<
 
   async function loadSlots(d: string) {
     if (!branchId || !d) {
-      setAvailability(null);
+      applyAvailability(null);
       return;
     }
     const id = ++reqIdRef.current;
     setLoadingSlots(true);
     try {
       const res = await getBranchDaySlots(branchId, d, categoryIds);
-      if (id === reqIdRef.current) setAvailability(res);
+      if (id === reqIdRef.current) applyAvailability(res);
     } catch {
-      if (id === reqIdRef.current) setAvailability(null);
+      if (id === reqIdRef.current) applyAvailability(null);
     } finally {
       if (id === reqIdRef.current) setLoadingSlots(false);
     }
   }
 
-  function onDateChange(d: string) {
+  function handleCalendarChange(d: string) {
     setDate(d);
     onChange(""); // өдөр солиход сонгосон цагийг цэвэрлэнэ
+    onDateChange?.(d);
     void loadSlots(d);
   }
 
@@ -121,10 +157,10 @@ export const BranchTimePicker = forwardRef<
       setLoadingSlots(true);
       getBranchDaySlots(branchId, date, nextCategoryIds)
         .then((res) => {
-          if (id === reqIdRef.current) setAvailability(res);
+          if (id === reqIdRef.current) applyAvailability(res);
         })
         .catch(() => {
-          if (id === reqIdRef.current) setAvailability(null);
+          if (id === reqIdRef.current) applyAvailability(null);
         })
         .finally(() => {
           if (id === reqIdRef.current) setLoadingSlots(false);
@@ -141,7 +177,7 @@ export const BranchTimePicker = forwardRef<
           <BookingCalendar
             value={date}
             today={today}
-            onChange={onDateChange}
+            onChange={handleCalendarChange}
             openWeekdays={openWeekdays}
             schedule={schedule}
           />
@@ -172,19 +208,36 @@ export const BranchTimePicker = forwardRef<
               // lib/appointment-slots.ts) — өнгөрсөн цагийг захиалгатай
               // цагаас ялгаж харуулахын тулд энд тусад нь шалгана.
               const isPast = new Date(slot.iso).getTime() <= Date.now();
+              // Дүүрсэн ч сонгож болох (зөвхөн ажилтны урсгалд, өнгөрсөн биш):
+              // хатуу хориглохгүй, харин тодруулж (амбер) харуулна — сервер
+              // талд baталгаажуулах давхар алхам шаардана.
+              const overbookable = allowOverbook && !slot.available && !isPast;
+              const disabled = isPast || (!slot.available && !overbookable);
               return (
                 <button
                   key={slot.iso}
                   type="button"
-                  disabled={!slot.available}
+                  disabled={disabled}
                   onClick={() => onChange(slot.iso)}
-                  title={!slot.available ? (isPast ? "Өнгөрсөн" : "Захиалгатай") : undefined}
+                  title={
+                    isPast
+                      ? "Өнгөрсөн"
+                      : overbookable
+                        ? "Захиалгатай — сонговол баталгаажуулах хэрэгтэй"
+                        : !slot.available
+                          ? "Захиалгатай"
+                          : undefined
+                  }
                   className={`px-2 py-2 rounded-lg text-sm tabular-nums border transition-colors ${
                     selected
-                      ? "bg-violet-600 border-violet-500 text-white font-semibold"
+                      ? overbookable
+                        ? "bg-amber-600 border-amber-500 text-white font-semibold"
+                        : "bg-violet-600 border-violet-500 text-white font-semibold"
                       : slot.available
                         ? "border-white/[0.12] bg-white/[0.04] text-white/80 hover:border-violet-500/40 hover:bg-violet-500/10"
-                        : "border-white/[0.05] bg-white/[0.02] text-white/25 line-through cursor-not-allowed"
+                        : overbookable
+                          ? "border-amber-500/40 bg-amber-500/10 text-amber-300 hover:border-amber-500/60 hover:bg-amber-500/20"
+                          : "border-white/[0.05] bg-white/[0.02] text-white/25 line-through cursor-not-allowed"
                   }`}
                 >
                   {slot.time}

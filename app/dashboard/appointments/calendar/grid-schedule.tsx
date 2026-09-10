@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import type { DayRow } from "./day-rows";
 import { OrderDetailPanel } from "./order-detail-panel";
+import { assignLanes, pctOf, hourMarksBetween } from "@/lib/schedule-grid-layout";
 
 const SLOT_MINUTES = 15; // хоосон зайг дарахад цаг энэ нарийвчлалаар бүхэлдэнэ
 
@@ -32,28 +33,6 @@ function fmtUbTime(ms: number): string {
 
 const ROW_HEIGHT = 46; // нэг давхаргын (sub-lane) өндөр, px
 const MIN_BLOCK_WIDTH_PCT = 2.5; // маш богино ажлыг ч дор хаяж хараагдахуйц өргөнтэй байлгана
-
-type PositionedRow = DayRow & { lane: number };
-
-// Давхцаж буй мөрүүдийг дэд-эгнээнд (sub-lane) хуваарилна — нэг байрлалд
-// (branch-д тусдаа бокс/лифт байхгүй тул) хэд хэдэн ажил зэрэг өрнөж болно,
-// тэдгээрийг нуухгүй, зэрэгцүүлж харуулахын тулд greedy interval-scheduling.
-function assignLanes(rows: DayRow[]): PositionedRow[] {
-  const sorted = [...rows].sort((a, b) => a.startMs - b.startMs);
-  const laneEndMs: number[] = [];
-  const positioned: PositionedRow[] = [];
-  for (const row of sorted) {
-    let lane = laneEndMs.findIndex((end) => end <= row.startMs);
-    if (lane === -1) {
-      lane = laneEndMs.length;
-      laneEndMs.push(row.endMs);
-    } else {
-      laneEndMs[lane] = row.endMs;
-    }
-    positioned.push({ ...row, lane });
-  }
-  return positioned;
-}
 
 export function GridSchedule({
   rows,
@@ -92,18 +71,12 @@ export function GridSchedule({
   const showPastFill = pastFillEndMs > axisStartMs;
 
   // Босоо саарал шугам харуулах цагийн тэмдэглэгээ — цаг тутам.
-  const hourMarks = useMemo(() => {
-    const marks: number[] = [];
-    const start = new Date(axisStartMs);
-    start.setMinutes(0, 0, 0);
-    for (let t = start.getTime(); t <= axisEndMs; t += 60 * 60 * 1000) {
-      if (t >= axisStartMs) marks.push(t);
-    }
-    return marks;
-  }, [axisStartMs, axisEndMs]);
+  const hourMarks = useMemo(
+    () => hourMarksBetween(axisStartMs, axisEndMs),
+    [axisStartMs, axisEndMs],
+  );
 
-  const pct = (ms: number) =>
-    Math.min(100, Math.max(0, ((ms - axisStartMs) / axisSpan) * 100));
+  const pct = (ms: number) => pctOf(ms, axisStartMs, axisSpan);
 
   const selected = rows.find((r) => r.key === selectedKey) ?? null;
 

@@ -1,14 +1,22 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import {
   type AppointmentActionState,
   registerAppointmentByStaff,
 } from "@/app/_actions/appointments";
+import {
+  getBranchDaySchedulePreview,
+  type BranchDaySchedulePreview,
+} from "@/app/_actions/schedule-preview";
 import { Field, FormError } from "@/app/_components/auth-shell";
-import { BranchTimePicker } from "@/app/_components/branch-time-picker";
+import {
+  BranchTimePicker,
+  type BranchTimePickerHandle,
+} from "@/app/_components/branch-time-picker";
 import { Btn, BtnLink, SquareAddButton } from "@/app/_components/landing-ops-ui";
 import { Select } from "@/app/_components/select";
+import { SchedulePreviewGrid } from "@/app/_components/schedule-preview-grid";
 import {
   CreateCustomerModal,
   type CreatedCustomer,
@@ -64,9 +72,48 @@ export function AppointmentForm({
   const [customerId, setCustomerId] = useState("");
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [selectedIso, setSelectedIso] = useState("");
+  // Дүүрсэн цагийг ажилтан зөвхөн баталгаажуулсны дараа бүртгэж болно —
+  // reviseExpectedFinishAction/order-form.tsx-ийн адил "зөөлөн анхааруулга,
+  // хатуу хориглол биш" зарчим (COWORK.md-г үз). Цаг солигдмогц дахин
+  // баталгаажуулах шаардлагатай тул шинэ сонголт бүрт цэвэрлэнэ.
+  const [confirmArmed, setConfirmArmed] = useState(false);
+  const [prevState, setPrevState] = useState<AppointmentActionState>(null);
+  if (state !== prevState) {
+    setPrevState(state);
+    setConfirmArmed(Boolean(state?.fieldErrors?.confirmNeeded));
+  }
   const initialDate = initialScheduledAt ? toLocalDateKey(initialScheduledAt) : undefined;
   // Booking v2: олон ангилал сонгож болно (customer-ийн урсгалтай адил).
   const [categoryIds, setCategoryIds] = useState<string[]>([]);
+  const timePickerRef = useRef<BranchTimePickerHandle>(null);
+
+  // Сонгосон өдөр + тухайн өдрийн нийт үргэлжлэх хугацаа (BranchTimePicker-ээс
+  // мэдээлэгдэнэ) — доод дахь бодит хуваарийн preview grid-д зориулав.
+  const [selectedDateKey, setSelectedDateKey] = useState(initialDate ?? "");
+  const [durationMinutes, setDurationMinutes] = useState<number | null>(null);
+  const [preview, setPreview] = useState<BranchDaySchedulePreview | null>(null);
+  const previewReqIdRef = useRef(0);
+
+  useEffect(() => {
+    if (!branchId || !selectedDateKey) return;
+    const id = ++previewReqIdRef.current;
+    getBranchDaySchedulePreview(branchId, selectedDateKey)
+      .then((res) => {
+        if (id === previewReqIdRef.current) setPreview(res);
+      })
+      .catch(() => {
+        if (id === previewReqIdRef.current) setPreview(null);
+      });
+  }, [branchId, selectedDateKey]);
+
+  // Одоо бөглөж буй цаг захиалгын "ghost" блок — сонголт хийгээгүй бол алга.
+  const ghost = useMemo(() => {
+    if (!selectedIso) return null;
+    const startMs = new Date(selectedIso).getTime();
+    if (!Number.isFinite(startMs)) return null;
+    const minutes = durationMinutes && durationMinutes > 0 ? durationMinutes : 30;
+    return { startMs, endMs: startMs + minutes * 60000, label: "Энэ цаг захиалга" };
+  }, [selectedIso, durationMinutes]);
 
   const fe = state?.fieldErrors ?? {};
   const selectedBranch = branches.find((b) => b.id === branchId);
@@ -82,12 +129,22 @@ export function AppointmentForm({
     setBranchId(v);
     setSelectedIso("");
     setCategoryIds([]);
+    setSelectedDateKey("");
+    setDurationMinutes(null);
+    setPreview(null);
+  }
+
+  function onTimeChange(iso: string) {
+    setSelectedIso(iso);
+    setConfirmArmed(false);
   }
 
   function toggleCategory(id: string, checked: boolean) {
-    setCategoryIds((prev) =>
-      checked ? [...prev, id] : prev.filter((x) => x !== id),
-    );
+    const next = checked
+      ? [...categoryIds, id]
+      : categoryIds.filter((x) => x !== id);
+    setCategoryIds(next);
+    timePickerRef.current?.reload(next);
   }
 
   function onCustomerCreated(c: CreatedCustomer) {
@@ -103,12 +160,33 @@ export function AppointmentForm({
       className="flex flex-col gap-5"
       noValidate
     >
-      <FormError message={state?.message && !state.ok ? state.message : undefined} />
+      <FormError
+        message={
+          state?.message && !state.ok && !state.fieldErrors?.confirmNeeded
+            ? state.message
+            : undefined
+        }
+      />
       <input type="hidden" name="requestedAt" value={selectedIso} />
+      <input type="hidden" name="confirmed" value={confirmArmed ? "true" : ""} />
       {next ? <input type="hidden" name="next" value={next} /> : null}
       {categoryIds.map((id) => (
         <input key={id} type="hidden" name="categoryIds" value={id} />
       ))}
+
+      {/* Тухайн өдрийн бодит хуваарь — календарын Өдөр харагдацтай адил
+          дээд хэсэгт, бүтэн өргөнөөр (сонгосон салбар/өдрөөс хамааран). */}
+      {branchId && selectedDateKey && preview ? (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-white/70">Өдрийн хуваарь</span>
+          <SchedulePreviewGrid
+            rows={preview.rows}
+            axisStartMs={preview.axisStartMs}
+            axisEndMs={preview.axisEndMs}
+            ghost={ghost}
+          />
+        </div>
+      ) : null}
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 items-start">
         {/* Зүүн багана: салбар, үйлчлүүлэгч, тэмдэглэл */}
@@ -209,22 +287,33 @@ export function AppointmentForm({
         {/* Дунд + баруун багана: календар | боломжит цаг */}
         <BranchTimePicker
           key={branchId || "none"}
+          ref={timePickerRef}
           branchId={branchId}
+          categoryIds={categoryIds}
           openWeekdays={selectedBranch?.openWeekdays}
           value={selectedIso}
-          onChange={setSelectedIso}
+          onChange={onTimeChange}
           error={fe.requestedAt}
           initialDate={initialDate}
           initialIso={initialScheduledAt}
+          onDateChange={setSelectedDateKey}
+          onAvailabilityChange={(a) => setDurationMinutes(a?.durationMinutes ?? null)}
+          allowOverbook
         />
       </div>
+
+      {confirmArmed ? (
+        <p className="text-sm text-amber-400 light:text-amber-700">
+          {state?.message ?? "Энэ цаг дүүрсэн байна."}
+        </p>
+      ) : null}
 
       <div className="flex gap-2 pt-3 border-t border-[var(--oc-line2)]">
         <BtnLink href={backHref} variant="ghost">
           ← Буцах
         </BtnLink>
         <Btn type="submit" disabled={pending || !selectedIso}>
-          {pending ? "..." : "Цаг бүртгэх"}
+          {pending ? "..." : confirmArmed ? "Тийм, бүртгэх" : "Цаг бүртгэх"}
         </Btn>
       </div>
     </form>

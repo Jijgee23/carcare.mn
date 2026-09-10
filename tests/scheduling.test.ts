@@ -192,3 +192,52 @@ test("invalid order interval is surfaced and does not occupy the rest of the day
   assert.deepEqual(result.intervals, []);
   assert.ok(result.issues.some((issue) => issue.reason === "invalid-interval"));
 });
+
+test("an unpaid PENDING appointment past the 15-minute window releases its slot and drops out of the day calendar entirely", () => {
+  const result = buildBranchSchedule({
+    ...scope,
+    orders: [],
+    appointments: [appointment({
+      status: "PENDING", feeAmount: 5000, payment: null,
+      createdAt: new Date(at("10:30").getTime() - 16 * 60000),
+    })],
+    now: at("10:30"), rangeStart: at("09:00"), rangeEnd: at("18:00"),
+  });
+  assert.deepEqual(result.intervals, []);
+  assert.ok(result.issues.some((issue) => issue.reason === "payment-expired"));
+});
+test("a PENDING appointment still inside the payment window keeps its slot", () => {
+  const result = buildBranchSchedule({
+    ...scope,
+    orders: [],
+    appointments: [appointment({
+      status: "PENDING", feeAmount: 5000, payment: null,
+      createdAt: new Date(at("10:30").getTime() - 5 * 60000),
+    })],
+    now: at("10:30"), rangeStart: at("09:00"), rangeEnd: at("18:00"),
+  });
+  assert.equal(result.intervals.length, 1);
+});
+test("a paid appointment never expires regardless of age", () => {
+  const result = buildBranchSchedule({
+    ...scope,
+    orders: [],
+    appointments: [appointment({
+      status: "PENDING", feeAmount: 5000, payment: { status: "PAID" },
+      createdAt: new Date(at("10:30").getTime() - 60 * 60000),
+    })],
+    now: at("10:30"), rangeStart: at("09:00"), rangeEnd: at("18:00"),
+  });
+  assert.equal(result.intervals.length, 1);
+});
+test("live availability check also releases an expired unpaid appointment's slot", async () => {
+  const expiredRow = {
+    requestedAt: new Date(2030, 0, 7, 10), categoryId: null, categories: [],
+    status: "PENDING", feeAmount: 5000, feeUnderpaidAmount: null, payment: null,
+    createdAt: new Date(new Date(2030, 0, 7, 10).getTime() - 20 * 60000),
+  };
+  assert.equal(
+    await isSlotAvailable(client([expiredRow]), "branch", new Date(2030, 0, 7, 10), 60),
+    true,
+  );
+});

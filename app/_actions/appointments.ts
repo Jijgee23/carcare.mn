@@ -26,7 +26,7 @@ import { createNotification, notifyStaff } from "@/lib/notifications";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { isFeatureEnabled } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
-import { reserveAppointment, ReservationError } from "@/lib/appointment-reservations";
+import { reserveAppointment, ReservationError, ReservationConflictError } from "@/lib/appointment-reservations";
 import { bookingDateKey, bookingDayBounds } from "@/lib/booking-time";
 import { resolveEffectiveSchedule } from "@/lib/branch-effective-schedule";
 import { branchScheduleForDateSelect } from "@/lib/branch-effective-schedule-server";
@@ -113,7 +113,12 @@ export async function getBranchDaySlots(
     now: new Date(),
     appointmentMinutes: resolved?.totalMinutes,
   });
-  return { ...availability, scheduleSource: schedule.source, scheduleLabel: schedule.label };
+  return {
+    ...availability,
+    scheduleSource: schedule.source,
+    scheduleLabel: schedule.label,
+    durationMinutes: resolved?.totalMinutes || slotMin,
+  };
 }
 
 // --- Хэрэглэгчийн тал (Account) -------------------------------------------
@@ -530,8 +535,12 @@ export async function registerAppointmentByStaff(
     return { ok: false, fieldErrors: { customerId: "Үйлчлүүлэгч олдсонгүй." } };
   }
 
-  // Staff and customer reservations share category, duration and capacity checks.
+  // Staff and customer reservations share category, duration and capacity checks —
+  // staff alone may override a capacity-full slot after an explicit confirm
+  // (see ReservationConflictError; a phone-in booking is a real physical
+  // exception a staff member present at the branch can vouch for).
   const requestedCategoryIds = [...new Set(formData.getAll("categoryIds").map(String).filter(Boolean))];
+  const confirmed = s(formData, "confirmed") === "true";
   let created;
   try {
     created = await reserveAppointment({
@@ -542,8 +551,12 @@ export async function registerAppointmentByStaff(
       // хэрэглэгчийн тайлан).
       accountId: customer.accountId,
       categoryIds: requestedCategoryIds, requestedAt: requestedAt!, note: note || null,
+      confirmed,
     });
   } catch (error) {
+    if (error instanceof ReservationConflictError) {
+      return { ok: false, message: error.message, fieldErrors: { confirmNeeded: "true" } };
+    }
     if (error instanceof ReservationError) return { ok: false, message: error.message };
     throw error;
   }
@@ -587,6 +600,178 @@ async function assertStaffScope(
     throw new Error("Зөвхөн өөрийн салбарын цаг захиалгыг удирдана.");
   }
   await assertActiveSubscription(user.tenantId);
+}
+
+/**
+ * Calendar recovery for an appointment whose service-order link cannot be
+ * resolved in the current tenant/branch scope. This deliberately does not
+ * create an order: repairing a historical relationship must never create a
+ * duplicate repair record by accident.
+ */
+export async function repairAppointmentOrderLinkAction(
+  _prev: AppointmentActionState,
+  formData: FormData,
+): Promise<AppointmentActionState> {
+  const id = s(formData, "appointmentId");
+  const mode = s(formData, "mode");
+  const orderId = s(formData, "orderId");
+  if (!id || (mode !== "detach" && mode !== "relink")) {
+    return { ok: false, message: "Буруу хүсэлт." };
+  }
+
+  let user;
+  try {
+    user = await requireUser();
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
+
+  const appointment = await prisma.appointment.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      tenantId: true,
+      branchId: true,
+      status: true,
+      customerId: true,
+      vehicleId: true,
+      serviceOrderId: true,
+    },
+  });
+  if (!appointment) return { ok: false, message: "Цаг захиалга олдсонгүй." };
+
+  try {
+    await assertStaffScope(user, appointment.branchId);
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
+  if (user.tenantId !== appointment.tenantId || !canEdit(user, "orders")) {
+    return { ok: false, message: "Танд энэ холбоосыг засах эрх байхгүй." };
+  }
+  if (appointment.status !== "PENDING" && appointment.status !== "CONFIRMED") {
+    return { ok: false, message: "Энэ цагийн захиалга одоо идэвхгүй байна." };
+  }
+  if (!appointment.serviceOrderId) {
+    return { ok: false, message: "Энэ цагт засварын хуудас холбогдоогүй байна." };
+  }
+
+  const linkedOrder = await prisma.serviceOrder.findFirst({
+    where: {
+      id: appointment.serviceOrderId,
+      tenantId: appointment.tenantId,
+    },
+    select: { id: true, branchId: true },
+  });
+  if (linkedOrder && linkedOrder.branchId === appointment.branchId) {
+    return {
+      ok: false,
+      message: "Холболт зөв байна. Календарийг дахин ачаална уу.",
+    };
+  }
+
+  if (mode === "relink") {
+    if (!orderId) return { ok: false, message: "Засварын хуудсаа сонгоно уу." };
+    if (!appointment.customerId || !appointment.vehicleId) {
+      return {
+        ok: false,
+        message: "Үйлчлүүлэгч болон машин тодорхойгүй тул автоматаар холбох боломжгүй.",
+      };
+    }
+
+    const replacement = await prisma.serviceOrder.findFirst({
+      where: {
+        id: orderId,
+        tenantId: appointment.tenantId,
+        branchId: appointment.branchId,
+        customerId: appointment.customerId,
+        vehicleId: appointment.vehicleId,
+        status: { in: ["SCHEDULED", "IN_PROGRESS", "WAITING_PARTS"] },
+        appointment: { is: null },
+      },
+      select: { id: true, number: true },
+    });
+    if (!replacement) {
+      return {
+        ok: false,
+        message: "Сонгосон засварын хуудас энэ үйлчлүүлэгч, машин, салбарт тохирохгүй эсвэл аль хэдийн холбогдсон байна.",
+      };
+    }
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        const updated = await tx.appointment.updateMany({
+          where: {
+            id: appointment.id,
+            tenantId: appointment.tenantId,
+            serviceOrderId: appointment.serviceOrderId,
+          },
+          data: { serviceOrderId: replacement.id },
+        });
+        if (updated.count !== 1) throw new Error("Цагийн захиалга өөрчлөгдсөн байна.");
+        await logAudit(
+          {
+            tenantId: appointment.tenantId,
+            userId: user.id,
+            branchId: appointment.branchId,
+            entity: "Appointment",
+            entityId: appointment.id,
+            action: "UPDATE",
+            summary: "Цаг захиалгын засварын хуудасны холбоосыг сэргээв",
+            before: { serviceOrderId: appointment.serviceOrderId },
+            after: { serviceOrderId: replacement.id, orderNumber: replacement.number },
+          },
+          tx,
+        );
+      });
+    } catch (e) {
+      return {
+        ok: false,
+        message: e instanceof Error ? e.message : "Холбоос сэргээхэд алдаа гарлаа.",
+      };
+    }
+
+    revalidatePath("/dashboard/appointments");
+    revalidatePath("/dashboard/appointments/calendar");
+    revalidatePath(`/dashboard/orders/${replacement.id}`);
+    return { ok: true, message: "Цаг захиалгын холбоосыг сэргээлээ." };
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.appointment.updateMany({
+        where: {
+          id: appointment.id,
+          tenantId: appointment.tenantId,
+          serviceOrderId: appointment.serviceOrderId,
+        },
+        data: { serviceOrderId: null },
+      });
+      if (updated.count !== 1) throw new Error("Цагийн захиалга өөрчлөгдсөн байна.");
+      await logAudit(
+        {
+          tenantId: appointment.tenantId,
+          userId: user.id,
+          branchId: appointment.branchId,
+          entity: "Appointment",
+          entityId: appointment.id,
+          action: "UPDATE",
+          summary: "Цаг захиалгын эвдэрсэн засварын хуудасны холбоосыг салгав",
+          before: { serviceOrderId: appointment.serviceOrderId },
+          after: { serviceOrderId: null },
+        },
+        tx,
+      );
+    });
+  } catch (e) {
+    return {
+      ok: false,
+      message: e instanceof Error ? e.message : "Холбоос салгахад алдаа гарлаа.",
+    };
+  }
+
+  revalidatePath("/dashboard/appointments");
+  revalidatePath("/dashboard/appointments/calendar");
+  return { ok: true, message: "Эвдэрсэн холбоосыг салгалаа." };
 }
 
 /**

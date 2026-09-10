@@ -9,6 +9,10 @@ import {
   isOrderLocked,
   type OrderStatus,
 } from "@/lib/orders";
+import {
+  MIN_CATEGORY_DURATION_MINUTES,
+  MAX_CATEGORY_DURATION_MINUTES,
+} from "@/lib/category-duration";
 
 const ORDER_DETAIL_SELECT = {
   id: true,
@@ -141,12 +145,40 @@ export async function PATCH(
     }
     updates.status = newStatus;
     statusChangedTo = newStatus;
-    const startedAt =
-      newStatus === "IN_PROGRESS" && !order.startedAt
-        ? new Date()
-        : order.startedAt;
-    if (newStatus === "IN_PROGRESS" && !order.startedAt) {
+
+    const now = new Date();
+    const enteringInProgress = newStatus === "IN_PROGRESS";
+    const startingFresh = enteringInProgress && !order.startedAt;
+    const resuming = enteringInProgress && order.status === "WAITING_PARTS";
+
+    // Ажил эхлэхэд (эсвэл сэлбэгээс сэргэхэд) үргэлжлэх хугацааны тооцоолол
+    // байх ёстой — app/_actions/orders.ts-ийн changeOrderStatusAction-той
+    // ижил зарчим (D-хугацааны шийдвэр): үгүй бол захиалга хугацаагүй, cap
+    // бага салбарт бүх цаг захиалгыг хаадаг. Аль хэдийн байвал дахин
+    // асуухгүй.
+    let effectiveDurationMinutes = order.estimatedDurationMinutes;
+    if (enteringInProgress && effectiveDurationMinutes == null) {
+      const durationMinutes = b.durationMinutes;
+      if (
+        typeof durationMinutes !== "number" ||
+        !Number.isInteger(durationMinutes) ||
+        durationMinutes < MIN_CATEGORY_DURATION_MINUTES ||
+        durationMinutes > MAX_CATEGORY_DURATION_MINUTES
+      ) {
+        return jsonError(
+          422,
+          `Ажлыг эхлүүлэхийн өмнө "durationMinutes" (бүхэл тоо, ${MIN_CATEGORY_DURATION_MINUTES}–${MAX_CATEGORY_DURATION_MINUTES}) шаардлагатай.`,
+        );
+      }
+      effectiveDurationMinutes = durationMinutes;
+    }
+
+    const startedAt = startingFresh ? now : order.startedAt;
+    if (startingFresh) {
       updates.startedAt = startedAt;
+    }
+    if (startingFresh && effectiveDurationMinutes !== order.estimatedDurationMinutes) {
+      updates.estimatedDurationMinutes = effectiveDurationMinutes;
     }
     if (newStatus === "COMPLETED") {
       updates.completedAt = new Date();
@@ -163,14 +195,15 @@ export async function PATCH(
     } else {
       updates.occupiesCapacity = true;
     }
-    if (
-      newStatus === "IN_PROGRESS" &&
-      startedAt &&
-      order.estimatedDurationMinutes
-    ) {
-      updates.expectedFinishAt = new Date(
-        startedAt.getTime() + order.estimatedDurationMinutes * 60000,
-      );
+    if (enteringInProgress && effectiveDurationMinutes != null) {
+      // Сэргэхэд одоогоос тоолж дуусах хугацааг дахин тооцоолно — хуучин
+      // (хүлээлтийн өмнөх) утга хуучирсан хэвээр үлдэхгүй.
+      const anchor = resuming ? now : startedAt;
+      if (anchor) {
+        updates.expectedFinishAt = new Date(
+          anchor.getTime() + effectiveDurationMinutes * 60000,
+        );
+      }
     }
   }
 

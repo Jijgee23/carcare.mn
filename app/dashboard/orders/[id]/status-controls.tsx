@@ -42,6 +42,7 @@ export function StatusControls({
   currentStatus,
   occupiesCapacity,
   expectedFinishAt,
+  estimatedDurationMinutes,
   attentionHref,
 }: {
   orderId: string;
@@ -50,6 +51,7 @@ export function StatusControls({
   currentStatus: OrderStatus;
   occupiesCapacity: boolean | null;
   expectedFinishAt: Date | null;
+  estimatedDurationMinutes: number | null;
   attentionHref?: string;
 }) {
   const toast = useToast();
@@ -67,6 +69,9 @@ export function StatusControls({
   >(reviseExpectedFinishAction, null);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [confirmWaitingParts, setConfirmWaitingParts] = useState(false);
+  const [confirmStart, setConfirmStart] = useState(false);
+  const [startHours, setStartHours] = useState("");
+  const [startMinutes, setStartMinutes] = useState("");
   const [editingFinish, setEditingFinish] = useState(false);
   // Controlled оруулга — React 19 form action дуусахад uncontrolled
   // (defaultValue) талбарыг анхны утга руу автоматаар "reset" хийдэг тул
@@ -167,6 +172,20 @@ export function StatusControls({
             type="button"
             disabled={disabled || pending}
             onClick={() => setConfirmWaitingParts(true)}
+            className={`w-full text-sm font-medium px-4 py-2 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${STATUS_BTN_STYLE[next]}`}
+          >
+            {STATUS_BTN_LABEL[next]}
+          </button>
+        ) : next === "IN_PROGRESS" && estimatedDurationMinutes == null ? (
+          // Тооцоолол алга бол ажлыг эхлүүлэхийн өмнө ойролцоо үргэлжлэх
+          // хугацааг заавал асууна — эс бөгөөс энэ захиалга хугацаагүй ажлын
+          // байрыг эзэлж, бага багтаамжтай салбарт бүх цаг захиалгыг хаадаг
+          // (server: changeOrderStatusAction-ийн "duration" fieldError).
+          <button
+            key={next}
+            type="button"
+            disabled={disabled || pending}
+            onClick={() => setConfirmStart(true)}
             className={`w-full text-sm font-medium px-4 py-2 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${STATUS_BTN_STYLE[next]}`}
           >
             {STATUS_BTN_LABEL[next]}
@@ -431,6 +450,84 @@ export function StatusControls({
                     </button>
                   </form>
                 </div>
+              </div>
+            </>,
+            document.body,
+          )
+        : null}
+
+      {confirmStart && typeof document !== "undefined"
+        ? createPortal(
+            <>
+              <button
+                type="button"
+                tabIndex={-1}
+                aria-label="Хаах"
+                onClick={() => setConfirmStart(false)}
+                className="fixed inset-0 z-[100] cursor-default bg-black/60"
+              />
+              <div
+                role="alertdialog"
+                aria-modal="true"
+                className="fixed left-1/2 top-1/2 z-[110] w-[min(92vw,24rem)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-white/10 bg-[var(--surface)] p-5 shadow-2xl backdrop-blur-xl"
+              >
+                <div className="min-w-0">
+                  <h3 className="font-semibold text-white">
+                    Ойролцоо үргэлжлэх хугацаа
+                  </h3>
+                  <p className="mt-1 text-sm text-white/50">
+                    Энэ захиалгад хугацааны тооцоолол алга байна. Ажлын байрны
+                    эзэмшлийг зөв тооцоолохын тулд ажлыг эхлүүлэхийн өмнө
+                    ойролцоо хугацааг оруулна уу.
+                  </p>
+                </div>
+                <form action={formAction} className="mt-4 flex flex-col gap-2">
+                  <input type="hidden" name="id" value={orderId} />
+                  <input type="hidden" name="status" value="IN_PROGRESS" />
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      name="durationHours"
+                      min={0}
+                      placeholder="Цаг"
+                      value={startHours}
+                      onChange={(e) => setStartHours(e.target.value)}
+                      className="w-20 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-sm text-white outline-none focus:border-[var(--oc-accent)]/60"
+                    />
+                    <span className="text-sm text-white/40">ц</span>
+                    <input
+                      type="number"
+                      name="durationMinutes"
+                      min={0}
+                      max={59}
+                      placeholder="Мин"
+                      value={startMinutes}
+                      onChange={(e) => setStartMinutes(e.target.value)}
+                      className="w-20 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-sm text-white outline-none focus:border-[var(--oc-accent)]/60"
+                    />
+                    <span className="text-sm text-white/40">мин</span>
+                  </div>
+                  {state?.fieldErrors?.duration ? (
+                    <p className="text-xs text-red-400">{state.fieldErrors.duration}</p>
+                  ) : null}
+                  <div className="mt-3 flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmStart(false)}
+                      disabled={pending}
+                      className="rounded-lg border border-white/10 bg-white/[0.04] px-3.5 py-2 text-sm text-white/70 transition-colors hover:bg-white/[0.08] disabled:opacity-50"
+                    >
+                      Болих
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={pending}
+                      className="rounded-lg bg-blue-600 px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {pending ? "Эхлүүлж байна..." : "Эхлүүлэх"}
+                    </button>
+                  </div>
+                </form>
               </div>
             </>,
             document.body,

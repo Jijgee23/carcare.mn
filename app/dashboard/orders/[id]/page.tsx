@@ -81,6 +81,9 @@ export default async function OrderDetailPage({
             diagnosticTemplate: { select: { type: true } },
           },
         },
+        categories: {
+          orderBy: { createdAt: "asc" },
+        },
         customer: { select: { id: true, fullName: true, phone: true } },
         vehicle: {
           select: {
@@ -538,6 +541,7 @@ export default async function OrderDetailPage({
                 currentStatus={order.status as OrderStatus}
                 occupiesCapacity={order.occupiesCapacity}
                 expectedFinishAt={order.expectedFinishAt}
+                estimatedDurationMinutes={order.estimatedDurationMinutes}
                 attentionHref={`/dashboard/appointments/calendar?view=attention&branchId=${encodeURIComponent(order.branchId)}`}
               />
             </div>
@@ -653,6 +657,20 @@ export default async function OrderDetailPage({
                 </div>
               </Row>
               <Row label="Салбар">{order.branch.name}</Row>
+              {order.categories.length > 0 ? (
+                <Row label="Захиалгаар сонгосон ангилал">
+                  <div className="flex flex-wrap gap-1.5">
+                    {order.categories.map((category) => (
+                      <span
+                        key={category.id}
+                        className="rounded-full border border-violet-400/25 bg-violet-400/10 px-2 py-0.5 text-xs text-violet-200 light:text-violet-800"
+                      >
+                        {category.name}
+                      </span>
+                    ))}
+                  </div>
+                </Row>
+              ) : null}
               <Row label="Хариуцагч">
                 {order.assignedTo
                   ? `${order.assignedTo.lastName} ${order.assignedTo.firstName}`

@@ -1,5 +1,7 @@
 import type { CapacityInterval } from "@/lib/schedule-capacity";
 import { isValidScheduleInterval } from "@/lib/schedule-intervals";
+import { resolveOrderEffectiveInterval } from "@/lib/schedule-order-interval";
+import { isPendingAppointmentPaymentExpired } from "@/lib/appointment-payment-status";
 
 type Scope = { tenantId: string; branchId: string };
 export type ScheduleAppointment = Scope & {
@@ -8,6 +10,13 @@ export type ScheduleAppointment = Scope & {
   requestedAt: Date;
   estimatedDurationMinutes: number | null;
   serviceOrderId: string | null;
+  // Optional: only present once the loader selects them. Missing fields are
+  // treated as "no fee required" — never expired — so older fixtures/tests
+  // that omit these keep their existing behavior.
+  feeAmount?: unknown;
+  feeUnderpaidAmount?: unknown;
+  payment?: { status: string } | null;
+  createdAt?: Date;
 };
 export type ScheduleOrder = Scope & {
   id: string;
@@ -21,7 +30,7 @@ export type ScheduleOrder = Scope & {
 export type ScheduleIssue = {
   source: "appointment" | "order";
   id: string;
-  reason: "missing-estimate" | "unknown-occupancy" | "overdue" | "missing-order" | "missing-start" | "invalid-interval";
+  reason: "missing-estimate" | "unknown-occupancy" | "overdue" | "missing-order" | "missing-start" | "invalid-interval" | "payment-expired";
 };
 export type ScheduleInterval = CapacityInterval & {
   source: "appointment" | "order";
@@ -68,6 +77,21 @@ export function buildBranchSchedule(input: Scope & {
 
   for (const a of input.appointments.filter(inScope)) {
     if (a.status !== "PENDING" && a.status !== "CONFIRMED") continue;
+    if (
+      a.status === "PENDING" &&
+      a.createdAt &&
+      isPendingAppointmentPaymentExpired(
+        { feeAmount: a.feeAmount, feeUnderpaidAmount: a.feeUnderpaidAmount, payment: a.payment ?? null, createdAt: a.createdAt },
+        input.now,
+      )
+    ) {
+      // A dead payment hold is low-priority, stale housekeeping — it belongs
+      // in the Attention view (lib/branch-schedule-loader.ts's
+      // loadBranchAttentionAppointments), not in the day calendar at all, not
+      // even faded. No interval, no "missing-estimate" issue for it either.
+      issue("appointment", a.id, "payment-expired");
+      continue;
+    }
     if (a.serviceOrderId && orders.has(a.serviceOrderId)) continue;
     if (a.serviceOrderId) issue("appointment", a.id, "missing-order");
     const duration = minutes(a.estimatedDurationMinutes);
@@ -88,25 +112,24 @@ export function buildBranchSchedule(input: Scope & {
     // Terminal legacy orders have no positive evidence of remaining occupancy.
     if (terminal && order.occupiesCapacity !== true) continue;
     if (order.status !== "SCHEDULED" && order.occupiesCapacity === false) continue;
-    const scheduled = order.status === "SCHEDULED" && order.occupiesCapacity !== true;
-    const date = scheduled ? order.scheduledAt : order.startedAt;
+    const resolved = resolveOrderEffectiveInterval(order);
+    const scheduled = resolved.scheduled;
+    const date = resolved.start;
     const start = date?.getTime() ?? now;
     if (!Number.isFinite(start)) throw new RangeError("Invalid order start");
     if (start >= upper) continue;
     if (!date) issue("order", order.id, "missing-start");
-    const duration = minutes(order.estimatedDurationMinutes);
-    let end = order.expectedFinishAt?.getTime() ??
-      (scheduled && duration != null ? start + duration * 60000 : null);
+    if (resolved.invalid) {
+      issue("order", order.id, "invalid-interval");
+      continue;
+    }
+    let end = resolved.end?.getTime() ?? null;
     if (end != null && !Number.isFinite(end)) throw new RangeError("Invalid finish estimate");
     const unknownOccupancy = !scheduled && order.occupiesCapacity == null;
     if (unknownOccupancy) issue("order", order.id, "unknown-occupancy");
     if (end == null) issue("order", order.id, "missing-estimate");
     const overdue = end != null && end <= now && !scheduled;
     if (overdue) issue("order", order.id, "overdue");
-    if (end != null && !isValidScheduleInterval(new Date(start), new Date(end))) {
-      issue("order", order.id, "invalid-interval");
-      continue;
-    }
     const uncertain = !date || unknownOccupancy || end == null || overdue;
     if (uncertain) end = upper;
     add("order", order.id, start, end!, uncertain);

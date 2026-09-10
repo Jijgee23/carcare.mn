@@ -8,6 +8,21 @@ export class ReservationError extends Error {
   constructor(public status: 400 | 403 | 409, message: string) { super(message); }
 }
 
+/**
+ * Specifically the capacity-full case (as opposed to out-of-hours/past,
+ * which stays a hard block for everyone). Staff booking a phone-in
+ * appointment may deliberately override this one — a customer knows their
+ * relationship with the shop lets them double up a bay, or the branch's
+ * capacity number is just conservative — the same "soft warning, not a hard
+ * rule" latitude order scheduling already has (see D-hours decisions in
+ * COWORK.md). Customer online self-booking never gets this override
+ * (`staffUserId` absent), since nothing there can vouch for a real physical
+ * exception the way a staff member present at the branch can.
+ */
+export class ReservationConflictError extends ReservationError {
+  constructor(message: string) { super(409, message); }
+}
+
 export type ReservationInput = {
   tenantId: string;
   branchId: string;
@@ -18,6 +33,8 @@ export type ReservationInput = {
   customerId?: string | null;
   note?: string | null;
   staffUserId?: string;
+  // Only honored when staffUserId is set — see ReservationConflictError.
+  confirmed?: boolean;
 };
 
 /** Caller authenticates first. All DB operations here use the SAME transaction. */
@@ -81,7 +98,14 @@ export async function reserveAppointmentInTransaction(
     throw new ReservationError(400, "Ажиллах цагт багтах сул цаг сонгоно уу.");
   }
   if (!await isSlotAvailable(tx, branch.id, input.requestedAt, duration)) {
-    throw new ReservationError(409, "Энэ цаг дүүрсэн байна. Өөр цаг сонгоно уу.");
+    const overrideAllowed = Boolean(input.staffUserId) && input.confirmed === true;
+    if (!overrideAllowed) {
+      throw new ReservationConflictError(
+        input.staffUserId
+          ? "Энэ цаг дүүрсэн байна. Үргэлжлүүлэхийн тулд дахин баталгаажуулна уу."
+          : "Энэ цаг дүүрсэн байна. Өөр цаг сонгоно уу.",
+      );
+    }
   }
   return tx.appointment.create({
     data: {
