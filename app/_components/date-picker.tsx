@@ -37,6 +37,12 @@ type SingleProps = CommonProps & {
   name?: string;
   withTime?: boolean;
   required?: boolean;
+  /**
+   * "HH:mm" ceiling for the time picker, enforced ONLY on the day equal to
+   * `max` (a bare date bound has no time-of-day component to compare
+   * against). E.g. capping a same-day revision at a branch's closing time.
+   */
+  maxTime?: string;
 };
 
 type RangeProps = CommonProps & {
@@ -62,6 +68,12 @@ function ymd(d: Date): string {
 
 export function todayStr(): string {
   return ymd(new Date());
+}
+
+function parseHm(value: string): { hour: number; minute: number } | null {
+  const [h, m] = value.split(":").map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  return { hour: h, minute: m };
 }
 
 function splitDateTime(value: string): [string, string] {
@@ -435,6 +447,11 @@ export function DatePicker(props: DatePickerProps) {
                     // Өнөөдрийг сонговол өнгөрсөн цаг/минутыг idle харуулна —
                     // ирээдүйн огноон дээр хязгаарлалтгүй.
                     disablePastFrom={datePart === today ? new Date() : null}
+                    disableFutureFrom={
+                      single?.maxTime && props.max && datePart === props.max
+                        ? parseHm(single.maxTime)
+                        : null
+                    }
                     onChange={setTime}
                   />
                 </div>
@@ -485,6 +502,7 @@ function TimePicker24({
   value,
   disabled,
   disablePastFrom,
+  disableFutureFrom,
   onChange,
 }: {
   value: string;
@@ -492,6 +510,9 @@ function TimePicker24({
   // Өгөгдвөл (сонгосон огноо өнөөдөр байх үед) энэ мөчөөс өмнөх цаг/минутыг
   // idle (сонгож болохгүй) харуулна.
   disablePastFrom?: Date | null;
+  // Өгөгдвөл энэ цаг/минутаас хойшхыг idle харуулна (жишээ нь: тухайн
+  // өдрийн салбарын ажлын цагийн төгсгөл).
+  disableFutureFrom?: { hour: number; minute: number } | null;
   onChange: (time: string) => void;
 }) {
   const [hh, mm] = (value || "09:00").split(":");
@@ -499,6 +520,8 @@ function TimePicker24({
   const minutes = Array.from({ length: 60 }, (_, i) => pad2(i));
   const nowHour = disablePastFrom?.getHours() ?? null;
   const nowMinute = disablePastFrom?.getMinutes() ?? null;
+  const maxHour = disableFutureFrom?.hour ?? null;
+  const maxMinute = disableFutureFrom?.minute ?? null;
   return (
     <div className="flex gap-2">
       <TimeColumn
@@ -506,7 +529,10 @@ function TimePicker24({
         items={hours}
         selected={hh || "09"}
         disabled={disabled}
-        isPast={(v) => nowHour != null && Number(v) < nowHour}
+        isPast={(v) =>
+          (nowHour != null && Number(v) < nowHour) ||
+          (maxHour != null && Number(v) > maxHour)
+        }
         onPick={(v) => onChange(`${v}:${mm || "00"}`)}
       />
       <div className="self-center pt-4 text-sm font-semibold text-white/30">:</div>
@@ -516,10 +542,14 @@ function TimePicker24({
         selected={mm || "00"}
         disabled={disabled}
         isPast={(v) =>
-          nowHour != null &&
-          nowMinute != null &&
-          Number(hh || "9") === nowHour &&
-          Number(v) < nowMinute
+          (nowHour != null &&
+            nowMinute != null &&
+            Number(hh || "9") === nowHour &&
+            Number(v) < nowMinute) ||
+          (maxHour != null &&
+            maxMinute != null &&
+            Number(hh || "9") === maxHour &&
+            Number(v) > maxMinute)
         }
         onPick={(v) => onChange(`${hh || "09"}:${v}`)}
       />
@@ -574,7 +604,7 @@ function TimeColumn({
               type="button"
               disabled={disabled || past}
               data-selected={active}
-              title={past ? "Өнгөрсөн" : undefined}
+              title={past ? "Сонгох боломжгүй" : undefined}
               onClick={() => onPick(it)}
               className={`block w-full rounded-md py-1.5 text-center text-sm tabular-nums transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                 active

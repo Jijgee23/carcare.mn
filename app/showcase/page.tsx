@@ -187,7 +187,7 @@ export default function ShowcasePage() {
               />
               <Activity
                 tone="amber"
-                title="Сэлбэг хүлээгдэж байна"
+                title="Хойшлогдсон"
                 meta="Засварын хуудас #2037 · 2 цагийн өмнө"
               />
             </ul>

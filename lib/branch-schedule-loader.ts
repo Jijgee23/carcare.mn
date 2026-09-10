@@ -7,8 +7,9 @@ import {
   type ScheduleInterval,
 } from "@/lib/branch-schedule";
 import { splitScheduleInterval } from "@/lib/schedule-intervals";
-import { resolveOrderEffectiveInterval } from "@/lib/schedule-order-interval";
+import { resolveOrderEffectiveInterval, type OrderTimeBookingLike } from "@/lib/schedule-order-interval";
 import { isPendingAppointmentPaymentExpired } from "@/lib/appointment-payment-status";
+import { DEFAULT_SLOT_MINUTES } from "@/lib/appointment-slots";
 
 /**
  * Loads one branch's real appointment/order rows for a single business-timezone
@@ -19,7 +20,7 @@ import { isPendingAppointmentPaymentExpired } from "@/lib/appointment-payment-st
  * DATABASE_URL — importing @/lib/prisma at module scope there broke that.
  *
  * Only active-status rows are normally fetched: appointments still
- * PENDING/CONFIRMED and orders still SCHEDULED/IN_PROGRESS/WAITING_PARTS.
+ * PENDING/CONFIRMED and orders still SCHEDULED/IN_PROGRESS/POSTPONED.
  * Terminal orders (COMPLETED/CANCELLED) are additionally fetched when an
  * active appointment points at them, solely to resolve the relationship and
  * avoid a false "missing order" warning. Terminal rows still carry no
@@ -48,7 +49,7 @@ export type BranchScheduleOrderRow = Awaited<
 export type AppointmentOrderRepairCandidate = {
   id: string;
   number: string;
-  status: "SCHEDULED" | "IN_PROGRESS" | "WAITING_PARTS";
+  status: "SCHEDULED" | "IN_PROGRESS" | "POSTPONED";
   scheduledAt: Date | null;
   customerId: string;
   vehicleId: string;
@@ -72,8 +73,8 @@ function orderEffectiveDate(o: {
   startedAt: Date | null;
   estimatedDurationMinutes: number | null;
   expectedFinishAt: Date | null;
-}): Date | null {
-  return resolveOrderEffectiveInterval(o).start;
+}, bookings?: OrderTimeBookingLike[]): Date | null {
+  return resolveOrderEffectiveInterval(o, bookings).start;
 }
 
 function orderEffectiveEnd(o: {
@@ -83,8 +84,37 @@ function orderEffectiveEnd(o: {
   startedAt: Date | null;
   estimatedDurationMinutes: number | null;
   expectedFinishAt: Date | null;
-}): Date | null {
-  return resolveOrderEffectiveInterval(o).end;
+}, fallbackDurationMinutes = DEFAULT_SLOT_MINUTES, bookings?: OrderTimeBookingLike[]): Date | null {
+  const resolved = resolveOrderEffectiveInterval(o, bookings);
+  if (resolved.end) return resolved.end;
+  return resolved.scheduled && resolved.start
+    ? new Date(resolved.start.getTime() + fallbackDurationMinutes * 60000)
+    : null;
+}
+
+/**
+ * D-068 read-path swap: fetches every order's OrderTimeBooking rows in one
+ * query and groups them by orderId. Passed through to resolveOrderEffectiveInterval
+ * (via orderEffectiveDate/orderEffectiveEnd and buildBranchSchedule's
+ * orderBookings) so the calendar/attention/conflict projections read from the
+ * append-only booking table instead of the ServiceOrder scalar cache.
+ */
+async function fetchOrderBookings(
+  orderIds: string[],
+): Promise<Map<string, OrderTimeBookingLike[]>> {
+  const map = new Map<string, OrderTimeBookingLike[]>();
+  if (orderIds.length === 0) return map;
+  const rows = await prisma.orderTimeBooking.findMany({
+    where: { orderId: { in: orderIds } },
+    select: { orderId: true, kind: true, startAt: true, endAt: true, closedAt: true },
+  });
+  for (const row of rows) {
+    const existing = map.get(row.orderId);
+    const entry: OrderTimeBookingLike = { kind: row.kind, startAt: row.startAt, endAt: row.endAt, closedAt: row.closedAt };
+    if (existing) existing.push(entry);
+    else map.set(row.orderId, [entry]);
+  }
+  return map;
 }
 
 const APPOINTMENT_ROW_SELECT = {
@@ -123,20 +153,40 @@ function fetchAppointmentRows(
   });
 }
 
+/**
+ * D-076: orders that are otherwise out of scope (COMPLETED/CANCELLED) but
+ * still have an open OrderTimeBooking row — a follow-up that survived the
+ * order's own completion (see closeOpenOrderTimeBooking's "ACTIVE"-only
+ * scoping on that transition). Without this, such an order is never fetched
+ * at all by fetchOrderRows' status filter, so buildBranchSchedule's correct
+ * `upcoming`-projection carve-out is unreachable for it in production.
+ */
+function fetchOrderIdsWithOpenBooking(scope: { tenantId: string; branchId: string }) {
+  return prisma.orderTimeBooking
+    .findMany({
+      where: { ...scope, closedAt: null },
+      select: { orderId: true },
+      distinct: ["orderId"],
+    })
+    .then((rows) => rows.map((r) => r.orderId));
+}
+
 function fetchOrderRows(
   scope: { tenantId: string; branchId: string },
   rangeEnd: Date,
   linkedOrderIds: string[] = [],
+  followUpOrderIds: string[] = [],
 ) {
   return prisma.serviceOrder.findMany({
     where: {
       ...scope,
       OR: [
         {
-          status: { in: ["SCHEDULED", "IN_PROGRESS", "WAITING_PARTS"] },
+          status: { in: ["SCHEDULED", "IN_PROGRESS", "POSTPONED"] },
           OR: [{ scheduledAt: { lt: rangeEnd } }, { scheduledAt: null }],
         },
         ...(linkedOrderIds.length > 0 ? [{ id: { in: linkedOrderIds } }] : []),
+        ...(followUpOrderIds.length > 0 ? [{ id: { in: followUpOrderIds } }] : []),
       ],
     },
     select: {
@@ -173,7 +223,7 @@ function fetchAppointmentOrderRepairCandidates(
   return prisma.serviceOrder.findMany({
     where: {
       ...scope,
-      status: { in: ["SCHEDULED", "IN_PROGRESS", "WAITING_PARTS"] },
+      status: { in: ["SCHEDULED", "IN_PROGRESS", "POSTPONED"] },
       appointment: null,
       OR: uniquePairs,
     },
@@ -213,19 +263,37 @@ export async function loadBranchSchedule(input: {
   const { start: rangeStart, end: rangeEnd } = bookingDayBounds(input.dateStr);
   const scope = { tenantId: input.tenantId, branchId: input.branchId };
 
+  const branch = await prisma.branch.findFirst({
+    where: { tenantId: scope.tenantId, id: scope.branchId },
+    select: { slotMinutes: true },
+  });
+  const fallbackDurationMinutes =
+    branch?.slotMinutes && branch.slotMinutes > 0
+      ? branch.slotMinutes
+      : DEFAULT_SLOT_MINUTES;
   const appointmentRows = await fetchAppointmentRows(scope, rangeStart, rangeEnd);
   const linkedOrderIds = appointmentRows
     .map((appointment) => appointment.serviceOrderId)
     .filter((id): id is string => Boolean(id));
-  const rawOrderRows = await fetchOrderRows(scope, rangeEnd, linkedOrderIds);
+  const followUpOrderIds = await fetchOrderIdsWithOpenBooking(scope);
+  const rawOrderRows = await fetchOrderRows(scope, rangeEnd, linkedOrderIds, followUpOrderIds);
   const repairCandidates = await fetchAppointmentOrderRepairCandidates(scope, appointmentRows);
+  // D-068 read-path swap, resumed 2026-09-10 after the backfill/dual-write
+  // bugs found by the real-data comparison were fixed (see COWORK.md Inbox)
+  // and re-verified at 0 live mismatches.
+  const orderBookings = await fetchOrderBookings(rawOrderRows.map((o) => o.id));
 
   // Бодит эхлэл нь энэ өдрийн цонхноос өмнө бол carriedOver. Харин төгсгөл
   // энэ өдөрт орж ирж байгаа мэдэгдэж буй interval бол хүчинтэй continuation
   // бөгөөд тухайн өдрийн мөрөнд заавал харагдана.
   const orderRows: BranchScheduleOrderRow[] = rawOrderRows.map((o) => {
-    const effectiveDate = orderEffectiveDate(o);
-    const effectiveEnd = orderEffectiveEnd(o);
+    const bookings = orderBookings.get(o.id);
+    const effectiveDate = orderEffectiveDate(o, bookings);
+    const effectiveEnd = orderEffectiveEnd(
+      o,
+      fallbackDurationMinutes,
+      bookings,
+    );
     const carriedOver = effectiveDate == null || effectiveDate.getTime() < rangeStart.getTime();
     const continuesIntoDay =
       carriedOver &&
@@ -248,6 +316,8 @@ export async function loadBranchSchedule(input: {
     now: input.now ?? new Date(),
     rangeStart,
     rangeEnd,
+    fallbackDurationMinutes,
+    orderBookings,
   });
 
   return {
@@ -288,7 +358,16 @@ export async function loadBranchAttentionOrders(input: {
   const rangeStart = new Date(0);
   const rangeEnd = new Date(now.getTime() + 100 * 365 * 24 * 60 * 60 * 1000);
 
+  const branch = await prisma.branch.findFirst({
+    where: { tenantId: scope.tenantId, id: scope.branchId },
+    select: { slotMinutes: true },
+  });
+  const fallbackDurationMinutes =
+    branch?.slotMinutes && branch.slotMinutes > 0
+      ? branch.slotMinutes
+      : DEFAULT_SLOT_MINUTES;
   const rawOrderRows = await fetchOrderRows(scope, rangeEnd);
+  const orderBookings = await fetchOrderBookings(rawOrderRows.map((o) => o.id));
   const orderRows: BranchScheduleOrderRow[] = rawOrderRows.map((o) => ({
     ...o,
     carriedOver: false, // энд утга алга — attention харагдац өөрөө date-агнаст
@@ -302,6 +381,8 @@ export async function loadBranchAttentionOrders(input: {
     now,
     rangeStart,
     rangeEnd,
+    fallbackDurationMinutes,
+    orderBookings,
   });
 
   const uncertainIds = new Set(

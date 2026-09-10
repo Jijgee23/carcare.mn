@@ -99,7 +99,7 @@ export default async function NewOrderPage({
         ...(scopeBranchId ? { id: scopeBranchId } : {}),
       },
       orderBy: { createdAt: "asc" },
-      select: { id: true, name: true },
+      select: { id: true, name: true, slotMinutes: true },
     }),
     prisma.customer.findMany({
       where: { tenantId: user.tenantId },

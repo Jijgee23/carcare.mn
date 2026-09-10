@@ -1,6 +1,7 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk } from "@/lib/api";
 import { getApiAccountFromRequest } from "@/lib/auth/account-api-token";
+import { ORDER_STATUS_HISTORY_CUSTOMER_SELECT } from "@/lib/orders";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 import { ownedVehicleIdsForAccount } from "@/lib/vehicles";
@@ -21,11 +22,11 @@ export async function GET(req: Request) {
   const ownedVehicleIds = await ownedVehicleIdsForAccount(account.id, account.phone);
 
   const where: Prisma.ServiceOrderWhereInput = {
-    // History шиг зөвхөн дууссан ажлыг харуулна — SCHEDULED/IN_PROGRESS/
-    // WAITING_PARTS хараахан идэвхтэй, /api/v1/app/appointments дээр харагдана.
+    // Дууссан AND цуцлагдсан ажлыг харуулна (D-085) — SCHEDULED/IN_PROGRESS/
+    // POSTPONED хараахан идэвхтэй, /api/v1/app/appointments дээр харагдана.
     // Төлбөрийн төлөв нэмэлт шүүлт биш: төлөгдөөгүй ч дууссан ажил энд
     // харагдана (chip нь unpaid/partial/paid-г тусад нь харуулна).
-    status: "COMPLETED",
+    status: { in: ["COMPLETED", "CANCELLED"] },
     OR: [
       { customer: { accountId: account.id } },
       ...(ownedVehicleIds.length
@@ -66,16 +67,43 @@ export async function GET(req: Request) {
             template: { select: { name: true, type: true } },
           },
         },
+        statusChanges: {
+          orderBy: { createdAt: "desc" },
+          select: ORDER_STATUS_HISTORY_CUSTOMER_SELECT,
+        },
       },
     }),
     prisma.serviceOrder.count({ where }),
   ]);
 
+  // D-085: цуцлагдсан/ирээгүй/татгалзсан цаг (ServiceOrder огт үүсээгүй тул
+  // дээрх query-д тусахгүй) — идэвхтэй жагсаалтад (D-083/D-084) байхгүй
+  // болсон тул, мөнхөд алга болохгүйн тулд энд харагдана. Тусдаа, хуудаслаагүй
+  // жагсаалт (цөөн тооны бичлэг) — orders-ийн pagination-той холилдохгүй.
+  const cancelledAppointments = await prisma.appointment.findMany({
+    where: {
+      accountId: account.id,
+      status: { in: ["CANCELLED", "NO_SHOW", "REJECTED"] },
+      serviceOrderId: null,
+    },
+    orderBy: { requestedAt: "desc" },
+    take: 50,
+    select: {
+      id: true,
+      status: true,
+      requestedAt: true,
+      tenant: { select: { name: true, slug: true } },
+      branch: { select: { name: true } },
+      category: { select: { name: true } },
+    },
+  });
+
   const shaped = orders.map((o) => {
-    const { _count, reports, ...rest } = o;
+    const { _count, reports, statusChanges, ...rest } = o;
     return {
       ...rest,
       itemCount: _count.items,
+      statusHistory: statusChanges,
       reports: reports.map((r) => ({
         id: r.id,
         type: r.template.type,
@@ -86,5 +114,9 @@ export async function GET(req: Request) {
     };
   });
 
-  return jsonOk({ orders: shaped, pagination: buildMeta(total, page, pageSize) });
+  return jsonOk({
+    orders: shaped,
+    pagination: buildMeta(total, page, pageSize),
+    cancelledAppointments,
+  });
 }

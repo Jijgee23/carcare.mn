@@ -23,6 +23,7 @@ import "dotenv/config";
 import { prisma } from "@/lib/prisma";
 import { setBypassContext } from "@/lib/tenant-context";
 import type { Prisma } from "@/app/generated/prisma/client";
+import { resolveOrderEffectiveInterval } from "@/lib/schedule-order-interval";
 
 type PlannedBooking = {
   orderId: string;
@@ -41,6 +42,7 @@ function planBooking(order: {
   status: string;
   scheduledAt: Date | null;
   startedAt: Date | null;
+  estimatedDurationMinutes: number | null;
   expectedFinishAt: Date | null;
   occupiesCapacity: boolean | null;
   completedAt: Date | null;
@@ -53,19 +55,25 @@ function planBooking(order: {
     branchId: order.branchId,
   };
 
+  // Эх бодит логик lib/schedule-order-interval.ts-д нэгтгэгдсэн тул энд
+  // давхардуулахгүй, шууд дуудна — ингэснээр энэ нэг удаагийн backfill скрипт
+  // хэзээ ч тухайн эх логикоос зөрөхгүй (өмнө нь SCHEDULED-ийн
+  // estimatedDurationMinutes-аас гарсан төгсгөлийг орхигдуулж байсан алдаа
+  // энэ дундаас гарсан — COWORK.md, 2026-09-10).
   if (order.status === "SCHEDULED") {
+    const resolved = resolveOrderEffectiveInterval(order);
     return {
       ...base,
       kind: "SCHEDULED",
       // Walk-in захиалга тодорхой цаггүй байж болно (scheduledAt NULL) —
       // мэдэгдэж буй хамгийн эрт баримт болох createdAt-руу унана.
-      startAt: order.scheduledAt ?? order.createdAt,
-      endAt: null,
+      startAt: resolved.start ?? order.createdAt,
+      endAt: resolved.invalid ? null : resolved.end,
       closedAt: null,
     };
   }
 
-  // IN_PROGRESS, WAITING_PARTS, COMPLETED, CANCELLED — бүгд нэг л ACTIVE
+  // IN_PROGRESS, POSTPONED, COMPLETED, CANCELLED — бүгд нэг л ACTIVE
   // booking-оор төлөөлүүлнэ (эхэлсэн/эхлээгүй хугацаанаас хамааран).
   const startAt = order.startedAt ?? order.scheduledAt ?? order.createdAt;
   const endAt = order.completedAt ?? order.expectedFinishAt ?? null;
@@ -94,6 +102,7 @@ async function main() {
       status: true,
       scheduledAt: true,
       startedAt: true,
+      estimatedDurationMinutes: true,
       expectedFinishAt: true,
       occupiesCapacity: true,
       completedAt: true,

@@ -123,6 +123,7 @@ export function buildDayRows(
       startMs: number;
       endMs: number;
       uncertain: boolean;
+      role: "primary" | "upcoming";
     }>;
     issues: ScheduleIssue[];
     appointments: BranchScheduleAppointmentRow[];
@@ -130,7 +131,7 @@ export function buildDayRows(
     repairCandidates: Array<{
       id: string;
       number: string;
-      status: "SCHEDULED" | "IN_PROGRESS" | "WAITING_PARTS";
+      status: "SCHEDULED" | "IN_PROGRESS" | "POSTPONED";
       customerId: string;
       vehicleId: string;
       customer: { fullName: string | null; phone: string | null } | null;
@@ -152,14 +153,29 @@ export function buildDayRows(
     return order?.carriedOver === true && order.continuesIntoDay !== true;
   };
 
+  // D-076: carriedOver/continuesIntoDay describe the order's PRIMARY
+  // interval's own history — never hide an "upcoming" follow-up row through
+  // this mechanism, since a follow-up booked on an otherwise stale/carried-
+  // over order (e.g. one fetched only because it has an open follow-up
+  // booking, see fetchOrderIdsWithOpenBooking) is a legitimate reservation
+  // on today's date regardless of the order's unrelated past.
   const filteredIntervals = schedule.intervals.filter(
-    (row) => row.source !== "order" || !isHiddenCarryOverOrder(row.id),
+    (row) => row.source !== "order" || row.role === "upcoming" || !isHiddenCarryOverOrder(row.id),
   );
   const issues = schedule.issues.filter(
     (issue) => issue.source !== "order" || !isHiddenCarryOverOrder(issue.id),
   );
   const issueBySourceId = new Map(issues.map((issue) => [`${issue.source}:${issue.id}`, issue]));
   const carriedOverCount = countHiddenUncertainCarryOverOrders(schedule);
+
+  // D-076: an order's primary and upcoming interval only ever land in the
+  // same day's view when the follow-up is booked for later the SAME day —
+  // the common case (a different future day) never has both rows present,
+  // so controls should not be suppressed there. Only actually duplicate
+  // when both roles for the same order id are present in this render.
+  const orderIdsWithPrimaryRow = new Set(
+    filteredIntervals.filter((r) => r.source === "order" && r.role === "primary").map((r) => r.id),
+  );
 
   const rows: DayRow[] = filteredIntervals
     .sort((a, b) => a.startMs - b.startMs)
@@ -211,7 +227,17 @@ export function buildDayRows(
         canRespondAppointments &&
         canEditOrders;
       const orderTransitions = order ? ORDER_STATUS_TRANSITIONS[order.status] : [];
-      const showOrderControls = Boolean(order) && canEditOrders && orderTransitions.length > 0;
+      // D-076: only suppress controls on an "upcoming" row when this same
+      // order's primary row is ALSO present in this day's view (the
+      // follow-up is booked for later the same day) — that's the only case
+      // where showing controls on both would duplicate them. The common
+      // case (a follow-up on a different future day) has no primary row in
+      // that day's view at all, so it keeps full controls (start, etc).
+      const showOrderControls =
+        Boolean(order) &&
+        canEditOrders &&
+        orderTransitions.length > 0 &&
+        (row.role === "primary" || !orderIdsWithPrimaryRow.has(row.id));
       const hasActions =
         showConfirmReject ||
         showArrivalActions ||
@@ -266,10 +292,10 @@ export function buildDayRows(
             <div className="w-64">
               <StatusControls
                 orderId={order.id}
+                branchId={order.branchId}
                 transitions={orderTransitions}
                 disabled={false}
                 currentStatus={order.status}
-                occupiesCapacity={order.occupiesCapacity}
                 expectedFinishAt={order.expectedFinishAt}
                 estimatedDurationMinutes={order.estimatedDurationMinutes}
                 attentionHref={`/dashboard/appointments/calendar?view=attention&branchId=${encodeURIComponent(order.branchId)}`}

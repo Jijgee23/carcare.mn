@@ -36,7 +36,7 @@ type Initial = {
   notes: string | null;
 };
 
-type Branch = { id: string; name: string };
+type Branch = { id: string; name: string; slotMinutes?: number | null };
 type Customer = { id: string; fullName: string; phone: string };
 type Vehicle = {
   id: string;
@@ -179,9 +179,9 @@ export function OrderForm({
         ? durationMinutes
         : bookingDurationMinutes && bookingDurationMinutes > 0
           ? bookingDurationMinutes
-          : 30;
+          : branches.find((branch) => branch.id === branchId)?.slotMinutes ?? 30;
     return { startMs, endMs: startMs + minutes * 60000, label: "Энэ захиалга" };
-  }, [scheduledAtLocal, durationMinutes, bookingDurationMinutes]);
+  }, [scheduledAtLocal, durationMinutes, bookingDurationMinutes, branches, branchId]);
 
   const customerById = useMemo(
     () => new Map(customers.map((c) => [c.id, c])),
@@ -262,13 +262,11 @@ export function OrderForm({
         <input type="hidden" name="appointmentId" value={appointmentId} />
       ) : null}
       {next && !isEdit ? <input type="hidden" name="next" value={next} /> : null}
-      {isEdit ? (
-        <input
-          type="hidden"
-          name="confirmed"
-          value={scheduleConfirmArmed ? "true" : ""}
-        />
-      ) : null}
+      <input
+        type="hidden"
+        name="confirmed"
+        value={scheduleConfirmArmed ? "true" : ""}
+      />
       {state?.ok ? (
         <div className="bg-[var(--oc-ok)]/10 border border-[var(--oc-ok)]/25 rounded-lg px-3 py-2 text-sm text-[var(--oc-ok)]">
           {state.message ?? "Хадгалагдлаа."}
@@ -511,7 +509,13 @@ export function OrderForm({
           ← Буцах
         </BtnLink>
         <Btn type="submit" disabled={pending}>
-          {pending ? "..." : isEdit ? "Хадгалах" : "Засварын хуудас үүсгэх"}
+          {pending
+            ? "..."
+            : scheduleConfirmArmed
+              ? "Тийм, үргэлжлүүлэх"
+              : isEdit
+                ? "Хадгалах"
+                : "Засварын хуудас үүсгэх"}
         </Btn>
       </div>
     </form>

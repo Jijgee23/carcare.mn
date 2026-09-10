@@ -147,6 +147,7 @@ export default async function AppointmentsCalendarPage({
         })
       : null;
 
+
   // Grid харагдацын цагийн тэнхлэгийг салбарын тухайн өдрийн ажиллах цагаар
   // хязгаарлана — тодорхойгүй бол ердийн ажлын цонх руу буцна (доор).
   const dayBranchHours =
@@ -538,14 +539,22 @@ function DaySchedule({
     const order = orderById.get(id);
     return order?.carriedOver === true && order.continuesIntoDay !== true;
   };
+  // D-076: never hide an "upcoming" follow-up row through this mechanism —
+  // see the identical fix/comment in day-rows.tsx's buildDayRows.
   const rows = schedule.intervals
-    .filter((row) => row.source !== "order" || !isHiddenCarryOverOrder(row.id))
+    .filter((row) => row.source !== "order" || row.role === "upcoming" || !isHiddenCarryOverOrder(row.id))
     .sort((a, b) => a.startMs - b.startMs);
   const issues = schedule.issues.filter(
     (issue) => issue.source !== "order" || !isHiddenCarryOverOrder(issue.id),
   );
   const issueBySourceId = new Map(
     issues.map((issue) => [`${issue.source}:${issue.id}`, issue]),
+  );
+  // D-076: see the identical comment in day-rows.tsx's buildDayRows — only
+  // suppress controls on an upcoming row when this order's primary row is
+  // ALSO present in this same day's view.
+  const orderIdsWithPrimaryRow = new Set(
+    rows.filter((r) => r.source === "order" && r.role === "primary").map((r) => r.id),
   );
   const carriedOverCount = countHiddenUncertainCarryOverOrders(schedule);
 
@@ -655,8 +664,13 @@ function DaySchedule({
               const orderTransitions = order
                 ? ORDER_STATUS_TRANSITIONS[order.status]
                 : [];
+              // D-076: only suppress controls on an "upcoming" row when
+              // this order's primary row is ALSO present in this view.
               const showOrderControls =
-                Boolean(order) && canEditOrders && orderTransitions.length > 0;
+                Boolean(order) &&
+                canEditOrders &&
+                orderTransitions.length > 0 &&
+                (row.role === "primary" || !orderIdsWithPrimaryRow.has(row.id));
               const hasActions =
                 showConfirmReject ||
                 showArrivalActions ||
@@ -750,10 +764,10 @@ function DaySchedule({
                         <div className="w-64">
                           <StatusControls
                             orderId={order.id}
+                            branchId={order.branchId}
                             transitions={orderTransitions}
                             disabled={false}
                             currentStatus={order.status}
-                            occupiesCapacity={order.occupiesCapacity}
                             expectedFinishAt={order.expectedFinishAt}
                             estimatedDurationMinutes={order.estimatedDurationMinutes}
                             attentionHref={`/dashboard/appointments/calendar?view=attention&branchId=${encodeURIComponent(order.branchId)}`}

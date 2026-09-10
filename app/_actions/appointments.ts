@@ -685,7 +685,7 @@ export async function repairAppointmentOrderLinkAction(
         branchId: appointment.branchId,
         customerId: appointment.customerId,
         vehicleId: appointment.vehicleId,
-        status: { in: ["SCHEDULED", "IN_PROGRESS", "WAITING_PARTS"] },
+        status: { in: ["SCHEDULED", "IN_PROGRESS", "POSTPONED"] },
         appointment: { is: null },
       },
       select: { id: true, number: true },
@@ -1085,7 +1085,7 @@ async function findAppointmentRescheduleConflict(
       where: {
         tenantId,
         branchId,
-        status: { in: ["SCHEDULED", "IN_PROGRESS", "WAITING_PARTS"] },
+        status: { in: ["SCHEDULED", "IN_PROGRESS", "POSTPONED"] },
       },
       select: {
         number: true,

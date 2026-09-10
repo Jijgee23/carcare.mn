@@ -133,7 +133,9 @@ export function SchedulePreviewGrid({
         {positioned.map((row) => {
           const isGhost = row.key === "__ghost__";
           const left = pct(row.startMs);
-          const right = row.uncertain ? 100 : pct(row.endMs);
+          // Keep uncertainty visual-only; use the projected end so bounded
+          // fallbacks and overdue saved finishes do not stretch to the axis end.
+          const right = pct(row.endMs);
           const width = Math.max(MIN_BLOCK_WIDTH_PCT, right - left);
           return (
             <div

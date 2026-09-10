@@ -113,7 +113,7 @@ export default async function EditEmployeePage({
     recentLogs,
   ] = await Promise.all([
     prisma.serviceOrder.count({
-      where: { ...scopeFilter, status: { in: ["SCHEDULED", "IN_PROGRESS", "WAITING_PARTS"] } },
+      where: { ...scopeFilter, status: { in: ["SCHEDULED", "IN_PROGRESS", "POSTPONED"] } },
     }),
     prisma.serviceOrder.count({
       where: { ...scopeFilter, status: "COMPLETED", completedAt: { gte: monthStart } },

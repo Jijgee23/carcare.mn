@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { Prisma } from "@/app/generated/prisma/client";
 import { BtnLink, Chip } from "@/app/_components/landing-ops-ui";
+import {
+  APPOINTMENT_STATUS_BADGE,
+  APPOINTMENT_STATUS_LABEL,
+} from "@/lib/appointments";
 import { requireAccount } from "@/lib/auth/account";
 import { normalizePlate } from "@/lib/vehicles";
 import {
@@ -55,11 +59,11 @@ export default async function AccountHistoryPage({
   // account-той холбоотой Customer-ийн захиалга (хуучин зан төлөвтэй нийцүүлэв).
   // Машин нэг байгууллагад өөр (холбогдоогүй) Customer дээр бүртгэгдсэн ч,
   // эзэмшил нь өөр газар баталгаажсан бол түүх энд нэгдэж харагдана.
-  // Түүх бол зөвхөн дууссан ажлыг харуулна — SCHEDULED/IN_PROGRESS/WAITING_PARTS
-  // хараахан идэвхтэй, /account (Миний захиалгууд) дээр харагдана. Төлбөрийн
-  // төлөв энд шүүлт биш: төлөгдөөгүй ч дууссан ажил энд харагдана.
+  // Түүх дууссан AND цуцлагдсан ажлыг харуулна (D-085) — SCHEDULED/IN_PROGRESS/
+  // POSTPONED хараахан идэвхтэй, /account (Миний захиалгууд) дээр харагдана.
+  // Төлбөрийн төлөв энд шүүлт биш: төлөгдөөгүй ч дууссан ажил энд харагдана.
   const where: Prisma.ServiceOrderWhereInput = {
-    status: "COMPLETED",
+    status: { in: ["COMPLETED", "CANCELLED"] },
     OR: [
       { customer: { accountId: account.id } },
       ...(ownedVehicleIds.length
@@ -86,6 +90,29 @@ export default async function AccountHistoryPage({
       branch: { select: { name: true } },
       vehicle: { select: { plate: true, make: true, model: true } },
       _count: { select: { items: true } },
+    },
+  });
+
+  // D-085: цуцлагдсан/ирээгүй/татгалзсан цаг (ServiceOrder огт үүсээгүй тул
+  // дээрх query-д тусахгүй) — эдгээр нь одоо идэвхтэй жагсаалтад (D-083/D-084)
+  // байхгүй болсон тул, мөнхөд алга болохгүйн тулд энд харагдана. `plate`-ээр
+  // шүүхгүй — цаг захиалахдаа машин сонгоогүй байж болно, мөн энэ бол цөөн
+  // тооны бичлэг тул шүүлт хийх шаардлагагүй.
+  const cancelledAppointments = await prisma.appointment.findMany({
+    where: {
+      accountId: account.id,
+      status: { in: ["CANCELLED", "NO_SHOW", "REJECTED"] },
+      serviceOrderId: null,
+    },
+    orderBy: { requestedAt: "desc" },
+    take: 50,
+    select: {
+      id: true,
+      status: true,
+      requestedAt: true,
+      tenant: { select: { name: true } },
+      branch: { select: { name: true } },
+      category: { select: { name: true } },
     },
   });
 
@@ -119,12 +146,12 @@ export default async function AccountHistoryPage({
         </div>
       ) : null}
 
-      {orders.length === 0 ? (
+      {orders.length === 0 && cancelledAppointments.length === 0 ? (
         <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-10 text-center text-sm text-[var(--oc-muted3)]">
           Одоогоор хийгдсэн үйлчилгээ алга. Цаг захиалга баталгаажиж, үйлчилгээ
           хийгдсэний дараа энд харагдана.
         </div>
-      ) : (
+      ) : orders.length > 0 ? (
         <div className="flex flex-col gap-3">
           {orders.map((o) => {
             const when = o.completedAt ?? o.scheduledAt ?? o.createdAt;
@@ -169,7 +196,49 @@ export default async function AccountHistoryPage({
             );
           })}
         </div>
-      )}
+      ) : null}
+
+      {cancelledAppointments.length > 0 ? (
+        <div className="flex flex-col gap-3">
+          <h2 className="font-semibold text-[var(--oc-ink2)] text-sm">
+            Цуцлагдсан / ирээгүй цагууд
+            <span className="text-[var(--oc-muted3)] font-normal">
+              {" "}
+              · {cancelledAppointments.length}
+            </span>
+          </h2>
+          {cancelledAppointments.map((a) => (
+            <Link
+              key={a.id}
+              href={`/account/appointments/${a.id}`}
+              className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-4 block hover:bg-[var(--oc-panel2)] transition-colors"
+            >
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-[var(--oc-ink)]">
+                      {a.tenant.name}
+                    </span>
+                    <span
+                      className={`font-plex-mono text-[11px] px-2.5 py-1 rounded-full ${APPOINTMENT_STATUS_BADGE[a.status]}`}
+                    >
+                      {APPOINTMENT_STATUS_LABEL[a.status]}
+                    </span>
+                  </div>
+                  {a.category ? (
+                    <div className="text-sm text-[var(--oc-muted)] mt-1">
+                      {a.category.name}
+                    </div>
+                  ) : null}
+                  <div className="text-xs text-[var(--oc-muted3)] mt-0.5 tabular-nums">
+                    {formatDate(a.requestedAt)} · {a.branch.name}
+                  </div>
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

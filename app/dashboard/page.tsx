@@ -94,7 +94,7 @@ export default async function DashboardPage({
       where: {
         tenantId: user.tenantId,
         ...orderBranchFilter,
-        status: { in: ["SCHEDULED", "IN_PROGRESS", "WAITING_PARTS"] },
+        status: { in: ["SCHEDULED", "IN_PROGRESS", "POSTPONED"] },
       },
     }),
     prisma.serviceOrder.count({

@@ -211,7 +211,7 @@ export default async function OrdersPage({
           options={[
             { value: "SCHEDULED", label: ORDER_STATUS_LABEL.SCHEDULED },
             { value: "IN_PROGRESS", label: ORDER_STATUS_LABEL.IN_PROGRESS },
-            { value: "WAITING_PARTS", label: ORDER_STATUS_LABEL.WAITING_PARTS },
+            { value: "POSTPONED", label: ORDER_STATUS_LABEL.POSTPONED },
             { value: "COMPLETED", label: ORDER_STATUS_LABEL.COMPLETED },
             { value: "CANCELLED", label: ORDER_STATUS_LABEL.CANCELLED },
           ]}

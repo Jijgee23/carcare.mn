@@ -84,8 +84,10 @@ export async function getBranchDaySchedulePreview(
     return order?.carriedOver === true && order.continuesIntoDay !== true;
   };
 
+  // D-076: never hide an "upcoming" follow-up row through this mechanism —
+  // see the identical fix/comment in day-rows.tsx's buildDayRows.
   const rows: SchedulePreviewRow[] = schedule.intervals
-    .filter((row) => row.source !== "order" || !isHiddenCarryOverOrder(row.id))
+    .filter((row) => row.source !== "order" || row.role === "upcoming" || !isHiddenCarryOverOrder(row.id))
     .sort((a, b) => a.startMs - b.startMs)
     .map((row) => {
       const appt = row.source === "appointment" ? appointmentById.get(row.id) : null;

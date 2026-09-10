@@ -55,10 +55,16 @@ export default async function AccountPage() {
   // Дууссан + бүрэн төлөгдсөн захиалга энд биш, Үйлчилгээний түүхэд харагдана
   // (харах: app/account/history). Дуусаад ч төлөгдөөгүй бол энд үлдэнэ, учир
   // нь хэрэглэгч төлбөрөө хараахан хийгээгүй байгааг мэдэх ёстой.
+  // D-083: терминал, хэзээ ч биелэгдээгүй цаг (ServiceOrder огт үүсээгүй)
+  // мөнхөд энд үлдэхгүй байх ёстой — /account/history рүү ч хэзээ ч
+  // очихгүй (тэр нь зөвхөн COMPLETED-г шүүнэ).
   const appointments = await prisma.appointment.findMany({
     where: {
       accountId: account.id,
-      NOT: { serviceOrder: { status: "COMPLETED", paymentStatus: "PAID" } },
+      NOT: [
+        { serviceOrder: { status: "COMPLETED", paymentStatus: "PAID" } },
+        { status: { in: ["CANCELLED", "NO_SHOW", "REJECTED"] }, serviceOrderId: null },
+      ],
     },
     orderBy: { requestedAt: "desc" },
     include: {
@@ -88,7 +94,8 @@ export default async function AccountPage() {
     where: {
       customer: { accountId: account.id },
       appointment: null,
-      NOT: { status: "COMPLETED", paymentStatus: "PAID" },
+      // D-083: цуцлагдсан walk-in захиалга ч мөн адил мөнхөд энд үлдэхгүй.
+      NOT: [{ status: "COMPLETED", paymentStatus: "PAID" }, { status: "CANCELLED" }],
     },
     orderBy: { createdAt: "desc" },
     include: {

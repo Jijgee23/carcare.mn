@@ -16,7 +16,7 @@ export type Range = { from: Date; to: Date; label: string; key: string };
 const STATUS_ORDER: OrderStatus[] = [
   "SCHEDULED",
   "IN_PROGRESS",
-  "WAITING_PARTS",
+  "POSTPONED",
   "COMPLETED",
   "CANCELLED",
 ];
@@ -257,7 +257,7 @@ export async function loadReportData(
   const activeCount =
     (statusCountMap.SCHEDULED ?? 0) +
     (statusCountMap.IN_PROGRESS ?? 0) +
-    (statusCountMap.WAITING_PARTS ?? 0);
+    (statusCountMap.POSTPONED ?? 0);
 
   // Branch breakdown
   const branchRows = byBranch

@@ -69,7 +69,7 @@ export default async function BranchesPage({
       prisma.serviceOrder.count({
         where: {
           tenantId: user.tenantId,
-          status: { in: ["SCHEDULED", "IN_PROGRESS", "WAITING_PARTS"] },
+          status: { in: ["SCHEDULED", "IN_PROGRESS", "POSTPONED"] },
         },
       }),
     ]);

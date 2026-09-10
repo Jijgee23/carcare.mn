@@ -78,7 +78,7 @@ export const PLAN_LIMIT_META: Record<
   },
   max_active_orders: {
     label: "Идэвхтэй засварын хуудас",
-    description: "Дуусаагүй (SCHEDULED/IN_PROGRESS/WAITING_PARTS) засварын хуудасны тоо",
+    description: "Дуусаагүй (SCHEDULED/IN_PROGRESS/POSTPONED) засварын хуудасны тоо",
     kind: "COUNT",
     sortOrder: 70,
   },

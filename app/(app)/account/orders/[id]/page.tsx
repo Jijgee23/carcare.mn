@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BtnLink } from "@/app/_components/landing-ops-ui";
+import { OrderStatusHistorySection } from "@/app/_components/order-status-history";
 import { requireAccount } from "@/lib/auth/account";
 import {
   ITEM_KIND_BADGE,
   ITEM_KIND_LABEL,
   ORDER_STATUS_BADGE,
+  ORDER_STATUS_HISTORY_CUSTOMER_SELECT,
   ORDER_STATUS_LABEL,
   PAYMENT_STATUS_BADGE,
   PAYMENT_STATUS_LABEL,
@@ -30,6 +32,8 @@ export const metadata = {
 
 export const dynamic = "force-dynamic";
 
+// Хойшлогдсон захиалгад хуучин "дуусах хугацаа"-ны таамаг хамааралгүй болсон
+// тул хэзээ ч "хожимдсон" гэж тооцохгүй — шинэ буцах цаг үүнийг орлоно (D-081).
 function computeIsDelayed(order: {
   status: string;
   expectedFinishAt: Date | null;
@@ -37,6 +41,7 @@ function computeIsDelayed(order: {
   return (
     order.status !== "COMPLETED" &&
     order.status !== "CANCELLED" &&
+    order.status !== "POSTPONED" &&
     order.expectedFinishAt != null &&
     order.expectedFinishAt.getTime() < Date.now()
   );
@@ -103,9 +108,20 @@ export default async function AccountWalkInOrderDetailPage({
           total: true,
         },
       },
+      statusChanges: {
+        orderBy: { createdAt: "desc" },
+        select: ORDER_STATUS_HISTORY_CUSTOMER_SELECT,
+      },
+      timeBookings: {
+        where: { kind: "SCHEDULED", closedAt: null },
+        select: { startAt: true },
+        take: 1,
+      },
     },
   });
   if (!order) notFound();
+
+  const scheduledReturnAt = order.timeBookings[0]?.startAt ?? null;
 
   const isDelayed = computeIsDelayed(order);
   // Дууссан + бүрэн төлөгдсөн ажлыг Үйлчилгээний түүхэнд харуулна (харах:
@@ -156,14 +172,20 @@ export default async function AccountWalkInOrderDetailPage({
               Товлосон огноо: {fmtDateTime(order.scheduledAt)}
             </span>
           ) : null}
-          {order.estimatedDurationMinutes != null || order.expectedFinishAt != null ? (
+          {order.status === "POSTPONED" && scheduledReturnAt ? (
+            <span className="text-sm font-bold text-purple-400 light:text-purple-700">
+              Засвар үргэлжлэх цаг: {fmtDateTime(scheduledReturnAt)}
+            </span>
+          ) : null}
+          {order.estimatedDurationMinutes != null ||
+          (order.status !== "POSTPONED" && order.expectedFinishAt != null) ? (
             <div className="flex flex-col gap-0.5">
               {order.estimatedDurationMinutes != null ? (
                 <span className="text-xs text-[var(--oc-muted2)]">
                   Ойролцоо хугацаа: {fmtEstimatedMinutes(order.estimatedDurationMinutes)}
                 </span>
               ) : null}
-              {order.expectedFinishAt ? (
+              {order.status !== "POSTPONED" && order.expectedFinishAt ? (
                 <span
                   className={`text-xs ${isDelayed ? "text-red-400 font-medium" : "text-[var(--oc-muted2)]"}`}
                 >
@@ -237,6 +259,8 @@ export default async function AccountWalkInOrderDetailPage({
           ) : null}
         </div>
       </div>
+
+      <OrderStatusHistorySection entries={order.statusChanges} />
     </div>
   );
 }

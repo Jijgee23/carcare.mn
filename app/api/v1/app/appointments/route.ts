@@ -8,6 +8,7 @@ import { reserveAppointment, ReservationError } from "@/lib/appointment-reservat
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { isFeatureEnabled } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
+import { ORDER_STATUS_HISTORY_CUSTOMER_SELECT } from "@/lib/orders";
 
 // GET /api/v1/app/appointments — миний цагууд (auth).
 export async function GET(req: Request) {
@@ -18,10 +19,20 @@ export async function GET(req: Request) {
   // belong in service history, not here — see /api/v1/app/orders. An
   // appointment whose order is completed but not yet fully paid stays here
   // so the customer still sees it needs payment.
+  // Terminal, never-fulfilled appointments (rejected before confirmation,
+  // or confirmed then cancelled/no-show — none of which ever get a
+  // ServiceOrder, see COWORK.md D-083) also don't belong here: without this
+  // they'd sit in "Миний цагууд" forever, since there's no aging-out and
+  // they can never reach /api/v1/app/orders (that's ServiceOrder-keyed).
+  // Guarded on `serviceOrderId: null` so a real (if unusual) case where one
+  // of these statuses somehow got linked to an order still surfaces normally.
   const appointments = await prisma.appointment.findMany({
     where: {
       accountId: account.id,
-      NOT: { serviceOrder: { status: "COMPLETED", paymentStatus: "PAID" } },
+      NOT: [
+        { serviceOrder: { status: "COMPLETED", paymentStatus: "PAID" } },
+        { status: { in: ["CANCELLED", "NO_SHOW", "REJECTED"] }, serviceOrderId: null },
+      ],
     },
     orderBy: { requestedAt: "desc" },
     select: {
@@ -63,6 +74,18 @@ export async function GET(req: Request) {
               total: true,
             },
           },
+          statusChanges: {
+            orderBy: { createdAt: "desc" },
+            select: ORDER_STATUS_HISTORY_CUSTOMER_SELECT,
+          },
+          // D-078's postpone flow always requires a return time — the open
+          // SCHEDULED-kind row's startAt is that return time. Only relevant
+          // while POSTPONED (only one open SCHEDULED row can exist, D-076).
+          timeBookings: {
+            where: { kind: "SCHEDULED", closedAt: null },
+            select: { startAt: true },
+            take: 1,
+          },
         },
       },
       feeAmount: true,
@@ -85,7 +108,11 @@ export async function GET(req: Request) {
     where: {
       customer: { accountId: account.id },
       appointment: null,
-      NOT: { status: "COMPLETED", paymentStatus: "PAID" },
+      // D-083: a cancelled walk-in order has no appointment to be excluded
+      // via, and (like a cancelled appointment) never reaches
+      // /api/v1/app/orders either — that endpoint only returns COMPLETED.
+      // Without this it would linger here forever.
+      NOT: [{ status: "COMPLETED", paymentStatus: "PAID" }, { status: "CANCELLED" }],
     },
     orderBy: { createdAt: "desc" },
     select: {
@@ -114,6 +141,15 @@ export async function GET(req: Request) {
           unitPrice: true,
           total: true,
         },
+      },
+      statusChanges: {
+        orderBy: { createdAt: "desc" },
+        select: ORDER_STATUS_HISTORY_CUSTOMER_SELECT,
+      },
+      timeBookings: {
+        where: { kind: "SCHEDULED", closedAt: null },
+        select: { startAt: true },
+        take: 1,
       },
     },
   });
@@ -162,6 +198,8 @@ export async function GET(req: Request) {
             unitPrice: Number.parseFloat(it.unitPrice.toString()),
             total: Number.parseFloat(it.total.toString()),
           })),
+          statusHistory: a.serviceOrder.statusChanges,
+          scheduledReturnAt: a.serviceOrder.timeBookings[0]?.startAt ?? null,
         }
       : null,
     payment: serializeAppointmentFee(a),
@@ -193,6 +231,8 @@ export async function GET(req: Request) {
       unitPrice: Number.parseFloat(it.unitPrice.toString()),
       total: Number.parseFloat(it.total.toString()),
     })),
+    statusHistory: o.statusChanges,
+    scheduledReturnAt: o.timeBookings[0]?.startAt ?? null,
   }));
 
   return jsonOk({ appointments: shaped, walkInOrders: shapedWalkIns });

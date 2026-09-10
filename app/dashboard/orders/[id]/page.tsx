@@ -38,6 +38,11 @@ import {
   formatTugrik,
 } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
+import { bookingDateKey, bookingSlotTime } from "@/lib/booking-time";
+import { resolveEffectiveSchedule } from "@/lib/branch-effective-schedule";
+import { branchScheduleForDateSelect } from "@/lib/branch-effective-schedule-server";
+import { timeToMinutes } from "@/lib/branches";
+import { calculateServiceItemDurationMinutes } from "@/lib/service-duration";
 import type { QPayBankUrl } from "@/lib/qpay-tenant";
 import { AddItemForm } from "./add-item-form";
 import { OrderItems } from "./order-items";
@@ -78,7 +83,13 @@ export default async function OrderDetailPage({
           orderBy: { createdAt: "asc" },
           include: {
             cancelledBy: { select: { firstName: true, lastName: true } },
-            diagnosticTemplate: { select: { type: true } },
+            diagnosticTemplate: { select: { type: true, durationMin: true } },
+            service: {
+              select: {
+                durationValue: true,
+                durationUnit: { select: { name: true, code: true } },
+              },
+            },
           },
         },
         categories: {
@@ -215,6 +226,38 @@ export default async function OrderDetailPage({
 
   if (!order) notFound();
 
+  // "Дуусах хугацаа" DatePicker-ийг ажил эхэлсэн өдрийн салбарын ажлын
+  // цагийн төгсгөлөөс цааш сунгахгүйгээр хязгаарлана (сервер талд ч мөн
+  // адил шалгагдана, харах: reviseExpectedFinishAction). Зөвхөн тухайн талбар
+  // харагдах үед (IN_PROGRESS/POSTPONED, эхэлсэн цагтай) хэрэгтэй.
+  let workDayCloseAt: Date | null = null;
+  if (
+    order.startedAt &&
+    (order.status === "IN_PROGRESS" || order.status === "POSTPONED")
+  ) {
+    const workDayStr = bookingDateKey(order.startedAt);
+    const branchSchedule = await prisma.branch.findUnique({
+      where: { id: order.branchId },
+      select: branchScheduleForDateSelect(workDayStr),
+    });
+    if (branchSchedule) {
+      const effective = resolveEffectiveSchedule({
+        dateStr: workDayStr,
+        branch: {
+          openTime: branchSchedule.openTime,
+          closeTime: branchSchedule.closeTime,
+          schedules: branchSchedule.schedules,
+          scheduleExceptions: branchSchedule.scheduleExceptions,
+          scheduleSeasons: branchSchedule.scheduleSeasons,
+        },
+      });
+      const closeMinutes = timeToMinutes(effective.closeTime);
+      if (effective.open && closeMinutes != null) {
+        workDayCloseAt = bookingSlotTime(workDayStr, closeMinutes);
+      }
+    }
+  }
+
   const status = order.status as OrderStatus;
   const paymentStatus = order.paymentStatus as PaymentStatus;
   const allowedTransitions = ORDER_STATUS_TRANSITIONS[status];
@@ -223,9 +266,10 @@ export default async function OrderDetailPage({
     .toString();
   const isEditable = status !== "COMPLETED" && status !== "CANCELLED";
   const diagnosticsFillable = canFillDiagnostics(status);
+  const serviceItemDurationMinutes = calculateServiceItemDurationMinutes(order.items);
 
   // Гүйцэтгэлийн прогресс: цуцлагдаагүй мөрүүдээс хэд нь дууссан вэ.
-  // Зөвхөн хуудас эхэлсэн (IN_PROGRESS/WAITING_PARTS) үед харуулна.
+  // Зөвхөн хуудас эхэлсэн (IN_PROGRESS/POSTPONED) үед харуулна.
   const orderStarted = diagnosticsFillable;
   const activeItems = order.items.filter((it) => it.status !== "CANCELLED");
   const completedItemsCount = activeItems.filter(
@@ -537,13 +581,15 @@ export default async function OrderDetailPage({
               <h2 className="font-semibold text-[var(--oc-ink)] mb-4 text-sm">Статус</h2>
               <StatusControls
                 orderId={order.id}
+                branchId={order.branchId}
                 transitions={allowedTransitions}
                 disabled={!canEditOrder}
                 currentStatus={order.status as OrderStatus}
-                occupiesCapacity={order.occupiesCapacity}
                 expectedFinishAt={order.expectedFinishAt}
                 estimatedDurationMinutes={order.estimatedDurationMinutes}
+                serviceItemDurationMinutes={serviceItemDurationMinutes}
                 attentionHref={`/dashboard/appointments/calendar?view=attention&branchId=${encodeURIComponent(order.branchId)}`}
+                workDayCloseAt={workDayCloseAt}
               />
             </div>
           ) : null}

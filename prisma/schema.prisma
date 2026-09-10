@@ -39,6 +39,7 @@ model Tenant {
   serviceOrders        ServiceOrder[]
   serviceOrderCategories ServiceOrderCategory[]
   orderTimeBookings    OrderTimeBooking[]
+  orderStatusChanges   OrderStatusChange[]
   diagnosticTemplates  DiagnosticTemplate[]
   diagnosticReports    DiagnosticReport[]
   units                Unit[]
@@ -126,6 +127,7 @@ model User {
   appointmentsResponded Appointment[]        @relation("AppointmentRespondedBy")
   feedback              Feedback[]
   createdOrderTimeBookings OrderTimeBooking[] @relation("OrderTimeBookingCreatedBy")
+  orderStatusChangesActed  OrderStatusChange[] @relation("OrderStatusChangeActor")
 
   @@index([tenantId])
   @@index([tenantId, isActive])
@@ -457,12 +459,13 @@ model ServiceOrder {
   assignedToId String?
   assignedTo   User?   @relation("AssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
 
-  items        ServiceItem[]
-  categories   ServiceOrderCategory[]
-  timeBookings OrderTimeBooking[]
-  reports      DiagnosticReport[]
-  payments     OrderPayment[]
-  appointment  Appointment?
+  items         ServiceItem[]
+  categories    ServiceOrderCategory[]
+  timeBookings  OrderTimeBooking[]
+  statusChanges OrderStatusChange[]
+  reports       DiagnosticReport[]
+  payments      OrderPayment[]
+  appointment   Appointment?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -476,7 +479,7 @@ model ServiceOrder {
 enum OrderStatus {
   SCHEDULED
   IN_PROGRESS
-  WAITING_PARTS
+  POSTPONED
   COMPLETED
   CANCELLED
 }
@@ -818,6 +821,41 @@ model OrderTimeBooking {
 enum OrderBookingKind {
   SCHEDULED // Ирээгүй, товлогдсон цаг — startAt ирээдүйд, ажил хараахан эхлээгүй
   ACTIVE // Машин бодитоор ажлын байранд байгаа хугацаа
+}
+
+// --- OrderStatusChange (D-078: захиалгын статус шилжилтийн бүтэцтэй түүх) --
+// AuditLog-оос ялгаатай нь: JSON before/after биш, өөрийн баганатай (fromStatus/
+// toStatus/reason/reasonTag) — тайлан/статистикт шууд query хийхэд зориулагдсан.
+// Статусын ЯМАР Ч шилжилт бүр энд бичигдэнэ; reason/reasonTag зөвхөн хойшлуулах
+// (→ POSTPONED) үед л бөглөгдөнө, бусад шилжилтэд NULL.
+model OrderStatusChange {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orderId  String
+  order    ServiceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  fromStatus OrderStatus?
+  toStatus   OrderStatus
+
+  // Ажилтны гараар бичсэн шалтгаан — зөвхөн хойшлуулахад холбогдоно.
+  reason String?
+  // Урьдчилан тодорхойлсон шошго (жишээ нь хуучин WAITING_PARTS статусын
+  // орлуулга) — гар бичсэн reason-той хамт хадгалагдана, статус биш.
+  reasonTag OrderPostponeReasonTag?
+
+  changedById String?
+  changedBy   User?    @relation("OrderStatusChangeActor", fields: [changedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, orderId, createdAt])
+}
+
+enum OrderPostponeReasonTag {
+  WAITING_PARTS // Сэлбэг хүлээж байна
+  WAITING_CUSTOMER // Үйлчлүүлэгчийн шийдвэр хүлээж байна
+  NEEDS_DIAGNOSIS // Нэмэлт оношилгоо шаардлагатай
+  OTHER // Бусад — гар бичсэн reason-той хамт ашиглана
 }
 
 // --- BranchCategoryDuration (ангилал бүрийн салбар-тусгай хугацааны override)

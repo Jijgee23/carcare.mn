@@ -1,7 +1,7 @@
 export const ORDER_STATUSES = [
   "SCHEDULED",
   "IN_PROGRESS",
-  "WAITING_PARTS",
+  "POSTPONED",
   "COMPLETED",
   "CANCELLED",
 ] as const;
@@ -11,9 +11,49 @@ export type OrderStatus = (typeof ORDER_STATUSES)[number];
 export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
   SCHEDULED: "Товлогдсон",
   IN_PROGRESS: "Хийгдэж байна",
-  WAITING_PARTS: "Сэлбэг хүлээж буй",
+  POSTPONED: "Хойшлогдсон",
   COMPLETED: "Дууссан",
   CANCELLED: "Цуцлагдсан",
+};
+
+// D-078: хойшлуулах шалтгааны урьдчилан тодорхойлсон шошго — гар бичсэн
+// reason-той хамт OrderStatusChange мөрөнд хадгалагдана. WAITING_PARTS энд
+// хуучин, устгагдсан OrderStatus утгыг орлуулна (COWORK.md, 2026-09-10).
+export const ORDER_POSTPONE_REASON_TAGS = [
+  "WAITING_PARTS",
+  "WAITING_CUSTOMER",
+  "NEEDS_DIAGNOSIS",
+  "OTHER",
+] as const;
+
+export type OrderPostponeReasonTag = (typeof ORDER_POSTPONE_REASON_TAGS)[number];
+
+export const ORDER_POSTPONE_REASON_TAG_LABEL: Record<OrderPostponeReasonTag, string> = {
+  WAITING_PARTS: "Сэлбэг хүлээж байна",
+  WAITING_CUSTOMER: "Үйлчлүүлэгчийн шийдвэр хүлээж байна",
+  NEEDS_DIAGNOSIS: "Нэмэлт оношилгоо шаардлагатай",
+  OTHER: "Бусад",
+};
+
+// Customer-facing status history (D-079). Deliberately excludes `reason`
+// (free-text, staff-authored) and `changedBy` (internal staff identity) —
+// only the status transition, the pre-defined reason tag, and the timestamp
+// are customer-safe. Staff-side history (getOrderStatusHistoryAction in
+// app/_actions/orders.ts) keeps the full fields.
+export const ORDER_STATUS_HISTORY_CUSTOMER_SELECT = {
+  id: true,
+  fromStatus: true,
+  toStatus: true,
+  reasonTag: true,
+  createdAt: true,
+} as const;
+
+export type CustomerOrderStatusHistoryEntry = {
+  id: string;
+  fromStatus: OrderStatus | null;
+  toStatus: OrderStatus;
+  reasonTag: OrderPostponeReasonTag | null;
+  createdAt: Date;
 };
 
 export const ORDER_STATUS_BADGE: Record<OrderStatus, string> = {
@@ -21,7 +61,7 @@ export const ORDER_STATUS_BADGE: Record<OrderStatus, string> = {
     "bg-[var(--oc-warn)]/15 text-[var(--oc-warn)] border border-[var(--oc-warn)]/25",
   IN_PROGRESS:
     "bg-blue-500/15 text-blue-400 border border-blue-500/25 light:bg-blue-100 light:border-blue-300 light:text-blue-700",
-  WAITING_PARTS:
+  POSTPONED:
     "bg-purple-500/15 text-purple-300 border border-purple-500/25 light:bg-purple-100 light:border-purple-300 light:text-purple-700",
   COMPLETED:
     "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700",
@@ -32,8 +72,8 @@ export const ORDER_STATUS_BADGE: Record<OrderStatus, string> = {
 // Аль статус руу шилжих боломжтой вэ?
 export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   SCHEDULED: ["IN_PROGRESS", "CANCELLED"],
-  IN_PROGRESS: ["WAITING_PARTS", "COMPLETED", "CANCELLED"],
-  WAITING_PARTS: ["IN_PROGRESS", "CANCELLED"],
+  IN_PROGRESS: ["POSTPONED", "COMPLETED", "CANCELLED"],
+  POSTPONED: ["IN_PROGRESS", "CANCELLED"],
   COMPLETED: [],
   CANCELLED: [],
 };
@@ -46,7 +86,7 @@ export function isOrderLocked(status: OrderStatus): boolean {
 // Захиалга эхэлсэн үү — оношилгоо бөглөх боломжтой эсэх. Зөвхөн эхэлсэн идэвхтэй
 // төлөвт (SCHEDULED биш, дууссан/цуцлагдсан биш) бөглөнө.
 export function canFillDiagnostics(status: OrderStatus): boolean {
-  return status === "IN_PROGRESS" || status === "WAITING_PARTS";
+  return status === "IN_PROGRESS" || status === "POSTPONED";
 }
 
 export const PAYMENT_STATUSES = ["UNPAID", "PARTIAL", "PAID"] as const;

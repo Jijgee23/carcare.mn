@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { cancelAppointmentByAccount } from "@/app/_actions/appointments";
 import { BtnLink, Btn } from "@/app/_components/landing-ops-ui";
 import { ConfirmForm } from "@/app/_components/confirm-form";
+import { OrderStatusHistorySection } from "@/app/_components/order-status-history";
 import {
   APPOINTMENT_STATUS_BADGE,
   APPOINTMENT_STATUS_LABEL,
@@ -14,6 +15,7 @@ import {
   ITEM_KIND_BADGE,
   ITEM_KIND_LABEL,
   ORDER_STATUS_BADGE,
+  ORDER_STATUS_HISTORY_CUSTOMER_SELECT,
   ORDER_STATUS_LABEL,
   PAYMENT_STATUS_BADGE,
   PAYMENT_STATUS_LABEL,
@@ -36,6 +38,8 @@ export const dynamic = "force-dynamic";
 // react-hooks/purity: `new Date()`/`Date.now()` дуудлагыг component-ийн
 // render биед шууд бичихгүй (lib/appointments-calendar.ts-ийн ижил тайлбарыг
 // үз) — тусдаа module-level helper-т шилжүүлнэ.
+// Хойшлогдсон захиалгад хуучин "дуусах хугацаа"-ны таамаг хамааралгүй болсон
+// тул хэзээ ч "хожимдсон" гэж тооцохгүй — шинэ буцах цаг үүнийг орлоно (D-081).
 function computeIsDelayed(order: {
   status: string;
   expectedFinishAt: Date | null;
@@ -44,6 +48,7 @@ function computeIsDelayed(order: {
     order != null &&
     order.status !== "COMPLETED" &&
     order.status !== "CANCELLED" &&
+    order.status !== "POSTPONED" &&
     order.expectedFinishAt != null &&
     order.expectedFinishAt.getTime() < Date.now()
   );
@@ -127,11 +132,22 @@ export default async function AccountAppointmentDetailPage({
               total: true,
             },
           },
+          statusChanges: {
+            orderBy: { createdAt: "desc" },
+            select: ORDER_STATUS_HISTORY_CUSTOMER_SELECT,
+          },
+          timeBookings: {
+            where: { kind: "SCHEDULED", closedAt: null },
+            select: { startAt: true },
+            take: 1,
+          },
         },
       },
     },
   });
   if (!appt) notFound();
+
+  const scheduledReturnAt = appt.serviceOrder?.timeBookings[0]?.startAt ?? null;
 
   const canCancel = appt.status === "PENDING" || appt.status === "CONFIRMED";
   // Захиалга (ServiceOrder) аль хэдийн үүссэн бол онлайнаар шилжүүлэхийг
@@ -247,15 +263,21 @@ export default async function AccountAppointmentDetailPage({
                 Товлосон огноо: {fmtDateTime(appt.serviceOrder.scheduledAt)}
               </span>
             ) : null}
+            {appt.serviceOrder.status === "POSTPONED" && scheduledReturnAt ? (
+              <span className="text-sm font-bold text-purple-400 light:text-purple-700">
+                Засвар үргэлжлэх цаг: {fmtDateTime(scheduledReturnAt)}
+              </span>
+            ) : null}
             {appt.serviceOrder.estimatedDurationMinutes != null ||
-            appt.serviceOrder.expectedFinishAt != null ? (
+            (appt.serviceOrder.status !== "POSTPONED" &&
+              appt.serviceOrder.expectedFinishAt != null) ? (
               <div className="flex flex-col gap-0.5">
                 {appt.serviceOrder.estimatedDurationMinutes != null ? (
                   <span className="text-xs text-[var(--oc-muted2)]">
                     Ойролцоо хугацаа: {fmtEstimatedMinutes(appt.serviceOrder.estimatedDurationMinutes)}
                   </span>
                 ) : null}
-                {appt.serviceOrder.expectedFinishAt ? (
+                {appt.serviceOrder.status !== "POSTPONED" && appt.serviceOrder.expectedFinishAt ? (
                   <span
                     className={`text-xs ${isDelayed ? "text-red-400 font-medium" : "text-[var(--oc-muted2)]"}`}
                   >
@@ -329,6 +351,10 @@ export default async function AccountAppointmentDetailPage({
             ) : null}
           </div>
         </div>
+      ) : null}
+
+      {appt.serviceOrder ? (
+        <OrderStatusHistorySection entries={appt.serviceOrder.statusChanges} />
       ) : null}
 
       {/* Хураамж / цуцлах */}

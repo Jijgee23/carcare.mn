@@ -202,7 +202,11 @@ export function GridSchedule({
 
             {positioned.map((row) => {
               const left = pct(row.startMs);
-              const right = row.uncertain ? 100 : pct(row.endMs);
+              // Uncertainty controls the striped treatment, not the width.
+              // The projection already supplies a bounded fallback for a
+              // scheduled unknown-duration row and preserves a saved finish
+              // for overdue work.
+              const right = pct(row.endMs);
               const width = Math.max(MIN_BLOCK_WIDTH_PCT, right - left);
               const isSelected = row.key === selectedKey;
               return (

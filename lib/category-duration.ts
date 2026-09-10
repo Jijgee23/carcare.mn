@@ -1,7 +1,7 @@
 import { bookingDateKey, bookingDayBounds } from "@/lib/booking-time";
 import { peakOccupancy } from "@/lib/schedule-capacity";
 import { DEFAULT_SLOT_CAPACITY, DEFAULT_SLOT_MINUTES } from "@/lib/appointment-slots";
-import { resolveOrderEffectiveInterval } from "@/lib/schedule-order-interval";
+import { resolveOrderIntervals, type OrderTimeBookingLike } from "@/lib/schedule-order-interval";
 import { isPendingAppointmentPaymentExpired } from "@/lib/appointment-payment-status";
 // Concrete read shapes accept both the RLS-extended client and a real transaction
 // without casting away Prisma's generic extension types.
@@ -28,8 +28,15 @@ type PrismaTransactionClient = {
   serviceOrder?: { findMany(args: {
     where: {
       branchId: string;
-      status: { in: ("SCHEDULED" | "IN_PROGRESS" | "WAITING_PARTS")[] };
-      OR: Array<{ scheduledAt: { lt: Date } } | { scheduledAt: null }>;
+      OR: Array<
+        | {
+            status: { in: ("SCHEDULED" | "IN_PROGRESS" | "POSTPONED")[] };
+            OR: Array<{ scheduledAt: { lt: Date } } | { scheduledAt: null }>;
+          }
+        // D-076: also matches orders otherwise out of scope (e.g. COMPLETED)
+        // that still have an open follow-up booking.
+        | { id: { in: string[] } }
+      >;
     };
     select: {
       status: true;
@@ -41,6 +48,11 @@ type PrismaTransactionClient = {
       id: true;
     };
   }): Promise<TakenOrderRow[]> };
+  orderTimeBooking?: { findMany(args: {
+    where: { orderId: { in: string[] } } | { branchId: string; closedAt: null };
+    select: { orderId: true; kind: true; startAt: true; endAt: true; closedAt: true } | { orderId: true };
+    distinct?: ["orderId"];
+  }): Promise<{ orderId: string; kind?: "SCHEDULED" | "ACTIVE"; startAt?: Date; endAt?: Date | null; closedAt?: Date | null }[]> };
 };
 
 // Ангилалд хугацаа тохируулаагүй үеийн эцсийн fallback (минут). Slot-ийн
@@ -266,7 +278,7 @@ export async function resolveTakenCapacityIntervals(
   fallbackMinutes: number,
   excludeAppointmentId?: string,
 ): Promise<{ startMs: number; endMs: number }[]> {
-  const [candidates, orderCandidates] = await Promise.all([
+  const [candidates, followUpOrderIds] = await Promise.all([
     client.appointment.findMany({
       where: {
         branchId,
@@ -287,25 +299,39 @@ export async function resolveTakenCapacityIntervals(
         payment: { select: { status: true } },
       },
     }),
-    client.serviceOrder
-      ? client.serviceOrder.findMany({
-          where: {
-            branchId,
-            status: { in: ["SCHEDULED", "IN_PROGRESS", "WAITING_PARTS"] },
-            OR: [{ scheduledAt: { lt: dayEnd } }, { scheduledAt: null }],
-          },
-          select: {
-            id: true,
-            status: true,
-            scheduledAt: true,
-            startedAt: true,
-            estimatedDurationMinutes: true,
-            expectedFinishAt: true,
-            occupiesCapacity: true,
-          },
-        })
-      : Promise.resolve([] as TakenOrderRow[]),
+    // D-076: order ids otherwise out of scope (e.g. COMPLETED) that still
+    // have an open follow-up booking — see the identical fetch in
+    // findScheduleConflict (app/_actions/orders.ts) and fetchOrderRows
+    // (lib/branch-schedule-loader.ts).
+    client.orderTimeBooking
+      ? client.orderTimeBooking
+          .findMany({ where: { branchId, closedAt: null }, select: { orderId: true }, distinct: ["orderId"] })
+          .then((rows) => rows.map((r) => r.orderId))
+      : Promise.resolve([] as string[]),
   ]);
+  const orderCandidates = client.serviceOrder
+    ? await client.serviceOrder.findMany({
+        where: {
+          branchId,
+          OR: [
+            {
+              status: { in: ["SCHEDULED", "IN_PROGRESS", "POSTPONED"] },
+              OR: [{ scheduledAt: { lt: dayEnd } }, { scheduledAt: null }],
+            },
+            ...(followUpOrderIds.length > 0 ? [{ id: { in: followUpOrderIds } }] : []),
+          ],
+        },
+        select: {
+          id: true,
+          status: true,
+          scheduledAt: true,
+          startedAt: true,
+          estimatedDurationMinutes: true,
+          expectedFinishAt: true,
+          occupiesCapacity: true,
+        },
+      })
+    : ([] as TakenOrderRow[]);
 
   const orderIds = new Set(orderCandidates.map((o) => o.id));
   const liveCandidates = candidates.filter(
@@ -319,22 +345,68 @@ export async function resolveTakenCapacityIntervals(
     liveCandidates,
     fallbackMinutes,
   );
+  // D-068 read-path swap: resolve from OrderTimeBooking rows when present,
+  // matching lib/branch-schedule.ts and findScheduleConflict (orders.ts).
+  const orderTimeBookingRows = orderCandidates.length > 0 && client.orderTimeBooking
+    ? await client.orderTimeBooking.findMany({
+        where: { orderId: { in: orderCandidates.map((o) => o.id) } },
+        select: { orderId: true, kind: true, startAt: true, endAt: true, closedAt: true },
+      })
+    : [];
+  const orderBookings = new Map<string, OrderTimeBookingLike[]>();
+  for (const row of orderTimeBookingRows) {
+    // select always includes kind/startAt/endAt/closedAt for this query, so
+    // these are never actually undefined — the type is loosened to also fit
+    // the orderId-only followUpOrderIds query above.
+    if (row.kind == null || row.startAt == null) continue;
+    const entry: OrderTimeBookingLike = { kind: row.kind, startAt: row.startAt, endAt: row.endAt ?? null, closedAt: row.closedAt ?? null };
+    const arr = orderBookings.get(row.orderId);
+    if (arr) arr.push(entry); else orderBookings.set(row.orderId, [entry]);
+  }
   const orderIntervals = orderCandidates.flatMap((o) => {
-    if (o.status !== "SCHEDULED" && o.occupiesCapacity === false) return [];
-    const resolved = resolveOrderEffectiveInterval(o);
-    // Corrupt data (a computed end <= start) has no positive evidence of
-    // occupancy, same as buildBranchSchedule's "invalid-interval" issue —
-    // exclude rather than silently reserving the rest of the day for it.
-    if (resolved.invalid || !resolved.start) return [];
-    const start = resolved.start.getTime();
-    if (!Number.isFinite(start) || start >= dayEnd.getTime()) return [];
-    // Missing/unknown estimate: conservatively occupy through end of day,
-    // matching buildBranchSchedule's "uncertain" fallback.
-    const end = resolved.end != null && Number.isFinite(resolved.end.getTime())
-      ? resolved.end.getTime()
-      : dayEnd.getTime();
-    if (end <= dayStart.getTime()) return [];
-    return [{ startMs: start, endMs: end }];
+    const { current, upcoming } = resolveOrderIntervals(o, orderBookings.get(o.id));
+    const out: { startMs: number; endMs: number }[] = [];
+
+    // D-076: the order's own current interval only counts under the same
+    // gate as orderCanCountForCapacity's second condition (the terminal-
+    // status one is redundant here — a terminal order only reaches this
+    // list via followUpOrderIds, whose current interval never counts).
+    if (!(o.status !== "SCHEDULED" && o.occupiesCapacity === false)) {
+      // Corrupt data (a computed end <= start) has no positive evidence of
+      // occupancy, same as buildBranchSchedule's "invalid-interval" issue —
+      // exclude rather than silently reserving the rest of the day for it.
+      if (!current.invalid && current.start) {
+        const start = current.start.getTime();
+        if (Number.isFinite(start) && start < dayEnd.getTime()) {
+          // Missing/unknown estimate: conservatively occupy through end of
+          // day, unless this is a scheduled order, where one branch slot is
+          // the same bounded estimate used by the calendar and conflict
+          // checker.
+          const end = current.end != null && Number.isFinite(current.end.getTime())
+            ? current.end.getTime()
+            : o.status === "SCHEDULED" && o.scheduledAt != null
+              ? start + fallbackMinutes * 60000
+              : dayEnd.getTime();
+          if (end > dayStart.getTime()) out.push({ startMs: start, endMs: end });
+        }
+      }
+    }
+
+    // A follow-up reservation counts independently — this is the whole
+    // point of D-076: a live customer must not be able to double-book a
+    // slot a follow-up already claims.
+    for (const up of upcoming) {
+      if (up.invalid || !up.start) continue;
+      const start = up.start.getTime();
+      if (!Number.isFinite(start) || start >= dayEnd.getTime()) continue;
+      const end = up.end != null && Number.isFinite(up.end.getTime())
+        ? up.end.getTime()
+        : start + fallbackMinutes * 60000;
+      if (end <= dayStart.getTime()) continue;
+      out.push({ startMs: start, endMs: end });
+    }
+
+    return out;
   });
 
   return [

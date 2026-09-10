@@ -1,5 +1,6 @@
 import { jsonError, jsonOk } from "@/lib/api";
 import { getApiAccountFromRequest } from "@/lib/auth/account-api-token";
+import { ORDER_STATUS_HISTORY_CUSTOMER_SELECT } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
 import { ownedVehicleIdsForAccount } from "@/lib/vehicles";
 
@@ -69,14 +70,25 @@ export async function GET(
           template: { select: { name: true, type: true, schema: true } },
         },
       },
+      statusChanges: {
+        orderBy: { createdAt: "desc" },
+        select: ORDER_STATUS_HISTORY_CUSTOMER_SELECT,
+      },
+      timeBookings: {
+        where: { kind: "SCHEDULED", closedAt: null },
+        select: { startAt: true },
+        take: 1,
+      },
     },
   });
   if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
 
-  const { reports, ...rest } = order;
+  const { reports, statusChanges, timeBookings, ...rest } = order;
   return jsonOk({
     order: {
       ...rest,
+      statusHistory: statusChanges,
+      scheduledReturnAt: timeBookings[0]?.startAt ?? null,
       reports: reports.map((r) => ({
         id: r.id,
         type: r.template.type,

@@ -13,6 +13,7 @@ import {
   MIN_CATEGORY_DURATION_MINUTES,
   MAX_CATEGORY_DURATION_MINUTES,
 } from "@/lib/category-duration";
+import { calculateServiceItemDurationMinutes } from "@/lib/service-duration";
 
 const ORDER_DETAIL_SELECT = {
   id: true,
@@ -113,6 +114,21 @@ export async function PATCH(
       status: true,
       startedAt: true,
       estimatedDurationMinutes: true,
+      items: {
+        where: { status: { not: "CANCELLED" } },
+        select: {
+          kind: true,
+          status: true,
+          quantity: true,
+          service: {
+            select: {
+              durationValue: true,
+              durationUnit: { select: { name: true, code: true } },
+            },
+          },
+          diagnosticTemplate: { select: { durationMin: true } },
+        },
+      },
     },
   });
   if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
@@ -149,7 +165,7 @@ export async function PATCH(
     const now = new Date();
     const enteringInProgress = newStatus === "IN_PROGRESS";
     const startingFresh = enteringInProgress && !order.startedAt;
-    const resuming = enteringInProgress && order.status === "WAITING_PARTS";
+    const resuming = enteringInProgress && order.status === "POSTPONED";
 
     // Ажил эхлэхэд (эсвэл сэлбэгээс сэргэхэд) үргэлжлэх хугацааны тооцоолол
     // байх ёстой — app/_actions/orders.ts-ийн changeOrderStatusAction-той
@@ -157,6 +173,12 @@ export async function PATCH(
     // бага салбарт бүх цаг захиалгыг хаадаг. Аль хэдийн байвал дахин
     // асуухгүй.
     let effectiveDurationMinutes = order.estimatedDurationMinutes;
+    const serviceItemDurationMinutes = enteringInProgress
+      ? calculateServiceItemDurationMinutes(order.items)
+      : null;
+    if (effectiveDurationMinutes == null && serviceItemDurationMinutes != null) {
+      effectiveDurationMinutes = serviceItemDurationMinutes;
+    }
     if (enteringInProgress && effectiveDurationMinutes == null) {
       const durationMinutes = b.durationMinutes;
       if (
@@ -185,13 +207,11 @@ export async function PATCH(
     }
     // Хүчин чадлын эзэмшил — app/_actions/orders.ts-ийн
     // changeOrderStatusAction-той ижил зарчим: идэвхтэй ажил хүчин чадал
-    // эзэлнэ, дууссан/цуцлагдсан бол шууд суллана. WAITING_PARTS рүү шилжихэд
-    // дуудагч `occupiesCapacity: boolean`-г JSON body-д тодорхой дамжуулж
-    // болно (ирээгүй бол консерватив анхны утга true).
-    if (newStatus === "COMPLETED" || newStatus === "CANCELLED") {
+    // эзэлнэ, дууссан/цуцлагдсан/хойшлогдсон бол шууд суллана. POSTPONED
+    // одоо үргэлж суллагдсан гэж тооцогдоно (D-076, COWORK.md) — дуудагчаас
+    // `occupiesCapacity` авахгүй.
+    if (newStatus === "COMPLETED" || newStatus === "CANCELLED" || newStatus === "POSTPONED") {
       updates.occupiesCapacity = false;
-    } else if (newStatus === "WAITING_PARTS" && typeof b.occupiesCapacity === "boolean") {
-      updates.occupiesCapacity = b.occupiesCapacity;
     } else {
       updates.occupiesCapacity = true;
     }
