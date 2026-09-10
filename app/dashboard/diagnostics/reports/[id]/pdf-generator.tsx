@@ -373,7 +373,13 @@ function DiagnosticReportPDF({ report }: { report: DiagnosticReportData }) {
   );
 }
 
-export function AdvancedPDFButton({ report }: { report: DiagnosticReportData }) {
+export function AdvancedPDFButton({
+  report,
+  label = "PDF",
+}: {
+  report: DiagnosticReportData;
+  label?: string;
+}) {
   // BlobProvider нь зөвхөн browser API. Next App Router-д client component-ийг
   // SSR (Node) дээр бас render хийдэг тул mount хийгдэх хүртэл render хийхгүй —
   // эс бөгөөс "web specific API" алдаа гарна.
@@ -384,7 +390,7 @@ export function AdvancedPDFButton({ report }: { report: DiagnosticReportData }) 
     "no-print text-xs px-3 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-200 light:text-emerald-700 hover:bg-emerald-500/25 border border-emerald-400/20";
 
   if (!mounted) {
-    return <span className={`${className} opacity-50`}>PDF</span>;
+    return <span className={`${className} opacity-50`}>{label}</span>;
   }
 
   // Татахын оронд шинэ таб дээр нээж (inline) үзүүлнэ — blob URL-ийг
@@ -393,7 +399,7 @@ export function AdvancedPDFButton({ report }: { report: DiagnosticReportData }) 
     <BlobProvider document={<DiagnosticReportPDF report={report} />}>
       {({ url, loading }) =>
         loading || !url ? (
-          <span className={`${className} opacity-50`}>PDF...</span>
+          <span className={`${className} opacity-50`}>{label}...</span>
         ) : (
           <a
             href={url}
@@ -401,7 +407,7 @@ export function AdvancedPDFButton({ report }: { report: DiagnosticReportData }) 
             rel="noreferrer"
             className={className}
           >
-            PDF
+            {label}
           </a>
         )
       }

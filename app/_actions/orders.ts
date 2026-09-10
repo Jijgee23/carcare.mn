@@ -29,19 +29,25 @@ import {
 } from "@/lib/orders";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { enforceCountLimit } from "@/lib/plan-limits-server";
-import { prisma, type PrismaTransactionClient } from "@/lib/prisma";
+import { prisma, withBookingTransaction, type PrismaTransactionClient } from "@/lib/prisma";
 import { bookingDateKey, bookingDayBounds } from "@/lib/booking-time";
 import { resolveEffectiveSchedule } from "@/lib/branch-effective-schedule";
 import { branchScheduleForDateSelect } from "@/lib/branch-effective-schedule-server";
 import { timeToMinutes } from "@/lib/branches";
 import { safeNext } from "@/lib/safe-redirect";
 import { ensureTenantVehicle } from "@/lib/vehicles";
+import { nextOrderNumber } from "@/lib/order-number";
 
 export type OrderActionState = {
   ok: boolean;
   message?: string;
   fieldErrors?: Record<string, string>;
 } | null;
+
+type ScheduleConflict = {
+  label: string;
+  certainty: "definite" | "possible";
+};
 
 function s(fd: FormData, key: string): string {
   const v = fd.get(key);
@@ -121,19 +127,6 @@ async function authorizeItemStatus() {
   }
   await assertActiveSubscription(user.tenantId);
   return user;
-}
-
-async function nextOrderNumber(tenantId: string): Promise<string> {
-  // Хамгийн өндөр дугаар дээр нэмнэ — count ашиглавал устгасан захиалгын улмаас
-  // дугаар давхцаж (P2002) болзошгүй. Дугаарууд тэгээр гүйцээсэн тул desc эрэмбэ
-  // нь тоон утгын дарааллыг өгнө.
-  const last = await prisma.serviceOrder.findFirst({
-    where: { tenantId },
-    orderBy: { number: "desc" },
-    select: { number: true },
-  });
-  const lastNum = last ? Number.parseInt(last.number, 10) || 0 : 0;
-  return String(lastNum + 1).padStart(5, "0");
 }
 
 // `client` заавал биш — өгөгдөөгүй бол суурь prisma ашиглана. Мөр
@@ -439,11 +432,16 @@ export async function createOrderAction(
   // Дугаар үүсгэх — давхардвал 3 удаа дахин оролдоно
   let createdId: string | null = null;
   for (let i = 0; i < 3 && !createdId; i++) {
-    const number = await nextOrderNumber(user.tenantId);
     try {
-      const created = await prisma.$transaction(async (tx) => {
+      const created = await withBookingTransaction(user.tenantId, async (tx) => {
+        const number = await nextOrderNumber(tx, user.tenantId);
+        // withBookingTransaction intentionally uses the base Prisma client so
+        // raw locking and writes stay on one connection. Existing helpers use
+        // the extended-client alias; the underlying transaction API is the
+        // same, so bridge the type at this boundary.
+        const scopedTx = tx as unknown as PrismaTransactionClient;
         if (accountVehicleToLink) {
-          await ensureTenantVehicle(tx, {
+          await ensureTenantVehicle(scopedTx, {
             tenantId: user.tenantId,
             vehicleId: data.vehicleId,
             customerId: data.customerId,
@@ -505,7 +503,7 @@ export async function createOrderAction(
               summary: "Цаг захиалга засварын хуудастай холбогдов",
               after: { serviceOrderId: order.id, status: "CONFIRMED" },
             },
-            tx,
+            scopedTx,
           );
         }
 
@@ -916,7 +914,7 @@ async function findScheduleConflict(
   excludeOrderId: string,
   start: Date,
   end: Date,
-): Promise<string | null> {
+): Promise<ScheduleConflict | null> {
   const [appts, orders] = await Promise.all([
     prisma.appointment.findMany({
       where: {
@@ -962,7 +960,10 @@ async function findScheduleConflict(
       ? s0 + a.estimatedDurationMinutes * 60000
       : Number.POSITIVE_INFINITY;
     if (s0 < endMs && e0 > startMs) {
-      return `цаг захиалга (${customerLabel({ fullName: a.account?.name ?? a.customer?.fullName, phone: a.account?.phone ?? a.customer?.phone })})`;
+      return {
+        label: `цаг захиалга (${customerLabel({ fullName: a.account?.name ?? a.customer?.fullName, phone: a.account?.phone ?? a.customer?.phone })})`,
+        certainty: a.estimatedDurationMinutes == null ? "possible" : "definite",
+      };
     }
   }
 
@@ -977,11 +978,47 @@ async function findScheduleConflict(
         ? s0 + o.estimatedDurationMinutes * 60000
         : Number.POSITIVE_INFINITY);
     if (s0 < endMs && e0 > startMs) {
-      return `захиалга #${o.number} (${customerLabel(o.customer)})`;
+      return {
+        label: `захиалга #${o.number} (${customerLabel(o.customer)})`,
+        certainty: e0 === Number.POSITIVE_INFINITY ? "possible" : "definite",
+      };
     }
   }
 
   return null;
+}
+
+/**
+ * Orders may run past closing or onto the next business date, but that is an
+ * operational exception rather than normal branch availability. Keep it a
+ * confirmable warning so staff can intentionally record the real finish time.
+ */
+async function expectedFinishNeedsScheduleWarning(
+  tenantId: string,
+  branchId: string,
+  start: Date,
+  end: Date,
+): Promise<boolean> {
+  const startDate = bookingDateKey(start);
+  const endDate = bookingDateKey(new Date(end.getTime() - 1));
+  if (startDate !== endDate) return true;
+
+  const branch = await prisma.branch.findFirst({
+    where: { id: branchId, tenantId },
+    select: branchScheduleForDateSelect(startDate),
+  });
+  if (!branch) return true;
+  const schedule = resolveEffectiveSchedule({ dateStr: startDate, branch });
+  const openMin = schedule.openTime ? timeToMinutes(schedule.openTime) : null;
+  const closeMin = schedule.closeTime ? timeToMinutes(schedule.closeTime) : null;
+  if (!schedule.open || openMin == null || closeMin == null || closeMin <= openMin) {
+    return true;
+  }
+
+  const dayStart = bookingDayBounds(startDate).start.getTime();
+  const startMin = (start.getTime() - dayStart) / 60000;
+  const endMin = (end.getTime() - dayStart) / 60000;
+  return startMin < openMin || endMin > closeMin;
 }
 
 export async function reviseExpectedFinishAction(
@@ -1035,8 +1072,32 @@ export async function reviseExpectedFinishAction(
     };
   }
 
+  if (order.status !== "IN_PROGRESS" && order.status !== "WAITING_PARTS") {
+    return {
+      ok: false,
+      message: "Дуусах хугацааг зөвхөн ажиллаж буй засварын хуудсанд тохируулна.",
+    };
+  }
+
+  if (expectedFinishAt) {
+    if (!order.startedAt) {
+      return {
+        ok: false,
+        message: "Дуусах хугацаа тохируулахын өмнө ажлын эхэлсэн цагийг тэмдэглэнэ үү.",
+      };
+    }
+    if (expectedFinishAt.getTime() <= order.startedAt.getTime()) {
+      return {
+        ok: false,
+        fieldErrors: {
+          expectedFinishAt: "Дуусах хугацаа эхэлсэн хугацаанаас хойш байх ёстой.",
+        },
+      };
+    }
+  }
+
   if (expectedFinishAt && !confirmed) {
-    const conflictStart = order.startedAt ?? new Date();
+    const conflictStart = order.startedAt!;
     const conflict = await findScheduleConflict(
       user.tenantId,
       order.branchId,
@@ -1047,7 +1108,29 @@ export async function reviseExpectedFinishAction(
     if (conflict) {
       return {
         ok: false,
-        message: `Шинэ дуусах хугацаа ${conflict}-тай давхцаж байна. Үргэлжлүүлэхийн тулд дахин "Хадгалах" дарна уу.`,
+        message:
+          conflict.certainty === "possible"
+            ? `Шинэ дуусах хугацаа ${conflict.label}-тай давхцах магадлалтай. Түүний дуусах хугацаа тодорхойгүй байна. Үргэлжлүүлэхийн тулд дахин "Хадгалах" дарна уу.`
+            : `Шинэ дуусах хугацаа ${conflict.label}-тай давхцаж байна. Үргэлжлүүлэхийн тулд дахин "Хадгалах" дарна уу.`,
+        fieldErrors: {
+          confirmNeeded: "true",
+          conflictKind: conflict.certainty,
+        },
+      };
+    }
+
+    if (
+      await expectedFinishNeedsScheduleWarning(
+        user.tenantId,
+        order.branchId,
+        conflictStart,
+        expectedFinishAt,
+      )
+    ) {
+      return {
+        ok: false,
+        message:
+          "Шинэ дуусах хугацаа салбарын ажиллах цагаас хэтэрч байна. Үргэлжлүүлэхийн тулд дахин \"Хадгалах\" дарна уу.",
         fieldErrors: { confirmNeeded: "true" },
       };
     }

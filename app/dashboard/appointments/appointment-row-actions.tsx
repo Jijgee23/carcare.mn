@@ -21,7 +21,13 @@ import { useToast } from "@/app/_components/toast";
 // (хэрэглэгчид "алдаа шидээд гардаггүй" мэт харагддаг). Одоо бусад
 // action-уудтай (status-controls.tsx) ижил `{ok,message}` хэлбэрт оруулж,
 // toast-аар харуулна — алдаа гарсан ч мөр эвдрэхгүй.
-export function AppointmentConfirmReject({ appointmentId }: { appointmentId: string }) {
+export function AppointmentConfirmReject({
+  appointmentId,
+  canConfirm = true,
+}: {
+  appointmentId: string;
+  canConfirm?: boolean;
+}) {
   const toast = useToast();
   const [confirmState, confirmAction, confirmPending] = useActionState<
     AppointmentActionState,
@@ -56,10 +62,15 @@ export function AppointmentConfirmReject({ appointmentId }: { appointmentId: str
         <input type="hidden" name="id" value={appointmentId} />
         <button
           type="submit"
-          disabled={pending}
+          disabled={pending || !canConfirm}
+          title={canConfirm ? undefined : "Захиалгын хураамж төлөгдсөний дараа батална."}
           className="text-xs px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 light:bg-emerald-100 light:hover:bg-emerald-200 light:border-emerald-300 light:text-emerald-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {confirmPending ? "Батлаж байна..." : "Батлах"}
+          {confirmPending
+            ? "Батлаж байна..."
+            : canConfirm
+              ? "Батлах"
+              : "Төлбөрийн дараа батална"}
         </button>
       </form>
       <ConfirmForm action={rejectAction} message="Энэ цагийн хүсэлтийг татгалзах уу?">
@@ -191,7 +202,7 @@ export function AppointmentRescheduleButton({
   return (
     <ConfirmForm
       action={formAction}
-      className="flex items-center gap-2"
+      className="flex w-full flex-wrap items-center gap-2"
       enabled={!confirmArmed}
       message="Энэ цагийн захиалгыг сонгосон шинэ хугацаа руу шилжүүлэх үү?"
     >

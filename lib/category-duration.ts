@@ -16,8 +16,24 @@ type PrismaTransactionClient = {
   }): Promise<{ slotMinutes: number | null; slotCapacity: number | null } | null> };
   appointment: { findMany(args: {
     where: { branchId: string; status: { in: ("PENDING" | "CONFIRMED")[] }; requestedAt: { gte: Date; lt: Date } };
-    select: { requestedAt: true; estimatedDurationMinutes: true; categoryId: true; categories: { select: { categoryId: true } } };
+    select: { requestedAt: true; estimatedDurationMinutes: true; categoryId: true; serviceOrderId: true; categories: { select: { categoryId: true } } };
   }): Promise<TakenAppointmentRow[]> };
+  serviceOrder?: { findMany(args: {
+    where: {
+      branchId: string;
+      status: { in: ("SCHEDULED" | "IN_PROGRESS" | "WAITING_PARTS")[] };
+      OR: Array<{ scheduledAt: { lt: Date } } | { scheduledAt: null }>;
+    };
+    select: {
+      status: true;
+      scheduledAt: true;
+      startedAt: true;
+      estimatedDurationMinutes: true;
+      expectedFinishAt: true;
+      occupiesCapacity: true;
+      id: true;
+    };
+  }): Promise<TakenOrderRow[]> };
 };
 
 // Ангилалд хугацаа тохируулаагүй үеийн эцсийн fallback (минут). Slot-ийн
@@ -165,8 +181,19 @@ export async function resolveBranchCategoryDurations(
 export type TakenAppointmentRow = {
   estimatedDurationMinutes?: number | null;
   requestedAt: Date;
+  serviceOrderId?: string | null;
   categoryId: string | null;
   categories: { categoryId: string }[];
+};
+
+type TakenOrderRow = {
+  id: string;
+  status: string;
+  scheduledAt: Date | null;
+  startedAt: Date | null;
+  estimatedDurationMinutes: number | null;
+  expectedFinishAt: Date | null;
+  occupiesCapacity: boolean | null;
 };
 
 /**
@@ -211,6 +238,85 @@ export async function resolveTakenAppointmentIntervals(
 }
 
 /**
+ * Resolve every capacity-consuming interval in one business-day window.
+ * Appointments linked to an active order are counted through the order only,
+ * preventing the same vehicle/job from consuming capacity twice.
+ */
+export async function resolveTakenCapacityIntervals(
+  client: PrismaTransactionClient,
+  branchId: string,
+  dayStart: Date,
+  dayEnd: Date,
+  fallbackMinutes: number,
+  excludeAppointmentId?: string,
+): Promise<{ startMs: number; endMs: number }[]> {
+  const [candidates, orderCandidates] = await Promise.all([
+    client.appointment.findMany({
+      where: {
+        branchId,
+        status: { in: ["PENDING", "CONFIRMED"] },
+        requestedAt: { gte: dayStart, lt: dayEnd },
+        ...(excludeAppointmentId ? { id: { not: excludeAppointmentId } } : {}),
+      },
+      select: {
+        requestedAt: true,
+        estimatedDurationMinutes: true,
+        categoryId: true,
+        serviceOrderId: true,
+        categories: { select: { categoryId: true } },
+      },
+    }),
+    client.serviceOrder
+      ? client.serviceOrder.findMany({
+          where: {
+            branchId,
+            status: { in: ["SCHEDULED", "IN_PROGRESS", "WAITING_PARTS"] },
+            OR: [{ scheduledAt: { lt: dayEnd } }, { scheduledAt: null }],
+          },
+          select: {
+            id: true,
+            status: true,
+            scheduledAt: true,
+            startedAt: true,
+            estimatedDurationMinutes: true,
+            expectedFinishAt: true,
+            occupiesCapacity: true,
+          },
+        })
+      : Promise.resolve([] as TakenOrderRow[]),
+  ]);
+
+  const orderIds = new Set(orderCandidates.map((o) => o.id));
+  const appointmentIntervals = await resolveTakenAppointmentIntervals(
+    client,
+    branchId,
+    candidates.filter((a) => !a.serviceOrderId || !orderIds.has(a.serviceOrderId)),
+    fallbackMinutes,
+  );
+  const orderIntervals = orderCandidates.flatMap((o) => {
+    if (o.status !== "SCHEDULED" && o.occupiesCapacity === false) return [];
+    const scheduled = o.status === "SCHEDULED" && o.occupiesCapacity !== true;
+    const start = (scheduled ? o.scheduledAt : o.startedAt)?.getTime();
+    if (start == null || !Number.isFinite(start) || start >= dayEnd.getTime()) return [];
+    let end = o.expectedFinishAt?.getTime() ??
+      (scheduled && o.estimatedDurationMinutes != null && o.estimatedDurationMinutes > 0
+        ? start + o.estimatedDurationMinutes * 60000
+        : dayEnd.getTime());
+    if (!Number.isFinite(end) || end <= start) end = dayEnd.getTime();
+    if (end <= dayStart.getTime()) return [];
+    return [{ startMs: start, endMs: end }];
+  });
+
+  return [
+    ...appointmentIntervals.map((iv) => ({
+      startMs: iv.start.getTime(),
+      endMs: iv.start.getTime() + iv.durationMinutes * 60000,
+    })),
+    ...orderIntervals,
+  ];
+}
+
+/**
  * Сервер тал — тухайн цаг (slot) хараахан дүүрээгүй эсэхийг шалгана
  * (давхар захиалгаас сэргийлнэ). `durationMinutes` — ШИНЭ захиалгын өөрийнх нь
  * нийт үргэлжлэх хугацаа (сонгосон ангиллуудын нийлбэр); өгөгдөөгүй бол
@@ -247,29 +353,14 @@ export async function isSlotAvailable(
   // Тухайн өдрийн БҮХ идэвхтэй захиалгыг авна (зөвхөн `when`-ий орчмынхыг биш) —
   // эрт эхэлсэн ч урт хугацаатай захиалга хожуу цагтай давхцаж болно.
   const { start: dayStart, end: dayEnd } = bookingDayBounds(bookingDateKey(when));
-  const candidates = await client.appointment.findMany({
-    where: {
-      branchId,
-      status: { in: ["PENDING", "CONFIRMED"] },
-      requestedAt: { gte: dayStart, lt: dayEnd },
-      ...(excludeAppointmentId ? { id: { not: excludeAppointmentId } } : {}),
-    },
-    select: {
-      requestedAt: true,
-      estimatedDurationMinutes: true,
-      categoryId: true,
-      categories: { select: { categoryId: true } },
-    },
-  });
-  const intervals = await resolveTakenAppointmentIntervals(
+  const intervals = await resolveTakenCapacityIntervals(
     client,
     branchId,
-    candidates,
+    dayStart,
+    dayEnd,
     slotMin,
+    excludeAppointmentId,
   );
-  const count = peakOccupancy(intervals.map((iv) => ({
-    startMs: iv.start.getTime(),
-    endMs: iv.start.getTime() + iv.durationMinutes * 60000,
-  })), newStartMs, newEndMs);
+  const count = peakOccupancy(intervals, newStartMs, newEndMs);
   return count < cap;
 }

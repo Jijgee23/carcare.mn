@@ -4,8 +4,9 @@ import { branchScopeId } from "@/lib/auth/roles";
 import { logAudit } from "@/lib/audit";
 import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
 import type { OrderStatus } from "@/lib/orders";
+import { nextOrderNumber } from "@/lib/order-number";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
-import { prisma } from "@/lib/prisma";
+import { prisma, withBookingTransaction } from "@/lib/prisma";
 
 const ORDER_SELECT = {
   id: true,
@@ -140,28 +141,23 @@ export async function POST(req: Request) {
     select: typeof ORDER_SELECT;
   }> | null = null;
   for (let attempt = 0; attempt < 3 && !order; attempt++) {
-    const last = await prisma.serviceOrder.findFirst({
-      where: { tenantId: auth.user.tenantId },
-      orderBy: { number: "desc" },
-      select: { number: true },
-    });
-    const lastNum = last ? Number.parseInt(last.number, 10) || 0 : 0;
-    const number = String(lastNum + 1).padStart(5, "0");
-
     try {
-      order = await prisma.serviceOrder.create({
-        data: {
-          number,
-          tenantId: auth.user.tenantId,
-          branchId,
-          customerId,
-          vehicleId,
-          isPostpaid: vehicle.isPostpaid,
-          ...(assignedToId && { assignedToId }),
-          ...(scheduledAt && { scheduledAt }),
-          ...(notes && { notes }),
-        },
-        select: ORDER_SELECT,
+      order = await withBookingTransaction(auth.user.tenantId, async (tx) => {
+        const number = await nextOrderNumber(tx, auth.user.tenantId);
+        return tx.serviceOrder.create({
+          data: {
+            number,
+            tenantId: auth.user.tenantId,
+            branchId,
+            customerId,
+            vehicleId,
+            isPostpaid: vehicle.isPostpaid,
+            ...(assignedToId && { assignedToId }),
+            ...(scheduledAt && { scheduledAt }),
+            ...(notes && { notes }),
+          },
+          select: ORDER_SELECT,
+        });
       });
     } catch (e) {
       if (

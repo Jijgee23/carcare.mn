@@ -538,6 +538,7 @@ export default async function OrderDetailPage({
                 currentStatus={order.status as OrderStatus}
                 occupiesCapacity={order.occupiesCapacity}
                 expectedFinishAt={order.expectedFinishAt}
+                attentionHref={`/dashboard/appointments/calendar?view=attention&branchId=${encodeURIComponent(order.branchId)}`}
               />
             </div>
           ) : null}

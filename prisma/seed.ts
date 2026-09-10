@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { prisma } from "@/lib/prisma";
 import { setBypassContext } from "@/lib/tenant-context";
+import { seedFixtureData } from "./fixture-seed";
 
 /**
  * Монголын засаг захиргааны нэгжийг (City → District → Khoroo) scripts/
@@ -115,6 +116,12 @@ function objects(
 }
 
 async function main() {
+  if (process.env.NODE_ENV === "production" && process.env.SEED_FIXTURE_DATA !== "true") {
+    throw new Error(
+      "Fixture seed production орчинд хамгаалагдсан. Зориуд ажиллуулах бол SEED_FIXTURE_DATA=true тохируулна уу.",
+    );
+  }
+
   // Зөвхөн global reference хүснэгт (City/District/Khoroo, RLS-гүй) хөндөх
   // ч prisma extension context шаарддаг тул bypass тавина.
   setBypassContext();
@@ -156,6 +163,8 @@ async function main() {
   console.log(
     `Хаягийн seed: City +${c.count}/${cities.length}, District +${d.count}/${districts.length}, Khoroo +${k.count}/${khoroos.length}`,
   );
+
+  await seedFixtureData(prisma);
 }
 
 main()

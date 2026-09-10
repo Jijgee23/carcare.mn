@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import {
   type OrderActionState,
   changeOrderStatusAction,
@@ -41,6 +42,7 @@ export function StatusControls({
   currentStatus,
   occupiesCapacity,
   expectedFinishAt,
+  attentionHref,
 }: {
   orderId: string;
   transitions: OrderStatus[];
@@ -48,6 +50,7 @@ export function StatusControls({
   currentStatus: OrderStatus;
   occupiesCapacity: boolean | null;
   expectedFinishAt: Date | null;
+  attentionHref?: string;
 }) {
   const toast = useToast();
   const [state, formAction, pending] = useActionState<
@@ -75,6 +78,7 @@ export function StatusControls({
   // (харах: reviseExpectedFinishAction). Давхцал илэрвэл энд мессежийг
   // хадгалж, дараагийн "Хадгалах" дарахад confirmed=true явуулна.
   const [finishConflict, setFinishConflict] = useState<string | null>(null);
+  const [finishConflictIsPossible, setFinishConflictIsPossible] = useState(false);
 
   // Үр дүнг toast-аар харуулна (нэг үр дүнг давхар харуулахгүй).
   const handled = useRef<OrderActionState>(null);
@@ -118,10 +122,13 @@ export function StatusControls({
     if (finishState?.ok) {
       setEditingFinish(false);
       setFinishConflict(null);
+      setFinishConflictIsPossible(false);
     } else if (finishState?.fieldErrors?.confirmNeeded) {
       setFinishConflict(finishState.message ?? "Хугацаа өөр ажилтай давхцаж байна.");
+      setFinishConflictIsPossible(finishState.fieldErrors.conflictKind === "possible");
     } else if (finishState) {
       setFinishConflict(null);
+      setFinishConflictIsPossible(false);
     }
   }
 
@@ -218,6 +225,7 @@ export function StatusControls({
                     expectedFinishAt ? toDatetimeLocalValue(expectedFinishAt) : "",
                   );
                   setFinishConflict(null);
+                  setFinishConflictIsPossible(false);
                   setEditingFinish(true);
                 }}
                 disabled={disabled}
@@ -246,12 +254,23 @@ export function StatusControls({
                 onChange={(v) => {
                   setFinishValue(v);
                   setFinishConflict(null);
+                  setFinishConflictIsPossible(false);
                 }}
               />
               {finishConflict ? (
-                <p className="text-xs text-amber-400 light:text-amber-700">
-                  {finishConflict}
-                </p>
+                <div className="space-y-1">
+                  <p className="text-xs text-amber-400 light:text-amber-700">
+                    {finishConflict}
+                  </p>
+                  {finishConflictIsPossible && attentionHref ? (
+                    <Link
+                      href={attentionHref}
+                      className="inline-block text-xs text-amber-300 underline underline-offset-2 hover:text-amber-200 light:text-amber-700 light:hover:text-amber-800"
+                    >
+                      Хоцорсон ажлуудыг шалгах →
+                    </Link>
+                  ) : null}
+                </div>
               ) : null}
               <div className="flex items-center gap-2">
                 <button
@@ -272,6 +291,7 @@ export function StatusControls({
                   onClick={() => {
                     setEditingFinish(false);
                     setFinishConflict(null);
+                    setFinishConflictIsPossible(false);
                   }}
                   className="rounded-lg border border-[var(--oc-line)] bg-white/[0.04] px-3 py-1.5 text-xs text-[var(--oc-ink2)] hover:bg-white/[0.08]"
                 >

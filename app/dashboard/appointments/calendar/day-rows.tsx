@@ -17,6 +17,11 @@ import {
   AppointmentRescheduleButton,
 } from "@/app/dashboard/appointments/appointment-row-actions";
 import { StatusControls } from "@/app/dashboard/orders/[id]/status-controls";
+import {
+  APPOINTMENT_BOOKING_PAYMENT_BADGE,
+  APPOINTMENT_BOOKING_PAYMENT_LABEL,
+  appointmentBookingPaymentStatus,
+} from "@/lib/appointment-payment-status";
 
 export const SCHEDULE_ISSUE_LABEL: Record<ScheduleIssue["reason"], string> = {
   "missing-estimate": "Тооцоолсон хугацаа дутуу",
@@ -24,6 +29,7 @@ export const SCHEDULE_ISSUE_LABEL: Record<ScheduleIssue["reason"], string> = {
   overdue: "Тооцоолсон хугацаанаас хэтэрсэн",
   "missing-order": "Холбогдсон захиалга олдсонгүй",
   "missing-start": "Эхэлсэн цаг тэмдэглэгдээгүй",
+  "invalid-interval": "Хугацааны муж буруу",
 };
 
 export function appointmentDisplayName(a: BranchScheduleAppointmentRow): string {
@@ -50,10 +56,14 @@ export type DayRow = {
   id: string;
   startMs: number;
   endMs: number;
+  continuesFromPreviousDay: boolean;
+  endsAtDayBoundary: boolean;
   uncertain: boolean;
   name: string;
   statusLabel: string;
   statusClass: string;
+  paymentStatusLabel: string | null;
+  paymentStatusClass: string | null;
   issueLabel: string | null;
   actions: React.ReactNode | null;
 };
@@ -73,6 +83,7 @@ export function buildDayRows(
     issues: ScheduleIssue[];
     appointments: BranchScheduleAppointmentRow[];
     orders: BranchScheduleOrderRow[];
+    rangeEnd: Date;
   },
   canRespondAppointments: boolean,
   canEditOrders: boolean,
@@ -83,16 +94,21 @@ export function buildDayRows(
 ): { rows: DayRow[]; issues: ScheduleIssue[]; carriedOverCount: number } {
   const appointmentById = new Map(schedule.appointments.map((a) => [a.id, a]));
   const orderById = new Map(schedule.orders.map((o) => [o.id, o]));
-  const isCarriedOverOrder = (id: string) => orderById.get(id)?.carriedOver === true;
+  const isHiddenCarryOverOrder = (id: string) => {
+    const order = orderById.get(id);
+    return order?.carriedOver === true && order.continuesIntoDay !== true;
+  };
 
   const filteredIntervals = schedule.intervals.filter(
-    (row) => row.source !== "order" || !isCarriedOverOrder(row.id),
+    (row) => row.source !== "order" || !isHiddenCarryOverOrder(row.id),
   );
   const issues = schedule.issues.filter(
-    (issue) => issue.source !== "order" || !isCarriedOverOrder(issue.id),
+    (issue) => issue.source !== "order" || !isHiddenCarryOverOrder(issue.id),
   );
   const issueBySourceId = new Map(issues.map((issue) => [`${issue.source}:${issue.id}`, issue]));
-  const carriedOverCount = schedule.orders.filter((o) => o.carriedOver).length;
+  const carriedOverCount = schedule.orders.filter(
+    (o) => o.carriedOver && !o.continuesIntoDay,
+  ).length;
 
   const rows: DayRow[] = filteredIntervals
     .sort((a, b) => a.startMs - b.startMs)
@@ -115,6 +131,7 @@ export function buildDayRows(
         : order
           ? ORDER_STATUS_BADGE[order.status]
           : "";
+      const paymentStatus = appt ? appointmentBookingPaymentStatus(appt) : null;
 
       const showConfirmReject = appt?.status === "PENDING" && canRespondAppointments;
       const showArrivalActions =
@@ -140,7 +157,10 @@ export function buildDayRows(
       const actions = hasActions ? (
         <>
           {showConfirmReject && appt ? (
-            <AppointmentConfirmReject appointmentId={appt.id} />
+            <AppointmentConfirmReject
+              appointmentId={appt.id}
+              canConfirm={paymentStatus === "NOT_REQUIRED" || paymentStatus === "PAID"}
+            />
           ) : null}
           {showArrivalActions && appt ? (
             <>
@@ -169,6 +189,7 @@ export function buildDayRows(
                 currentStatus={order.status}
                 occupiesCapacity={order.occupiesCapacity}
                 expectedFinishAt={order.expectedFinishAt}
+                attentionHref={`/dashboard/appointments/calendar?view=attention&branchId=${encodeURIComponent(order.branchId)}`}
               />
             </div>
           ) : null}
@@ -181,10 +202,20 @@ export function buildDayRows(
         id: row.id,
         startMs: row.startMs,
         endMs: row.endMs,
+        continuesFromPreviousDay: order?.continuesIntoDay === true,
+        endsAtDayBoundary: row.endMs === schedule.rangeEnd.getTime(),
         uncertain: row.uncertain,
         name,
         statusLabel,
         statusClass,
+        paymentStatusLabel:
+          paymentStatus && paymentStatus !== "NOT_REQUIRED"
+            ? APPOINTMENT_BOOKING_PAYMENT_LABEL[paymentStatus]
+            : null,
+        paymentStatusClass:
+          paymentStatus && paymentStatus !== "NOT_REQUIRED"
+            ? APPOINTMENT_BOOKING_PAYMENT_BADGE[paymentStatus]
+            : null,
         issueLabel: issue ? SCHEDULE_ISSUE_LABEL[issue.reason] : null,
         actions,
       };

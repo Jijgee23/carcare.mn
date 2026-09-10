@@ -11,7 +11,7 @@ import { ensureAppointmentFeeCheckout } from "@/lib/appointment-payments";
 import {
   isSlotAvailable,
   resolveBranchCategoryDurations,
-  resolveTakenAppointmentIntervals,
+  resolveTakenCapacityIntervals,
 } from "@/lib/category-duration";
 import { ensureTenantVehicle } from "@/lib/vehicles";
 import {
@@ -30,8 +30,10 @@ import { reserveAppointment, ReservationError } from "@/lib/appointment-reservat
 import { bookingDateKey, bookingDayBounds } from "@/lib/booking-time";
 import { resolveEffectiveSchedule } from "@/lib/branch-effective-schedule";
 import { branchScheduleForDateSelect } from "@/lib/branch-effective-schedule-server";
+import { timeToMinutes } from "@/lib/branches";
 import { safeNext } from "@/lib/safe-redirect";
 import { setBypassContext } from "@/lib/tenant-context";
+import { appointmentBookingPaymentStatus } from "@/lib/appointment-payment-status";
 
 export type AppointmentActionState = {
   ok: boolean;
@@ -86,35 +88,19 @@ export async function getBranchDaySlots(
   const dayStart = date;
   const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60000);
   const slotMin = branch.slotMinutes ?? DEFAULT_SLOT_MINUTES;
-  const [takenRows, resolved] = await Promise.all([
-    open
-      ? prisma.appointment.findMany({
-          where: {
-            branchId,
-            status: { in: ["PENDING", "CONFIRMED"] },
-            requestedAt: { gte: dayStart, lt: dayEnd },
-          },
-          select: {
-            requestedAt: true,
-            estimatedDurationMinutes: true,
-            categoryId: true,
-            categories: { select: { categoryId: true } },
-          },
-        })
-      : Promise.resolve([]),
-    categoryIds.length > 0
-      ? resolveBranchCategoryDurations(prisma, branchId, categoryIds)
-      : Promise.resolve(null),
-  ]);
-  // Захиалга бүрийн ЖИНХЭНЭ эзэлж буй хугацаа (эхлэх цаг + өөрийнх нь
-  // үргэлжлэх хугацаа) — эрт эхэлсэн урт захиалга дараагийн slot-уудыг
-  // "сул" мэт үзүүлэхээс сэргийлнэ.
-  const taken = await resolveTakenAppointmentIntervals(
-    prisma,
-    branchId,
-    takenRows,
-    slotMin,
-  );
+  const resolved = categoryIds.length > 0
+    ? await resolveBranchCategoryDurations(prisma, branchId, categoryIds)
+    : null;
+  // Захиалга болон хүчин чадал эзэлж буй идэвхтэй ажлыг ижил дүрмээр
+  // тооцно. Ингэснээр picker дээр сул мэт харагдсан цаг reservation дээр
+  // гэнэт мөргөлдөхгүй, linked appointment/order давхар тоологдохгүй.
+  const capacityIntervals = open
+    ? await resolveTakenCapacityIntervals(prisma, branchId, dayStart, dayEnd, slotMin)
+    : [];
+  const taken = capacityIntervals.map((interval) => ({
+    start: new Date(interval.startMs),
+    durationMinutes: Math.max(1, Math.ceil((interval.endMs - interval.startMs) / 60000)),
+  }));
 
   const availability = buildDaySlots({
     dateStr,
@@ -627,9 +613,17 @@ export async function confirmAppointment(
 
   const appt = await prisma.appointment.findUnique({
     where: { id },
-    include: {
+    select: {
+      id: true,
+      tenantId: true,
+      branchId: true,
+      status: true,
       account: { select: { id: true, phone: true, name: true, email: true } },
       accountVehicle: { select: { vehicleId: true } },
+      feeAmount: true,
+      feeQpayInvoiceId: true,
+      feeUnderpaidAmount: true,
+      payment: { select: { status: true } },
     },
   });
   if (!appt) return { ok: false, message: "Цаг захиалга олдсонгүй." };
@@ -644,6 +638,14 @@ export async function confirmAppointment(
   }
   if (appt.status !== "PENDING") {
     return { ok: false, message: "Энэ цаг аль хэдийн хариу авсан байна." };
+  }
+  const bookingPaymentStatus = appointmentBookingPaymentStatus(appt);
+  if (bookingPaymentStatus !== "NOT_REQUIRED" && bookingPaymentStatus !== "PAID") {
+    return {
+      ok: false,
+      message:
+        "Захиалгын хураамж бүрэн төлөгдөөгүй тул цагийг баталгаажуулах боломжгүй.",
+    };
   }
   // Онлайн захиалгад Account заавал байна (phone-in нь CONFIRMED-ээр үүсдэг тул
   // энд хүрэхгүй). Account байхгүй бол resolve хийх боломжгүй.
@@ -1002,8 +1004,42 @@ export async function rescheduleAppointmentAction(
     return { ok: false, message: "Зөвхөн баталгаажсан цагийг энд шилжүүлнэ." };
   }
 
+  const requestedDateStr = bookingDateKey(requestedAt);
+  const requestedDay = bookingDayBounds(requestedDateStr);
+
+  const branch = await prisma.branch.findFirst({
+    where: { id: appt.branchId, tenantId: appt.tenantId, isActive: true },
+    select: {
+      slotMinutes: true,
+      ...branchScheduleForDateSelect(requestedDateStr),
+    },
+  });
+  if (!branch) return { ok: false, message: "Салбар олдсонгүй." };
+  const durationMinutes = appt.estimatedDurationMinutes ?? branch.slotMinutes ?? DEFAULT_SLOT_MINUTES;
+  const requestedEnd = new Date(requestedAt.getTime() + durationMinutes * 60000);
+  const endExclusive = new Date(requestedEnd.getTime() - 1);
+  if (bookingDateKey(endExclusive) !== requestedDateStr) {
+    return {
+      ok: false,
+      message: "Цаг захиалга нэг өдрийн ажиллах цагийн дотор багтах ёстой.",
+    };
+  }
+  const effective = resolveEffectiveSchedule({ dateStr: requestedDateStr, branch });
+  const openMin = effective.openTime ? timeToMinutes(effective.openTime) : null;
+  const closeMin = effective.closeTime ? timeToMinutes(effective.closeTime) : null;
+  const startMin = (requestedAt.getTime() - requestedDay.start.getTime()) / 60000;
+  if (
+    !effective.open ||
+    openMin == null ||
+    closeMin == null ||
+    closeMin <= openMin ||
+    startMin < openMin ||
+    startMin + durationMinutes > closeMin
+  ) {
+    return { ok: false, message: "Ажиллах цагт багтах сул цаг сонгоно уу." };
+  }
+
   if (!confirmed) {
-    const durationMinutes = appt.estimatedDurationMinutes ?? DEFAULT_SLOT_MINUTES;
     const conflictEnd = new Date(requestedAt.getTime() + durationMinutes * 60000);
     const conflict = await findAppointmentRescheduleConflict(
       user.tenantId,

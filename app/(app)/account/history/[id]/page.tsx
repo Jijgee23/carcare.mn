@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { BtnLink } from "@/app/_components/landing-ops-ui";
 import { requireAccount } from "@/lib/auth/account";
 import {
@@ -14,6 +15,14 @@ import {
   type PaymentStatus,
 } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
+import {
+  DIAGNOSTIC_TYPE_BADGE,
+  DIAGNOSTIC_TYPE_LABEL,
+  SEVERITY_BADGE,
+  SEVERITY_LABEL,
+  type DiagnosticType,
+  type ReportSeverity,
+} from "@/lib/diagnostics";
 
 export const metadata = {
   title: "Үйлчилгээний дэлгэрэнгүй",
@@ -94,6 +103,16 @@ export default async function AccountHistoryDetailPage({
           quantity: true,
           unitPrice: true,
           total: true,
+        },
+      },
+      reports: {
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          createdAt: true,
+          mileageAtReport: true,
+          maxSeverity: true,
+          template: { select: { name: true, type: true } },
         },
       },
     },
@@ -194,6 +213,61 @@ export default async function AccountHistoryDetailPage({
           </div>
         )}
       </div>
+
+      {order.reports.length > 0 ? (
+        <div>
+          <h2 className="font-semibold text-[var(--oc-ink2)] text-sm mb-2">
+            Оношилгооны тайлан
+            <span className="text-[var(--oc-muted3)] font-normal">
+              {" "}· {order.reports.length}
+            </span>
+          </h2>
+          <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden divide-y divide-[var(--oc-line)]">
+            {order.reports.map((report) => {
+              const type = report.template.type as DiagnosticType;
+              return (
+                <Link
+                  key={report.id}
+                  href={`/account/diagnostics/${report.id}`}
+                  className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-[var(--oc-panel2)] transition-colors"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium text-[var(--oc-ink2)] truncate">
+                        {report.template.name}
+                      </span>
+                      <span
+                        className={`shrink-0 text-[10px] px-2 py-0.5 rounded-full ${DIAGNOSTIC_TYPE_BADGE[type]}`}
+                      >
+                        {DIAGNOSTIC_TYPE_LABEL[type]}
+                      </span>
+                      {report.maxSeverity ? (
+                        <span
+                          className={`shrink-0 text-[10px] px-2 py-0.5 rounded-full border ${SEVERITY_BADGE[report.maxSeverity as ReportSeverity]}`}
+                        >
+                          {SEVERITY_LABEL[report.maxSeverity as ReportSeverity]}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="text-xs text-[var(--oc-muted3)] mt-1 tabular-nums">
+                      {fmtDateTime(report.createdAt)}
+                      {report.mileageAtReport != null
+                        ? ` · ${report.mileageAtReport.toLocaleString("mn-MN")} км`
+                        : ""}
+                    </div>
+                  </div>
+                  <span
+                    className="shrink-0 text-[var(--oc-muted3)]"
+                    aria-hidden="true"
+                  >
+                    →
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
 
       {/* Дүн */}
       <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5 flex flex-col gap-2">

@@ -23,6 +23,11 @@ import { customerLabel } from "@/lib/customers";
 import { formatPhone } from "@/lib/phone";
 import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
+import {
+  APPOINTMENT_BOOKING_PAYMENT_BADGE,
+  APPOINTMENT_BOOKING_PAYMENT_LABEL,
+  appointmentBookingPaymentStatus,
+} from "@/lib/appointment-payment-status";
 
 export const metadata = {
   title: "Цаг захиалга",
@@ -52,6 +57,7 @@ const APPOINTMENT_INCLUDE = {
   // энэ migration-ийн өмнөх мөрүүдэд fallback хэвээр үлдэнэ.
   categories: { select: { category: { select: { name: true } } } },
   serviceOrder: { select: { id: true, number: true } },
+  payment: { select: { status: true } },
 } satisfies Prisma.AppointmentInclude;
 
 export default async function AppointmentsPage({
@@ -250,6 +256,7 @@ export default async function AppointmentsPage({
                     : a.category
                       ? [a.category.name]
                       : [];
+                  const bookingPaymentStatus = appointmentBookingPaymentStatus(a);
                   return (
                     <tr
                       key={a.id}
@@ -285,6 +292,13 @@ export default async function AppointmentsPage({
                         >
                           {APPOINTMENT_STATUS_LABEL[a.status]}
                         </span>
+                        {bookingPaymentStatus !== "NOT_REQUIRED" ? (
+                            <span
+                              className={`block w-fit mt-1 font-plex-mono text-[10px] px-2 py-0.5 rounded-full border ${APPOINTMENT_BOOKING_PAYMENT_BADGE[bookingPaymentStatus]}`}
+                            >
+                              {APPOINTMENT_BOOKING_PAYMENT_LABEL[bookingPaymentStatus]}
+                            </span>
+                          ) : null}
                       </td>
                       <td className="px-5 py-4">
                         <div className="flex items-center justify-end gap-2">
@@ -300,7 +314,13 @@ export default async function AppointmentsPage({
                           ) : null}
 
                           {canRespond && a.status === "PENDING" ? (
-                            <AppointmentConfirmReject appointmentId={a.id} />
+                            <AppointmentConfirmReject
+                              appointmentId={a.id}
+                              canConfirm={
+                                bookingPaymentStatus === "NOT_REQUIRED" ||
+                                bookingPaymentStatus === "PAID"
+                              }
+                            />
                           ) : null}
 
                           {canRespond &&

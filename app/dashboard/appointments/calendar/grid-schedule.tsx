@@ -242,9 +242,17 @@ export function GridSchedule({
                   }}
                 >
                   <span className="font-plex-mono text-[10px] text-[var(--oc-muted3)] shrink-0">
+                    {row.continuesFromPreviousDay ? "Өмнөх өдөр → " : null}
                     {fmtUbTime(row.startMs)}
                   </span>
                   <span className="truncate text-[var(--oc-ink2)]">{row.name}</span>
+                  {row.paymentStatusLabel ? (
+                    <span
+                      className={`shrink-0 rounded-full border px-1.5 py-0.5 font-plex-mono text-[9px] ${row.paymentStatusClass}`}
+                    >
+                      {row.paymentStatusLabel}
+                    </span>
+                  ) : null}
                 </button>
               );
             })}
@@ -270,8 +278,20 @@ export function GridSchedule({
             <span className="font-plex-mono text-xs text-[var(--oc-muted3)]">
               {selected.uncertain
                 ? `${fmtUbTime(selected.startMs)} → тодорхойгүй`
-                : `${fmtUbTime(selected.startMs)}–${fmtUbTime(selected.endMs)}`}
+                : `${fmtUbTime(selected.startMs)}–${selected.endsAtDayBoundary ? "24:00" : fmtUbTime(selected.endMs)}`}
             </span>
+            {selected.continuesFromPreviousDay ? (
+              <span className="font-plex-mono text-[10px] px-1.5 py-0.5 rounded-full bg-sky-500/10 text-sky-300 border border-sky-500/20">
+                Өмнөх өдрөөс үргэлжилсэн
+              </span>
+            ) : null}
+            {selected.paymentStatusLabel ? (
+              <span
+                className={`font-plex-mono text-[10px] px-1.5 py-0.5 rounded-full border ${selected.paymentStatusClass}`}
+              >
+                {selected.paymentStatusLabel}
+              </span>
+            ) : null}
             {selected.issueLabel ? (
               <span className="font-plex-mono text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
                 {selected.issueLabel}
@@ -281,7 +301,9 @@ export function GridSchedule({
           <div className="text-sm text-[var(--oc-ink)] font-medium mb-3">{selected.name}</div>
           <div className="flex flex-col sm:flex-row gap-3 items-start">
             {selected.actions ? (
-              <div className="w-full sm:w-64 shrink-0">{selected.actions}</div>
+              <div className="w-full sm:w-64 shrink-0 flex flex-wrap items-center gap-2">
+                {selected.actions}
+              </div>
             ) : selected.source !== "order" ? (
               <p className="text-xs text-[var(--oc-muted4)]">
                 Одоогоор хийх боломжтой үйлдэл алга.

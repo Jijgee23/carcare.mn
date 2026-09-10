@@ -6,6 +6,7 @@ import { buildBranchSchedule, type ScheduleOrder, type ScheduleAppointment } fro
 import { isSlotAvailable, resolveTakenAppointmentIntervals } from "../lib/category-duration";
 import type { PrismaTransactionClient } from "../lib/prisma";
 import { resolveEffectiveSchedule } from "../lib/branch-effective-schedule";
+import { splitScheduleInterval } from "../lib/schedule-intervals";
 
 const at = (time: string) => new Date(`2030-01-07T${time}:00+08:00`);
 const scope = { tenantId: "tenant", branchId: "branch" };
@@ -71,15 +72,28 @@ test("slot picker leaves a second place available alongside consecutive jobs", (
 
 // Only the query methods used by these helpers are stubbed. No Prisma runtime
 // or database connection is imported by this suite.
-const client = (rows: object[] = []) => ({
+const client = (rows: object[] = [], orderRows: object[] = []) => ({
   branch: { findUnique: async () => ({ slotMinutes: 30, slotCapacity: 2 }) },
   appointment: { findMany: async () => rows },
+  serviceOrder: { findMany: async () => orderRows },
   category: { findMany: async () => [{ id: "category", durationMinutes: 120 }] },
   branchCategoryDuration: { findMany: async () => [] },
 }) as unknown as PrismaTransactionClient;
 test("submission capacity agrees with slot picker for consecutive appointments", async () => {
   const rows = [10, 10.5].map((hour) => ({ requestedAt: new Date(2030, 0, 7, Math.floor(hour), hour % 1 * 60), categoryId: null, categories: [] }));
   assert.equal(await isSlotAvailable(client(rows), "branch", new Date(2030, 0, 7, 10), 60), true);
+});
+test("active orders share appointment capacity", async () => {
+  const activeOrder = {
+    id: "order-1", status: "IN_PROGRESS", scheduledAt: null,
+    startedAt: new Date(2030, 0, 7, 10), estimatedDurationMinutes: 60,
+    expectedFinishAt: new Date(2030, 0, 7, 11), occupiesCapacity: true,
+  };
+  const secondOrder = { ...activeOrder, id: "order-2" };
+  assert.equal(
+    await isSlotAvailable(client([], [activeOrder, secondOrder]), "branch", new Date(2030, 0, 7, 10), 60),
+    false,
+  );
 });
 test("saved estimate takes precedence over a subsequently changed category", async () => {
   const [interval] = await resolveTakenAppointmentIntervals(client(), "branch", [{
@@ -151,4 +165,30 @@ test("new forecast changes capacity without moving the original appointment", ()
   assert.equal(result.intervals[0].endMs, at("12:00").getTime());
   assert.equal(original.requestedAt.getTime(), at("10:00").getTime());
   assert.equal(original.estimatedDurationMinutes, 60);
+});
+test("cross-midnight order is represented on both business dates", () => {
+  const segments = splitScheduleInterval(
+    new Date("2030-01-07T23:00:00+08:00"),
+    new Date("2030-01-08T02:00:00+08:00"),
+  );
+  assert.equal(segments.length, 2);
+  assert.equal(segments[0].start.toISOString(), "2030-01-07T15:00:00.000Z");
+  assert.equal(segments[0].end.toISOString(), "2030-01-07T16:00:00.000Z");
+  assert.equal(segments[1].startsBeforeDay, true);
+  assert.equal(segments[1].start.toISOString(), "2030-01-07T16:00:00.000Z");
+  assert.equal(segments[1].end.toISOString(), "2030-01-07T18:00:00.000Z");
+});
+test("an exact-midnight finish does not create a zero-length next-day segment", () => {
+  const segments = splitScheduleInterval(
+    new Date("2030-01-07T23:00:00+08:00"),
+    new Date("2030-01-08T00:00:00+08:00"),
+  );
+  assert.equal(segments.length, 1);
+  assert.equal(segments[0].endsAfterDay, false);
+  assert.equal(segments[0].end.toISOString(), "2030-01-07T16:00:00.000Z");
+});
+test("invalid order interval is surfaced and does not occupy the rest of the day", () => {
+  const result = project([order({ expectedFinishAt: at("09:30"), startedAt: at("10:00") })]);
+  assert.deepEqual(result.intervals, []);
+  assert.ok(result.issues.some((issue) => issue.reason === "invalid-interval"));
 });

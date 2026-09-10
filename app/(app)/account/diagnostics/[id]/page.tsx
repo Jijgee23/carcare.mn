@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { BtnLink } from "@/app/_components/landing-ops-ui";
+import { AdvancedPDFButton } from "@/app/dashboard/diagnostics/reports/[id]/pdf-generator";
 import { ReportAnswers } from "@/app/dashboard/diagnostics/reports/[id]/report-answers";
 import { requireAccount } from "@/lib/auth/account";
 import {
@@ -25,8 +26,9 @@ export const dynamic = "force-dynamic";
 // Нэг оношилгооны тайланг унших (customer, read-only) — worker талын дэлгэрэнгүй
 // хуудастай ижил render хийнэ (харах: app/dashboard/diagnostics/reports/[id]),
 // зөвшөөрлийн зарчим account/orders/[id]-тэй ижил: account-тай холбоотой
-// Customer-ийн ЭСВЭЛ эзэмшлийн машины тайлан байх ёстой. Засах/устгах/PDF
-// боломжгүй.
+// Customer-ийн ЭСВЭЛ эзэмшлийн машины тайлан байх ёстой. Засах/устгах
+// боломжгүй; PDF нь энэ зөвшөөрөгдсөн тайлангийн өгөгдлөөс browser дээр
+// үүснэ.
 export default async function AccountDiagnosticDetailPage({
   params,
 }: {
@@ -51,6 +53,7 @@ export default async function AccountDiagnosticDetailPage({
       templateVersion: true,
       data: true,
       maxSeverity: true,
+      signatureUrl: true,
       mileageAtReport: true,
       notes: true,
       createdAt: true,
@@ -88,9 +91,32 @@ export default async function AccountDiagnosticDetailPage({
               : ""}
           </p>
         </div>
-        <BtnLink href="/account/diagnostics" variant="ghost" className="shrink-0">
-          ← Буцах
-        </BtnLink>
+        <div className="flex items-center gap-2 shrink-0">
+          <AdvancedPDFButton
+            label="PDF татах"
+            report={{
+              reportId: report.id,
+              templateName: report.template.name,
+              templateVersion: report.templateVersion,
+              createdAt: report.createdAt,
+              customerName: account.name ?? "—",
+              customerPhone: account.phone,
+              vehicleMake: report.vehicle.make,
+              vehicleModel: report.vehicle.model,
+              vehiclePlate: report.vehicle.plate,
+              vehicleYear: report.vehicle.year ?? undefined,
+              branchName: report.branch.name,
+              mileageAtReport: report.mileageAtReport ?? undefined,
+              notes: report.notes ?? undefined,
+              signatureUrl: report.signatureUrl ?? undefined,
+              sections: schema.sections,
+              data,
+            }}
+          />
+          <BtnLink href="/account/diagnostics" variant="ghost">
+            ← Буцах
+          </BtnLink>
+        </div>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">

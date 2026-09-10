@@ -9,7 +9,7 @@ import {
 } from "@/lib/appointment-slots";
 import {
   resolveBranchCategoryDurations,
-  resolveTakenAppointmentIntervals,
+  resolveTakenCapacityIntervals,
 } from "@/lib/category-duration";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { isFeatureEnabled } from "@/lib/plan-limits-server";
@@ -69,31 +69,20 @@ export async function GET(
     : { totalMinutes: 0 };
   const appointmentMinutes = totalMinutes > 0 ? totalMinutes : slotMin;
 
-  // Тухайн өдрийн аль хэдийн авсан цагууд.
+  // Тухайн өдрийн захиалга болон хүчин чадал эзэлж буй идэвхтэй ажлууд.
   const dayStart = bounds.start;
   const dayEnd = bounds.end;
-  const takenRows = await prisma.appointment.findMany({
-    where: {
-      branchId: branch.id,
-      status: { in: ["PENDING", "CONFIRMED"] },
-      requestedAt: { gte: dayStart, lt: dayEnd },
-    },
-    select: {
-      requestedAt: true,
-      estimatedDurationMinutes: true,
-      categoryId: true,
-      categories: { select: { categoryId: true } },
-    },
-  });
-  // Захиалга бүрийн ЖИНХЭНЭ эзэлж буй хугацаа (эхлэх цаг + өөрийнх нь
-  // үргэлжлэх хугацаа) — эрт эхэлсэн урт захиалга дараагийн slot-уудыг
-  // "сул" мэт үзүүлэхээс сэргийлнэ.
-  const taken = await resolveTakenAppointmentIntervals(
+  const capacityIntervals = await resolveTakenCapacityIntervals(
     prisma,
     branch.id,
-    takenRows,
+    dayStart,
+    dayEnd,
     slotMin,
   );
+  const taken = capacityIntervals.map((interval) => ({
+    start: new Date(interval.startMs),
+    durationMinutes: Math.max(1, Math.ceil((interval.endMs - interval.startMs) / 60000)),
+  }));
 
   const availability = buildDaySlots({
     dateStr,

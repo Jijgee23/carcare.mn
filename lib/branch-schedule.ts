@@ -1,4 +1,5 @@
 import type { CapacityInterval } from "@/lib/schedule-capacity";
+import { isValidScheduleInterval } from "@/lib/schedule-intervals";
 
 type Scope = { tenantId: string; branchId: string };
 export type ScheduleAppointment = Scope & {
@@ -20,7 +21,7 @@ export type ScheduleOrder = Scope & {
 export type ScheduleIssue = {
   source: "appointment" | "order";
   id: string;
-  reason: "missing-estimate" | "unknown-occupancy" | "overdue" | "missing-order" | "missing-start";
+  reason: "missing-estimate" | "unknown-occupancy" | "overdue" | "missing-order" | "missing-start" | "invalid-interval";
 };
 export type ScheduleInterval = CapacityInterval & {
   source: "appointment" | "order";
@@ -74,7 +75,12 @@ export function buildBranchSchedule(input: Scope & {
     if (!Number.isFinite(start)) throw new RangeError("Invalid appointment start");
     if (start >= upper) continue;
     if (duration == null) issue("appointment", a.id, "missing-estimate");
-    add("appointment", a.id, start, duration == null ? upper : start + duration * 60000, duration == null);
+    const end = duration == null ? null : new Date(start + duration * 60000);
+    if (end && !isValidScheduleInterval(new Date(start), end)) {
+      issue("appointment", a.id, "invalid-interval");
+      continue;
+    }
+    add("appointment", a.id, start, duration == null ? upper : end!.getTime(), duration == null);
   }
 
   for (const order of orders.values()) {
@@ -97,7 +103,11 @@ export function buildBranchSchedule(input: Scope & {
     if (end == null) issue("order", order.id, "missing-estimate");
     const overdue = end != null && end <= now && !scheduled;
     if (overdue) issue("order", order.id, "overdue");
-    const uncertain = !date || unknownOccupancy || end == null || end <= start || overdue;
+    if (end != null && !isValidScheduleInterval(new Date(start), new Date(end))) {
+      issue("order", order.id, "invalid-interval");
+      continue;
+    }
+    const uncertain = !date || unknownOccupancy || end == null || overdue;
     if (uncertain) end = upper;
     add("order", order.id, start, end!, uncertain);
   }

@@ -29,6 +29,11 @@ import {
   AppointmentNoShowButton,
 } from "@/app/dashboard/appointments/appointment-row-actions";
 import { StatusControls } from "@/app/dashboard/orders/[id]/status-controls";
+import {
+  APPOINTMENT_BOOKING_PAYMENT_BADGE,
+  APPOINTMENT_BOOKING_PAYMENT_LABEL,
+  appointmentBookingPaymentStatus,
+} from "@/lib/appointment-payment-status";
 import { RowExpand } from "./row-expand";
 import {
   appointmentDisplayName,
@@ -508,21 +513,25 @@ function DaySchedule({
 
   const appointmentById = new Map(schedule.appointments.map((a) => [a.id, a]));
   const orderById = new Map(schedule.orders.map((o) => [o.id, o]));
-  // Өөр өдрөөс тасралтгүй үргэлжилж буй ("carried over") захиалгыг өдрийн
-  // жагсаалтад харуулахгүй — тэдгээр нь өдөр бүрт ижилхэн давтагдан харагдаж
-  // байсан (жинхэнэ огноогүй тул). "Хоцорсон ажлууд" харагдацад л харуулна
-  // (loadBranchAttentionOrders).
-  const isCarriedOverOrder = (id: string) => orderById.get(id)?.carriedOver === true;
+  // Мэдэгдэж буй cross-midnight ажил дараагийн өдөрт continuation мөрөөр
+  // харагдана. Харин төгсгөлгүй/аль хэдийн дууссан хуучин carried-over ажил
+  // зөвхөн attention харагдацад үлдэнэ.
+  const isHiddenCarryOverOrder = (id: string) => {
+    const order = orderById.get(id);
+    return order?.carriedOver === true && order.continuesIntoDay !== true;
+  };
   const rows = schedule.intervals
-    .filter((row) => row.source !== "order" || !isCarriedOverOrder(row.id))
+    .filter((row) => row.source !== "order" || !isHiddenCarryOverOrder(row.id))
     .sort((a, b) => a.startMs - b.startMs);
   const issues = schedule.issues.filter(
-    (issue) => issue.source !== "order" || !isCarriedOverOrder(issue.id),
+    (issue) => issue.source !== "order" || !isHiddenCarryOverOrder(issue.id),
   );
   const issueBySourceId = new Map(
     issues.map((issue) => [`${issue.source}:${issue.id}`, issue]),
   );
-  const carriedOverCount = schedule.orders.filter((o) => o.carriedOver).length;
+  const carriedOverCount = schedule.orders.filter(
+    (o) => o.carriedOver && !o.continuesIntoDay,
+  ).length;
 
   return (
     <div className="flex flex-col gap-3">
@@ -533,12 +542,18 @@ function DaySchedule({
       ) : null}
 
       {carriedOverCount > 0 ? (
-        <Link
-          href={attentionHref}
-          className="text-sm text-amber-400 hover:text-amber-300 transition-colors"
-        >
-          {carriedOverCount} хоцорсон ажил байна →
-        </Link>
+        <div className="rounded-[10px] border border-amber-500/25 bg-amber-500/[0.06] p-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <span className="text-sm text-amber-200 light:text-amber-800">
+            {carriedOverCount} идэвхтэй ажил тодорхойгүй хугацаатай тул энэ өдөртэй
+            давхцах магадлалтай.
+          </span>
+          <Link
+            href={attentionHref}
+            className="text-sm text-amber-400 hover:text-amber-300 transition-colors"
+          >
+            Хоцорсон ажлуудыг шалгах →
+          </Link>
+        </div>
       ) : null}
 
       {issues.length > 0 ? (
@@ -584,6 +599,12 @@ function DaySchedule({
                   {ORDER_STATUS_LABEL[order.status]}
                 </span>
               ) : null;
+              const bookingPaymentStatus = appt
+                ? appointmentBookingPaymentStatus(appt)
+                : null;
+              const continuesFromPreviousDay =
+                row.source === "order" && order?.continuesIntoDay === true;
+              const endsAtDayBoundary = row.endMs === schedule.rangeEnd.getTime();
               const showConfirmReject =
                 appt?.status === "PENDING" && canRespondAppointments;
               const showArrivalActions =
@@ -622,20 +643,33 @@ function DaySchedule({
                   className="px-3 py-2.5 flex flex-wrap items-center gap-3"
                 >
                   <span className="font-plex-mono text-xs font-semibold text-[var(--oc-ink2)] tabular-nums w-32 shrink-0">
+                    {continuesFromPreviousDay ? "Өмнөх өдөр → " : null}
                     {row.uncertain
                       ? `${fmtUbTime(new Date(row.startMs))} → тодорхойгүй`
-                      : `${fmtUbTime(new Date(row.startMs))}–${fmtUbTime(new Date(row.endMs))}`}
+                      : `${fmtUbTime(new Date(row.startMs))}–${endsAtDayBoundary ? "24:00" : fmtUbTime(new Date(row.endMs))}`}
                   </span>
                   <span className="font-plex-mono text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--oc-panel2)] border border-[var(--oc-line)] text-[var(--oc-muted3)] shrink-0">
                     {row.source === "appointment" ? "Цаг захиалга" : "Захиалга"}
                   </span>
                   {statusBadge}
+                  {bookingPaymentStatus && bookingPaymentStatus !== "NOT_REQUIRED" ? (
+                    <span
+                      className={`font-plex-mono text-[10px] px-1.5 py-0.5 rounded-full border shrink-0 ${APPOINTMENT_BOOKING_PAYMENT_BADGE[bookingPaymentStatus]}`}
+                    >
+                      {APPOINTMENT_BOOKING_PAYMENT_LABEL[bookingPaymentStatus]}
+                    </span>
+                  ) : null}
                   <span className="text-sm text-[var(--oc-ink2)] truncate flex-1">
                     {name}
                   </span>
                   {row.uncertain ? (
                     <span className="font-plex-mono text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 shrink-0">
                       Тодорхойгүй
+                    </span>
+                  ) : null}
+                  {continuesFromPreviousDay ? (
+                    <span className="font-plex-mono text-[10px] px-1.5 py-0.5 rounded-full bg-sky-500/10 text-sky-300 border border-sky-500/20 shrink-0">
+                      Өмнөх өдрөөс үргэлжилсэн
                     </span>
                   ) : null}
                   {issue ? (
@@ -646,7 +680,13 @@ function DaySchedule({
                   {hasActions ? (
                     <RowExpand>
                       {showConfirmReject && appt ? (
-                        <AppointmentConfirmReject appointmentId={appt.id} />
+                        <AppointmentConfirmReject
+                          appointmentId={appt.id}
+                          canConfirm={
+                            bookingPaymentStatus === "NOT_REQUIRED" ||
+                            bookingPaymentStatus === "PAID"
+                          }
+                        />
                       ) : null}
                       {showArrivalActions && appt ? (
                         <>
@@ -671,6 +711,7 @@ function DaySchedule({
                             currentStatus={order.status}
                             occupiesCapacity={order.occupiesCapacity}
                             expectedFinishAt={order.expectedFinishAt}
+                            attentionHref={`/dashboard/appointments/calendar?view=attention&branchId=${encodeURIComponent(order.branchId)}`}
                           />
                         </div>
                       ) : null}
@@ -753,7 +794,12 @@ function DayScheduleGrid({
     );
   }
 
-  const { rows } = buildDayRows(schedule, canRespondAppointments, canEditOrders, returnTo);
+  const { rows, carriedOverCount } = buildDayRows(
+    schedule,
+    canRespondAppointments,
+    canEditOrders,
+    returnTo,
+  );
 
   const hours = branchHours
     ? branchHoursForDate(branchHours, new Date(`${dayKey}T00:00:00+08:00`))
@@ -774,6 +820,20 @@ function DayScheduleGrid({
       {branchName ? (
         <div className="text-sm text-[var(--oc-muted3)]">
           Салбар: <span className="text-[var(--oc-ink2)] font-medium">{branchName}</span>
+        </div>
+      ) : null}
+      {carriedOverCount > 0 ? (
+        <div className="rounded-[10px] border border-amber-500/25 bg-amber-500/[0.06] p-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <span className="text-sm text-amber-200 light:text-amber-800">
+            {carriedOverCount} идэвхтэй ажил тодорхойгүй хугацаатай тул энэ өдөртэй
+            давхцах магадлалтай.
+          </span>
+          <Link
+            href={`/dashboard/appointments/calendar?view=attention&branchId=${encodeURIComponent(branchId)}`}
+            className="text-sm text-amber-400 hover:text-amber-300 transition-colors"
+          >
+            Хоцорсон ажлуудыг шалгах →
+          </Link>
         </div>
       ) : null}
       <GridSchedule

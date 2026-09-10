@@ -5,6 +5,7 @@ import {
   type ScheduleIssue,
   type ScheduleInterval,
 } from "@/lib/branch-schedule";
+import { splitScheduleInterval } from "@/lib/schedule-intervals";
 
 /**
  * Loads one branch's real appointment/order rows for a single business-timezone
@@ -38,7 +39,7 @@ export type BranchScheduleAppointmentRow = Awaited<
 >[number];
 export type BranchScheduleOrderRow = Awaited<
   ReturnType<typeof fetchOrderRows>
->[number] & { carriedOver: boolean };
+>[number] & { carriedOver: boolean; continuesIntoDay: boolean };
 
 // buildBranchSchedule-ийн "scheduled"/"date" логиктой яг адил — захиалгын бодит
 // (clamp хийгдээгүй) огноог тодорхойлно. Зөвхөн энэ файлд carriedOver
@@ -51,6 +52,24 @@ function orderEffectiveDate(o: {
 }): Date | null {
   const scheduled = o.status === "SCHEDULED" && o.occupiesCapacity !== true;
   return scheduled ? o.scheduledAt : o.startedAt;
+}
+
+function orderEffectiveEnd(o: {
+  status: string;
+  occupiesCapacity: boolean | null;
+  scheduledAt: Date | null;
+  startedAt: Date | null;
+  estimatedDurationMinutes: number | null;
+  expectedFinishAt: Date | null;
+}): Date | null {
+  const start = orderEffectiveDate(o);
+  if (!start) return null;
+  if (o.expectedFinishAt) return o.expectedFinishAt;
+  const scheduled = o.status === "SCHEDULED" && o.occupiesCapacity !== true;
+  if (scheduled && o.estimatedDurationMinutes != null && o.estimatedDurationMinutes > 0) {
+    return new Date(start.getTime() + o.estimatedDurationMinutes * 60000);
+  }
+  return null;
 }
 
 function fetchAppointmentRows(
@@ -76,6 +95,10 @@ function fetchAppointmentRows(
       customerId: true,
       vehicleId: true,
       note: true,
+      feeAmount: true,
+      feeQpayInvoiceId: true,
+      feeUnderpaidAmount: true,
+      payment: { select: { status: true } },
       account: { select: { name: true, phone: true } },
       customer: { select: { fullName: true, phone: true } },
     },
@@ -115,6 +138,8 @@ export async function loadBranchSchedule(input: {
   issues: ScheduleIssue[];
   appointments: BranchScheduleAppointmentRow[];
   orders: BranchScheduleOrderRow[];
+  rangeStart: Date;
+  rangeEnd: Date;
 }> {
   const { start: rangeStart, end: rangeEnd } = bookingDayBounds(input.dateStr);
   const scope = { tenantId: input.tenantId, branchId: input.branchId };
@@ -124,17 +149,24 @@ export async function loadBranchSchedule(input: {
     fetchOrderRows(scope, rangeEnd),
   ]);
 
-  // Захиалгын бодит огноо энэ өдрийн цонхноос өмнө байвал "carried over" —
-  // өөр өдрөөс тасралтгүй үргэлжилж буй хуучин ажил бөгөөд өдөр бүрт давтагдан
-  // харагдахгүйн тулд (D-хугацааны шинэ шийдвэр — COWORK.md-г үз) өдрийн
-  // жагсаалтад биш, харин branch-даяар "Анхаарал шаардлагатай" харагдацад
-  // харуулна. buildBranchSchedule өөрөө үүнийг мэдэхгүй (clamp хийж тооцоолол
-  // үргэлжлүүлнэ) — зөвхөн харуулах эсэхийг шийдэхэд ашиглана.
+  // Бодит эхлэл нь энэ өдрийн цонхноос өмнө бол carriedOver. Харин төгсгөл
+  // энэ өдөрт орж ирж байгаа мэдэгдэж буй interval бол хүчинтэй continuation
+  // бөгөөд тухайн өдрийн мөрөнд заавал харагдана.
   const orderRows: BranchScheduleOrderRow[] = rawOrderRows.map((o) => {
     const effectiveDate = orderEffectiveDate(o);
+    const effectiveEnd = orderEffectiveEnd(o);
+    const carriedOver = effectiveDate == null || effectiveDate.getTime() < rangeStart.getTime();
+    const continuesIntoDay =
+      carriedOver &&
+      effectiveDate != null &&
+      effectiveEnd != null &&
+      splitScheduleInterval(effectiveDate, effectiveEnd).some(
+        (segment) => segment.dateStr === input.dateStr && segment.startsBeforeDay,
+      );
     return {
       ...o,
-      carriedOver: effectiveDate == null || effectiveDate.getTime() < rangeStart.getTime(),
+      carriedOver,
+      continuesIntoDay,
     };
   });
 
@@ -147,7 +179,7 @@ export async function loadBranchSchedule(input: {
     rangeEnd,
   });
 
-  return { intervals, issues, appointments: appointmentRows, orders: orderRows };
+  return { intervals, issues, appointments: appointmentRows, orders: orderRows, rangeStart, rangeEnd };
 }
 
 /**
@@ -181,6 +213,7 @@ export async function loadBranchAttentionOrders(input: {
   const orderRows: BranchScheduleOrderRow[] = rawOrderRows.map((o) => ({
     ...o,
     carriedOver: false, // энд утга алга — attention харагдац өөрөө date-агнаст
+    continuesIntoDay: false,
   }));
 
   const { intervals, issues } = buildBranchSchedule({
