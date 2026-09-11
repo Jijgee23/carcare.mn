@@ -15,6 +15,7 @@ import {
 import { collectReportData } from "@/lib/diagnostics-server";
 import { canFillDiagnostics, isOrderLocked, type OrderStatus } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
+import { canEditOrder } from "@/lib/auth/order-access";
 
 export type ReportActionState = {
   ok: boolean;
@@ -78,9 +79,11 @@ export async function createReportAction(
         customerId: true,
         vehicleId: true,
         branchId: true,
+        assignedToId: true,
       },
     });
     if (!order) return { ok: false, message: "Засварын хуудас олдсонгүй." };
+    if (!canEditOrder(user, order)) return { ok: false, message: "Танд энэ засварын хуудсанд оношилгоо бөглөх эрх байхгүй." };
 
     // Засварын хуудас эхэлсний дараа л оношилгоо бөглөнө.
     const status = order.status as OrderStatus;
@@ -248,12 +251,13 @@ export async function deleteReportAction(formData: FormData): Promise<void> {
 
   const report = await prisma.diagnosticReport.findFirst({
     where: { id, tenantId: user.tenantId },
-    select: { id: true, orderId: true, filledById: true },
+    select: { id: true, orderId: true, filledById: true, order: { select: { assignedToId: true, branchId: true } } },
   });
   if (!report) return;
 
   const allowed =
-    canDeletePerm(user, "diagnostics") || report.filledById === user.id;
+    (canDeletePerm(user, "diagnostics") || report.filledById === user.id) &&
+    (!report.order || canEditOrder(user, report.order));
   if (!allowed) {
     throw new Error("Танд устгах эрх байхгүй.");
   }

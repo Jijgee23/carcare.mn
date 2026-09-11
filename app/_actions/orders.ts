@@ -5,7 +5,6 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
-import { customerLabel } from "@/lib/customers";
 import { createNotification } from "@/lib/notifications";
 import {
   canCreate,
@@ -16,20 +15,25 @@ import {
   workingBranchScopeId,
 } from "@/lib/auth/roles";
 import { assertActiveSubscription } from "@/lib/subscription-server";
-import { parseDurationInput, MAX_CATEGORY_DURATION_MINUTES } from "@/lib/category-duration";
-import { isPendingAppointmentPaymentExpired } from "@/lib/appointment-payment-status";
-import { calculateServiceItemDurationMinutes } from "@/lib/service-duration";
+import { parseDurationInput } from "@/lib/category-duration";
+import { calculateServiceItemDurationMinutes, type ServiceDurationItem } from "@/lib/service-duration";
 import {
   closeOpenOrderTimeBooking,
   openOrderTimeBooking,
   updateOpenOrderTimeBookingForecast,
   updateOpenOrderTimeBookingSchedule,
   getOpenOrderTimeBookings,
+  withOrderTransaction,
 } from "@/lib/order-time-booking";
-import { resolveOrderIntervals, type OrderTimeBookingLike } from "@/lib/schedule-order-interval";
+import {
+  findScheduleConflict,
+  getBranchSlotMinutes,
+  validateScheduledOrderHours,
+} from "@/lib/order-schedule-validation";
+import { postponeOrderCore } from "@/lib/order-postpone";
+import { moveLinkedAppointmentOrder, LinkedRescheduleError } from "@/lib/linked-reschedule";
 import {
   ITEM_KINDS,
-  ORDER_POSTPONE_REASON_TAGS,
   ORDER_STATUS_TRANSITIONS,
   SERVICE_ITEM_STATUSES,
   canChangeServiceItemStatus,
@@ -43,7 +47,7 @@ import {
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { enforceCountLimit } from "@/lib/plan-limits-server";
 import { prisma, withBookingTransaction, type PrismaTransactionClient } from "@/lib/prisma";
-import { bookingDateKey, bookingDayBounds, bookingSlotTime } from "@/lib/booking-time";
+import { bookingDateKey, bookingDayBounds, bookingSlotTime, parseBusinessLocalDateTime } from "@/lib/booking-time";
 import { resolveEffectiveSchedule } from "@/lib/branch-effective-schedule";
 import { branchScheduleForDateSelect } from "@/lib/branch-effective-schedule-server";
 import { timeToMinutes } from "@/lib/branches";
@@ -51,6 +55,7 @@ import { DEFAULT_SLOT_MINUTES } from "@/lib/appointment-slots";
 import { safeNext } from "@/lib/safe-redirect";
 import { ensureTenantVehicle } from "@/lib/vehicles";
 import { nextOrderNumber } from "@/lib/order-number";
+import { canEditOrder, canAssignOrders, canChangeOrderItemStatus } from "@/lib/auth/order-access";
 
 export type OrderActionState = {
   ok: boolean;
@@ -58,10 +63,24 @@ export type OrderActionState = {
   fieldErrors?: Record<string, string>;
 } | null;
 
-type ScheduleConflict = {
-  label: string;
-  certainty: "definite" | "possible";
-};
+// S06 fix: validation that happens INSIDE a withOrderTransaction lock (i.e.
+// against the freshly re-read row, not any earlier pre-lock read) throws this
+// instead of returning early, so it can carry fieldErrors back out through
+// the transaction boundary. Plain Error still works for messages alone.
+class OrderActionValidationError extends Error {
+  fieldErrors?: Record<string, string>;
+  constructor(message: string, fieldErrors?: Record<string, string>) {
+    super(message);
+    this.fieldErrors = fieldErrors;
+  }
+}
+
+function orderActionErrorResult(e: unknown): OrderActionState {
+  if (e instanceof OrderActionValidationError) {
+    return { ok: false, message: e.message || undefined, fieldErrors: e.fieldErrors };
+  }
+  return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+}
 
 function s(fd: FormData, key: string): string {
   const v = fd.get(key);
@@ -105,6 +124,15 @@ function assertOrderBranchScope(
   if (scope && branchId !== scope) {
     throw new Error("Зөвхөн өөрийн салбарын засварын хуудсыг удирдана.");
   }
+}
+
+async function assertOrderEditAccess(user: Awaited<ReturnType<typeof requireUser>>, id: string) {
+  const order = await prisma.serviceOrder.findFirst({
+    where: { id, tenantId: user.tenantId }, select: { assignedToId: true, branchId: true },
+  });
+  if (!order) throw new Error("Засварын хуудас олдсонгүй.");
+  assertOrderBranchScope(user, order.branchId);
+  if (!canEditOrder(user, order)) throw new Error("Танд энэ засварын хуудсыг засах эрх байхгүй.");
 }
 
 // Захиалгын товлосон огноо шилжсэнийг холбогдох цаг захиалгын account-д
@@ -195,7 +223,7 @@ function parseOrderInput(fd: FormData): {
 
   let scheduledAt: Date | null = null;
   if (scheduledRaw) {
-    const d = new Date(scheduledRaw);
+    const d = parseBusinessLocalDateTime(scheduledRaw);
     if (!Number.isFinite(d.getTime())) {
       errors.scheduledAt = "Огноо буруу.";
     } else {
@@ -214,41 +242,6 @@ function parseOrderInput(fd: FormData): {
     },
     errors,
   };
-}
-
-async function validateScheduledOrderHours(
-  tenantId: string,
-  branchId: string,
-  scheduledAt: Date | null,
-  durationMinutes: number,
-): Promise<string | null> {
-  if (!scheduledAt) return null;
-  if (!Number.isFinite(scheduledAt.getTime())) return "Товлосон огноо буруу.";
-  const dateStr = bookingDateKey(scheduledAt);
-  const branch = await prisma.branch.findFirst({
-    where: { id: branchId, tenantId, isActive: true },
-    select: { ...branchScheduleForDateSelect(dateStr) },
-  });
-  if (!branch) return "Салбар олдсонгүй.";
-  const schedule = resolveEffectiveSchedule({ dateStr, branch });
-  const start = timeToMinutes(schedule.openTime);
-  const end = timeToMinutes(schedule.closeTime);
-  const dayStart = bookingDayBounds(dateStr).start.getTime();
-  const minutes = Math.floor((scheduledAt.getTime() - dayStart) / 60000);
-  if (!schedule.open || start == null || end == null || minutes < start || minutes + durationMinutes > end) {
-    return "Товлосон ажиллах цагийн гадуур байна.";
-  }
-  return null;
-}
-
-async function getBranchSlotMinutes(tenantId: string, branchId: string): Promise<number> {
-  const branch = await prisma.branch.findFirst({
-    where: { id: branchId, tenantId },
-    select: { slotMinutes: true },
-  });
-  return branch?.slotMinutes && branch.slotMinutes > 0
-    ? branch.slotMinutes
-    : DEFAULT_SLOT_MINUTES;
 }
 
 async function validateRefs(
@@ -388,6 +381,12 @@ export async function createOrderAction(
   }
 
   const { data, errors } = parseOrderInput(formData);
+  if (!canAssignOrders(user)) {
+    if (data.assignedToId && data.assignedToId !== user.id) {
+      return { ok: false, message: "Зөвхөн өөрийгөө хариуцагчаар оноож болно." };
+    }
+    data.assignedToId = user.id;
+  }
   const appointmentId = s(formData, "appointmentId") || null;
   // Walk-in (цаг захиалгагүй) захиалгад л гараар ойролцоо хугацаа авна —
   // цаг захиалгаас үүссэн бол хугацаа автоматаар удамшина (доор), тул энд
@@ -703,11 +702,15 @@ export async function updateOrderAction(
       status: true,
       scheduledAt: true,
       estimatedDurationMinutes: true,
+      assignedToId: true,
       appointment: { select: { id: true, accountId: true, status: true } },
     },
   });
   if (!existing) {
     return { ok: false, message: "Засварын хуудас олдсонгүй." };
+  }
+  if (!canAssignOrders(user) && data.assignedToId !== existing.assignedToId) {
+    return { ok: false, message: "Зөвхөн orders.assign эрхтэй хэрэглэгч хариуцагч өөрчилж болно." };
   }
   if (isOrderLocked(existing.status as OrderStatus)) {
     return {
@@ -762,33 +765,57 @@ export async function updateOrderAction(
   }
 
   try {
-    // Машин солигдож болзошгүй тул дараа төлбөрт snapshot-ыг дахин тооцно.
-    const updated = await prisma.$transaction(async (tx) => {
-      const result = await tx.serviceOrder.updateMany({
-        where: scopedOrderWhere,
-        data: { ...data, isPostpaid: vehicleIsPostpaid },
-      });
-      // D-068 dual-write: scheduledAt only actually drives the SCHEDULED-phase
-      // booking (resolveOrderEffectiveInterval ignores it once work has
-      // started, using startedAt instead) — only update the open booking here
-      // when it's still that phase, in place, not a phase transition.
-      if (result.count > 0 && existing.status === "SCHEDULED" && scheduledChanged) {
-        const durationMinutes = existing.estimatedDurationMinutes ?? branchSlotMinutes;
-        await updateOpenOrderTimeBookingSchedule(tx, id, {
-          startAt: data.scheduledAt!,
-          endAt: new Date(data.scheduledAt!.getTime() + durationMinutes * 60000),
+    // S06 fix: lock the row, re-read it fresh, re-validate against THAT
+    // state (not the pre-lock `existing` above), then write — all under one
+    // lock so a concurrent status change/cancel can't land between our
+    // validation and our write. Машин солигдож болзошгүй тул дараа төлбөрт
+    // snapshot-ыг дахин тооцно.
+    const updated = await withOrderTransaction(
+      user.tenantId,
+      id,
+      { status: true, scheduledAt: true, estimatedDurationMinutes: true, branchId: true },
+      async (tx, freshRaw) => {
+        const fresh = freshRaw as {
+          status: OrderStatus;
+          scheduledAt: Date | null;
+          estimatedDurationMinutes: number | null;
+          branchId: string;
+        } | null;
+        if (!fresh || (scope && fresh.branchId !== scope)) {
+          throw new OrderActionValidationError("Засварын хуудас олдсонгүй.");
+        }
+        if (isOrderLocked(fresh.status as OrderStatus)) {
+          throw new OrderActionValidationError(
+            "Дууссан / цуцлагдсан засварын хуудасны мэдээллийг засаж болохгүй.",
+          );
+        }
+        const freshScheduledChanged =
+          data.scheduledAt != null &&
+          (fresh.scheduledAt == null ||
+            data.scheduledAt.getTime() !== fresh.scheduledAt.getTime());
+        const result = await tx.serviceOrder.updateMany({
+          where: scopedOrderWhere,
+          data: { ...data, isPostpaid: vehicleIsPostpaid },
         });
-      }
-      return result;
-    });
+        // D-068 dual-write: scheduledAt only actually drives the SCHEDULED-phase
+        // booking (resolveOrderEffectiveInterval ignores it once work has
+        // started, using startedAt instead) — only update the open booking here
+        // when it's still that phase, in place, not a phase transition.
+        if (result.count > 0 && fresh.status === "SCHEDULED" && freshScheduledChanged) {
+          const durationMinutes = fresh.estimatedDurationMinutes ?? branchSlotMinutes;
+          await updateOpenOrderTimeBookingSchedule(tx, id, {
+            startAt: data.scheduledAt!,
+            endAt: new Date(data.scheduledAt!.getTime() + durationMinutes * 60000),
+          });
+        }
+        return result;
+      },
+    );
     if (updated.count === 0) {
       return { ok: false, message: "Засварын хуудас олдсонгүй." };
     }
   } catch (e) {
-    return {
-      ok: false,
-      message: e instanceof Error ? e.message : "Шинэчлэх явцад алдаа гарлаа.",
-    };
+    return orderActionErrorResult(e);
   }
 
   await logAudit({
@@ -831,188 +858,219 @@ export async function changeOrderStatusAction(
   const id = s(formData, "id");
   const next = s(formData, "status") as OrderStatus;
   if (!id || !next) return { ok: false, message: "Буруу хүсэлт." };
+  try { await assertOrderEditAccess(user, id); } catch (e) { return { ok: false, message: e instanceof Error ? e.message : "Алдаа" }; }
 
-  const order = await prisma.serviceOrder.findFirst({
-    where: { id, tenantId: user.tenantId },
-    select: {
-      id: true,
-      branchId: true,
-      status: true,
-      startedAt: true,
-      estimatedDurationMinutes: true,
-      items: {
-        where: { status: { not: "CANCELLED" } },
-        select: {
-          kind: true,
-          status: true,
-          quantity: true,
-          service: {
-            select: {
-              durationValue: true,
-              durationUnit: { select: { name: true, code: true } },
-            },
-          },
-          diagnosticTemplate: { select: { durationMin: true } },
-        },
-      },
-    },
-  });
-  if (!order) return { ok: false, message: "Засварын хуудас олдсонгүй." };
+  // S06 fix: everything that validates and everything that writes now
+  // happens under ONE row lock on this order — re-read fresh inside
+  // withOrderTransaction, validated against THAT state, never against a
+  // pre-lock read — so a concurrent status change/cancel/expiry can't slot
+  // in between validation and write.
   try {
-    assertOrderBranchScope(user, order.branchId);
-  } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
-  }
-
-  const allowed = ORDER_STATUS_TRANSITIONS[order.status as OrderStatus];
-  if (!allowed?.includes(next)) {
-    return { ok: false, message: "Энэ статус руу шилжих боломжгүй." };
-  }
-
-  // Дуусгахаас өмнө нэмэгдсэн оношилгооны мөр бүгд тайлантай (бөглөгдсөн) байх ёстой.
-  if (next === "COMPLETED") {
-    const pending = await prisma.serviceItem.count({
-      where: {
-        orderId: order.id,
-        kind: "DIAGNOSTIC",
-        status: { not: "CANCELLED" },
-        diagnosticReportId: null,
-      },
-    });
-    if (pending > 0) {
-      return {
-        ok: false,
-        message:
-          "Бөглөгдөөгүй оношилгоо байна. Бүх оношилгоог бөглөсний дараа засварын хуудсыг дуусгана уу.",
-      };
-    }
-  }
-
-  const now = new Date();
-  const enteringInProgress = next === "IN_PROGRESS";
-  const startingFresh = enteringInProgress && order.status === "SCHEDULED";
-  const resuming = enteringInProgress && order.status === "POSTPONED";
-
-  // Ажил эхлэхэд (эсвэл сэлбэгээс сэргэхэд) үргэлжлэх хугацааны тооцоолол
-  // байх ёстой — эс бөгөөс энэ захиалга хугацаагүй, тодорхойгүй хугацаагаар
-  // ажлын байрыг эзэлж, cap=1 мэт бага багтаамжтай салбарт БҮХ цаг захиалгыг
-  // бүрмөсөн хаадаг байсан (D-хугацааны шийдвэр). Аль хэдийн тооцоолол байвал
-  // (жишээ нь холбогдсон цаг захиалгаас өвлөгдсөн) дахин асуухгүй.
-  let effectiveDurationMinutes = order.estimatedDurationMinutes;
-  const serviceItemDurationMinutes = enteringInProgress
-    ? calculateServiceItemDurationMinutes(order.items)
-    : null;
-  if (effectiveDurationMinutes == null && serviceItemDurationMinutes != null) {
-    effectiveDurationMinutes = serviceItemDurationMinutes;
-  }
-  if (enteringInProgress && effectiveDurationMinutes == null) {
-    const parsed = parseDurationInput(
-      s(formData, "durationHours"),
-      s(formData, "durationMinutes"),
-    );
-    if (!parsed.ok) {
-      return { ok: false, fieldErrors: { duration: parsed.error } };
-    }
-    if (parsed.minutes == null) {
-      return {
-        ok: false,
-        fieldErrors: {
-          duration: "Ажлыг эхлүүлэхийн өмнө ойролцоо үргэлжлэх хугацааг оруулна уу.",
+    await withOrderTransaction(
+      user.tenantId,
+      id,
+      {
+        id: true,
+        branchId: true,
+        status: true,
+        startedAt: true,
+        estimatedDurationMinutes: true,
+        items: {
+          where: { status: { not: "CANCELLED" } },
+          select: {
+            kind: true,
+            status: true,
+            quantity: true,
+            service: {
+              select: {
+                durationValue: true,
+                durationUnit: { select: { name: true, code: true } },
+              },
+            },
+            diagnosticTemplate: { select: { durationMin: true } },
+          },
         },
-      };
-    }
-    effectiveDurationMinutes = parsed.minutes;
-  }
+      },
+      async (tx, orderRaw) => {
+        const order = orderRaw as {
+          id: string;
+          branchId: string;
+          status: OrderStatus;
+          startedAt: Date | null;
+          estimatedDurationMinutes: number | null;
+          items: ServiceDurationItem[];
+        } | null;
+        if (!order) throw new OrderActionValidationError("Засварын хуудас олдсонгүй.");
+        assertOrderBranchScope(user, order.branchId);
 
-  const updates: Prisma.ServiceOrderUpdateInput = { status: next };
-  const startedAt = startingFresh ? now : order.startedAt;
-  if (startingFresh) {
-    updates.startedAt = startedAt;
-  }
-  if (startingFresh && effectiveDurationMinutes !== order.estimatedDurationMinutes) {
-    updates.estimatedDurationMinutes = effectiveDurationMinutes;
-  }
-  if (next === "COMPLETED") {
-    updates.completedAt = new Date();
-  }
-  // Хүчин чадлын эзэмшил: идэвхтэй ажил хүчин чадал эзэлнэ; дууссан/цуцлагдсан
-  // ажил тэр даруй суллана. Хойшлуулах (POSTPONED) нь D-076-аар үргэлж
-  // суллагдсан гэж тооцогдоно — сонголт/диалог алга, шууд false.
-  if (next === "COMPLETED" || next === "CANCELLED" || next === "POSTPONED") {
-    updates.occupiesCapacity = false;
-  } else {
-    updates.occupiesCapacity = true;
-  }
-  if (enteringInProgress && effectiveDurationMinutes != null) {
-    // Хойшлуулснаас сэргэхэд анхны эхэлсэн цагаас биш, ОДООгоос тоолж
-    // дуусах хугацааг дахин тооцоолно — эс бөгөөс хойшлуулсан хугацаа
-    // тооцогдохгүй, дуусах хугацаа хуучирсан хэвээр үлдэнэ.
-    const anchor = resuming ? now : startedAt;
-    if (anchor) {
-      updates.expectedFinishAt = new Date(
-        anchor.getTime() + effectiveDurationMinutes * 60000,
-      );
-    }
-  }
+        const allowed = ORDER_STATUS_TRANSITIONS[order.status as OrderStatus];
+        if (!allowed?.includes(next)) {
+          throw new OrderActionValidationError("Энэ статус руу шилжих боломжгүй.");
+        }
+        // S12: POSTPONED needs a mandatory reason/return-time and a structured
+        // OrderStatusChange row — route it exclusively through the dedicated
+        // postponeOrderAction (dashboard) / POST /api/v1/orders/[id]/postpone
+        // (API), which share lib/order-postpone.ts's postponeOrderCore. This
+        // generic action used to also accept POSTPONED with none of that
+        // validation (WEB_SCHEDULING_ASSESSMENT S11-S12).
+        if (next === "POSTPONED") {
+          throw new OrderActionValidationError(
+            "Хойшлуулахын тулд тусгай хойшлуулах цэсийг ашиглана уу.",
+          );
+        }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.serviceOrder.update({
-      where: { id: order.id },
-      data: updates,
-    });
-    // D-068/D-076 dual-write: close() is a no-op when nothing matching is
-    // open, so this stays correct regardless of the order's prior booking
-    // state. Starting/resuming active work ("all") consumes whatever was
-    // next in line for this order — a prior SCHEDULED booking that's now
-    // actually starting, a still-open ACTIVE one (resuming without ever
-    // releasing the bay), or an independent follow-up reservation, since
-    // only one SCHEDULED slot can exist at a time and the car is back now.
-    // COMPLETED closes only ACTIVE — a pending follow-up (D-076) is a
-    // separate future commitment and must survive the current work ending.
-    // CANCELLED closes "all": the whole order is void, so nothing about it
-    // — including any pending follow-up — should remain open, matching the
-    // service-item cancellation just below.
-    if (enteringInProgress) {
-      await closeOpenOrderTimeBooking(tx, order.id, now, "all");
-      await openOrderTimeBooking(tx, {
-        tenantId: user.tenantId,
-        orderId: order.id,
-        branchId: order.branchId,
-        kind: "ACTIVE",
-        startAt: now,
-        endAt: (updates.expectedFinishAt as Date | undefined) ?? null,
-        createdById: user.id,
-      });
-    } else if (next === "COMPLETED") {
-      await closeOpenOrderTimeBooking(tx, order.id, updates.completedAt as Date, "ACTIVE");
-    } else if (next === "CANCELLED") {
-      await closeOpenOrderTimeBooking(tx, order.id, now, "all");
-    } else if (next === "POSTPONED") {
-      await closeOpenOrderTimeBooking(tx, order.id, now, "ACTIVE");
-    }
+        // Дуусгахаас өмнө нэмэгдсэн оношилгооны мөр бүгд тайлантай (бөглөгдсөн) байх ёстой.
+        if (next === "COMPLETED") {
+          const pending = await tx.serviceItem.count({
+            where: {
+              orderId: order.id,
+              kind: "DIAGNOSTIC",
+              status: { not: "CANCELLED" },
+              diagnosticReportId: null,
+            },
+          });
+          if (pending > 0) {
+            throw new OrderActionValidationError(
+              "Бөглөгдөөгүй оношилгоо байна. Бүх оношилгоог бөглөсний дараа засварын хуудсыг дуусгана уу.",
+            );
+          }
+        }
+
+        const now = new Date();
+        const enteringInProgress = next === "IN_PROGRESS";
+        const startingFresh = enteringInProgress && order.status === "SCHEDULED";
+        const resuming = enteringInProgress && order.status === "POSTPONED";
+
+        // Ажил эхлэхэд (эсвэл сэлбэгээс сэргэхэд) үргэлжлэх хугацааны тооцоолол
+        // байх ёстой — эс бөгөөс энэ захиалга хугацаагүй, тодорхойгүй хугацаагаар
+        // ажлын байрыг эзэлж, cap=1 мэт бага багтаамжтай салбарт БҮХ цаг захиалгыг
+        // бүрмөсөн хаадаг байсан (D-хугацааны шийдвэр). Аль хэдийн тооцоолол байвал
+        // (жишээ нь холбогдсон цаг захиалгаас өвлөгдсөн) дахин асуухгүй.
+        let effectiveDurationMinutes = order.estimatedDurationMinutes;
+        const serviceItemDurationMinutes = enteringInProgress
+          ? calculateServiceItemDurationMinutes(order.items)
+          : null;
+        if (effectiveDurationMinutes == null && serviceItemDurationMinutes != null) {
+          effectiveDurationMinutes = serviceItemDurationMinutes;
+        }
+        if (enteringInProgress && effectiveDurationMinutes == null) {
+          const parsed = parseDurationInput(
+            s(formData, "durationHours"),
+            s(formData, "durationMinutes"),
+          );
+          if (!parsed.ok) {
+            throw new OrderActionValidationError("", { duration: parsed.error });
+          }
+          if (parsed.minutes == null) {
+            throw new OrderActionValidationError("", {
+              duration: "Ажлыг эхлүүлэхийн өмнө ойролцоо үргэлжлэх хугацааг оруулна уу.",
+            });
+          }
+          effectiveDurationMinutes = parsed.minutes;
+        }
+
+        const updates: Prisma.ServiceOrderUpdateInput = { status: next };
+        const startedAt = startingFresh ? now : order.startedAt;
+        if (startingFresh) {
+          updates.startedAt = startedAt;
+        }
+        if (startingFresh && effectiveDurationMinutes !== order.estimatedDurationMinutes) {
+          updates.estimatedDurationMinutes = effectiveDurationMinutes;
+        }
+        if (next === "COMPLETED") {
+          updates.completedAt = new Date();
+        }
+        // Хүчин чадлын эзэмшил: идэвхтэй ажил хүчин чадал эзэлнэ; дууссан/цуцлагдсан
+        // ажил тэр даруй суллана. (POSTPONED-ийг S12-оор дээр нь хасав — тусгай
+        // postponeOrderCore л энэ шилжилтийг хийнэ.)
+        if (next === "COMPLETED" || next === "CANCELLED") {
+          updates.occupiesCapacity = false;
+        } else {
+          updates.occupiesCapacity = true;
+        }
+        if (enteringInProgress && effectiveDurationMinutes != null) {
+          // Хойшлуулснаас сэргэхэд анхны эхэлсэн цагаас биш, ОДООгоос тоолж
+          // дуусах хугацааг дахин тооцоолно — эс бөгөөс хойшлуулсан хугацаа
+          // тооцогдохгүй, дуусах хугацаа хуучирсан хэвээр үлдэнэ.
+          const anchor = resuming ? now : startedAt;
+          if (anchor) {
+            updates.expectedFinishAt = new Date(
+              anchor.getTime() + effectiveDurationMinutes * 60000,
+            );
+          }
+        }
+
+        await tx.serviceOrder.update({
+          where: { id: order.id },
+          data: updates,
+        });
+        // D-068/D-076 dual-write: close() is a no-op when nothing matching is
+        // open, so this stays correct regardless of the order's prior booking
+        // state. Starting/resuming active work ("all") consumes whatever was
+        // next in line for this order — a prior SCHEDULED booking that's now
+        // actually starting, a still-open ACTIVE one (resuming without ever
+        // releasing the bay), or an independent follow-up reservation, since
+        // only one SCHEDULED slot can exist at a time and the car is back now.
+        // COMPLETED closes only ACTIVE — a pending follow-up (D-076) is a
+        // separate future commitment and must survive the current work ending.
+        // CANCELLED closes "all": the whole order is void, so nothing about it
+        // — including any pending follow-up — should remain open, matching the
+        // service-item cancellation just below.
+        if (enteringInProgress) {
+          await closeOpenOrderTimeBooking(tx, order.id, now, "all");
+          await openOrderTimeBooking(tx, {
+            tenantId: user.tenantId,
+            orderId: order.id,
+            branchId: order.branchId,
+            kind: "ACTIVE",
+            startAt: now,
+            endAt: (updates.expectedFinishAt as Date | undefined) ?? null,
+            createdById: user.id,
+          });
+        } else if (next === "COMPLETED") {
+          await closeOpenOrderTimeBooking(tx, order.id, updates.completedAt as Date, "ACTIVE");
+        } else if (next === "CANCELLED") {
+          await closeOpenOrderTimeBooking(tx, order.id, now, "all");
+        }
     // Захиалгыг бүхэлд нь цуцлахад дотор нь бөглөгдсөн (COMPLETED) байсан
     // мөр — тэр дундаа бөглөгдсөн оношилгооны хуудас — идэвхтэй хэвээр
     // үлдэж, дуусаагүй мэт харагдахаас сэргийлж бүх мөрийг мөн цуцална.
-    if (next === "CANCELLED") {
-      await tx.serviceItem.updateMany({
-        where: { orderId: order.id, status: { not: "CANCELLED" } },
-        data: { status: "CANCELLED", cancelledAt: new Date(), cancelledById: user.id },
-      });
-    }
-    await logAudit(
-      {
-        tenantId: user.tenantId,
-        userId: user.id,
-        entity: "ServiceOrder",
-        entityId: order.id,
-        action: "STATUS_CHANGE",
-        summary: `${order.status} → ${next}`,
-        before: { status: order.status },
-        after: { status: next },
+        if (next === "CANCELLED") {
+          await tx.serviceItem.updateMany({
+            where: { orderId: order.id, status: { not: "CANCELLED" } },
+            data: { status: "CANCELLED", cancelledAt: new Date(), cancelledById: user.id },
+          });
+        }
+        // S12: every transition writes a structured OrderStatusChange row in
+        // the same transaction, not just postpone (WEB_SCHEDULING_ASSESSMENT
+        // S11-S12) — no reason/reasonTag for these ordinary transitions.
+        await tx.orderStatusChange.create({
+          data: {
+            tenantId: user.tenantId,
+            orderId: order.id,
+            fromStatus: order.status,
+            toStatus: next,
+            changedById: user.id,
+          },
+        });
+        await logAudit(
+          {
+            tenantId: user.tenantId,
+            userId: user.id,
+            entity: "ServiceOrder",
+            entityId: order.id,
+            action: "STATUS_CHANGE",
+            summary: `${order.status} → ${next}`,
+            before: { status: order.status },
+            after: { status: next },
+          },
+          tx,
+        );
       },
-      tx,
     );
-  });
+  } catch (e) {
+    return orderActionErrorResult(e);
+  }
 
   revalidatePath("/dashboard/orders");
   revalidatePath(`/dashboard/orders/${id}`);
@@ -1040,131 +1098,24 @@ export async function postponeOrderAction(
   }
   const id = s(formData, "id");
   if (!id) return { ok: false, message: "Буруу хүсэлт." };
+  try { await assertOrderEditAccess(user, id); } catch (e) { return { ok: false, message: e instanceof Error ? e.message : "Алдаа" }; }
 
-  const reason = s(formData, "reason");
-  const reasonTagRaw = s(formData, "reasonTag");
-  const reasonTag = (ORDER_POSTPONE_REASON_TAGS as readonly string[]).includes(reasonTagRaw)
-    ? (reasonTagRaw as OrderPostponeReasonTag)
-    : null;
-  if (!reasonTag && !reason) {
-    return {
-      ok: false,
-      fieldErrors: { reason: "Шалтгаан сонгох эсвэл бичнэ үү." },
-    };
-  }
-
-  // D-078 (updated): буцах цаг одоо хойшлуулахад заавал шаардлагатай — тусад
-  // нь дараа нь товлох модал (scheduleOrderReturnAction) ЗӨВХӨН аль хэдийн
-  // товлогдсон цагийг засварлахад л (эсвэл IN_PROGRESS follow-up-д) хэрэглэгдэнэ.
-  const returnRaw = s(formData, "returnAt");
-  const confirmed = s(formData, "confirmed") === "true";
-  if (!returnRaw) {
-    return { ok: false, fieldErrors: { returnAt: "Буцах цагийг оруулна уу." } };
-  }
-  const returnAt = new Date(returnRaw);
-  if (!Number.isFinite(returnAt.getTime())) {
-    return { ok: false, fieldErrors: { returnAt: "Огноо буруу." } };
-  }
-
-  const order = await prisma.serviceOrder.findFirst({
-    where: { id, tenantId: user.tenantId },
-    select: {
-      id: true,
-      branchId: true,
-      status: true,
-      estimatedDurationMinutes: true,
-    },
+  // S12: all validation and writes now live in postponeOrderCore
+  // (lib/order-postpone.ts), shared with POST /api/v1/orders/[id]/postpone —
+  // this action only adapts FormData in and OrderActionState out.
+  const result = await postponeOrderCore({
+    tenantId: user.tenantId,
+    orderId: id,
+    branchScope: workingBranchScopeId(user),
+    reasonRaw: s(formData, "reason"),
+    reasonTagRaw: s(formData, "reasonTag"),
+    returnAtRaw: s(formData, "returnAt"),
+    confirmed: s(formData, "confirmed") === "true",
+    actorId: user.id,
   });
-  if (!order) return { ok: false, message: "Засварын хуудас олдсонгүй." };
-  try {
-    assertOrderBranchScope(user, order.branchId);
-  } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  if (!result.ok) {
+    return { ok: false, message: result.error.message, fieldErrors: result.error.fieldErrors };
   }
-
-  const allowed = ORDER_STATUS_TRANSITIONS[order.status as OrderStatus];
-  if (!allowed?.includes("POSTPONED")) {
-    return { ok: false, message: "Энэ захиалгыг хойшлуулах боломжгүй." };
-  }
-
-  const durationMinutes = order.estimatedDurationMinutes ?? await getBranchSlotMinutes(
-    user.tenantId,
-    order.branchId,
-  );
-  const conflictEnd = new Date(returnAt.getTime() + durationMinutes * 60000);
-  if (!confirmed) {
-    const conflict = await findScheduleConflict(
-      user.tenantId,
-      order.branchId,
-      order.id,
-      returnAt,
-      conflictEnd,
-    );
-    if (conflict) {
-      return {
-        ok: false,
-        message:
-          conflict.certainty === "possible"
-            ? `Товлосон цаг ${conflict.label}-тай давхцах магадлалтай. Үргэлжлүүлэхийн тулд дахин "Хойшлуулах" дарна уу.`
-            : `Товлосон цаг ${conflict.label}-тай давхцаж байна. Үргэлжлүүлэхийн тулд дахин "Хойшлуулах" дарна уу.`,
-        fieldErrors: { confirmNeeded: "true" },
-      };
-    }
-  }
-
-  const previousStatus = order.status as OrderStatus;
-  const now = new Date();
-  await prisma.$transaction(async (tx) => {
-    await tx.serviceOrder.update({
-      where: { id: order.id },
-      data: { status: "POSTPONED", occupiesCapacity: false },
-    });
-    // D-076 dual-write: close only the ACTIVE booking — an independent open
-    // follow-up (if this order already had one) must survive.
-    await closeOpenOrderTimeBooking(tx, order.id, now, "ACTIVE");
-    const open = await getOpenOrderTimeBookings(tx, order.id);
-    const openScheduled = open.find((b) => b.kind === "SCHEDULED");
-    if (openScheduled) {
-      await updateOpenOrderTimeBookingSchedule(tx, order.id, {
-        startAt: returnAt,
-        endAt: conflictEnd,
-      });
-    } else {
-      await openOrderTimeBooking(tx, {
-        tenantId: user.tenantId,
-        orderId: order.id,
-        branchId: order.branchId,
-        kind: "SCHEDULED",
-        startAt: returnAt,
-        endAt: conflictEnd,
-        createdById: user.id,
-      });
-    }
-    await tx.orderStatusChange.create({
-      data: {
-        tenantId: user.tenantId,
-        orderId: order.id,
-        fromStatus: previousStatus,
-        toStatus: "POSTPONED",
-        reason: reason || null,
-        reasonTag,
-        changedById: user.id,
-      },
-    });
-    await logAudit(
-      {
-        tenantId: user.tenantId,
-        userId: user.id,
-        entity: "ServiceOrder",
-        entityId: order.id,
-        action: "STATUS_CHANGE",
-        summary: `${previousStatus} → POSTPONED`,
-        before: { status: previousStatus },
-        after: { status: "POSTPONED", reasonTag, reason: reason || null },
-      },
-      tx,
-    );
-  });
 
   revalidatePath("/dashboard/orders");
   revalidatePath(`/dashboard/orders/${id}`);
@@ -1262,7 +1213,7 @@ export async function scheduleOrderReturnAction(
   const confirmed = s(formData, "confirmed") === "true";
   if (!id || !returnRaw) return { ok: false, message: "Буруу хүсэлт." };
 
-  const returnAt = new Date(returnRaw);
+  const returnAt = parseBusinessLocalDateTime(returnRaw);
   if (!Number.isFinite(returnAt.getTime())) {
     return { ok: false, fieldErrors: { returnAt: "Огноо буруу." } };
   }
@@ -1323,56 +1274,82 @@ export async function scheduleOrderReturnAction(
     }
   }
 
-  await prisma.$transaction(async (tx) => {
-    const open = await getOpenOrderTimeBookings(tx, order.id);
-    const openScheduled = open.find((b) => b.kind === "SCHEDULED");
-    if (openScheduled) {
-      // Аль хэдийн товлосон цаг байгааг л шинэчилнэ — шинэ мөр нээхгүй
-      // (rescheduleOrderAction-той адил "засварлах", шатлал шилжилт биш).
-      await updateOpenOrderTimeBookingSchedule(tx, order.id, {
-        startAt: returnAt,
-        endAt: conflictEnd,
-      });
-    } else if (isReturnTime) {
-      // occupiesCapacity === false байх ёстой тул энд ямар нэгэн ACTIVE
-      // нээлттэй мөр байх ёсгүй, гэвч бай хамгаалалтын үүднээс ямар ч
-      // нээлттэй мөрийг хаагаад шинээр SCHEDULED нээнэ.
-      await closeOpenOrderTimeBooking(tx, order.id, new Date(), "all");
-      await openOrderTimeBooking(tx, {
-        tenantId: user.tenantId,
-        orderId: order.id,
-        branchId: order.branchId,
-        kind: "SCHEDULED",
-        startAt: returnAt,
-        endAt: conflictEnd,
-        createdById: user.id,
-      });
-    } else {
-      // D-076 follow-up (isFollowUp, IN_PROGRESS): additive only — the open
-      // ACTIVE booking for today's work must NEVER be closed here.
-      await openOrderTimeBooking(tx, {
-        tenantId: user.tenantId,
-        orderId: order.id,
-        branchId: order.branchId,
-        kind: "SCHEDULED",
-        startAt: returnAt,
-        endAt: conflictEnd,
-        createdById: user.id,
-      });
-    }
-    await logAudit(
-      {
-        tenantId: user.tenantId,
-        userId: user.id,
-        entity: "ServiceOrder",
-        entityId: order.id,
-        action: "UPDATE",
-        summary: isFollowUp ? "Дараагийн цаг товлов" : "Машины буцах цаг товлов",
-        after: { returnAt: returnAt.toISOString() },
+  // S06 fix — the worst race in this batch: two concurrent calls could each
+  // read "no open SCHEDULED row" (unlocked) and each insert one. Take the
+  // order lock, re-read status fresh, and do the "does an open SCHEDULED
+  // row already exist?" check AND the resulting update-in-place-or-insert
+  // under that SAME lock so only one of two concurrent callers can win the
+  // insert branch.
+  try {
+    await withOrderTransaction(
+      user.tenantId,
+      id,
+      { id: true, branchId: true, status: true },
+      async (tx, freshRaw) => {
+        const fresh = freshRaw as { id: string; branchId: string; status: OrderStatus } | null;
+        if (!fresh) throw new OrderActionValidationError("Засварын хуудас олдсонгүй.");
+        assertOrderBranchScope(user, fresh.branchId);
+        const freshIsReturnTime = fresh.status === "POSTPONED";
+        const freshIsFollowUp = fresh.status === "IN_PROGRESS";
+        if (!freshIsReturnTime && !freshIsFollowUp) {
+          throw new OrderActionValidationError(
+            "Зөвхөн хойшлуулсан, эсвэл идэвхтэй ажиллаж буй захиалгад л дараагийн цаг товлоно.",
+          );
+        }
+
+        const open = await getOpenOrderTimeBookings(tx, fresh.id);
+        const openScheduled = open.find((b) => b.kind === "SCHEDULED");
+        if (openScheduled) {
+          // Аль хэдийн товлосон цаг байгааг л шинэчилнэ — шинэ мөр нээхгүй
+          // (rescheduleOrderAction-той адил "засварлах", шатлал шилжилт биш).
+          await updateOpenOrderTimeBookingSchedule(tx, fresh.id, {
+            startAt: returnAt,
+            endAt: conflictEnd,
+          });
+        } else if (freshIsReturnTime) {
+          // occupiesCapacity === false байх ёстой тул энд ямар нэгэн ACTIVE
+          // нээлттэй мөр байх ёсгүй, гэвч бай хамгаалалтын үүднээс ямар ч
+          // нээлттэй мөрийг хаагаад шинээр SCHEDULED нээнэ.
+          await closeOpenOrderTimeBooking(tx, fresh.id, new Date(), "all");
+          await openOrderTimeBooking(tx, {
+            tenantId: user.tenantId,
+            orderId: fresh.id,
+            branchId: fresh.branchId,
+            kind: "SCHEDULED",
+            startAt: returnAt,
+            endAt: conflictEnd,
+            createdById: user.id,
+          });
+        } else {
+          // D-076 follow-up (freshIsFollowUp, IN_PROGRESS): additive only — the
+          // open ACTIVE booking for today's work must NEVER be closed here.
+          await openOrderTimeBooking(tx, {
+            tenantId: user.tenantId,
+            orderId: fresh.id,
+            branchId: fresh.branchId,
+            kind: "SCHEDULED",
+            startAt: returnAt,
+            endAt: conflictEnd,
+            createdById: user.id,
+          });
+        }
+        await logAudit(
+          {
+            tenantId: user.tenantId,
+            userId: user.id,
+            entity: "ServiceOrder",
+            entityId: fresh.id,
+            action: "UPDATE",
+            summary: freshIsFollowUp ? "Дараагийн цаг товлов" : "Машины буцах цаг товлов",
+            after: { returnAt: returnAt.toISOString() },
+          },
+          tx,
+        );
       },
-      tx,
     );
-  });
+  } catch (e) {
+    return orderActionErrorResult(e);
+  }
 
   revalidatePath("/dashboard/orders");
   revalidatePath(`/dashboard/orders/${id}`);
@@ -1389,170 +1366,6 @@ export async function scheduleOrderReturnAction(
 // (өөрчилсөн) үед л, ба ялгаа 15 минутаас бага бол чимээгүй алгасна (эргэлзээт
 // бага зөрүүгээр үйлчлүүлэгчийг дэмий цочроохгүйн тулд).
 const MEANINGFUL_FINISH_CHANGE_MS = 15 * 60 * 1000;
-
-// Салбарт өөр бай/лифтийн загвар байхгүй тул систем "давхцал"-ыг хатуу
-// хязгаарлал биш, зөвхөн ажилтанд харуулах анхааруулга болгон ашиглана
-// (D-хугацааны шийдвэр — жинхэнэ засварын ажил урьдчилан таамаглашгүй тул
-// хатуу хориглол бодит байдалтай зөрчилддөг). lib/branch-schedule.ts-ийн
-// зарчимтай адил (эхлэл/төгсгөл давхцах эсэх), гагцхүү зөвхөн энэ нэг
-// захиалгын шинэ дуусах хугацаатай мөргөлдөх хамгийн ойрын нэгийг л олно.
-async function findScheduleConflict(
-  tenantId: string,
-  branchId: string,
-  excludeOrderId: string,
-  start: Date,
-  end: Date,
-): Promise<ScheduleConflict | null> {
-  // An appointment or scheduled order with no saved duration uses the branch
-  // slot as a bounded estimate but remains a "possible" conflict. Never read
-  // a stale PENDING/CONFIRMED appointment from months back as active: floor at
-  // MAX_CATEGORY_DURATION_MINUTES before `start`, matching the day-view guard.
-  const conflictFloor = new Date(start.getTime() - MAX_CATEGORY_DURATION_MINUTES * 60000);
-
-  const [branch, appts, orderIdsWithOpenBookingResult] = await Promise.all([
-    prisma.branch.findFirst({
-      where: { id: branchId, tenantId },
-      select: { slotMinutes: true },
-    }),
-    prisma.appointment.findMany({
-      where: {
-        tenantId,
-        branchId,
-        status: { in: ["PENDING", "CONFIRMED"] },
-        OR: [{ serviceOrderId: null }, { serviceOrderId: { not: excludeOrderId } }],
-        requestedAt: { gte: conflictFloor, lt: end },
-      },
-      select: {
-        requestedAt: true,
-        estimatedDurationMinutes: true,
-        status: true,
-        createdAt: true,
-        feeAmount: true,
-        feeUnderpaidAmount: true,
-        payment: { select: { status: true } },
-        account: { select: { name: true, phone: true } },
-        customer: { select: { fullName: true, phone: true } },
-      },
-    }),
-    // D-076: also fetch orders otherwise out of scope (e.g. COMPLETED) that
-    // still have an open OrderTimeBooking row — a follow-up that survived
-    // the order's own completion (closeOpenOrderTimeBooking's "ACTIVE"-only
-    // scoping on that transition). Without this, such a follow-up would
-    // never be checked here at all, defeating the point of D-076.
-    prisma.orderTimeBooking
-      .findMany({ where: { tenantId, branchId, closedAt: null }, select: { orderId: true }, distinct: ["orderId"] })
-      .then((rows) => rows.map((r) => r.orderId)),
-  ]);
-  const followUpOrderIds = orderIdsWithOpenBookingResult.filter((id) => id !== excludeOrderId);
-  const orders = await prisma.serviceOrder.findMany({
-    where: {
-      tenantId,
-      branchId,
-      id: { not: excludeOrderId },
-      OR: [
-        { status: { in: ["SCHEDULED", "IN_PROGRESS", "POSTPONED"] } },
-        ...(followUpOrderIds.length > 0 ? [{ id: { in: followUpOrderIds } }] : []),
-      ],
-    },
-    select: {
-      id: true,
-      number: true,
-      status: true,
-      scheduledAt: true,
-      startedAt: true,
-      estimatedDurationMinutes: true,
-      expectedFinishAt: true,
-      occupiesCapacity: true,
-      customer: { select: { fullName: true, phone: true } },
-    },
-  });
-  const fallbackDurationMinutes =
-    branch?.slotMinutes && branch.slotMinutes > 0
-      ? branch.slotMinutes
-      : DEFAULT_SLOT_MINUTES;
-  // D-068 read-path swap: resolve each order's interval from its
-  // OrderTimeBooking rows (falling back to scalars when it has none) instead
-  // of hand-rolling the scheduled/started/estimate logic here — this used to
-  // duplicate lib/schedule-order-interval.ts with its own subtly different
-  // guards (see D-068 in COWORK.md).
-  const orderBookingRows = orders.length > 0
-    ? await prisma.orderTimeBooking.findMany({
-        where: { orderId: { in: orders.map((o) => o.id) } },
-        select: { orderId: true, kind: true, startAt: true, endAt: true, closedAt: true },
-      })
-    : [];
-  const orderBookings = new Map<string, OrderTimeBookingLike[]>();
-  for (const row of orderBookingRows) {
-    const entry: OrderTimeBookingLike = { kind: row.kind, startAt: row.startAt, endAt: row.endAt, closedAt: row.closedAt };
-    const arr = orderBookings.get(row.orderId);
-    if (arr) arr.push(entry); else orderBookings.set(row.orderId, [entry]);
-  }
-
-  const startMs = start.getTime();
-  const endMs = end.getTime();
-
-  for (const a of appts) {
-    if (a.status === "PENDING" && isPendingAppointmentPaymentExpired(a)) continue;
-    const s0 = a.requestedAt.getTime();
-    const hasEstimate =
-      a.estimatedDurationMinutes != null &&
-      Number.isInteger(a.estimatedDurationMinutes) &&
-      a.estimatedDurationMinutes > 0;
-    const e0 = s0 + (hasEstimate ? a.estimatedDurationMinutes! : fallbackDurationMinutes) * 60000;
-    if (s0 < endMs && e0 > startMs) {
-      return {
-        label: `цаг захиалга (${customerLabel({ fullName: a.account?.name ?? a.customer?.fullName, phone: a.account?.phone ?? a.customer?.phone })})`,
-        certainty: hasEstimate ? "definite" : "possible",
-      };
-    }
-  }
-
-  for (const o of orders) {
-    const { current, upcoming } = resolveOrderIntervals(o, orderBookings.get(o.id));
-
-    // D-076: the order's own current interval only counts when its
-    // status/occupancy says so (same gate as orderCanCountForCapacity's
-    // second condition — the first, terminal-status one is redundant here
-    // since a terminal order only reaches this loop via followUpOrderIds,
-    // whose current interval never counts anyway). A follow-up is checked
-    // unconditionally below, regardless of this gate.
-    if (!(o.status !== "SCHEDULED" && o.occupiesCapacity === false)) {
-      if (!current.invalid && current.start != null) {
-        const s0 = current.start.getTime();
-        const hasEstimate =
-          o.estimatedDurationMinutes != null &&
-          Number.isInteger(o.estimatedDurationMinutes) &&
-          o.estimatedDurationMinutes > 0;
-        const e0 =
-          current.end?.getTime() ??
-          (current.scheduled && current.start != null
-            ? s0 + fallbackDurationMinutes * 60000
-            : Number.POSITIVE_INFINITY);
-        if (s0 < endMs && e0 > startMs) {
-          return {
-            label: `захиалга #${o.number} (${customerLabel(o.customer)})`,
-            certainty: e0 === Number.POSITIVE_INFINITY || !hasEstimate ? "possible" : "definite",
-          };
-        }
-      }
-    }
-
-    for (const up of upcoming) {
-      if (up.invalid || up.start == null) continue;
-      const s0 = up.start.getTime();
-      const hasEstimate = up.end != null;
-      const e0 = up.end?.getTime() ?? s0 + fallbackDurationMinutes * 60000;
-      if (s0 < endMs && e0 > startMs) {
-        return {
-          label: `захиалга #${o.number} (${customerLabel(o.customer)}) — дараагийн цаг захиалга`,
-          certainty: hasEstimate ? "definite" : "possible",
-        };
-      }
-    }
-  }
-
-  return null;
-}
 
 /**
  * Orders may run past closing or onto the next business date, but that is an
@@ -1601,10 +1414,11 @@ export async function reviseExpectedFinishAction(
   const expectedFinishRaw = s(formData, "expectedFinishAt");
   const confirmed = s(formData, "confirmed") === "true";
   if (!id) return { ok: false, message: "Буруу хүсэлт." };
+  try { await assertOrderEditAccess(user, id); } catch (e) { return { ok: false, message: e instanceof Error ? e.message : "Алдаа" }; }
 
   let expectedFinishAt: Date | null = null;
   if (expectedFinishRaw) {
-    const d = new Date(expectedFinishRaw);
+    const d = parseBusinessLocalDateTime(expectedFinishRaw);
     if (!Number.isFinite(d.getTime())) {
       return { ok: false, fieldErrors: { expectedFinishAt: "Огноо буруу." } };
     }
@@ -1638,21 +1452,39 @@ export async function reviseExpectedFinishAction(
     };
   }
 
-  if (order.status !== "IN_PROGRESS" && order.status !== "POSTPONED") {
+  if (order.status === "POSTPONED") {
+    return {
+      ok: false,
+      message:
+        "Хойшлуулсан ажлын дуусах хугацааг засах боломжгүй — ажлыг үргэлжлүүлсний дараа л засварлана уу.",
+    };
+  }
+
+  if (order.status !== "IN_PROGRESS") {
     return {
       ok: false,
       message: "Дуусах хугацааг зөвхөн ажиллаж буй засварын хуудсанд тохируулна.",
     };
   }
 
+  // S10 fix (WEB_SCHEDULING_ASSESSMENT_2026-09-10.md): validate against the
+  // currently open ACTIVE booking's startAt, not the stale ServiceOrder.startedAt
+  // scalar — resume (POSTPONED -> IN_PROGRESS) opens a fresh ACTIVE row anchored
+  // to "now" but deliberately leaves startedAt untouched (see changeOrderStatusAction
+  // above), so after a pause/resume cycle startedAt still points at the original
+  // (possibly days-old) start rather than the real current session's start.
+  const openBookings = await getOpenOrderTimeBookings(prisma, order.id);
+  const activeBooking = openBookings.find((b) => b.kind === "ACTIVE");
+  const activeStartAt = activeBooking?.startAt ?? order.startedAt;
+
   if (expectedFinishAt) {
-    if (!order.startedAt) {
+    if (!activeStartAt) {
       return {
         ok: false,
         message: "Дуусах хугацаа тохируулахын өмнө ажлын эхэлсэн цагийг тэмдэглэнэ үү.",
       };
     }
-    if (expectedFinishAt.getTime() <= order.startedAt.getTime()) {
+    if (expectedFinishAt.getTime() <= activeStartAt.getTime()) {
       return {
         ok: false,
         fieldErrors: {
@@ -1664,7 +1496,7 @@ export async function reviseExpectedFinishAction(
     // дараагийн өдөр рүү "дуусах хугацаа" гэдэг ойлголт хамааралгүй болно
     // (тухайн өдрийн ажлын цаг өнгөрсөн бол ажил дараагийн өдөр үргэлжлэх
     // ёсгүй, харин хойшлуулах эсвэл шинэ захиалга нээх ёстой).
-    const workDayStr = bookingDateKey(order.startedAt);
+    const workDayStr = bookingDateKey(activeStartAt);
     const branch = await prisma.branch.findUnique({
       where: { id: order.branchId },
       select: branchScheduleForDateSelect(workDayStr),
@@ -1696,7 +1528,7 @@ export async function reviseExpectedFinishAction(
   }
 
   if (expectedFinishAt && !confirmed) {
-    const conflictStart = order.startedAt!;
+    const conflictStart = activeStartAt!;
     const conflict = await findScheduleConflict(
       user.tenantId,
       order.branchId,
@@ -1742,28 +1574,86 @@ export async function reviseExpectedFinishAction(
     Math.abs(expectedFinishAt.getTime() - previous.getTime()) >=
       MEANINGFUL_FINISH_CHANGE_MS;
 
-  await prisma.$transaction(async (tx) => {
-    await tx.serviceOrder.update({
-      where: { id: order.id },
-      data: { expectedFinishAt },
-    });
-    // D-068 dual-write: a forecast revision, not a pause/resume — update
-    // the currently open booking's endAt in place, leave it open.
-    await updateOpenOrderTimeBookingForecast(tx, order.id, expectedFinishAt);
-    await logAudit(
-      {
-        tenantId: user.tenantId,
-        userId: user.id,
-        entity: "ServiceOrder",
-        entityId: order.id,
-        action: "UPDATE",
-        summary: "Дуусах хугацааг гар аргаар шинэчлэв",
-        before: { expectedFinishAt: previous?.toISOString() ?? null },
-        after: { expectedFinishAt: expectedFinishAt?.toISOString() ?? null },
+  // S06 fix: re-validate the order's phase/startedAt against a fresh, locked
+  // read before writing — the pre-checks above (hours/conflict) ran against
+  // the earlier unlocked read and are only advisory warnings, but "is this
+  // order still IN_PROGRESS/POSTPONED with the same startedAt" is the actual
+  // correctness gate and must be re-checked under the lock.
+  try {
+    await withOrderTransaction(
+      user.tenantId,
+      id,
+      { id: true, status: true, branchId: true, startedAt: true, expectedFinishAt: true },
+      async (tx, freshRaw) => {
+        const fresh = freshRaw as {
+          id: string;
+          status: OrderStatus;
+          branchId: string;
+          startedAt: Date | null;
+          expectedFinishAt: Date | null;
+        } | null;
+        if (!fresh) throw new OrderActionValidationError("Засварын хуудас олдсонгүй.");
+        assertOrderBranchScope(user, fresh.branchId);
+        if (isOrderLocked(fresh.status as OrderStatus)) {
+          throw new OrderActionValidationError(
+            fresh.status === "COMPLETED"
+              ? "Энэ засварын хуудас аль хэдийн дууссан тул хугацааг засах боломжгүй. Хуудсыг дахин ачаална уу."
+              : "Энэ засварын хуудас цуцлагдсан тул хугацааг засах боломжгүй. Хуудсыг дахин ачаална уу.",
+          );
+        }
+        if (fresh.status === "POSTPONED") {
+          throw new OrderActionValidationError(
+            "Хойшлуулсан ажлын дуусах хугацааг засах боломжгүй — ажлыг үргэлжлүүлсний дараа л засварлана уу.",
+          );
+        }
+        if (fresh.status !== "IN_PROGRESS") {
+          throw new OrderActionValidationError(
+            "Дуусах хугацааг зөвхөн ажиллаж буй засварын хуудсанд тохируулна.",
+          );
+        }
+        // S10 fix: re-check against the fresh, locked open ACTIVE booking's
+        // startAt (not the stale startedAt scalar) — same reasoning as the
+        // pre-check above, but under the lock this time.
+        const freshOpen = await getOpenOrderTimeBookings(tx, fresh.id);
+        const freshActiveStartAt =
+          freshOpen.find((b) => b.kind === "ACTIVE")?.startAt ?? fresh.startedAt;
+        if (expectedFinishAt) {
+          if (!freshActiveStartAt) {
+            throw new OrderActionValidationError(
+              "Дуусах хугацаа тохируулахын өмнө ажлын эхэлсэн цагийг тэмдэглэнэ үү.",
+            );
+          }
+          if (expectedFinishAt.getTime() <= freshActiveStartAt.getTime()) {
+            throw new OrderActionValidationError("", {
+              expectedFinishAt: "Дуусах хугацаа эхэлсэн хугацаанаас хойш байх ёстой.",
+            });
+          }
+        }
+        await tx.serviceOrder.update({
+          where: { id: fresh.id },
+          data: { expectedFinishAt },
+        });
+        // D-068 dual-write: a forecast revision, not a pause/resume — update
+        // the currently open booking's endAt in place, leave it open.
+        await updateOpenOrderTimeBookingForecast(tx, fresh.id, expectedFinishAt);
+        await logAudit(
+          {
+            tenantId: user.tenantId,
+            userId: user.id,
+            entity: "ServiceOrder",
+            entityId: fresh.id,
+            action: "UPDATE",
+            summary: "Дуусах хугацааг гар аргаар шинэчлэв",
+            before: { expectedFinishAt: (fresh.expectedFinishAt ?? previous)?.toISOString() ?? null },
+            after: { expectedFinishAt: expectedFinishAt?.toISOString() ?? null },
+          },
+          tx,
+        );
       },
-      tx,
     );
-  });
+  } catch (e) {
+    return orderActionErrorResult(e);
+  }
 
   // Цуцлагдсан/ирээгүй цаг захиалга ч захиалгатайгаа холбоотой хэвээр байдаг
   // (serviceOrderId салгагддаггүй) — тул тухайн үйлчлүүлэгч аль хэдийн
@@ -1814,10 +1704,15 @@ export async function rescheduleOrderAction(
   const scheduledRaw = s(formData, "scheduledAt");
   const confirmed = s(formData, "confirmed") === "true";
   if (!id || !scheduledRaw) return { ok: false, message: "Буруу хүсэлт." };
+  try { await assertOrderEditAccess(user, id); } catch (e) { return { ok: false, message: e instanceof Error ? e.message : "Алдаа" }; }
 
-  const scheduledAt = new Date(scheduledRaw);
+  const scheduledAt = parseBusinessLocalDateTime(scheduledRaw);
   if (!Number.isFinite(scheduledAt.getTime())) {
     return { ok: false, fieldErrors: { scheduledAt: "Огноо буруу." } };
+  }
+  // S09: general order create/update reject a past time; direct reschedule did not.
+  if (scheduledAt.getTime() < Date.now()) {
+    return { ok: false, fieldErrors: { scheduledAt: "Өнгөрсөн цаг сонгох боломжгүй." } };
   }
 
   const order = await prisma.serviceOrder.findFirst({
@@ -1844,10 +1739,55 @@ export async function rescheduleOrderAction(
     };
   }
 
+  const previous = order.scheduledAt;
+
+  // S14: an order still linked to a CONFIRMED appointment shares its slot
+  // with that appointment's own requestedAt — writing only `scheduledAt`
+  // here would let the two drift apart. Route this window through the same
+  // shared linked-move command rescheduleAppointmentAction now also uses, so
+  // both staff entry points converge on one command instead of two
+  // independently-branching writes. A cancelled/expired/no-appointment
+  // (walk-in) order keeps the existing standalone single-entity path below.
+  if (order.appointment && order.appointment.status === "CONFIRMED") {
+    try {
+      await moveLinkedAppointmentOrder({
+        tenantId: user.tenantId,
+        userId: user.id,
+        orderId: order.id,
+        newTime: scheduledAt,
+        confirmed,
+      });
+      await notifyOrderRescheduled(order.appointment, previous, scheduledAt);
+      revalidatePath("/dashboard/orders");
+      revalidatePath(`/dashboard/orders/${id}`);
+      revalidatePath("/dashboard/appointments");
+      revalidatePath("/dashboard/appointments/calendar");
+      revalidatePath("/account");
+      return { ok: true, message: "Товлосон огноо болон холбогдсон цаг захиалга шилжлээ." };
+    } catch (e) {
+      if (e instanceof LinkedRescheduleError) {
+        return { ok: false, message: e.message, fieldErrors: e.fieldErrors };
+      }
+      return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+    }
+  }
+
   const durationMinutes = order.estimatedDurationMinutes ?? await getBranchSlotMinutes(
     user.tenantId,
     order.branchId,
   );
+  // S09: apply the same effective-hours validator general create/update use
+  // (validateScheduledOrderHours) — direct reschedule previously only
+  // checked overlaps, letting a new time land outside opening hours.
+  const hoursError = await validateScheduledOrderHours(
+    user.tenantId,
+    order.branchId,
+    scheduledAt,
+    durationMinutes,
+  );
+  if (hoursError) {
+    return { ok: false, fieldErrors: { scheduledAt: hoursError } };
+  }
   const conflictEnd = new Date(scheduledAt.getTime() + durationMinutes * 60000);
   if (!confirmed) {
     const conflict = await findScheduleConflict(
@@ -1869,33 +1809,56 @@ export async function rescheduleOrderAction(
     }
   }
 
-  const previous = order.scheduledAt;
-
-  await prisma.$transaction(async (tx) => {
-    await tx.serviceOrder.update({
-      where: { id: order.id },
-      data: { scheduledAt },
-    });
-    // D-068 dual-write: still SCHEDULED, not a phase transition — update the
-    // open booking's start/end in place instead of closing+opening a new row.
-    await updateOpenOrderTimeBookingSchedule(tx, order.id, {
-      startAt: scheduledAt,
-      endAt: conflictEnd,
-    });
-    await logAudit(
-      {
-        tenantId: user.tenantId,
-        userId: user.id,
-        entity: "ServiceOrder",
-        entityId: order.id,
-        action: "UPDATE",
-        summary: "Товлосон огноог хуваарийн хуудаснаас шилжүүлэв",
-        before: { scheduledAt: previous?.toISOString() ?? null },
-        after: { scheduledAt: scheduledAt.toISOString() },
+  // S06 fix: re-validate status === SCHEDULED against a fresh, locked read
+  // before writing — a concurrent start/cancel/postpone must not be
+  // overwritten by a reschedule that validated against stale state.
+  try {
+    await withOrderTransaction(
+      user.tenantId,
+      id,
+      { id: true, branchId: true, status: true, scheduledAt: true },
+      async (tx, freshRaw) => {
+        const fresh = freshRaw as {
+          id: string;
+          branchId: string;
+          status: OrderStatus;
+          scheduledAt: Date | null;
+        } | null;
+        if (!fresh) throw new OrderActionValidationError("Засварын хуудас олдсонгүй.");
+        assertOrderBranchScope(user, fresh.branchId);
+        if (fresh.status !== "SCHEDULED") {
+          throw new OrderActionValidationError(
+            "Зөвхөн эхлээгүй (товлогдсон) захиалгын огноог энд шилжүүлнэ.",
+          );
+        }
+        await tx.serviceOrder.update({
+          where: { id: fresh.id },
+          data: { scheduledAt },
+        });
+        // D-068 dual-write: still SCHEDULED, not a phase transition — update the
+        // open booking's start/end in place instead of closing+opening a new row.
+        await updateOpenOrderTimeBookingSchedule(tx, fresh.id, {
+          startAt: scheduledAt,
+          endAt: conflictEnd,
+        });
+        await logAudit(
+          {
+            tenantId: user.tenantId,
+            userId: user.id,
+            entity: "ServiceOrder",
+            entityId: fresh.id,
+            action: "UPDATE",
+            summary: "Товлосон огноог хуваарийн хуудаснаас шилжүүлэв",
+            before: { scheduledAt: (fresh.scheduledAt ?? previous)?.toISOString() ?? null },
+            after: { scheduledAt: scheduledAt.toISOString() },
+          },
+          tx,
+        );
       },
-      tx,
     );
-  });
+  } catch (e) {
+    return orderActionErrorResult(e);
+  }
 
   await notifyOrderRescheduled(order.appointment, previous, scheduledAt);
 
@@ -1926,27 +1889,37 @@ export async function deleteOrderAction(formData: FormData): Promise<void> {
   });
   if (target) assertOrderBranchScope(user, target.branchId);
 
-  const hasPaidPayment = await prisma.orderPayment.findFirst({
-    where: { orderId: id, status: "PAID" },
-    select: { id: true },
-  });
-  if (hasPaidPayment) {
-    throw new Error(
-      "Энэ засварын хуудсанд төлбөр төлөгдсөн тул устгах боломжгүй.",
-    );
-  }
-
-  await prisma.$transaction(async (tx) => {
-    // PENDING/CANCELLED/FAILED зэрэг бодит мөнгө хөдлөөгүй оролдлогуудыг
-    // устгана — OrderPayment.orderId одоо Restrict тул захиалга устахаас
-    // өмнө эдгээрийг цэвэрлэх шаардлагатай.
-    await tx.orderPayment.deleteMany({
-      where: { orderId: id, status: { not: "PAID" } },
-    });
-    await tx.serviceOrder.delete({
-      where: { id, tenantId: user.tenantId },
-    });
-  });
+  // S06 fix: re-check "no PAID payment" against a fresh, locked read
+  // immediately before deleting — a payment recorded between the pre-lock
+  // check and the delete must not be silently lost.
+  await withOrderTransaction(
+    user.tenantId,
+    id,
+    { id: true, branchId: true },
+    async (tx, freshRaw) => {
+      const fresh = freshRaw as { id: string; branchId: string } | null;
+      if (!fresh) return;
+      assertOrderBranchScope(user, fresh.branchId);
+      const hasPaidPayment = await tx.orderPayment.findFirst({
+        where: { orderId: id, status: "PAID" },
+        select: { id: true },
+      });
+      if (hasPaidPayment) {
+        throw new Error(
+          "Энэ засварын хуудсанд төлбөр төлөгдсөн тул устгах боломжгүй.",
+        );
+      }
+      // PENDING/CANCELLED/FAILED зэрэг бодит мөнгө хөдлөөгүй оролдлогуудыг
+      // устгана — OrderPayment.orderId одоо Restrict тул захиалга устахаас
+      // өмнө эдгээрийг цэвэрлэх шаардлагатай.
+      await tx.orderPayment.deleteMany({
+        where: { orderId: id, status: { not: "PAID" } },
+      });
+      await tx.serviceOrder.delete({
+        where: { id, tenantId: user.tenantId },
+      });
+    },
+  );
 
   await logAudit({
     tenantId: user.tenantId,
@@ -1988,6 +1961,7 @@ export async function addOrderItemAction(
   let description = s(formData, "description");
   const quantity = parseDecimal(s(formData, "quantity") || "1");
   let unitPrice = parseDecimal(s(formData, "unitPrice"));
+  try { await assertOrderEditAccess(user, orderId); } catch (e) { return { ok: false, message: e instanceof Error ? e.message : "Алдаа" }; }
 
   let serviceId: string | null = null;
   let isGoods = false;
@@ -2187,10 +2161,11 @@ export async function cancelOrderItemAction(
       quantity: true,
       status: true,
       service: { select: { type: true } },
-      order: { select: { status: true, branchId: true } },
+      order: { select: { status: true, branchId: true, assignedToId: true } },
     },
   });
   if (!item) return;
+  if (!canEditOrder(user, item.order)) return;
   assertOrderBranchScope(user, item.order.branchId);
   if (isOrderLocked(item.order.status as OrderStatus)) {
     throw new Error("Дууссан засварын хуудасны мөрийг цуцлаж болохгүй.");
@@ -2280,10 +2255,11 @@ export async function changeOrderItemStatusAction(
       kind: true,
       status: true,
       diagnosticReportId: true,
-      order: { select: { status: true, branchId: true } },
+      order: { select: { status: true, branchId: true, assignedToId: true } },
     },
   });
   if (!item) return;
+  if (!canChangeOrderItemStatus(user, item.order)) return;
   assertOrderBranchScope(user, item.order.branchId);
   if (isOrderLocked(item.order.status as OrderStatus)) {
     throw new Error("Дууссан засварын хуудасны мөрийн явцыг өөрчлөх боломжгүй.");

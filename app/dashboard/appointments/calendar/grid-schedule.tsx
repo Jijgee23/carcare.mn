@@ -252,7 +252,7 @@ export function GridSchedule({
       {/* Сонгосон блокийн дэлгэрэнгүй/үйлдэл — grid дотор шууд дэлгэвэл
           байршуулалт эвдэрдэг тул доор тусад нь харуулна. */}
       {selected ? (
-        <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-4">
+        <div className="relative rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-4">
           <div className="flex flex-wrap items-center gap-2 mb-2">
             <span className="font-plex-mono text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--oc-panel2)] border border-[var(--oc-line)] text-[var(--oc-muted3)]">
               {selected.source === "appointment" ? "Цаг захиалга" : "Захиалга"}

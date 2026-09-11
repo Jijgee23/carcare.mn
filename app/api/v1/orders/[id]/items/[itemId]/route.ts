@@ -17,6 +17,7 @@ import {
   type ServiceItemStatus,
 } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
+import { canEditOrder, canChangeOrderItemStatus } from "@/lib/auth/order-access";
 
 const MAX_QUANTITY = new Prisma.Decimal(1_000_000);
 const MAX_UNIT_PRICE = new Prisma.Decimal(1_000_000_000);
@@ -46,7 +47,7 @@ export async function PATCH(
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
   const denied = requirePermission(auth.user, "orders.edit");
-  if (denied) return denied;
+  if (denied && !auth.user.role?.permissions.includes("orders.editOwn")) return denied;
   const locked = await requireActiveSubscriptionApi(auth.user);
   if (locked) return locked;
 
@@ -56,9 +57,10 @@ export async function PATCH(
 
   const order = await prisma.serviceOrder.findFirst({
     where: { id, tenantId, ...(scope ? { branchId: scope } : {}) },
-    select: { id: true, status: true },
+    select: { id: true, status: true, assignedToId: true },
   });
   if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
+  if (!canEditOrder(auth.user, order)) return jsonError(403, "Танд энэ засварын хуудсыг засах эрх байхгүй.");
   if (isOrderLocked(order.status as OrderStatus)) {
     return jsonError(422, "Дууссан эсвэл цуцлагдсан засварын хуудасны мөрийг засах боломжгүй.");
   }
@@ -88,6 +90,9 @@ export async function PATCH(
     return jsonError(400, "JSON body шаардлагатай.");
   }
   const b = (body ?? {}) as Record<string, unknown>;
+  if (b.status !== undefined && !canChangeOrderItemStatus(auth.user, order)) {
+    return jsonError(403, "Танд үйлчилгээний мөрийн явц өөрчлөх эрх байхгүй.");
+  }
 
   const kind =
     typeof b.kind === "string" && b.kind.trim()
@@ -226,7 +231,7 @@ export async function DELETE(
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
   const denied = requirePermission(auth.user, "orders.edit");
-  if (denied) return denied;
+  if (denied && !auth.user.role?.permissions.includes("orders.editOwn")) return denied;
   const locked = await requireActiveSubscriptionApi(auth.user);
   if (locked) return locked;
 
@@ -236,9 +241,10 @@ export async function DELETE(
 
   const order = await prisma.serviceOrder.findFirst({
     where: { id, tenantId, ...(scope ? { branchId: scope } : {}) },
-    select: { id: true, status: true },
+    select: { id: true, status: true, assignedToId: true },
   });
   if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
+  if (!canEditOrder(auth.user, order)) return jsonError(403, "Танд энэ засварын хуудсыг засах эрх байхгүй.");
   if (isOrderLocked(order.status as OrderStatus)) {
     return jsonError(422, "Дууссан эсвэл цуцлагдсан засварын хуудасны мөрийг цуцлах боломжгүй.");
   }

@@ -1,7 +1,8 @@
 import type { Prisma } from "@/app/generated/prisma/client";
-import { buildDaySlots, DEFAULT_SLOT_MINUTES } from "@/lib/appointment-slots";
-import { bookingDateKey, bookingDayBounds } from "@/lib/booking-time";
+import { buildDaySlots, DEFAULT_SLOT_CAPACITY, DEFAULT_SLOT_MINUTES } from "@/lib/appointment-slots";
+import { bookingDateKey, MAX_ADVANCE_BOOKING_DAYS } from "@/lib/booking-time";
 import { resolveEffectiveSchedule } from "@/lib/branch-effective-schedule";
+import { branchScheduleForDateSelect } from "@/lib/branch-effective-schedule-server";
 import { isSlotAvailable, resolveBranchCategoryDurations } from "@/lib/category-duration";
 
 export class ReservationError extends Error {
@@ -21,6 +22,19 @@ export class ReservationError extends Error {
  */
 export class ReservationConflictError extends ReservationError {
   constructor(message: string) { super(409, message); }
+}
+
+// S13 (WEB_SCHEDULING_ASSESSMENT_2026-09-10.md): booking creation/reschedule
+// previously had no maximum advance-booking horizon at all, while the
+// hours-change impact scan (lib/branch-schedule-impact.ts, called from
+// app/_actions/branches.ts) only ever looked MAX_ADVANCE_BOOKING_DAYS ahead —
+// an appointment booked further out than that could exist yet never be
+// inspected by an hours change.
+function assertWithinAdvanceBookingHorizon(requestedAt: Date, now: Date): void {
+  const horizon = now.getTime() + MAX_ADVANCE_BOOKING_DAYS * 86400000;
+  if (requestedAt.getTime() > horizon) {
+    throw new ReservationError(400, "Хэтэрхий хол хугацаанд цаг захиалах боломжгүй.");
+  }
 }
 
 export type ReservationInput = {
@@ -48,17 +62,15 @@ export async function reserveAppointmentInTransaction(
   `;
   if (!locked.length) throw new ReservationError(403, "Салбар олдсонгүй.");
   if (!Number.isFinite(input.requestedAt.getTime())) throw new ReservationError(400, "Огноо буруу.");
+  assertWithinAdvanceBookingHorizon(input.requestedAt, now);
   const dateStr = bookingDateKey(input.requestedAt);
-  const day = bookingDayBounds(dateStr).start;
   const branch = await tx.branch.findFirst({
     where: { id: input.branchId, tenantId: input.tenantId, isActive: true },
-    include: {
-      schedules: true,
-      scheduleExceptions: { where: { date: day } },
-      scheduleSeasons: {
-        where: { isActive: true, startsOn: { lte: day }, endsOn: { gt: day } },
-        include: { days: true },
-      },
+    select: {
+      id: true,
+      slotMinutes: true,
+      slotCapacity: true,
+      ...branchScheduleForDateSelect(dateStr),
       tenant: { select: { suspended: true, acceptsOnlineBooking: true } },
     },
   });
@@ -110,7 +122,8 @@ export async function reserveAppointmentInTransaction(
   return tx.appointment.create({
     data: {
       tenantId: input.tenantId, branchId: branch.id, requestedAt: input.requestedAt,
-      estimatedDurationMinutes: duration, accountId: input.accountId ?? null,
+      estimatedDurationMinutes: duration, originalEstimatedDurationMinutes: duration,
+      accountId: input.accountId ?? null,
       accountVehicleId: input.accountVehicleId ?? null, customerId: input.customerId ?? null,
       note: input.note ?? null, categoryId: categoryIds[0] ?? null,
       categories: categoryIds.length ? { create: categoryIds.map((categoryId) => ({ categoryId })) } : undefined,
@@ -123,4 +136,92 @@ export async function reserveAppointmentInTransaction(
 export async function reserveAppointment(input: ReservationInput) {
   const { withBookingTransaction } = await import("@/lib/prisma");
   return withBookingTransaction(input.tenantId, (tx) => reserveAppointmentInTransaction(tx, input));
+}
+
+export type MoveAppointmentInput = {
+  tenantId: string;
+  branchId: string;
+  appointmentId: string;
+  requestedAt: Date;
+  /** Statuses eligible to be moved — callers scope this (e.g. account reschedule vs staff reschedule). */
+  allowedStatuses?: readonly string[];
+};
+
+/**
+ * Shared reservation mutator for moving an EXISTING appointment to a new
+ * time — used by both account self-reschedule and staff reschedule so the
+ * two paths cannot race each other or a fresh `reserveAppointmentInTransaction`
+ * create (S01–S03). Takes the SAME branch row lock as creation, rereads the
+ * appointment under that lock, resolves hours with the DATE-only selection
+ * helper (`branchScheduleForDateSelect`), validates the FULL saved duration
+ * against closing (not just slot length), then checks capacity excluding the
+ * appointment's own current slot. Caller authenticates/authorizes first.
+ */
+export async function moveAppointmentInTransaction(
+  tx: Prisma.TransactionClient,
+  input: MoveAppointmentInput,
+  now = new Date(),
+) {
+  if (!Number.isFinite(input.requestedAt.getTime())) throw new ReservationError(400, "Огноо буруу.");
+  assertWithinAdvanceBookingHorizon(input.requestedAt, now);
+
+  const locked = await tx.$queryRaw<{ id: string }[]>`
+    SELECT id FROM "Branch" WHERE id = ${input.branchId} AND "tenantId" = ${input.tenantId} FOR UPDATE
+  `;
+  if (!locked.length) throw new ReservationError(403, "Салбар олдсонгүй.");
+
+  // Reread the appointment under the branch lock — its status/link must not
+  // have changed since the caller's initial (pre-lock) read.
+  const appt = await tx.appointment.findFirst({
+    where: { id: input.appointmentId, tenantId: input.tenantId, branchId: input.branchId },
+    select: { id: true, status: true, estimatedDurationMinutes: true, serviceOrderId: true },
+  });
+  if (!appt) throw new ReservationError(403, "Цаг захиалга олдсонгүй.");
+  const allowed = input.allowedStatuses ?? (["PENDING", "CONFIRMED"] as const);
+  if (!allowed.includes(appt.status)) {
+    throw new ReservationError(400, "Энэ цагийг шилжүүлэх боломжгүй.");
+  }
+
+  const dateStr = bookingDateKey(input.requestedAt);
+  const branch = await tx.branch.findFirst({
+    where: { id: input.branchId, tenantId: input.tenantId, isActive: true },
+    select: {
+      slotMinutes: true,
+      slotCapacity: true,
+      ...branchScheduleForDateSelect(dateStr),
+    },
+  });
+  if (!branch) throw new ReservationError(403, "Салбар олдсонгүй.");
+
+  const duration = appt.estimatedDurationMinutes ?? branch.slotMinutes ?? DEFAULT_SLOT_MINUTES;
+  const schedule = resolveEffectiveSchedule({ dateStr, branch });
+  const slots = buildDaySlots({
+    dateStr,
+    open: schedule.open,
+    openTime: schedule.openTime,
+    closeTime: schedule.closeTime,
+    slotMinutes: branch.slotMinutes ?? DEFAULT_SLOT_MINUTES,
+    capacity: branch.slotCapacity ?? DEFAULT_SLOT_CAPACITY,
+    // Full saved duration, not just the slot length — a 120-minute
+    // appointment must not move into a 30-minute closing window (S02).
+    appointmentMinutes: duration,
+    taken: [],
+    now,
+  });
+  if (!slots.slots.some((slot) => slot.iso === input.requestedAt.toISOString() && slot.available)) {
+    throw new ReservationError(400, "Ажиллах цагт багтах сул цаг сонгоно уу.");
+  }
+  if (!(await isSlotAvailable(tx, input.branchId, input.requestedAt, duration, appt.id))) {
+    throw new ReservationConflictError("Энэ цаг дүүрсэн байна. Өөр цаг сонгоно уу.");
+  }
+
+  return tx.appointment.update({
+    where: { id: appt.id },
+    // S17 Phase B: resetting reminderSentAt lets the appointment-reminders
+    // cron's `reminderSentAt: null` filter pick this appointment back up for
+    // its NEW time — without this, an appointment already reminded once then
+    // rescheduled would never be reminded again.
+    data: { requestedAt: input.requestedAt, reminderSentAt: null },
+    select: { id: true, status: true, requestedAt: true },
+  });
 }

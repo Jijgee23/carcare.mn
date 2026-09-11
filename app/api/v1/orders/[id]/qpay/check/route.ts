@@ -2,6 +2,8 @@ import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
+import { canEditOrder } from "@/lib/auth/order-access";
+import { branchScopeId } from "@/lib/auth/roles";
 import { TenantQPayService } from "@/lib/qpay-tenant";
 
 export async function POST(
@@ -29,6 +31,10 @@ export async function POST(
     include: { order: true },
   });
   if (!payment) return jsonError(404, "Төлбөр олдсонгүй.");
+  const scope = branchScopeId(auth.user);
+  if ((scope && payment.order.branchId !== scope) || !canEditOrder(auth.user, payment.order)) {
+    return jsonError(403, "Танд энэ төлбөрийг засах эрх байхгүй.");
+  }
   if (payment.status === "PAID") return jsonOk({ paid: true });
   if (!payment.qpayInvoiceId) {
     return jsonError(422, "QPay invoice байхгүй.");

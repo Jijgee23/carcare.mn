@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { verifyCronSecret } from "@/lib/cron-auth";
 import { prisma } from "@/lib/prisma";
 import { setBypassContext } from "@/lib/tenant-context";
 
@@ -20,8 +21,8 @@ export async function POST(req: Request) {
   return run(req);
 }
 
-// GET-ыг бас зөвшөөрөв (зарим cron service зөвхөн GET дэмждэг — гэхдээ
-// secret-ыг URL-ээр шалгах сонголт нэмж байна).
+// GET-ыг бас зөвшөөрөв (зарим cron service зөвхөн GET дэмждэг — secret нь
+// GET-д ч Authorization header-ээр ирнэ, URL-ээр биш, S17-аас хойш).
 export async function GET(req: Request) {
   return run(req);
 }
@@ -29,23 +30,8 @@ export async function GET(req: Request) {
 const RETENTION_DAYS = 90;
 
 async function run(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) {
-    return NextResponse.json(
-      { error: "CRON_SECRET тогтоогоогүй." },
-      { status: 500 },
-    );
-  }
-
-  const url = new URL(req.url);
-  const headerAuth = req.headers.get("authorization") ?? "";
-  const bearer = headerAuth.match(/^Bearer\s+(.+)$/i)?.[1];
-  const tokenFromQuery = url.searchParams.get("secret");
-  const supplied = bearer ?? tokenFromQuery ?? "";
-
-  if (supplied !== secret) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const denied = verifyCronSecret(req);
+  if (denied) return denied;
   // Бүх tenant/account дундуур bulk delete хийдэг cron тул RLS-г тойрч гарна.
   setBypassContext();
 

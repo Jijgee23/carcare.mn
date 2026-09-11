@@ -1,5 +1,6 @@
 import { ALL_BRANCHES } from "./session";
 import type { PermissionCode, ResourceKey } from "./permissions";
+import { orderEditScope, orderViewScope } from "./order-access";
 
 // User-ийн эрхийн шалгалтын minimal shape — Prisma user object эсвэл API
 // session payload-аас аль алин нь нийцэх ёстой.
@@ -21,6 +22,7 @@ export function hasPermission(
 }
 
 export function canView(user: RoleCheckUser, resource: ResourceKey): boolean {
+  if (resource === "orders") return orderViewScope(user) !== "none";
   return hasPermission(user, `${resource}.view`);
 }
 
@@ -29,6 +31,7 @@ export function canCreate(user: RoleCheckUser, resource: ResourceKey): boolean {
 }
 
 export function canEdit(user: RoleCheckUser, resource: ResourceKey): boolean {
+  if (resource === "orders") return orderEditScope(user) !== "none";
   return hasPermission(user, `${resource}.edit`);
 }
 

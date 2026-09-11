@@ -7,7 +7,12 @@ import {
   type ScheduleInterval,
 } from "@/lib/branch-schedule";
 import { splitScheduleInterval } from "@/lib/schedule-intervals";
-import { resolveOrderEffectiveInterval, type OrderTimeBookingLike } from "@/lib/schedule-order-interval";
+import {
+  resolveOrderEffectiveInterval,
+  resolveHistoricalOrderSessions,
+  type OrderTimeBookingLike,
+  type OrderStatusChangeLike,
+} from "@/lib/schedule-order-interval";
 import { isPendingAppointmentPaymentExpired } from "@/lib/appointment-payment-status";
 import { DEFAULT_SLOT_MINUTES } from "@/lib/appointment-slots";
 
@@ -200,6 +205,7 @@ function fetchOrderRows(
       estimatedDurationMinutes: true,
       expectedFinishAt: true,
       occupiesCapacity: true,
+      assignedToId: true,
       customerId: true,
       vehicleId: true,
       customer: { select: { fullName: true, phone: true } },
@@ -329,6 +335,149 @@ export async function loadBranchSchedule(input: {
     rangeStart,
     rangeEnd,
   };
+}
+
+const HISTORY_ORDER_SELECT = {
+  id: true,
+  number: true,
+  tenantId: true,
+  branchId: true,
+  status: true,
+  scheduledAt: true,
+  startedAt: true,
+  estimatedDurationMinutes: true,
+      expectedFinishAt: true,
+      occupiesCapacity: true,
+      assignedToId: true,
+  customerId: true,
+  vehicleId: true,
+  customer: { select: { fullName: true, phone: true } },
+  vehicle: { select: { plate: true, make: true, model: true } },
+} as const;
+
+export type BranchScheduleHistorySession = {
+  orderId: string;
+  kind: "SCHEDULED" | "ACTIVE";
+  start: Date;
+  end: Date;
+  wasWorked: boolean;
+  order: Awaited<ReturnType<typeof fetchHistoryOrders>>[number] | null;
+};
+
+function fetchHistoryOrders(scope: { tenantId: string; branchId: string }, orderIds: string[]) {
+  // Always issue the (possibly empty `in: []`) query rather than
+  // short-circuiting with a manually-typed empty array — that keeps the
+  // inferred return type tied to HISTORY_ORDER_SELECT in exactly one place.
+  return prisma.serviceOrder.findMany({
+    where: { ...scope, id: { in: orderIds } },
+    select: HISTORY_ORDER_SELECT,
+  });
+}
+
+/**
+ * S12 follow-up: batched (one query, not N+1) fetch of every relevant
+ * order's OrderStatusChange timeline, ordered oldest-first per order so it
+ * can be passed straight through to resolveHistoricalOrderSessions as ground
+ * truth for wasWorked. Orders with no rows (pre-S12 history, or any other
+ * gap) simply have no entry in the returned map — callers fall back to
+ * `?? []`, which resolveHistoricalOrderSessions treats as "use the kind
+ * proxy" rather than an error.
+ */
+async function fetchOrderStatusChanges(
+  orderIds: string[],
+): Promise<Map<string, OrderStatusChangeLike[]>> {
+  const map = new Map<string, OrderStatusChangeLike[]>();
+  if (orderIds.length === 0) return map;
+  const rows = await prisma.orderStatusChange.findMany({
+    where: { orderId: { in: orderIds } },
+    select: { orderId: true, fromStatus: true, toStatus: true, createdAt: true },
+    orderBy: { createdAt: "asc" },
+  });
+  for (const row of rows) {
+    const entry: OrderStatusChangeLike = {
+      fromStatus: row.fromStatus,
+      toStatus: row.toStatus,
+      createdAt: row.createdAt,
+    };
+    const existing = map.get(row.orderId);
+    if (existing) existing.push(entry);
+    else map.set(row.orderId, [entry]);
+  }
+  return map;
+}
+
+/**
+ * S11: historical session loader — the additive sibling to loadBranchSchedule
+ * that answers "what actually happened" for a past day/range instead of
+ * "what does the branch currently occupy". Unlike fetchOrderRows (which gates
+ * on the parent ServiceOrder's CURRENT status being
+ * SCHEDULED/IN_PROGRESS/POSTPONED, or a still-active appointment/open
+ * booking link), this queries OrderTimeBooking directly by its own
+ * startAt/endAt overlap against the requested range — so a COMPLETED or
+ * CANCELLED order with only closed booking rows for that day is still found.
+ * `endAt: null` (an open row, e.g. still-ACTIVE at query time) is treated as
+ * open-ended (overlaps anything ending after rangeStart).
+ *
+ * Deliberately does NOT touch loadBranchSchedule/fetchOrderRows/
+ * resolveOrderIntervals — this is a parallel read path for a past range, not
+ * a modification of the live-occupancy pipeline.
+ */
+export async function loadBranchScheduleHistory(input: {
+  tenantId: string;
+  branchId: string;
+  rangeStart: Date;
+  rangeEnd: Date;
+  now?: Date;
+}): Promise<{ sessions: BranchScheduleHistorySession[] }> {
+  const scope = { tenantId: input.tenantId, branchId: input.branchId };
+  const now = input.now ?? new Date();
+
+  const bookingRows = await prisma.orderTimeBooking.findMany({
+    where: {
+      ...scope,
+      startAt: { lt: input.rangeEnd },
+      OR: [{ endAt: null }, { endAt: { gt: input.rangeStart } }],
+    },
+    select: { orderId: true, kind: true, startAt: true, endAt: true, closedAt: true },
+    orderBy: { startAt: "asc" },
+  });
+
+  const byOrder = new Map<string, OrderTimeBookingLike[]>();
+  for (const row of bookingRows) {
+    const entry: OrderTimeBookingLike = { kind: row.kind, startAt: row.startAt, endAt: row.endAt, closedAt: row.closedAt };
+    const existing = byOrder.get(row.orderId);
+    if (existing) existing.push(entry);
+    else byOrder.set(row.orderId, [entry]);
+  }
+
+  const orderIds = Array.from(byOrder.keys());
+  const orders = await fetchHistoryOrders(scope, orderIds);
+  const orderById = new Map(orders.map((o) => [o.id, o]));
+  const statusChangesByOrder = await fetchOrderStatusChanges(orderIds);
+
+  const sessions: BranchScheduleHistorySession[] = [];
+  for (const [orderId, bookings] of byOrder) {
+    const resolved = resolveHistoricalOrderSessions(
+      bookings,
+      input.rangeStart,
+      input.rangeEnd,
+      now,
+      statusChangesByOrder.get(orderId) ?? [],
+    );
+    for (const session of resolved) {
+      sessions.push({
+        orderId,
+        kind: session.kind,
+        start: session.start,
+        end: session.end,
+        wasWorked: session.wasWorked,
+        order: orderById.get(orderId) ?? null,
+      });
+    }
+  }
+
+  sessions.sort((a, b) => a.start.getTime() - b.start.getTime());
+  return { sessions };
 }
 
 /**

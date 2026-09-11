@@ -8,6 +8,7 @@ import {
 } from "@/app/_actions/roles";
 import { Field, FormError } from "@/app/_components/auth-shell";
 import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
+import type { OrderAccessScope } from "@/lib/auth/order-access";
 
 export const ROLE_FORM_ID = "role-form";
 
@@ -110,7 +111,7 @@ export function RoleForm({
     setDirty(true);
     setSelected((prev) => {
       const next = new Set(prev);
-      for (const a of actions) {
+      for (const a of actions.filter((a) => resourceKey !== "orders" || a.key === "create" || a.key === "delete")) {
         const code = `${resourceKey}.${a.key}`;
         if (allOn) next.delete(code);
         else next.add(code);
@@ -124,6 +125,7 @@ export function RoleForm({
     setSelected((prev) => {
       const next = new Set(prev);
       for (const r of resources) {
+        if (r.key === "orders" && (actionKey === "view" || actionKey === "edit")) continue;
         const code = `${r.key}.${actionKey}`;
         if (allOn) next.delete(code);
         else next.add(code);
@@ -138,6 +140,7 @@ export function RoleForm({
       const next = new Set(prev);
       for (const r of resources) {
         for (const a of actions) {
+          if (r.key === "orders" && (a.key === "view" || a.key === "edit")) continue;
           const code = `${r.key}.${a.key}`;
           if (allOn) next.delete(code);
           else next.add(code);
@@ -145,6 +148,26 @@ export function RoleForm({
       }
       return next;
     });
+  }
+
+  function setOrderScope(kind: "view" | "edit", scope: OrderAccessScope) {
+    setDirty(true);
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const code of kind === "view"
+        ? ["orders.view", "orders.viewOwn"]
+        : ["orders.edit", "orders.editOwn"]) next.delete(code);
+      if (scope !== "none") {
+        next.add(`orders.${kind}${scope === "own" ? "Own" : ""}`);
+      }
+      return next;
+    });
+  }
+
+  function selectedOrderScope(kind: "view" | "edit"): OrderAccessScope {
+    if (selected.has(`orders.${kind}`)) return "branch";
+    if (selected.has(`orders.${kind}Own`)) return "own";
+    return "none";
   }
 
   // Group resources by their group label (Удирдлага / Үндсэн / ...)
@@ -265,6 +288,30 @@ export function RoleForm({
         {fe.permissions ? (
           <p className="text-red-400 light:text-red-600 text-xs mb-3">{fe.permissions}</p>
         ) : null}
+        {fe.orderScopes ? (
+          <p className="text-red-400 light:text-red-600 text-xs mb-3">{fe.orderScopes}</p>
+        ) : null}
+
+        <div className="mb-4 rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel2)] p-4">
+          <div className="font-medium text-sm text-[var(--oc-ink2)] mb-1">Засварын хуудасны хандалт</div>
+          <p className="text-xs text-[var(--oc-muted3)] mb-3">Харах болон засах хүрээг тусад нь сонгоно. Засах хүрээ харах хүрээнээс хэтрэхгүй.</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {(["view", "edit"] as const).map((kind) => (
+              <fieldset key={kind} className="rounded-lg border border-[var(--oc-line)] p-3">
+                <legend className="px-1 text-xs font-medium text-[var(--oc-ink2)]">{kind === "view" ? "Харах" : "Засах"}</legend>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {(["none", "own", "branch"] as const).map((scope) => {
+                    const checked = selectedOrderScope(kind) === scope;
+                    return <label key={scope} className={`cursor-pointer rounded-md border px-2.5 py-1.5 text-xs ${checked ? "border-[var(--oc-accent)] bg-[var(--oc-accent)]/[0.08] text-[var(--oc-accent)]" : "border-[var(--oc-line)] text-[var(--oc-muted2)]"}`}>
+                      <input type="radio" name={`order-${kind}-scope`} checked={checked} onChange={() => setOrderScope(kind, scope)} className="sr-only" />
+                      {scope === "none" ? "Эрхгүй" : scope === "own" ? "Өөрийн" : "Салбар"}
+                    </label>;
+                  })}
+                </div>
+              </fieldset>
+            ))}
+          </div>
+        </div>
 
         {/* CRUD matrix */}
         <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel2)] overflow-hidden">
@@ -416,11 +463,14 @@ function RowGroup({
         </td>
       </tr>
       {resources.map((r) => {
-        const rowCount = actions.reduce(
+        const rowActions = r.key === "orders"
+          ? actions.filter((a) => a.key === "create" || a.key === "delete")
+          : actions;
+        const rowCount = rowActions.reduce(
           (acc, a) => acc + (selected.has(`${r.key}.${a.key}`) ? 1 : 0),
           0,
         );
-        const allOn = rowCount === actions.length;
+        const allOn = rowCount === rowActions.length;
         return (
           <tr
             key={r.key}
@@ -432,15 +482,16 @@ function RowGroup({
             {actions.map((a) => {
               const code = `${r.key}.${a.key}`;
               const checked = selected.has(code);
+              const scoped = r.key === "orders" && (a.key === "view" || a.key === "edit");
               return (
                 <td key={a.key} className="px-3 py-2.5 text-center">
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => onToggle(code)}
-                    className="accent-[var(--oc-accent)] w-4 h-4 cursor-pointer"
-                    aria-label={`${r.label} — ${a.label}`}
-                  />
+                  {scoped ? <span className="text-[var(--oc-muted4)]" aria-label="Хүрээгээр тохируулна">—</span> : <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => onToggle(code)}
+                      className="accent-[var(--oc-accent)] w-4 h-4 cursor-pointer"
+                      aria-label={`${r.label} — ${a.label}`}
+                    />}
                 </td>
               );
             })}

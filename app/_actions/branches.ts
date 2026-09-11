@@ -19,12 +19,21 @@ import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { enforceCountLimit } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
 import { resolveEffectiveSchedule } from "@/lib/branch-effective-schedule";
-import { applyScheduleClips, inspectScheduleImpact } from "@/lib/branch-schedule-impact";
+import { applyScheduleClips, inspectScheduleImpact, type ScheduleImpact } from "@/lib/branch-schedule-impact";
+import { MAX_ADVANCE_BOOKING_DAYS } from "@/lib/booking-time";
 
 export type BranchActionState = {
   ok: boolean;
   message?: string;
   fieldErrors?: Record<string, string>;
+  // S13 Phase 4: detailed affected-bookings preview (see
+  // app/dashboard/branches/_components/schedule-impact-preview.tsx). Present
+  // whenever a save was blocked or is pending confirmation because of
+  // erased/clipped reservations.
+  impact?: ScheduleImpact;
+  // true when `impact.clipped` is non-empty and non-destructive (no erased
+  // items) — the caller should resubmit with confirmed=true to proceed.
+  needsConfirm?: boolean;
 } | null;
 
 function s(fd: FormData, key: string): string {
@@ -316,9 +325,20 @@ export async function updateBranchAction(
     return { ok: false, fieldErrors: p.errors };
   }
 
-  let updateResult: { count: number; clipped: number };
+  const confirmed = s(formData, "confirmed") === "true";
+  let updateResult: {
+    count: number;
+    clipped: number;
+    impact: ScheduleImpact | null;
+    blocked: boolean;
+    needsConfirm: boolean;
+  };
   try {
     updateResult = await prisma.$transaction(async (tx) => {
+      // S13: serialize hours/schedule changes against concurrent bookings
+      // created via lib/appointment-reservations.ts's own branch lock — same
+      // pattern, same row.
+      await tx.$queryRaw`SELECT id FROM "Branch" WHERE id = ${id} AND "tenantId" = ${user.tenantId} FOR UPDATE`;
       const current = await tx.branch.findFirst({
         where: { id, tenantId: user.tenantId },
         select: {
@@ -330,7 +350,7 @@ export async function updateBranchAction(
           scheduleSeasons: { include: { days: true } },
         },
       });
-      if (!current) return { count: 0, clipped: 0 };
+      if (!current) return { count: 0, clipped: 0, impact: null, blocked: false, needsConfirm: false };
 
       // Үндсэнийг нь өөр болгох гэж байвал зөвшөөрөхгүй
       // (үндсэн салбарыг хасах нь тенантэд нэгээс ч бага үлдээх эрсдэлтэй)
@@ -362,13 +382,22 @@ export async function updateBranchAction(
         tenantId: user.tenantId,
         branchId: id,
         from: now,
-        to: new Date(now.getTime() + 366 * 86400000),
+        to: new Date(now.getTime() + MAX_ADVANCE_BOOKING_DAYS * 86400000),
         resolve: (dateStr) => resolveEffectiveSchedule({ dateStr, branch: proposedBranch }),
         fallbackDurationMinutes: p.slotMinutes ?? 30,
       });
+      // S13 Phase 4: erased items hard-block the save — an erased reservation
+      // no longer fits the new hours at all, so silently proceeding would
+      // leave an invalid reservation on the books; staff must resolve it
+      // first. Clipped-only impact is non-destructive (just shortened), so it
+      // follows the same confirmed=true convention as
+      // app/_actions/orders.ts's postponeOrderCore/reschedule flows — the
+      // caller resubmits with confirmed=true once the preview is shown.
       if (impact.erased.length > 0) {
-        const dates = impact.erased.slice(0, 3).map((item) => item.requestedAt.toISOString().slice(0, 10)).join(", ");
-        throw new Error(`Хуваарь хадгалахад ${impact.erased.length} захиалгыг ажилтан эхлээд шийдэх шаардлагатай (${dates}).`);
+        return { count: 0, clipped: 0, impact, blocked: true, needsConfirm: false };
+      }
+      if (impact.clipped.length > 0 && !confirmed) {
+        return { count: 0, clipped: 0, impact, blocked: true, needsConfirm: true };
       }
 
       const r = await tx.branch.updateMany({
@@ -385,9 +414,19 @@ export async function updateBranchAction(
         }
       }
       if (r.count > 0) await applyScheduleClips(tx, impact);
-      return { count: r.count, clipped: impact.clipped.length };
+      return { count: r.count, clipped: impact.clipped.length, impact: null, blocked: false, needsConfirm: false };
     });
 
+    if (updateResult.blocked) {
+      return {
+        ok: false,
+        message: updateResult.needsConfirm
+          ? `Хуваарь хадгалбал ${updateResult.impact!.clipped.length} захиалгын үргэлжлэх хугацаа богиносно. Доор жагсаалтыг харж, үргэлжлүүлэхийг баталгаажуулна уу.`
+          : `Хуваарь хадгалахад ${updateResult.impact!.erased.length} захиалга бүрэн хүчингүй болно. Ажилтан эхлээд эдгээрийг шийдвэрлэнэ үү.`,
+        impact: updateResult.impact!,
+        needsConfirm: updateResult.needsConfirm,
+      };
+    }
     if (updateResult.count === 0) {
       return { ok: false, message: "Салбар олдсонгүй." };
     }

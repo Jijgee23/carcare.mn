@@ -15,8 +15,88 @@
  * (or, for closeOpenOrderTimeBooking, an explicit "all") — there is no safe
  * kind-agnostic default once two rows can be open simultaneously.
  */
-import type { OrderBookingKind } from "@/app/generated/prisma/client";
-import { prisma, type PrismaTransactionClient } from "@/lib/prisma";
+import type { OrderBookingKind, Prisma } from "@/app/generated/prisma/client";
+import { prisma, withBookingTransaction, type PrismaTransactionClient } from "@/lib/prisma";
+
+/**
+ * S06 fix (WEB_SCHEDULING_ASSESSMENT_2026-09-10.md): staff order mutations
+ * used to validate against an unlocked `findFirst` read, then write inside a
+ * separate lock-free `prisma.$transaction` — two concurrent operations on the
+ * same order (two staff members, or staff + a cron job) could both pass
+ * validation against the same stale snapshot and then both write (e.g. an
+ * expiry job cancelling a row a human just moved, or two concurrent
+ * "postpone" calls each seeing "no open SCHEDULED row" and both inserting
+ * one).
+ *
+ * This mirrors the proven lock pattern in lib/appointment-reservations.ts
+ * (`reserveAppointmentInTransaction`/`moveAppointmentInTransaction`): take a
+ * row lock on the `ServiceOrder` itself via `FOR UPDATE` inside
+ * `withBookingTransaction`, THEN re-read the order fresh under that lock, and
+ * hand both the fresh row and the transaction client to `work` — which must
+ * do its own validation against the fresh row (not any earlier, pre-lock
+ * read) before writing. `work` receives `order: null` when the row doesn't
+ * exist (or isn't visible under RLS) so callers can return their usual
+ * "not found" response instead of the wrapper throwing on their behalf.
+ *
+ * `order` is handed to `work` untyped (`unknown`) rather than derived from
+ * `select` via `Prisma.ServiceOrderGetPayload` — combining that with the
+ * already-heavy `PrismaTransactionClient` (itself derived from the
+ * RLS-extended client) blows out the type checker ("Excessive stack depth
+ * comparing types"). Callers cast the row to the shape their own `select`
+ * produces at the top of their callback instead.
+ */
+/**
+ * The testable core of `withOrderTransaction`, factored out so it can run
+ * against a fake `rawTx` fixture (same style as
+ * lib/appointment-reservations.ts's tests in tests/reservations.test.ts)
+ * without a real Postgres connection — `withBookingTransaction` itself opens
+ * a real pooled connection and can't be driven by a fake client. Exported
+ * for tests only; production code should go through `withOrderTransaction`.
+ */
+export async function runLockedOrderWork<T>(
+  rawTxIn: unknown,
+  tenantId: string,
+  orderId: string,
+  select: Prisma.ServiceOrderSelect,
+  work: (tx: PrismaTransactionClient, order: unknown) => Promise<T>,
+): Promise<T> {
+  // Use rawTx (the base, non-RLS-extended client withBookingTransaction
+  // hands back, or a fake fixture of the same shape in tests) for the lock
+  // query AND the fresh read — its `select` type matches
+  // `Prisma.ServiceOrderSelect` directly. Only the client handed to `work` is
+  // bridged to the RLS-extended `PrismaTransactionClient` type (same bridge
+  // createOrderAction already uses for its own withBookingTransaction call)
+  // — bridging earlier, for the read itself, is what previously blew out the
+  // type checker ("Excessive stack depth comparing types") by forcing
+  // `select` to satisfy the extended client's own (heavier) generic select
+  // type. `rawTxIn` is untyped for the same reason `select`/`order` are —
+  // see the doc comment above.
+  const rawTx = rawTxIn as {
+    $queryRaw: <R = unknown>(strings: TemplateStringsArray, ...values: unknown[]) => Promise<R>;
+    serviceOrder: { findFirst: (args: unknown) => Promise<unknown> };
+  };
+  const locked = await rawTx.$queryRaw<{ id: string }[]>`
+    SELECT id FROM "ServiceOrder" WHERE id = ${orderId} AND "tenantId" = ${tenantId} FOR UPDATE
+  `;
+  const tx = rawTxIn as unknown as PrismaTransactionClient;
+  if (!locked.length) return work(tx, null);
+  const order = await rawTx.serviceOrder.findFirst({
+    where: { id: orderId, tenantId },
+    select,
+  });
+  return work(tx, order);
+}
+
+export async function withOrderTransaction<T>(
+  tenantId: string,
+  orderId: string,
+  select: Prisma.ServiceOrderSelect,
+  work: (tx: PrismaTransactionClient, order: unknown) => Promise<T>,
+): Promise<T> {
+  return withBookingTransaction(tenantId, (rawTx) =>
+    runLockedOrderWork(rawTx, tenantId, orderId, select, work),
+  );
+}
 
 /**
  * Closes whatever's open for this order, scoped by `kind`:
@@ -118,6 +198,9 @@ export async function openOrderTimeBooking(
     createdById: string | null;
   },
 ): Promise<void> {
+  const originalDurationMinutes = input.endAt
+    ? Math.round((input.endAt.getTime() - input.startAt.getTime()) / 60000)
+    : null;
   await tx.orderTimeBooking.create({
     data: {
       tenantId: input.tenantId,
@@ -126,6 +209,7 @@ export async function openOrderTimeBooking(
       kind: input.kind,
       startAt: input.startAt,
       endAt: input.endAt,
+      originalDurationMinutes,
       closedAt: null,
       createdById: input.createdById,
     },

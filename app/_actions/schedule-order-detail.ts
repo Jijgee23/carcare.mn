@@ -9,6 +9,7 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canEdit, canView, workingBranchScopeId } from "@/lib/auth/roles";
+import { canViewOrder, canEditOrder } from "@/lib/auth/order-access";
 import { prisma } from "@/lib/prisma";
 import type { OrderItemLite } from "@/app/dashboard/orders/[id]/order-items";
 import type { OrderPaymentRow } from "@/app/dashboard/orders/[id]/order-payments-list";
@@ -62,6 +63,7 @@ export async function getScheduleOrderDetail(
       id: true,
       number: true,
       branchId: true,
+      assignedToId: true,
       status: true,
       scheduledAt: true,
       paymentStatus: true,
@@ -91,13 +93,16 @@ export async function getScheduleOrderDetail(
     },
   });
   if (!order) return { ok: false, message: "Засварын хуудас олдсонгүй." };
+  if (!canViewOrder(user, order)) {
+    return { ok: false, message: "Танд харах эрх байхгүй." };
+  }
   const scope = workingBranchScopeId(user);
   if (scope && order.branchId !== scope) {
     return { ok: false, message: "Танд харах эрх байхгүй." };
   }
 
   const isEditable = order.status !== "COMPLETED" && order.status !== "CANCELLED";
-  const canAddItems = isEditable && canEdit(user, "orders") && !isOrderLocked(order.status);
+  const canAddItems = isEditable && canEditOrder(user, order) && !isOrderLocked(order.status);
 
   // order/[id]/page.tsx-тэй адил: аль хэдийн нэмэгдсэн (цуцлагдаагүй)
   // оношилгооны загваруудыг сонголтоос хасна — давхардуулахгүй.

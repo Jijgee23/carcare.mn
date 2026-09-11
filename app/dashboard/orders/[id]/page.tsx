@@ -14,6 +14,7 @@ import {
   hasPermission,
   workingBranchScopeId,
 } from "@/lib/auth/roles";
+import { canEditOrder as canEditAssignedOrder, canViewOrder } from "@/lib/auth/order-access";
 import { redirect } from "next/navigation";
 import {
   DIAGNOSTIC_TYPE_BADGE,
@@ -62,7 +63,6 @@ export default async function OrderDetailPage({
 }) {
   const user = await requireUser();
   if (!canView(user, "orders")) redirect("/dashboard");
-  const canEditOrder = canEdit(user, "orders");
   const canChangeItemStatus = hasPermission(user, "orders.itemStatus");
   const canDeleteOrder = canDelete(user, "orders");
   const canEditPayments = canEdit(user, "payments");
@@ -106,7 +106,7 @@ export default async function OrderDetailPage({
           },
         },
         branch: { select: { name: true } },
-        assignedTo: { select: { firstName: true, lastName: true } },
+        assignedTo: { select: { id: true, firstName: true, lastName: true } },
       },
     }),
     prisma.branch.findMany({
@@ -225,6 +225,8 @@ export default async function OrderDetailPage({
   const qpayReady = Boolean(qpayConfig?.enabled);
 
   if (!order) notFound();
+  if (!canViewOrder(user, order)) redirect("/dashboard/orders");
+  const canEditOrder = canEditAssignedOrder(user, order);
 
   // "Дуусах хугацаа" DatePicker-ийг ажил эхэлсэн өдрийн салбарын ажлын
   // цагийн төгсгөлөөс цааш сунгахгүйгээр хязгаарлана (сервер талд ч мөн
@@ -577,7 +579,7 @@ export default async function OrderDetailPage({
           {/* Эцсийн төлөвт карт харуулахгүй — статус нь дээд badge-д аль
               хэдийн байгаа тул давхардана */}
           {allowedTransitions.length > 0 ? (
-            <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5">
+            <div className="relative rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5">
               <h2 className="font-semibold text-[var(--oc-ink)] mb-4 text-sm">Статус</h2>
               <StatusControls
                 orderId={order.id}

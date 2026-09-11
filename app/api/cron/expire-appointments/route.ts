@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { logAudit } from "@/lib/audit";
+import { verifyCronSecret } from "@/lib/cron-auth";
 import { createNotification } from "@/lib/notifications";
 import { prisma } from "@/lib/prisma";
 import { setBypassContext } from "@/lib/tenant-context";
@@ -24,8 +25,8 @@ export async function POST(req: Request) {
   return run(req);
 }
 
-// GET-ыг бас зөвшөөрөв (зарим cron service зөвхөн GET дэмждэг — гэхдээ
-// secret-ыг URL-ээр шалгах сонголт нэмж байна).
+// GET-ыг бас зөвшөөрөв (зарим cron service зөвхөн GET дэмждэг — secret нь
+// GET-д ч Authorization header-ээр ирнэ, URL-ээр биш, S17-аас хойш).
 export async function GET(req: Request) {
   return run(req);
 }
@@ -33,23 +34,8 @@ export async function GET(req: Request) {
 const MAX_BATCH = 200;
 
 async function run(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) {
-    return NextResponse.json(
-      { error: "CRON_SECRET тогтоогоогүй." },
-      { status: 500 },
-    );
-  }
-
-  const url = new URL(req.url);
-  const headerAuth = req.headers.get("authorization") ?? "";
-  const bearer = headerAuth.match(/^Bearer\s+(.+)$/i)?.[1];
-  const tokenFromQuery = url.searchParams.get("secret");
-  const supplied = bearer ?? tokenFromQuery ?? "";
-
-  if (supplied !== secret) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const denied = verifyCronSecret(req);
+  if (denied) return denied;
   // Бүх tenant дундуур scan хийдэг cron тул RLS-г тойрч гарна.
   setBypassContext();
 
@@ -67,10 +53,17 @@ async function run(req: Request) {
 
   let notified = 0;
   for (const a of due) {
-    await prisma.appointment.update({
-      where: { id: a.id },
+    // S17 Phase A: conditional update instead of a blind single-row write —
+    // only proceed with the audit/notification side effects if THIS
+    // invocation actually flipped the row (still PENDING and still expired
+    // at write time). If another concurrent run (or a staff action) already
+    // changed it, `count` is 0 and we skip — no double-cancel, no stale
+    // audit/notification for a row we didn't touch.
+    const result = await prisma.appointment.updateMany({
+      where: { id: a.id, status: "PENDING", requestedAt: { lt: now } },
       data: { status: "CANCELLED" },
     });
+    if (result.count !== 1) continue;
 
     await logAudit({
       tenantId: a.tenantId,

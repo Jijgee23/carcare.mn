@@ -2,6 +2,7 @@ import { jsonError, jsonOk, requireApiUser } from "@/lib/api";
 import { branchScopeId, canDelete } from "@/lib/auth/roles";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
+import { canEditOrder, canViewOrder } from "@/lib/auth/order-access";
 
 export async function GET(
   req: Request,
@@ -33,10 +34,11 @@ export async function GET(
       },
       branch: { select: { id: true, name: true } },
       filledBy: { select: { id: true, firstName: true, lastName: true } },
-      order: { select: { id: true, number: true } },
+      order: { select: { id: true, number: true, assignedToId: true, branchId: true } },
     },
   });
   if (!report) return jsonError(404, "Тайлан олдсонгүй.");
+  if (report.order && !canViewOrder(auth.user, report.order)) return jsonError(404, "Тайлан олдсонгүй.");
 
   return jsonOk({ report });
 }
@@ -56,13 +58,14 @@ export async function DELETE(
       tenantId: auth.user.tenantId,
       ...(scope ? { branchId: scope } : {}),
     },
-    select: { id: true, filledById: true, orderId: true },
+    select: { id: true, filledById: true, orderId: true, order: { select: { assignedToId: true, branchId: true } } },
   });
   if (!report) return jsonError(404, "Тайлан олдсонгүй.");
 
   const allowed =
     canDelete(auth.user, "diagnostics") || report.filledById === auth.user.id;
   if (!allowed) return jsonError(403, "Танд устгах эрх байхгүй.");
+  if (report.order && !canEditOrder(auth.user, report.order)) return jsonError(403, "Танд энэ тайланг устгах эрх байхгүй.");
 
   await prisma.diagnosticReport.delete({ where: { id: report.id } });
 

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { verifyCronSecret } from "@/lib/cron-auth";
 import { createNotification } from "@/lib/notifications";
 import { prisma } from "@/lib/prisma";
 import { SUBSCRIPTION_WARN_DAYS, formatDaysLeft } from "@/lib/subscription";
@@ -32,16 +33,8 @@ function formatDate(d: Date): string {
 }
 
 async function run(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) {
-    return NextResponse.json({ error: "CRON_SECRET тогтоогоогүй." }, { status: 500 });
-  }
-  const url = new URL(req.url);
-  const bearer = (req.headers.get("authorization") ?? "").match(/^Bearer\s+(.+)$/i)?.[1];
-  const supplied = bearer ?? url.searchParams.get("secret") ?? "";
-  if (supplied !== secret) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const denied = verifyCronSecret(req);
+  if (denied) return denied;
   // Бүх tenant дундуур scan хийдэг cron тул RLS-г тойрч гарна.
   setBypassContext();
 

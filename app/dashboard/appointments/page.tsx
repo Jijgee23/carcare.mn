@@ -56,7 +56,24 @@ const APPOINTMENT_INCLUDE = {
   // Booking v2: олон ангилал (categories) — хуучин ганц category нь
   // энэ migration-ийн өмнөх мөрүүдэд fallback хэвээр үлдэнэ.
   categories: { select: { category: { select: { name: true } } } },
-  serviceOrder: { select: { id: true, number: true } },
+  // S14: dashboard rows displayed only the appointment's own requestedAt even
+  // after the linked order progressed past SCHEDULED (own scheduledAt/booking
+  // no longer tied to requestedAt by Phase A — POSTPONED's return time in
+  // particular is independent). Select enough to show both, labeled, mirroring
+  // the customer appointment detail page's existing pattern.
+  serviceOrder: {
+    select: {
+      id: true,
+      number: true,
+      status: true,
+      scheduledAt: true,
+      timeBookings: {
+        where: { kind: "SCHEDULED", closedAt: null },
+        select: { startAt: true },
+        take: 1,
+      },
+    },
+  },
   payment: { select: { status: true } },
 } satisfies Prisma.AppointmentInclude;
 
@@ -282,6 +299,16 @@ export default async function AppointmentsPage({
                       </td>
                       <td className="px-5 py-4 font-plex-mono text-sm text-[var(--oc-muted2)] whitespace-nowrap">
                         {formatDateTime(a.requestedAt)}
+                        {a.serviceOrder && a.serviceOrder.status !== "SCHEDULED" ? (
+                          <span className="block text-xs text-[var(--oc-muted3)] mt-0.5">
+                            {a.serviceOrder.status === "POSTPONED" &&
+                            a.serviceOrder.timeBookings[0]?.startAt
+                              ? `Үргэлжлэх: ${formatDateTime(a.serviceOrder.timeBookings[0].startAt)}`
+                              : a.serviceOrder.scheduledAt
+                                ? `Товлосон огноо: ${formatDateTime(a.serviceOrder.scheduledAt)}`
+                                : null}
+                          </span>
+                        ) : null}
                       </td>
                       <td className="px-5 py-4 text-sm text-[var(--oc-muted3)] max-w-[220px] truncate">
                         {a.note || "—"}

@@ -2,6 +2,7 @@
 
 import { requireUser } from "@/lib/auth";
 import { canView, workingBranchScopeId } from "@/lib/auth/roles";
+import { orderViewScope } from "@/lib/auth/order-access";
 import { prisma } from "@/lib/prisma";
 import { timeToMinutes } from "@/lib/branches";
 import { bookingDayBounds } from "@/lib/booking-time";
@@ -79,6 +80,7 @@ export async function getBranchDaySchedulePreview(
 
   const appointmentById = new Map(schedule.appointments.map((a) => [a.id, a]));
   const orderById = new Map(schedule.orders.map((o) => [o.id, o]));
+  const visibility = orderViewScope(user);
   const isHiddenCarryOverOrder = (id: string) => {
     const order = orderById.get(id);
     return order?.carriedOver === true && order.continuesIntoDay !== true;
@@ -89,9 +91,23 @@ export async function getBranchDaySchedulePreview(
   const rows: SchedulePreviewRow[] = schedule.intervals
     .filter((row) => row.source !== "order" || row.role === "upcoming" || !isHiddenCarryOverOrder(row.id))
     .sort((a, b) => a.startMs - b.startMs)
-    .map((row) => {
+    .map((row, rowIndex) => {
       const appt = row.source === "appointment" ? appointmentById.get(row.id) : null;
       const order = row.source === "order" ? orderById.get(row.id) : null;
+      const visibleOrder = row.source !== "order" && visibility !== "none" || visibility === "branch" || (visibility === "own" && order?.assignedToId === user.id);
+      if (!visibleOrder) return {
+        key: `busy-${rowIndex}`,
+        startMs: row.startMs,
+        endMs: row.endMs,
+        uncertain: row.uncertain,
+        name: "Завгүй",
+        statusLabel: "Завгүй",
+        statusClass: "text-[var(--oc-muted3)] bg-[var(--oc-panel2)]",
+        paymentStatusLabel: null,
+        paymentStatusClass: null,
+        continuesFromPreviousDay: false,
+        endsAtDayBoundary: row.endMs === schedule.rangeEnd.getTime(),
+      };
       const paymentStatus = appt ? appointmentBookingPaymentStatus(appt) : null;
       return {
         key: `${row.source}-${row.id}`,

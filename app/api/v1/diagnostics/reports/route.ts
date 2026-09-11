@@ -9,6 +9,7 @@ import {
 import { collectReportData } from "@/lib/diagnostics-server";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
+import { canEditOrder, orderReadWhere } from "@/lib/auth/order-access";
 
 export async function GET(req: Request) {
   const auth = await requireApiUser(req);
@@ -22,9 +23,13 @@ export async function GET(req: Request) {
   const { page, pageSize, skip, take } = getApiPageInfo(url.searchParams);
 
   const scope = branchScopeId(auth.user);
+  const orderAccess = orderReadWhere(auth.user);
   const where: Prisma.DiagnosticReportWhereInput = {
     tenantId: auth.user.tenantId,
     ...(scope ? { branchId: scope } : {}),
+    ...(Object.keys(orderAccess).length
+      ? { OR: [{ orderId: null }, { order: { is: orderAccess } }] }
+      : {}),
   };
   if (vehicleId) where.vehicleId = vehicleId;
   if (customerId) where.customerId = customerId;
@@ -110,9 +115,11 @@ export async function POST(req: Request) {
         customerId: true,
         vehicleId: true,
         branchId: true,
+        assignedToId: true,
       },
     });
     if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
+    if (!canEditOrder(auth.user, order)) return jsonError(403, "Танд энэ засварын хуудсанд оношилгоо бөглөх эрх байхгүй.");
     finalCustomerId = order.customerId;
     finalVehicleId = order.vehicleId;
     finalBranchId = order.branchId;

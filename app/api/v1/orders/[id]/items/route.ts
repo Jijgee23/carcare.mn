@@ -5,6 +5,7 @@ import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
 import { logAudit } from "@/lib/audit";
 import { ITEM_KINDS, isOrderLocked, type ItemKind, type OrderStatus } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
+import { canEditOrder } from "@/lib/auth/order-access";
 
 // Service.type → ServiceItem.kind тааруулга (DIAGNOSTIC-г template-ээр нэмнэ)
 const SERVICE_KIND_TO_ITEM_KIND: Record<string, ItemKind> = {
@@ -47,7 +48,7 @@ export async function POST(
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
   const denied = requirePermission(auth.user, "orders.edit");
-  if (denied) return denied;
+  if (denied && !auth.user.role?.permissions.includes("orders.editOwn")) return denied;
   const locked = await requireActiveSubscriptionApi(auth.user);
   if (locked) return locked;
 
@@ -57,9 +58,10 @@ export async function POST(
 
   const order = await prisma.serviceOrder.findFirst({
     where: { id, tenantId, ...(scope ? { branchId: scope } : {}) },
-    select: { id: true, status: true },
+    select: { id: true, status: true, assignedToId: true },
   });
   if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
+  if (!canEditOrder(auth.user, order)) return jsonError(403, "Танд энэ засварын хуудсыг засах эрх байхгүй.");
   if (isOrderLocked(order.status as OrderStatus)) {
     return jsonError(
       422,

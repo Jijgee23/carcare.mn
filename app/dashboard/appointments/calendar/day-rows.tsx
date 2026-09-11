@@ -4,6 +4,7 @@ import {
   APPOINTMENT_STATUS_LABEL,
 } from "@/lib/appointments";
 import { customerLabel } from "@/lib/customers";
+import type { OrderAccessScope } from "@/lib/auth/order-access";
 import type { ScheduleInterval, ScheduleIssue } from "@/lib/branch-schedule";
 import {
   type BranchScheduleAppointmentRow,
@@ -145,9 +146,13 @@ export function buildDayRows(
   // "Засварын хуудас үүсгэх" линкэд `next`-ээр дамжуулж, захиалга
   // үүсгэсний дараа яг энэ хуудас руу буцаах боломж олгоно.
   returnTo?: string,
+  orderVisibility: OrderAccessScope = "branch",
+  viewerId?: string,
 ): { rows: DayRow[]; issues: ScheduleIssue[]; carriedOverCount: number } {
   const appointmentById = new Map(schedule.appointments.map((a) => [a.id, a]));
   const orderById = new Map(schedule.orders.map((o) => [o.id, o]));
+  const canSeeOrder = (order: BranchScheduleOrderRow | undefined) =>
+    orderVisibility === "branch" || (orderVisibility === "own" && order?.assignedToId === viewerId);
   const isHiddenCarryOverOrder = (id: string) => {
     const order = orderById.get(id);
     return order?.carriedOver === true && order.continuesIntoDay !== true;
@@ -162,11 +167,13 @@ export function buildDayRows(
   const filteredIntervals = schedule.intervals.filter(
     (row) => row.source !== "order" || row.role === "upcoming" || !isHiddenCarryOverOrder(row.id),
   );
-  const issues = schedule.issues.filter(
-    (issue) => issue.source !== "order" || !isHiddenCarryOverOrder(issue.id),
+  const issues = schedule.issues.filter((issue) =>
+    issue.source !== "order" || (canSeeOrder(orderById.get(issue.id)) && !isHiddenCarryOverOrder(issue.id)),
   );
   const issueBySourceId = new Map(issues.map((issue) => [`${issue.source}:${issue.id}`, issue]));
-  const carriedOverCount = countHiddenUncertainCarryOverOrders(schedule);
+  const carriedOverCount = orderVisibility === "branch"
+    ? countHiddenUncertainCarryOverOrders(schedule)
+    : 0;
 
   // D-076: an order's primary and upcoming interval only ever land in the
   // same day's view when the follow-up is booked for later the SAME day —
@@ -179,10 +186,30 @@ export function buildDayRows(
 
   const rows: DayRow[] = filteredIntervals
     .sort((a, b) => a.startMs - b.startMs)
-    .map((row) => {
+    .map((row, rowIndex) => {
       const issue = issueBySourceId.get(`${row.source}:${row.id}`);
       const appt = row.source === "appointment" ? appointmentById.get(row.id) : null;
       const order = row.source === "order" ? orderById.get(row.id) : null;
+      const visibleOrder = row.source !== "order" || canSeeOrder(order ?? undefined);
+      if (!visibleOrder) {
+        return {
+          key: `busy-${rowIndex}`,
+          source: "order" as const,
+          id: `busy-${rowIndex}`,
+          startMs: row.startMs,
+          endMs: row.endMs,
+          continuesFromPreviousDay: false,
+          endsAtDayBoundary: row.endMs === schedule.rangeEnd.getTime(),
+          uncertain: row.uncertain,
+          name: "Завгүй",
+          statusLabel: "Завгүй",
+          statusClass: "text-[var(--oc-muted3)] bg-[var(--oc-panel2)]",
+          paymentStatusLabel: null,
+          paymentStatusClass: null,
+          issueLabel: null,
+          actions: null,
+        };
+      }
       const name = appt
         ? appointmentDisplayName(appt)
         : order

@@ -17,6 +17,7 @@ import {
   AddressSelect,
   resolveAddressFromGeocode,
 } from "./address-select";
+import { ScheduleImpactPreview } from "./_components/schedule-impact-preview";
 
 // Ажиллах цагийн сонголт — 30 минутын алхамтай, 24 цагийн формат (00:00–23:30).
 const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
@@ -148,6 +149,11 @@ export function BranchForm({
     initial?.slotCapacity != null ? String(initial.slotCapacity) : "",
   );
   const [isPrimary, setIsPrimary] = useState(initial?.isPrimary ?? false);
+  // S13 Phase 4: clipped (non-destructive) schedule impact requires an
+  // explicit confirm before resubmitting — same confirmed=true convention as
+  // app/_actions/orders.ts's postpone/reschedule flows. Erased impact has no
+  // checkbox at all: it is always a hard block.
+  const [impactConfirmed, setImpactConfirmed] = useState(false);
 
   function onMapPick(coords: { lat: number; lng: number } | null) {
     setDirty(true);
@@ -188,6 +194,24 @@ export function BranchForm({
       noValidate
     >
       <FormError message={state?.message} />
+
+      {state?.impact ? (
+        <div className="space-y-2">
+          <ScheduleImpactPreview impact={state.impact} />
+          {state.needsConfirm ? (
+            <label className="flex items-center gap-2 text-sm text-[var(--oc-ink2)]">
+              <input
+                type="checkbox"
+                checked={impactConfirmed}
+                onChange={(e) => setImpactConfirmed(e.target.checked)}
+                className="accent-[var(--oc-accent)]"
+              />
+              Дээрх богиносгол(ууд)-ыг хүлээн зөвшөөрч үргэлжлүүлэх
+            </label>
+          ) : null}
+        </div>
+      ) : null}
+      <input type="hidden" name="confirmed" value={impactConfirmed ? "true" : "false"} />
 
       <SectionPanel index={1} total={3} title="Үндсэн мэдээлэл">
         <div className="grid gap-4 sm:grid-cols-2">
@@ -435,7 +459,7 @@ export function BranchForm({
         <BtnLink href="/dashboard/branches" variant="ghost">
           Болих
         </BtnLink>
-        <Btn type="submit" disabled={pending}>
+        <Btn type="submit" disabled={pending || Boolean(state?.needsConfirm && !impactConfirmed)}>
           {pending ? "..." : isEdit ? "Хадгалах" : "Үүсгэх"}
         </Btn>
       </div>

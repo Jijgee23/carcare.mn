@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { verifyCronSecret } from "@/lib/cron-auth";
 import { createNotification } from "@/lib/notifications";
 import { prisma } from "@/lib/prisma";
 import { sendSms } from "@/lib/sms";
@@ -9,7 +10,8 @@ import { setBypassContext } from "@/lib/tenant-context";
  * илгээнэ. Давхар илгээхгүйн тулд `reminderSentAt`-аар тэмдэглэнэ.
  *
  * Cron гадуурх (Vercel cron, cron-job.org) дуудна — `CRON_SECRET`-ээр хамгаална
- * (Bearer header эсвэл `?secret=`). Цагт нэг удаа ажиллуулахад тохиромжтой.
+ * (зөвхөн `Authorization: Bearer` header — S17-аас хойш `?secret=` дэмжихгүй).
+ * Цагт нэг удаа ажиллуулахад тохиромжтой.
  */
 export async function POST(req: Request) {
   return run(req);
@@ -23,7 +25,11 @@ const MAX_BATCH = 200;
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function formatWhen(d: Date): string {
+  // S17 Phase A: explicit business timezone — host-local formatting silently
+  // shifted the SMS text whenever the server isn't in Asia/Ulaanbaatar (same
+  // convention as lib/booking-time.ts's bookingDateKey/parseBusinessLocalDateTime).
   return d.toLocaleString("mn-MN", {
+    timeZone: "Asia/Ulaanbaatar",
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -33,16 +39,8 @@ function formatWhen(d: Date): string {
 }
 
 async function run(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) {
-    return NextResponse.json({ error: "CRON_SECRET тогтоогоогүй." }, { status: 500 });
-  }
-  const url = new URL(req.url);
-  const bearer = (req.headers.get("authorization") ?? "").match(/^Bearer\s+(.+)$/i)?.[1];
-  const supplied = bearer ?? url.searchParams.get("secret") ?? "";
-  if (supplied !== secret) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const denied = verifyCronSecret(req);
+  if (denied) return denied;
   // Бүх tenant дундуур scan хийдэг cron тул RLS-г тойрч гарна.
   setBypassContext();
 
@@ -72,11 +70,25 @@ async function run(req: Request) {
   let smsSent = 0;
   let pushSent = 0;
   for (const a of due) {
+    // S17 Phase A: atomic claim BEFORE sending — a conditional `updateMany`
+    // scoped to `reminderSentAt: null` so only ONE concurrent cron
+    // invocation can claim a given row (the other gets `count === 0` and
+    // skips it, never double-sending). We claim first and send after,
+    // rather than send-then-mark, so a crash between the two can only ever
+    // lose a reminder (accepted tradeoff — full retry semantics are Phase C,
+    // out of scope), never send it twice.
+    const claim = await prisma.appointment.updateMany({
+      where: { id: a.id, reminderSentAt: null },
+      data: { reminderSentAt: new Date() },
+    });
+    if (claim.count !== 1) continue;
+
     const phone = a.account?.phone ?? a.customer?.phone ?? null;
     const when = formatWhen(a.requestedAt);
     const body = `${a.tenant.name} (${a.branch.name}) дахь таны цаг ${when}-д товлогдсон байна.`;
 
-    // SMS (утас байвал)
+    // SMS (утас байвал). Хэрэв sendSms амжилтгүй болвол мөр нэгэнт claim
+    // хийгдсэн хэвээр үлдэнэ (дахин оролдохгүй — дээрх тайлбарыг үз).
     if (phone) {
       const ok = await sendSms(phone, `Carservice: ${body}`);
       if (ok) smsSent++;
@@ -97,12 +109,6 @@ async function run(req: Request) {
         console.warn("[notify] reminder:", e);
       }
     }
-
-    // Давтан илгээхээс сэргийлж тэмдэглэнэ (амжилт/амжилтгүйгээс үл хамаарч).
-    await prisma.appointment.update({
-      where: { id: a.id },
-      data: { reminderSentAt: new Date() },
-    });
   }
 
   return NextResponse.json({

@@ -1,12 +1,14 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
 import { branchScopeId } from "@/lib/auth/roles";
+import { canAssignOrders, orderReadWhere } from "@/lib/auth/order-access";
 import { logAudit } from "@/lib/audit";
 import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
 import type { OrderStatus } from "@/lib/orders";
 import { nextOrderNumber } from "@/lib/order-number";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
-import { prisma, withBookingTransaction } from "@/lib/prisma";
+import { prisma, withBookingTransaction, type PrismaTransactionClient } from "@/lib/prisma";
+import { openOrderTimeBooking } from "@/lib/order-time-booking";
 
 const ORDER_SELECT = {
   id: true,
@@ -48,6 +50,7 @@ export async function GET(req: Request) {
     ...(scope ? { branchId: scope } : branchId ? { branchId } : {}),
     ...(vehicleId && { vehicleId }),
     ...(customerId && { customerId }),
+    ...orderReadWhere(auth.user),
   };
 
   const [orders, total] = await Promise.all([
@@ -84,6 +87,11 @@ export async function POST(req: Request) {
   const vehicleId = typeof b.vehicleId === "string" ? b.vehicleId.trim() : "";
   const assignedToId =
     typeof b.assignedToId === "string" ? b.assignedToId.trim() || null : null;
+  const canAssign = canAssignOrders(auth.user);
+  if (!canAssign && assignedToId && assignedToId !== auth.user.id) {
+    return jsonError(403, "Та зөвхөн өөрийгөө хариуцагчаар оноож болно.");
+  }
+  const effectiveAssignedToId = canAssign ? assignedToId : auth.user.id;
   const scheduledAt =
     typeof b.scheduledAt === "string" && b.scheduledAt
       ? new Date(b.scheduledAt)
@@ -144,7 +152,11 @@ export async function POST(req: Request) {
     try {
       order = await withBookingTransaction(auth.user.tenantId, async (tx) => {
         const number = await nextOrderNumber(tx, auth.user.tenantId);
-        return tx.serviceOrder.create({
+        // withBookingTransaction uses the base Prisma client (raw locking on
+        // one connection) — bridge to the extended-client alias the shared
+        // booking helper expects, same as createOrderAction (orders.ts).
+        const scopedTx = tx as unknown as PrismaTransactionClient;
+        const created = await tx.serviceOrder.create({
           data: {
             number,
             tenantId: auth.user.tenantId,
@@ -152,12 +164,26 @@ export async function POST(req: Request) {
             customerId,
             vehicleId,
             isPostpaid: vehicle.isPostpaid,
-            ...(assignedToId && { assignedToId }),
+            assignedToId: effectiveAssignedToId,
             ...(scheduledAt && { scheduledAt }),
             ...(notes && { notes }),
           },
           select: ORDER_SELECT,
         });
+        // S04: every order starts life as an open SCHEDULED booking, mirroring
+        // createOrderAction (app/_actions/orders.ts) — otherwise an
+        // API-created order has no OrderTimeBooking row for the interval
+        // resolver to read until its first status transition.
+        await openOrderTimeBooking(scopedTx, {
+          tenantId: auth.user.tenantId,
+          orderId: created.id,
+          branchId,
+          kind: "SCHEDULED",
+          startAt: scheduledAt ?? new Date(),
+          endAt: null,
+          createdById: auth.user.id,
+        });
+        return created;
       });
     } catch (e) {
       if (
@@ -181,7 +207,7 @@ export async function POST(req: Request) {
     entityId: order.id,
     action: "CREATE",
     summary: "Засварын хуудас үүсгэсэн",
-    after: { branchId, customerId, vehicleId, assignedToId, scheduledAt: scheduledAt?.toISOString() ?? null },
+    after: { branchId, customerId, vehicleId, assignedToId: effectiveAssignedToId, scheduledAt: scheduledAt?.toISOString() ?? null },
   });
 
   return jsonOk({ order }, { status: 201 });

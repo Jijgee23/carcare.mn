@@ -3,6 +3,7 @@ import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api"
 import { logAudit } from "@/lib/audit";
 import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
 import { branchScopeId } from "@/lib/auth/roles";
+import { canEditOrder } from "@/lib/auth/order-access";
 import type { PaymentStatus } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
 
@@ -76,9 +77,10 @@ export async function PATCH(
       tenantId: auth.user.tenantId,
       ...(scope ? { branchId: scope } : {}),
     },
-    select: { id: true, totalAmount: true, paymentStatus: true },
+    select: { id: true, totalAmount: true, paymentStatus: true, assignedToId: true },
   });
   if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
+  if (!canEditOrder(auth.user, order)) return jsonError(403, "Танд энэ төлбөрийг засах эрх байхгүй.");
 
   let body: unknown;
   try {

@@ -6,9 +6,32 @@ import { buildBranchSchedule, type ScheduleOrder, type ScheduleAppointment } fro
 import { isSlotAvailable, resolveTakenAppointmentIntervals } from "../lib/category-duration";
 import type { PrismaTransactionClient } from "../lib/prisma";
 import { resolveEffectiveSchedule } from "../lib/branch-effective-schedule";
+import { bookingDayBounds } from "../lib/booking-time";
 import { splitScheduleInterval } from "../lib/schedule-intervals";
 import { calculateServiceItemDurationMinutes } from "../lib/service-duration";
-import { resolveOrderEffectiveInterval, resolveOrderIntervals, type OrderTimeBookingLike } from "../lib/schedule-order-interval";
+import {
+  resolveOrderEffectiveInterval,
+  resolveOrderIntervals,
+  resolveHistoricalOrderSessions,
+  type OrderTimeBookingLike,
+  type OrderStatusChangeLike,
+} from "../lib/schedule-order-interval";
+import * as fs from "node:fs";
+import * as path from "node:path";
+
+// lib/order-time-booking.ts imports lib/prisma.ts, which throws at import
+// time if DATABASE_URL isn't set (and, once set, opens a real pg Pool —
+// though every warm-up query is `.catch`-swallowed, so a bogus/unreachable
+// URL never actually touches a real database). This test file must not
+// depend on a real DATABASE_URL being configured, so fall back to a
+// deliberately unreachable one BEFORE importing the module. Top-level await
+// isn't available under this test runner's (cjs) transform, so the import
+// is deferred to a `before` hook instead of a static top-level import.
+let runLockedOrderWork: (typeof import("../lib/order-time-booking"))["runLockedOrderWork"];
+test.before(async () => {
+  process.env.DATABASE_URL ??= "postgresql://invalid:invalid@127.0.0.1:1/invalid";
+  ({ runLockedOrderWork } = await import("../lib/order-time-booking"));
+});
 
 const at = (time: string) => new Date(`2030-01-07T${time}:00+08:00`);
 const scope = { tenantId: "tenant", branchId: "branch" };
@@ -314,6 +337,182 @@ test("resolveOrderIntervals: closed history wins current over an open future fol
   assert.equal(upcoming.length, 1);
   assert.equal(upcoming[0].start?.getTime(), at("14:00").getTime());
 });
+// --- S11 fix: resolveHistoricalOrderSessions / loadBranchScheduleHistory ---
+// (WEB_SCHEDULING_ASSESSMENT_2026-09-10.md) — the calendar had no way to
+// reconstruct what actually happened on a past day: resolveOrderIntervals
+// collapses every order down to one "current" row and discards closed
+// history once a later booking exists, and fetchOrderRows gates on the
+// order's CURRENT status so a COMPLETED/CANCELLED order with only closed
+// booking rows is never fetched for a past day at all.
+test("S11: a Monday-worked, Tuesday-released, Wednesday-resumed order still shows Monday's real session when querying Monday's history", () => {
+  const mondayWork: OrderTimeBookingLike = {
+    kind: "ACTIVE",
+    startAt: new Date("2030-01-07T09:00:00+08:00"), // Monday
+    endAt: new Date("2030-01-07T12:00:00+08:00"),
+    closedAt: new Date("2030-01-07T12:00:00+08:00"),
+  };
+  const wednesdayResume: OrderTimeBookingLike = {
+    kind: "ACTIVE",
+    startAt: new Date("2030-01-09T09:00:00+08:00"), // Wednesday
+    endAt: null,
+    closedAt: null,
+  };
+  const mondayStart = new Date("2030-01-07T00:00:00+08:00");
+  const mondayEnd = new Date("2030-01-08T00:00:00+08:00");
+  const sessions = resolveHistoricalOrderSessions(
+    [mondayWork, wednesdayResume],
+    mondayStart,
+    mondayEnd,
+    new Date("2030-01-09T10:00:00+08:00"),
+  );
+  // Only Monday's real session intersects Monday's range — the still-open
+  // Wednesday resume must not swallow it, nor leak into Monday's results.
+  assert.equal(sessions.length, 1);
+  assert.equal(sessions[0].start.getTime(), mondayWork.startAt.getTime());
+  assert.equal(sessions[0].end.getTime(), mondayWork.endAt!.getTime());
+  assert.equal(sessions[0].wasWorked, true);
+});
+test("S11: a SCHEDULED booking closed without ever going ACTIVE is classified as not performed work", () => {
+  // A reservation/return-time slot that was postponed/cancelled away before
+  // any work happened — resolveOrderIntervals would treat this the same as
+  // performed work if it were the only closed row; history must not.
+  const cancelledReservation: OrderTimeBookingLike = {
+    kind: "SCHEDULED",
+    startAt: at("14:00"),
+    endAt: at("14:00"), // closed immediately, never worked
+    closedAt: at("14:00"),
+  };
+  const sessions = resolveHistoricalOrderSessions(
+    [cancelledReservation],
+    at("00:00"),
+    new Date("2030-01-08T00:00:00+08:00"),
+  );
+  assert.equal(sessions.length, 1);
+  assert.equal(sessions[0].wasWorked, false);
+});
+test("S12 follow-up: orderStatusChange history proves wasWorked true even when the booking kind alone would be ambiguous", () => {
+  // A SCHEDULED-kind row that was actually worked under it (e.g. the booking
+  // row itself was never flipped to ACTIVE for some legacy/edge reason) —
+  // the naive kind proxy alone would say wasWorked: false here. The
+  // OrderStatusChange timeline is ground truth and must override it.
+  const ambiguousBooking: OrderTimeBookingLike = {
+    kind: "SCHEDULED",
+    startAt: at("08:00"),
+    endAt: at("10:00"),
+    closedAt: at("10:00"),
+  };
+  const statusChanges: OrderStatusChangeLike[] = [
+    { fromStatus: "SCHEDULED", toStatus: "IN_PROGRESS", createdAt: at("08:30") },
+    { fromStatus: "IN_PROGRESS", toStatus: "COMPLETED", createdAt: at("10:00") },
+  ];
+  const sessions = resolveHistoricalOrderSessions(
+    [ambiguousBooking],
+    at("00:00"),
+    new Date("2030-01-08T00:00:00+08:00"),
+    undefined,
+    statusChanges,
+  );
+  assert.equal(sessions.length, 1);
+  assert.equal(sessions[0].wasWorked, true);
+});
+test("S12 follow-up: orderStatusChange history proves wasWorked false, overriding a naive ACTIVE-kind guess", () => {
+  // An ACTIVE-kind row that was never actually started (only SCHEDULED ->
+  // CANCELLED ever happened) — the naive kind proxy would say wasWorked:
+  // true. The timeline shows no IN_PROGRESS transition in the window at
+  // all, so it must override to false.
+  const bookingLooksActive: OrderTimeBookingLike = {
+    kind: "ACTIVE",
+    startAt: at("08:00"),
+    endAt: at("08:00"),
+    closedAt: at("08:00"),
+  };
+  const statusChanges: OrderStatusChangeLike[] = [
+    { fromStatus: "SCHEDULED", toStatus: "CANCELLED", createdAt: at("08:00") },
+  ];
+  const sessions = resolveHistoricalOrderSessions(
+    [bookingLooksActive],
+    at("00:00"),
+    new Date("2030-01-08T00:00:00+08:00"),
+    undefined,
+    statusChanges,
+  );
+  assert.equal(sessions.length, 1);
+  assert.equal(sessions[0].wasWorked, false);
+});
+test("S12 follow-up: empty/absent orderStatusChange history falls back to the kind === ACTIVE proxy", () => {
+  // Pre-S12 orders (or any order with no recorded transitions) must not
+  // regress — passing no statusChanges (or an empty array) must behave
+  // identically to the original S11 kind-only classification.
+  const activeBooking: OrderTimeBookingLike = {
+    kind: "ACTIVE",
+    startAt: at("08:00"),
+    endAt: at("09:00"),
+    closedAt: at("09:00"),
+  };
+  const sessionsNoArg = resolveHistoricalOrderSessions(
+    [activeBooking],
+    at("00:00"),
+    new Date("2030-01-08T00:00:00+08:00"),
+  );
+  const sessionsEmptyArray = resolveHistoricalOrderSessions(
+    [activeBooking],
+    at("00:00"),
+    new Date("2030-01-08T00:00:00+08:00"),
+    undefined,
+    [],
+  );
+  assert.equal(sessionsNoArg.length, 1);
+  assert.equal(sessionsNoArg[0].wasWorked, true);
+  assert.equal(sessionsEmptyArray[0].wasWorked, true);
+});
+test("S11: resolveHistoricalOrderSessions ignores rows that don't intersect the requested range", () => {
+  const unrelated: OrderTimeBookingLike = {
+    kind: "ACTIVE",
+    startAt: new Date("2030-01-09T09:00:00+08:00"),
+    endAt: new Date("2030-01-09T10:00:00+08:00"),
+    closedAt: new Date("2030-01-09T10:00:00+08:00"),
+  };
+  const sessions = resolveHistoricalOrderSessions(
+    [unrelated],
+    new Date("2030-01-07T00:00:00+08:00"),
+    new Date("2030-01-08T00:00:00+08:00"),
+  );
+  assert.equal(sessions.length, 0);
+});
+test("S11: loadBranchScheduleHistory queries OrderTimeBooking directly (not gated by ServiceOrder's current status) — fixes the terminal-order omission", () => {
+  // loadBranchSchedule's fetchOrderRows only fetches SCHEDULED/IN_PROGRESS/
+  // POSTPONED orders (plus specific linked/follow-up carve-outs) — a
+  // COMPLETED or CANCELLED order with no live appointment and no open
+  // booking is invisible to it. loadBranchScheduleHistory must instead query
+  // OrderTimeBooking by its own startAt/endAt overlap and join back to
+  // ServiceOrder unconditionally on status, so a terminal order's real past
+  // session still appears. Verified by inspecting the source directly (same
+  // approach as the S06/S10 tests above), since the loader talks to the
+  // shared `@/lib/prisma` singleton rather than accepting an injectable
+  // client the way buildBranchSchedule does.
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "lib", "branch-schedule-loader.ts"),
+    "utf8",
+  );
+  const fnStart = src.indexOf("export async function loadBranchScheduleHistory");
+  assert.ok(fnStart >= 0, "loadBranchScheduleHistory not found");
+  const body = src.slice(fnStart);
+  assert.ok(
+    body.includes("prisma.orderTimeBooking.findMany("),
+    "expected loadBranchScheduleHistory to query OrderTimeBooking directly",
+  );
+  // Must not filter on ServiceOrder.status at all in this function — the
+  // whole point is to be independent of the order's current status.
+  assert.ok(
+    !/status:\s*{\s*in:\s*\[\s*"SCHEDULED"/.test(body),
+    "loadBranchScheduleHistory must not gate on ServiceOrder's current status like fetchOrderRows does",
+  );
+  assert.ok(
+    body.includes("resolveHistoricalOrderSessions("),
+    "expected loadBranchScheduleHistory to reuse Phase 1's classifier",
+  );
+});
+
 test("buildBranchSchedule resolves an order's interval from orderBookings when supplied", () => {
   // Scalars alone would place this order at 10:00-11:00 (the order() default);
   // a passed-in booking row should override that with the real 12:00-13:00.
@@ -636,4 +835,1007 @@ test("an untimed work item keeps the estimate unresolved", () => {
     ]),
     null,
   );
+});
+
+// --- S06 fix: withOrderTransaction / runLockedOrderWork -------------------
+// (WEB_SCHEDULING_ASSESSMENT_2026-09-10.md) — staff order mutations used to
+// validate against an unlocked `findFirst` read, then write inside a
+// separate lock-free transaction, letting two concurrent operations on the
+// same order (two staff members, or staff + the expiry cron) both pass
+// validation against the same stale snapshot. `runLockedOrderWork` is the
+// testable core of `withOrderTransaction` (lib/order-time-booking.ts) —
+// `withOrderTransaction` itself opens a real pooled connection via
+// withBookingTransaction and can't be driven by a fake client, so these
+// tests exercise the lock-then-reread contract directly, the same way
+// tests/reservations.test.ts drives reserveAppointmentInTransaction with a
+// fake tx fixture instead of a real one.
+function orderLockFixture(opts: { locked?: boolean; row?: Record<string, unknown> | null } = {}) {
+  const calls: string[] = [];
+  const tx = {
+    $queryRaw: async () => {
+      calls.push("lock");
+      return opts.locked === false ? [] : [{ id: "order" }];
+    },
+    serviceOrder: {
+      findFirst: async () => {
+        calls.push("read");
+        return opts.row === undefined ? { id: "order", status: "SCHEDULED" } : opts.row;
+      },
+    },
+  };
+  return { tx, calls };
+}
+
+test("runLockedOrderWork locks, then re-reads, before calling work — in that order", async () => {
+  const f = orderLockFixture();
+  await runLockedOrderWork(f.tx, "tenant", "order", { id: true, status: true }, async (_tx, order) => {
+    f.calls.push("work");
+    assert.deepEqual(order, { id: "order", status: "SCHEDULED" });
+  });
+  assert.deepEqual(f.calls, ["lock", "read", "work"]);
+});
+
+test("runLockedOrderWork hands work the freshly re-read row, not a stale pre-lock snapshot", async () => {
+  // Simulate a concurrent writer having changed the order's status between
+  // whenever a caller's OWN pre-lock read happened and when this lock is
+  // actually acquired — the fixture's `findFirst` (called only AFTER the
+  // lock) returns that changed state. `work` must see it, proving stale
+  // pre-lock state can't leak into the write.
+  const staleSnapshot = { id: "order", status: "SCHEDULED" };
+  const f = orderLockFixture({ row: { id: "order", status: "CANCELLED" } });
+  let seenByWork: unknown;
+  await runLockedOrderWork(f.tx, "tenant", "order", { id: true, status: true }, async (_tx, order) => {
+    seenByWork = order;
+  });
+  assert.deepEqual(seenByWork, { id: "order", status: "CANCELLED" });
+  assert.notDeepEqual(seenByWork, staleSnapshot);
+});
+
+test("runLockedOrderWork never reads the row when the lock query finds nothing — work gets null", async () => {
+  const f = orderLockFixture({ locked: false });
+  let seenByWork: unknown = "not called";
+  await runLockedOrderWork(f.tx, "tenant", "missing", { id: true }, async (_tx, order) => {
+    seenByWork = order;
+  });
+  assert.deepEqual(f.calls, ["lock"]);
+  assert.equal(seenByWork, null);
+});
+
+test("changeOrderStatusAction (app/_actions/orders.ts) validates and writes through withOrderTransaction, not a separate unlocked read + prisma.$transaction", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "app", "_actions", "orders.ts"),
+    "utf8",
+  );
+  const fnStart = src.indexOf("export async function changeOrderStatusAction");
+  assert.ok(fnStart >= 0, "changeOrderStatusAction not found");
+  const fnEnd = src.indexOf("\nexport async function postponeOrderAction", fnStart);
+  assert.ok(fnEnd > fnStart, "postponeOrderAction not found after changeOrderStatusAction");
+  const body = src.slice(fnStart, fnEnd);
+  assert.ok(body.includes("withOrderTransaction("), "expected withOrderTransaction call");
+  assert.ok(!body.includes("prisma.$transaction("), "must not fall back to an unlocked prisma.$transaction");
+});
+
+test("scheduleOrderReturnAction's open-booking check and insert are both inside the withOrderTransaction lock (S06 worst-case race)", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "app", "_actions", "orders.ts"),
+    "utf8",
+  );
+  const fnStart = src.indexOf("export async function scheduleOrderReturnAction");
+  assert.ok(fnStart >= 0, "scheduleOrderReturnAction not found");
+  const fnEnd = src.indexOf("\nexport async function reviseExpectedFinishAction", fnStart);
+  assert.ok(fnEnd > fnStart, "reviseExpectedFinishAction not found after scheduleOrderReturnAction");
+  const body = src.slice(fnStart, fnEnd);
+
+  const lockCallIndex = body.indexOf("withOrderTransaction(");
+  assert.ok(lockCallIndex >= 0, "expected a withOrderTransaction call");
+  // The pre-lock portion of the function (before withOrderTransaction is
+  // even called) must not already read the open bookings — that read has to
+  // happen fresh, under the lock, or two concurrent callers can each pass
+  // the "no open SCHEDULED row" check before either one writes.
+  const preLock = body.slice(0, lockCallIndex);
+  assert.ok(
+    !preLock.includes("getOpenOrderTimeBookings("),
+    "getOpenOrderTimeBookings must not be called before the lock is taken",
+  );
+  // And the check + the insert-or-update branch it gates must both appear
+  // AFTER the lock call, inside the callback.
+  const postLock = body.slice(lockCallIndex);
+  assert.ok(postLock.includes("getOpenOrderTimeBookings("), "expected the open-booking check inside the lock");
+  assert.ok(postLock.includes("openOrderTimeBooking("), "expected the insert branch inside the lock");
+});
+
+// S10 fix (WEB_SCHEDULING_ASSESSMENT_2026-09-10.md): reviseExpectedFinishAction
+// used to validate the past-check and the closing-cap workday lookup against
+// the stale ServiceOrder.startedAt scalar, which resume (POSTPONED ->
+// IN_PROGRESS) deliberately leaves untouched while opening a fresh ACTIVE
+// OrderTimeBooking anchored to "now". After a Monday-start -> postpone ->
+// Wednesday-resume cycle this let a Monday-dated finish (after the stale
+// startedAt but before the real Wednesday ACTIVE start) pass, and could
+// reject a legitimate Wednesday-near-closing finish validated against
+// Monday's hours instead. These tests inspect the source directly (same
+// approach as the S06 tests above) rather than driving the action end-to-end
+// against a real database.
+function reviseExpectedFinishActionBody(): string {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "app", "_actions", "orders.ts"),
+    "utf8",
+  );
+  const fnStart = src.indexOf("export async function reviseExpectedFinishAction");
+  assert.ok(fnStart >= 0, "reviseExpectedFinishAction not found");
+  // The next top-level export after it closes the function body.
+  const fnEnd = src.indexOf("\nexport async function rescheduleOrderAction", fnStart);
+  assert.ok(fnEnd > fnStart, "rescheduleOrderAction not found after reviseExpectedFinishAction");
+  return src.slice(fnStart, fnEnd);
+}
+
+test("reviseExpectedFinishAction rejects POSTPONED orders outright, before ever consulting startedAt/ACTIVE booking", () => {
+  const body = reviseExpectedFinishActionBody();
+  const rejectMsg = "Хойшлуулсан ажлын дуусах хугацааг засах боломжгүй";
+  assert.ok(
+    body.includes(rejectMsg),
+    "expected a dedicated POSTPONED rejection message",
+  );
+  assert.ok(
+    !body.includes('order.status !== "IN_PROGRESS" && order.status !== "POSTPONED"'),
+    "must no longer allow POSTPONED through the status gate",
+  );
+  assert.ok(
+    !body.includes('fresh.status !== "IN_PROGRESS" && fresh.status !== "POSTPONED"'),
+    "the locked re-check must no longer allow POSTPONED through either",
+  );
+  // The POSTPONED rejection must precede the "only IN_PROGRESS" check in both
+  // the pre-check and the locked re-check, so a postponed order is turned away
+  // with the specific message rather than the generic one.
+  const preCheckPostponedIdx = body.indexOf(rejectMsg);
+  const preCheckGenericIdx = body.indexOf("Дуусах хугацааг зөвхөн ажиллаж буй засварын хуудсанд тохируулна.");
+  assert.ok(preCheckPostponedIdx >= 0 && preCheckGenericIdx >= 0);
+  assert.ok(preCheckPostponedIdx < preCheckGenericIdx, "POSTPONED-specific rejection must come first");
+});
+
+test("reviseExpectedFinishAction validates the past-check and closing-cap lookup against the open ACTIVE booking's startAt, not order.startedAt", () => {
+  const body = reviseExpectedFinishActionBody();
+  assert.ok(
+    body.includes("getOpenOrderTimeBookings(prisma, order.id)"),
+    "expected a pre-check read of the open ACTIVE booking via the shared helper",
+  );
+  assert.ok(
+    body.includes('openBookings.find((b) => b.kind === "ACTIVE")'),
+    "expected the pre-check to pick out the open ACTIVE row specifically",
+  );
+  assert.ok(
+    body.includes("activeBooking?.startAt ?? order.startedAt"),
+    "expected the ACTIVE booking's startAt to take precedence, falling back to startedAt only when no ACTIVE row is open",
+  );
+  // The past-check and the workday-close lookup must key off activeStartAt.
+  assert.ok(
+    body.includes("expectedFinishAt.getTime() <= activeStartAt.getTime()"),
+    "expected the past-check to compare against activeStartAt",
+  );
+  assert.ok(
+    body.includes("bookingDateKey(activeStartAt)"),
+    "expected the closing-cap workday lookup to key off activeStartAt",
+  );
+  assert.ok(
+    !body.includes("bookingDateKey(order.startedAt)"),
+    "must no longer key the closing-cap lookup off the stale order.startedAt",
+  );
+  // The locked re-check (inside withOrderTransaction) must repeat this against
+  // a fresh read of the open bookings, not the fresh.startedAt scalar alone.
+  const lockCallIndex = body.indexOf("withOrderTransaction(");
+  assert.ok(lockCallIndex >= 0, "expected a withOrderTransaction call");
+  const postLock = body.slice(lockCallIndex);
+  assert.ok(
+    postLock.includes("getOpenOrderTimeBookings(tx, fresh.id)"),
+    "expected the locked re-check to re-read the open bookings under the lock",
+  );
+  assert.ok(
+    postLock.includes("freshOpen.find((b) => b.kind === \"ACTIVE\")?.startAt ?? fresh.startedAt"),
+    "expected the locked re-check's past-check to prefer the fresh ACTIVE booking's startAt",
+  );
+  assert.ok(
+    postLock.includes("expectedFinishAt.getTime() <= freshActiveStartAt.getTime()"),
+    "expected the locked re-check's past-check to compare against freshActiveStartAt",
+  );
+});
+
+// --- S12 fix (WEB_SCHEDULING_ASSESSMENT_2026-09-10.md): structured status
+// history on every transition, POSTPONED routed exclusively through the
+// dedicated postpone flow (lib/order-postpone.ts's postponeOrderCore, shared
+// by app/_actions/orders.ts's postponeOrderAction and the new
+// POST /api/v1/orders/[id]/postpone endpoint). Source-inspection tests, same
+// approach as the S06/S10/S11 tests above — no live-DB fixture harness for
+// these multi-query actions/routes.
+
+function changeOrderStatusActionBody(): string {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "app", "_actions", "orders.ts"),
+    "utf8",
+  );
+  const fnStart = src.indexOf("export async function changeOrderStatusAction");
+  assert.ok(fnStart >= 0, "changeOrderStatusAction not found");
+  const fnEnd = src.indexOf("\nexport async function postponeOrderAction", fnStart);
+  assert.ok(fnEnd > fnStart, "postponeOrderAction not found after changeOrderStatusAction");
+  return src.slice(fnStart, fnEnd);
+}
+
+function orderPatchRouteSource(): string {
+  return fs.readFileSync(
+    path.join(__dirname, "..", "app", "api", "v1", "orders", "[id]", "route.ts"),
+    "utf8",
+  );
+}
+
+test("S12: changeOrderStatusAction writes a structured OrderStatusChange row inside its withOrderTransaction callback", () => {
+  const body = changeOrderStatusActionBody();
+  const lockCallIndex = body.indexOf("withOrderTransaction(");
+  assert.ok(lockCallIndex >= 0, "expected a withOrderTransaction call");
+  const postLock = body.slice(lockCallIndex);
+  assert.ok(
+    postLock.includes("tx.orderStatusChange.create("),
+    "expected an orderStatusChange.create call inside the transaction callback",
+  );
+  // Must run in the SAME transaction client as the audit log, not a separate
+  // unlocked write after the fact.
+  const createIdx = postLock.indexOf("tx.orderStatusChange.create(");
+  const auditIdx = postLock.indexOf("await logAudit(");
+  assert.ok(createIdx >= 0 && auditIdx >= 0);
+  assert.ok(createIdx < auditIdx, "expected the status-change row written before the audit log call");
+});
+
+test("S12: changeOrderStatusAction rejects POSTPONED outright and no longer handles it in the capacity/booking branches", () => {
+  const body = changeOrderStatusActionBody();
+  const rejectIdx = body.indexOf('next === "POSTPONED"');
+  assert.ok(rejectIdx >= 0, "expected a dedicated POSTPONED check");
+  assert.ok(
+    body.includes("OrderActionValidationError"),
+    "expected the rejection to use OrderActionValidationError",
+  );
+  // The rejection must precede the transition-allowed / capacity-release logic
+  // so POSTPONED is turned away before it can reach any write branch.
+  const allowedCheckIdx = body.indexOf("allowed?.includes(next)");
+  assert.ok(allowedCheckIdx >= 0 && allowedCheckIdx < rejectIdx);
+  assert.ok(
+    !body.includes('next === "COMPLETED" || next === "CANCELLED" || next === "POSTPONED"'),
+    "must no longer group POSTPONED into the generic occupiesCapacity-release branch",
+  );
+  assert.ok(
+    !body.includes('else if (next === "POSTPONED") {'),
+    "must no longer have a POSTPONED booking-close branch — postponeOrderCore owns that dual-write now",
+  );
+});
+
+test("S12: the API PATCH route (app/api/v1/orders/[id]/route.ts) writes an OrderStatusChange row inside its withOrderTransaction callback", () => {
+  const src = orderPatchRouteSource();
+  const patchStart = src.indexOf("export async function PATCH(");
+  assert.ok(patchStart >= 0, "PATCH handler not found");
+  const body = src.slice(patchStart);
+  assert.ok(
+    body.includes("tx.orderStatusChange.create("),
+    "expected an orderStatusChange.create call in the PATCH transaction",
+  );
+  const lockCallIndex = body.indexOf("withOrderTransaction(");
+  assert.ok(lockCallIndex >= 0, "expected a withOrderTransaction call");
+  const postLock = body.slice(lockCallIndex);
+  assert.ok(
+    postLock.includes("tx.orderStatusChange.create("),
+    "the status-change write must be inside the locked transaction callback, not after it",
+  );
+});
+
+test("S12: the API PATCH route rejects POSTPONED outright and no longer handles it in the capacity/booking-sync branches", () => {
+  const src = orderPatchRouteSource();
+  const patchStart = src.indexOf("export async function PATCH(");
+  const body = src.slice(patchStart);
+  assert.ok(
+    body.includes('newStatus === "POSTPONED"'),
+    "expected a dedicated POSTPONED rejection check on the parsed newStatus",
+  );
+  assert.ok(body.includes("OrderPatchError"), "expected the rejection to use OrderPatchError");
+  const rejectIdx = body.indexOf('newStatus === "POSTPONED"');
+  const allowedCheckIdx = body.indexOf("allowed.includes(newStatus)");
+  assert.ok(rejectIdx >= 0 && allowedCheckIdx >= 0 && rejectIdx < allowedCheckIdx);
+  assert.ok(
+    !body.includes('newStatus === "COMPLETED" || newStatus === "CANCELLED" || newStatus === "POSTPONED"'),
+    "must no longer group POSTPONED into the generic occupiesCapacity-release branch",
+  );
+  assert.ok(
+    !body.includes('statusChangedTo === "POSTPONED"'),
+    "must no longer have a POSTPONED booking-sync branch — postponeOrderCore owns that dual-write now",
+  );
+});
+
+test("S12: postponeOrderCore requires reason/reasonTag and returnAt, and writes OrderTimeBooking + OrderStatusChange in one transaction", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "lib", "order-postpone.ts"),
+    "utf8",
+  );
+  assert.ok(
+    src.includes("!reasonTag && !reason"),
+    "expected a reason-or-reasonTag-required check",
+  );
+  assert.ok(
+    src.includes("Number.isFinite(returnAt.getTime())"),
+    "expected returnAt to be parsed and validated",
+  );
+  assert.ok(
+    src.includes("returnAt.getTime() < Date.now()"),
+    "expected a future-only check on returnAt",
+  );
+  const lockCallIndex = src.indexOf("withOrderTransaction(");
+  assert.ok(lockCallIndex >= 0, "expected a withOrderTransaction call");
+  const postLock = src.slice(lockCallIndex);
+  assert.ok(
+    postLock.includes('kind: "SCHEDULED"') && postLock.includes("openOrderTimeBooking(tx,"),
+    "expected a SCHEDULED OrderTimeBooking opened inside the transaction",
+  );
+  assert.ok(
+    postLock.includes("tx.orderStatusChange.create("),
+    "expected the OrderStatusChange row written inside the same transaction",
+  );
+  assert.ok(
+    postLock.includes('toStatus: "POSTPONED"') && postLock.includes("reasonTag,"),
+    "expected the status-change row to carry toStatus POSTPONED and the reasonTag",
+  );
+});
+
+test("S12: both postpone callers (dashboard action and API route) delegate to the same postponeOrderCore instead of duplicating validation", () => {
+  const actionSrc = fs.readFileSync(
+    path.join(__dirname, "..", "app", "_actions", "orders.ts"),
+    "utf8",
+  );
+  assert.ok(actionSrc.includes("postponeOrderCore("), "postponeOrderAction must call the shared core");
+  const apiSrc = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "app",
+      "api",
+      "v1",
+      "orders",
+      "[id]",
+      "postpone",
+      "route.ts",
+    ),
+    "utf8",
+  );
+  assert.ok(apiSrc.includes("postponeOrderCore("), "the new postpone API route must call the shared core");
+  assert.ok(apiSrc.includes('requirePermission(auth.user, "orders.edit")'), "expected the same permission gate as the other order-mutating API routes");
+});
+
+// S13 (WEB_SCHEDULING_ASSESSMENT_2026-09-10.md): inspectScheduleImpact used
+// to only look at Appointment rows. It must now also scan open SCHEDULED
+// OrderTimeBooking rows (plain scheduled sessions and postpone-created
+// return bookings both use kind: "SCHEDULED"), and must exclude an
+// expired-unpaid PENDING appointment hold from its computation.
+test("inspectScheduleImpact clips an affected SCHEDULED OrderTimeBooking row, not just appointments", async () => {
+  const { inspectScheduleImpact } = await import("../lib/branch-schedule-impact");
+  const { resolveEffectiveSchedule } = await import("../lib/branch-effective-schedule");
+
+  const branch = {
+    openTime: "09:00", closeTime: "12:00",
+    schedules: [], scheduleExceptions: [], scheduleSeasons: [],
+  };
+  const bookingRow = { id: "booking-1", startAt: at("11:00"), endAt: at("13:00") };
+  const fakeTx = {
+    appointment: { findMany: async () => [], update: async () => ({}) },
+    orderTimeBooking: {
+      findMany: async () => [bookingRow],
+      update: async (args: { where: { id: string }; data: { endAt: Date } }) => {
+        assert.equal(args.where.id, "booking-1");
+        // Closing at 12:00 (60 minutes after the 11:00 start) matches the
+        // remaining time before the newly-shortened 12:00 close.
+        assert.equal(args.data.endAt.toISOString(), at("12:00").toISOString());
+        return {};
+      },
+    },
+  };
+  const impact = await inspectScheduleImpact(fakeTx, {
+    tenantId: "tenant",
+    branchId: "branch",
+    from: at("00:00"),
+    to: new Date(at("00:00").getTime() + 86400000),
+    resolve: () => resolveEffectiveSchedule({ dateStr: "2030-01-07", branch }),
+    fallbackDurationMinutes: 30,
+  });
+  assert.equal(impact.erased.length, 0);
+  assert.equal(impact.clipped.length, 1);
+  assert.equal(impact.clipped[0]!.kind, "ORDER_TIME_BOOKING");
+  assert.equal(impact.clipped[0]!.id, "booking-1");
+  assert.equal(impact.clipped[0]!.durationMinutes, 60);
+
+  const { applyScheduleClips } = await import("../lib/branch-schedule-impact");
+  await applyScheduleClips(fakeTx, impact);
+});
+
+test("inspectScheduleImpact excludes an expired-hold PENDING appointment", async () => {
+  const { inspectScheduleImpact } = await import("../lib/branch-schedule-impact");
+  const { resolveEffectiveSchedule } = await import("../lib/branch-effective-schedule");
+  const { PENDING_APPOINTMENT_PAYMENT_TTL_MINUTES } = await import("../lib/appointment-payment-status");
+
+  const branch = {
+    openTime: "09:00", closeTime: "10:00",
+    schedules: [], scheduleExceptions: [], scheduleSeasons: [],
+  };
+  // A PENDING online-booking-fee hold created well past the TTL, never paid —
+  // isPendingAppointmentPaymentExpired should mark it expired, so it must not
+  // be treated as a live reservation the hours change erases/clips.
+  // inspectScheduleImpact checks expiry against the REAL current clock (it
+  // doesn't thread a fixture `now` through), so createdAt must be relative to
+  // Date.now(), not the fixture's fictional 2030 "at()" times.
+  const expiredCreatedAt = new Date(Date.now() - (PENDING_APPOINTMENT_PAYMENT_TTL_MINUTES + 5) * 60000);
+  const fakeTx = {
+    appointment: {
+      findMany: async () => [{
+        id: "appt-expired",
+        requestedAt: at("09:00"),
+        estimatedDurationMinutes: 30,
+        status: "PENDING",
+        feeAmount: 5000,
+        feeUnderpaidAmount: null,
+        createdAt: expiredCreatedAt,
+        payment: null,
+      }],
+      update: async () => { throw new Error("must not update an excluded expired hold"); },
+    },
+    orderTimeBooking: { findMany: async () => [], update: async () => ({}) },
+  };
+  const impact = await inspectScheduleImpact(fakeTx, {
+    tenantId: "tenant",
+    branchId: "branch",
+    from: at("00:00"),
+    to: new Date(at("00:00").getTime() + 86400000),
+    // Close the branch entirely at this hour — if the expired hold were
+    // still considered live, it would show up as erased.
+    resolve: () => resolveEffectiveSchedule({ dateStr: "2030-01-07", branch: { ...branch, openTime: null, closeTime: null } }),
+    fallbackDurationMinutes: 30,
+  });
+  assert.equal(impact.erased.length, 0);
+  assert.equal(impact.clipped.length, 0);
+});
+
+// S13: booking creation/reschedule previously had no maximum advance-booking
+// horizon at all. Verified by source inspection (no live-DB fixture path for
+// reserveAppointmentInTransaction, matching the S06-era pattern above).
+test("reserveAppointmentInTransaction and moveAppointmentInTransaction respect MAX_ADVANCE_BOOKING_DAYS", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "lib", "appointment-reservations.ts"),
+    "utf8",
+  );
+  assert.ok(
+    src.includes('import { bookingDateKey, MAX_ADVANCE_BOOKING_DAYS } from "@/lib/booking-time"'),
+    "expected the shared advance-booking horizon constant to be imported",
+  );
+  assert.ok(
+    src.includes("function assertWithinAdvanceBookingHorizon("),
+    "expected a shared horizon-check helper",
+  );
+  const reserveStart = src.indexOf("export async function reserveAppointmentInTransaction");
+  const moveStart = src.indexOf("export async function moveAppointmentInTransaction");
+  assert.ok(reserveStart >= 0 && moveStart >= 0);
+  const reserveBody = src.slice(reserveStart, moveStart);
+  const moveBody = src.slice(moveStart);
+  assert.ok(
+    reserveBody.includes("assertWithinAdvanceBookingHorizon(input.requestedAt, now)"),
+    "expected reserveAppointmentInTransaction to enforce the horizon",
+  );
+  assert.ok(
+    moveBody.includes("assertWithinAdvanceBookingHorizon(input.requestedAt, now)"),
+    "expected moveAppointmentInTransaction (reschedule) to enforce the same horizon",
+  );
+
+  const bookingTimeSrc = fs.readFileSync(
+    path.join(__dirname, "..", "lib", "booking-time.ts"),
+    "utf8",
+  );
+  assert.ok(
+    bookingTimeSrc.includes("export const MAX_ADVANCE_BOOKING_DAYS = 366;"),
+    "expected the shared constant to live in lib/booking-time.ts",
+  );
+});
+
+// S13: all 5 branch-schedule mutation actions must take the branch row lock
+// inside a real transaction, so the overlap check + impact inspection + save
+// serialize against concurrent bookings from lib/appointment-reservations.ts.
+// upsertBranchScheduleSeasonAction previously had no transaction at all.
+test("all 5 branch-schedule mutation actions take the branch row lock inside a transaction", () => {
+  const branchesSrc = fs.readFileSync(
+    path.join(__dirname, "..", "app", "_actions", "branches.ts"),
+    "utf8",
+  );
+  const updateBranchStart = branchesSrc.indexOf("export async function updateBranchAction");
+  assert.ok(updateBranchStart >= 0, "updateBranchAction not found");
+  const updateBranchBody = branchesSrc.slice(updateBranchStart);
+  assert.ok(
+    /await tx\.\$queryRaw`SELECT id FROM "Branch" WHERE id = \$\{id\} AND "tenantId" = \$\{user\.tenantId\} FOR UPDATE`/.test(updateBranchBody),
+    "expected updateBranchAction to take the Branch row lock inside its transaction",
+  );
+
+  const schedulesSrc = fs.readFileSync(
+    path.join(__dirname, "..", "app", "_actions", "branch-schedules.ts"),
+    "utf8",
+  );
+  const fns = [
+    "upsertBranchScheduleExceptionAction",
+    "deleteBranchScheduleExceptionAction",
+    "upsertBranchScheduleSeasonAction",
+    "deleteBranchScheduleSeasonAction",
+  ];
+  const starts = fns.map((name) => {
+    const idx = schedulesSrc.indexOf(`export async function ${name}`);
+    assert.ok(idx >= 0, `${name} not found`);
+    return idx;
+  });
+  for (let i = 0; i < fns.length; i++) {
+    const bodyStart = starts[i]!;
+    const bodyEnd = i + 1 < starts.length ? starts[i + 1]! : schedulesSrc.length;
+    const body = schedulesSrc.slice(bodyStart, bodyEnd);
+    assert.ok(
+      /FOR UPDATE`/.test(body),
+      `expected ${fns[i]} to take the Branch row lock`,
+    );
+    assert.ok(
+      /prisma\.\$transaction\(async \(tx\)/.test(body),
+      `expected ${fns[i]} to run its lock + save inside prisma.$transaction`,
+    );
+  }
+});
+
+// S13 Phase 5: originalEstimatedDurationMinutes/originalDurationMinutes are
+// populated once at creation, alongside the mutable estimatedDurationMinutes/
+// endAt, and never touched again by applyScheduleClips.
+test("reserveAppointmentInTransaction writes originalEstimatedDurationMinutes equal to estimatedDurationMinutes at creation", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "lib", "appointment-reservations.ts"),
+    "utf8",
+  );
+  const createIdx = src.indexOf("tx.appointment.create(");
+  assert.ok(createIdx >= 0, "expected an appointment.create call site");
+  const createCall = src.slice(createIdx, createIdx + 400);
+  assert.ok(
+    /estimatedDurationMinutes:\s*duration,\s*originalEstimatedDurationMinutes:\s*duration,/.test(createCall),
+    "expected originalEstimatedDurationMinutes to be set to the same `duration` value as estimatedDurationMinutes at creation",
+  );
+});
+
+test("openOrderTimeBooking derives originalDurationMinutes from startAt/endAt, and null when endAt is unknown", async () => {
+  const { openOrderTimeBooking } = await import("../lib/order-time-booking");
+  const calls: Array<Record<string, unknown>> = [];
+  const fakeTx = {
+    orderTimeBooking: {
+      create: async (args: { data: Record<string, unknown> }) => {
+        calls.push(args.data);
+        return {};
+      },
+    },
+  } as unknown as PrismaTransactionClient;
+
+  const startAt = at("09:00");
+  const endAt = new Date(startAt.getTime() + 90 * 60000);
+  await openOrderTimeBooking(fakeTx, {
+    tenantId: "tenant", orderId: "order-1", branchId: "branch-1",
+    kind: "SCHEDULED", startAt, endAt, createdById: null,
+  });
+  assert.equal(calls[0]!.originalDurationMinutes, 90);
+
+  await openOrderTimeBooking(fakeTx, {
+    tenantId: "tenant", orderId: "order-1", branchId: "branch-1",
+    kind: "ACTIVE", startAt, endAt: null, createdById: null,
+  });
+  assert.equal(calls[1]!.originalDurationMinutes, null);
+});
+
+test("applyScheduleClips never writes to originalEstimatedDurationMinutes/originalDurationMinutes", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "lib", "branch-schedule-impact.ts"),
+    "utf8",
+  );
+  const fnIdx = src.indexOf("export async function applyScheduleClips");
+  assert.ok(fnIdx >= 0, "applyScheduleClips not found");
+  const body = src.slice(fnIdx);
+  assert.ok(!/data:\s*{[^}]*originalEstimatedDurationMinutes/.test(body), "must not write originalEstimatedDurationMinutes");
+  assert.ok(!/data:\s*{[^}]*originalDurationMinutes/.test(body), "must not write originalDurationMinutes");
+  assert.ok(/data:\s*{\s*estimatedDurationMinutes:\s*item\.durationMinutes\s*}/.test(body), "expected the appointment clip write to only touch estimatedDurationMinutes");
+  assert.ok(/data:\s*{\s*endAt\s*}/.test(body), "expected the order-time-booking clip write to only touch endAt");
+});
+
+// S13 Phase 4: updateBranchAction / upsertBranchScheduleExceptionAction /
+// upsertBranchScheduleSeasonAction must hard-block on any erased item
+// regardless of confirmed, and require confirmed=true to proceed past a
+// clipped-only warning (same convention as app/_actions/orders.ts's
+// postpone/reschedule confirmed=true gate).
+test("branch schedule mutation actions require confirmed=true past a clipped-only warning, and hard-block erased regardless of confirmed", () => {
+  const branchesSrc = fs.readFileSync(path.join(__dirname, "..", "app", "_actions", "branches.ts"), "utf8");
+  const schedulesSrc = fs.readFileSync(path.join(__dirname, "..", "app", "_actions", "branch-schedules.ts"), "utf8");
+
+  for (const [label, src] of [["branches.ts", branchesSrc], ["branch-schedules.ts", schedulesSrc]] as const) {
+    assert.ok(
+      /confirmed\s*=\s*s\(formData,\s*"confirmed"\)\s*===\s*"true"/.test(src),
+      `expected ${label} to read a confirmed=true flag from formData`,
+    );
+    assert.ok(
+      /impact\.clipped\.length > 0 && !confirmed/.test(src),
+      `expected ${label} to gate clipped-only impact on !confirmed`,
+    );
+    assert.ok(
+      /impact\.erased\.length > 0/.test(src),
+      `expected ${label} to still check erased independently of confirmed`,
+    );
+  }
+});
+
+// S14 (WEB_SCHEDULING_ASSESSMENT_2026-09-10.md): staff appointment reschedule
+// and staff order reschedule used to write only their own entity, letting a
+// linked appointment/order pair drift to two different times. Phase A adds
+// lib/linked-reschedule.ts's moveLinkedAppointmentOrder as the one shared
+// command both entry points now call in the dangerous window (appointment
+// CONFIRMED + linked order SCHEDULED); Phase C's rejection stays as
+// defense-in-depth for any other linked-order state. These tests inspect the
+// source directly, matching the established style for this file's other
+// lock/branching checks (see the S06/S10/S12 tests above) rather than driving
+// the actions end-to-end against a real database.
+function rescheduleAppointmentActionBody(): string {
+  const src = fs.readFileSync(path.join(__dirname, "..", "app", "_actions", "appointments.ts"), "utf8");
+  const fnStart = src.indexOf("export async function rescheduleAppointmentAction");
+  assert.ok(fnStart >= 0, "rescheduleAppointmentAction not found");
+  const fnEnd = src.indexOf("\nexport async function markAppointmentArrived", fnStart);
+  assert.ok(fnEnd > fnStart, "markAppointmentArrived not found after rescheduleAppointmentAction");
+  return src.slice(fnStart, fnEnd);
+}
+
+function rescheduleOrderActionBody(): string {
+  const src = fs.readFileSync(path.join(__dirname, "..", "app", "_actions", "orders.ts"), "utf8");
+  const fnStart = src.indexOf("export async function rescheduleOrderAction");
+  assert.ok(fnStart >= 0, "rescheduleOrderAction not found");
+  const fnEnd = src.indexOf("\n// --- PAYMENT STATUS", fnStart);
+  assert.ok(fnEnd > fnStart, "end of rescheduleOrderAction not found");
+  return src.slice(fnStart, fnEnd);
+}
+
+test("Phase C/A final branching: rescheduleAppointmentAction routes a linked+SCHEDULED order through the shared moveLinkedAppointmentOrder command, and still refuses any other linked-order state", () => {
+  const body = rescheduleAppointmentActionBody();
+  assert.ok(body.includes("serviceOrderId: true"), "expected the select to fetch serviceOrderId");
+  assert.ok(body.includes("serviceOrder: { select: { id: true, status: true } }"), "expected the select to fetch the linked order's status");
+  assert.ok(body.includes("moveLinkedAppointmentOrder("), "expected a call into the shared linked-move command");
+  // The linked-but-not-SCHEDULED branch must still reject rather than fall
+  // through to the plain single-entity write below (which would silently
+  // move only the appointment while an IN_PROGRESS/POSTPONED/etc. order stays
+  // put).
+  const guardIdx = body.indexOf('appt.serviceOrder?.status !== "SCHEDULED"');
+  assert.ok(guardIdx >= 0, "expected a guard on the linked order's status");
+  const rejectIdx = body.indexOf("Захиалгын хуудаснаас цагийг нь шилжүүлнэ үү");
+  assert.ok(rejectIdx > guardIdx, "expected a rejection message for the non-SCHEDULED linked-order case");
+  const sharedCallIdx = body.indexOf("moveLinkedAppointmentOrder(");
+  assert.ok(guardIdx < sharedCallIdx, "the non-SCHEDULED guard must be checked before calling the shared command");
+});
+
+test("Phase A final branching: rescheduleOrderAction routes a CONFIRMED-appointment-linked order through the SAME shared moveLinkedAppointmentOrder command as the appointment-side action", () => {
+  const orderBody = rescheduleOrderActionBody();
+  assert.ok(orderBody.includes('order.appointment && order.appointment.status === "CONFIRMED"'), "expected a guard on the linked appointment's status");
+  assert.ok(orderBody.includes("moveLinkedAppointmentOrder("), "expected rescheduleOrderAction to call the shared linked-move command");
+
+  const apptSrc = fs.readFileSync(path.join(__dirname, "..", "app", "_actions", "appointments.ts"), "utf8");
+  const orderSrc = fs.readFileSync(path.join(__dirname, "..", "app", "_actions", "orders.ts"), "utf8");
+  assert.ok(
+    apptSrc.includes('from "@/lib/linked-reschedule";') && orderSrc.includes('from "@/lib/linked-reschedule";'),
+    "both actions must import the shared command from the same module, not reimplement it independently",
+  );
+});
+
+test("Phase A fallback: rescheduleOrderAction falls back to its own standalone single-entity write when there is no linked CONFIRMED appointment (walk-in order)", () => {
+  const body = rescheduleOrderActionBody();
+  const branchIdx = body.indexOf('order.appointment && order.appointment.status === "CONFIRMED"');
+  assert.ok(branchIdx >= 0);
+  const afterBranch = body.slice(branchIdx);
+  assert.ok(
+    afterBranch.includes("withOrderTransaction(") && afterBranch.includes('data: { scheduledAt }'),
+    "expected the pre-existing standalone withOrderTransaction write to remain reachable as a fallback",
+  );
+});
+
+test("moveLinkedAppointmentOrder (lib/linked-reschedule.ts) re-fetches the appointment AND order fresh, validates both statuses, and writes all three targets together", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "lib", "linked-reschedule.ts"), "utf8");
+  const fnStart = src.indexOf("export async function moveLinkedAppointmentOrder");
+  assert.ok(fnStart >= 0);
+  const body = src.slice(fnStart);
+
+  assert.ok(body.includes("withOrderTransaction("), "expected the ServiceOrder row lock via withOrderTransaction");
+  assert.ok(
+    body.includes('FOR UPDATE') && body.includes('"Appointment"'),
+    "expected an additional explicit row lock on the linked Appointment",
+  );
+  assert.ok(
+    body.includes("tx.appointment.findFirst("),
+    "expected a fresh re-read of the appointment under lock, not reuse of a pre-lock snapshot",
+  );
+  assert.ok(body.includes('order.status !== "SCHEDULED"'), "expected a fresh order-status check");
+  assert.ok(body.includes('appt.status !== "CONFIRMED"'), "expected a fresh appointment-status check");
+  assert.ok(
+    body.includes("appt.serviceOrderId !== order.id"),
+    "expected a stale-link check — the appointment might have been relinked/unlinked concurrently",
+  );
+
+  // All three write targets, in the same locked transaction.
+  assert.ok(body.includes("tx.appointment.update("), "expected the Appointment write");
+  assert.ok(body.includes("tx.serviceOrder.update("), "expected the ServiceOrder write");
+  assert.ok(body.includes("updateOpenOrderTimeBookingSchedule("), "expected the OrderTimeBooking write");
+
+  const apptWriteIdx = body.indexOf("tx.appointment.update(");
+  const orderWriteIdx = body.indexOf("tx.serviceOrder.update(");
+  const bookingWriteIdx = body.indexOf("updateOpenOrderTimeBookingSchedule(");
+  const statusCheckIdx = body.indexOf('order.status !== "SCHEDULED"');
+  assert.ok(
+    statusCheckIdx < apptWriteIdx && statusCheckIdx < orderWriteIdx && statusCheckIdx < bookingWriteIdx,
+    "all three writes must come after the fresh status re-validation, not before it",
+  );
+});
+
+test("moveLinkedAppointmentOrder validates hours and schedule conflicts using the shared order-schedule-validation helpers, not a duplicate implementation", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "lib", "linked-reschedule.ts"), "utf8");
+  assert.ok(src.includes("validateScheduledOrderHours("), "expected reuse of validateScheduledOrderHours");
+  assert.ok(src.includes("findScheduleConflict("), "expected reuse of findScheduleConflict");
+  assert.ok(
+    src.includes('from "@/lib/order-schedule-validation"'),
+    "expected these to be imported from the S12 shared validation module, not reimplemented",
+  );
+});
+
+test("Phase B: the dashboard appointments list and the calendar week/month view both surface the linked order's own time once it has progressed past SCHEDULED", () => {
+  const listSrc = fs.readFileSync(path.join(__dirname, "..", "app", "dashboard", "appointments", "page.tsx"), "utf8");
+  const calendarSrc = fs.readFileSync(
+    path.join(__dirname, "..", "app", "dashboard", "appointments", "calendar", "page.tsx"),
+    "utf8",
+  );
+  for (const [label, src] of [["appointments/page.tsx", listSrc], ["calendar/page.tsx", calendarSrc]] as const) {
+    assert.ok(
+      /serviceOrder\.status !== "SCHEDULED"/.test(src),
+      `expected ${label} to conditionally show dual-time labeling only once the linked order has progressed past SCHEDULED`,
+    );
+    assert.ok(
+      /POSTPONED/.test(src) && /timeBookings/.test(src),
+      `expected ${label} to prefer the POSTPONED return-time booking over the order's scalar scheduledAt`,
+    );
+  }
+});
+
+// --- S15-S16: shared public-availability service --------------------------
+// (WEB_SCHEDULING_ASSESSMENT_2026-09-10.md). resolvePublicAvailability
+// (lib/public-availability.ts) is a Prisma-calling async function with no
+// pure/fixture-level seam, and this test file must not depend on a real
+// database (see the DATABASE_URL note above). These are source-pattern
+// tests: they confirm the fix is actually present in the code, in the right
+// order, rather than exercising it end-to-end against a live DB.
+
+test("resolvePublicAvailability validates the date with bookingDayBounds before any Prisma call (the S16 fix)", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "lib", "public-availability.ts"), "utf8");
+
+  const boundsIdx = src.indexOf("bookingDayBounds(dateStr)");
+  const findIdx = src.indexOf("prisma.branch.findFirst(");
+  assert.ok(boundsIdx > -1 && findIdx > -1, "expected both the date-bounds check and the branch lookup to be present");
+  assert.ok(
+    boundsIdx < findIdx,
+    "bookingDayBounds(dateStr) must be called (and its throw caught) BEFORE the branch is fetched — " +
+      "branchScheduleForDateSelect(dateStr) also calls bookingDayBounds internally for its throwing side " +
+      "effect, so fetching the branch first would let an impossible date like 2030-02-30 throw uncaught " +
+      "during findFirst, before any try/catch around it could turn it into a clean rejection (S16)",
+  );
+
+  // The try/catch must wrap the bounds call itself, not just be present somewhere.
+  assert.match(
+    src,
+    /try\s*{\s*bounds\s*=\s*bookingDayBounds\(dateStr\);\s*}\s*catch/,
+    "expected bookingDayBounds(dateStr) to be directly wrapped in try/catch",
+  );
+});
+
+test("resolvePublicAvailability rejects an impossible date via bookingDayBounds without throwing", () => {
+  // Exercises the actual RangeError path bookingDayBounds throws for an
+  // impossible calendar date — this is the real function the old code path
+  // called too late (after the branch fetch). Confirms it throws (so the
+  // service's try/catch is necessary) and that catching it cleanly is
+  // possible, matching what resolvePublicAvailability now does up front.
+  assert.throws(() => bookingDayBounds("2030-02-30"));
+  let rejected = false;
+  try {
+    bookingDayBounds("2030-02-30");
+  } catch {
+    rejected = true;
+  }
+  assert.ok(rejected, "expected the impossible date to be catchable, not left to propagate uncaught");
+});
+
+test("resolvePublicAvailability fetches the branch with isActive: true (previously missing)", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "lib", "public-availability.ts"), "utf8");
+  assert.match(
+    src,
+    /branch\.findFirst\(/,
+    "expected the branch lookup to use findFirst (to allow the isActive filter alongside id)",
+  );
+  assert.match(
+    src,
+    /where:\s*\{\s*id:\s*branchId,\s*isActive:\s*true\s*\}/,
+    "expected the branch lookup to exclude inactive branches, matching reserveAppointmentInTransaction",
+  );
+});
+
+test("resolvePublicAvailability checks tenant.suspended, acceptsOnlineBooking, and the ONLINE_BOOKING plan feature together", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "lib", "public-availability.ts"), "utf8");
+  assert.ok(src.includes("branch.tenant.suspended"), "expected a suspended-tenant check");
+  assert.ok(src.includes("branch.tenant.acceptsOnlineBooking"), "expected an acceptsOnlineBooking check");
+  assert.ok(
+    src.includes("isFeatureEnabled(branch.tenantId, PLAN_LIMIT_CODES.ONLINE_BOOKING)"),
+    "expected the ONLINE_BOOKING plan-limit gate to be checked",
+  );
+});
+
+test("resolvePublicAvailability hard-rejects a foreign/inactive category id instead of silently defaulting its duration", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "lib", "public-availability.ts"), "utf8");
+  assert.match(
+    src,
+    /category\.findMany\(\{\s*where:\s*\{\s*id:\s*\{\s*in:\s*categoryIds\s*\},\s*tenantId:\s*branch\.tenantId,\s*isActive:\s*true,/,
+    "expected category eligibility to be scoped by tenantId + isActive, mirroring reserveAppointmentInTransaction",
+  );
+  assert.ok(
+    src.includes("branches: { some: { id: branch.id } }") && src.includes("branches: { none: {} } }"),
+    "expected the branch-assigned-or-global category eligibility rule to match lib/appointment-reservations.ts",
+  );
+  assert.ok(
+    src.includes("eligible.length !== categoryIds.length"),
+    "expected a hard length-mismatch check (400-equivalent rejection), not a silent DEFAULT_CATEGORY_DURATION_MINUTES fallback",
+  );
+});
+
+test("resolvePublicAvailability dedupes requested category ids before validating/querying them", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "lib", "public-availability.ts"), "utf8");
+  assert.ok(
+    src.includes("[...new Set((input.categoryIds ?? []).filter(Boolean))]"),
+    "expected category ids to be deduplicated via Set before use",
+  );
+});
+
+test("the public availability API route and the public web action both delegate to resolvePublicAvailability, with no duplicated inline logic left behind", () => {
+  const routeSrc = fs.readFileSync(
+    path.join(__dirname, "..", "app", "api", "v1", "app", "branches", "[branchId]", "availability", "route.ts"),
+    "utf8",
+  );
+  const actionsSrc = fs.readFileSync(path.join(__dirname, "..", "app", "_actions", "appointments.ts"), "utf8");
+
+  assert.ok(routeSrc.includes('from "@/lib/public-availability"'), "expected the API route to import the shared service");
+  assert.ok(routeSrc.includes("resolvePublicAvailability("), "expected the API route to call the shared service");
+  assert.ok(
+    !routeSrc.includes("resolveBranchCategoryDurations") && !routeSrc.includes("branchScheduleForDateSelect"),
+    "expected the API route's old duplicated inline resolution logic to be removed, not left dead alongside the new call",
+  );
+
+  assert.ok(actionsSrc.includes('from "@/lib/public-availability"'), "expected getBranchDaySlots to import the shared service");
+  const fnStart = actionsSrc.indexOf("export async function getBranchDaySlots(");
+  const fnEnd = actionsSrc.indexOf("\n}", fnStart);
+  const fnBody = actionsSrc.slice(fnStart, fnEnd);
+  assert.ok(fnBody.includes("resolvePublicAvailability("), "expected getBranchDaySlots to call the shared service");
+  assert.ok(
+    !fnBody.includes("resolveBranchCategoryDurations(") && !fnBody.includes("resolveTakenCapacityIntervals("),
+    "expected getBranchDaySlots's old duplicated inline resolution logic to be removed",
+  );
+});
+
+test("the staff schedule preview (getBranchDaySchedulePreview) is NOT routed through the public availability service", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "app", "_actions", "schedule-preview.ts"), "utf8");
+  assert.ok(
+    !src.includes("public-availability") && !src.includes("resolvePublicAvailability"),
+    "staff preview access must not depend on the public/online-booking-plan-gated path (see that file's own doc comment)",
+  );
+  assert.ok(
+    src.includes("requireUser(") && src.includes('canView(user, "appointments")'),
+    "expected the staff preview to keep its own authenticated/permission-checked access, independent of the public path",
+  );
+});
+
+// --- S17 fix (WEB_SCHEDULING_ASSESSMENT_2026-09-10.md), Phases A & B -------
+// Source-pattern inspection, same approach as the S06/S10/S12 tests above —
+// no live-DB fixture harness for cron routes here either.
+
+test("S17: expire-appointments cron uses a conditional updateMany (not a blind single-row update) and gates its side effects on it actually flipping the row", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "app", "api", "cron", "expire-appointments", "route.ts"),
+    "utf8",
+  );
+  assert.ok(!src.includes("prisma.appointment.update("), "expected the old blind single-row update to be gone");
+  const updateManyIdx = src.indexOf("prisma.appointment.updateMany(");
+  assert.ok(updateManyIdx !== -1, "expected a conditional updateMany for the expiry write");
+  const updateManyCall = src.slice(updateManyIdx, src.indexOf(");", updateManyIdx));
+  assert.ok(updateManyCall.includes('status: "PENDING"'), "expected the updateMany where-clause to re-check status: PENDING");
+  assert.ok(updateManyCall.includes("requestedAt: { lt: now }"), "expected the updateMany where-clause to re-check requestedAt < now");
+  assert.ok(updateManyCall.includes("status: \"CANCELLED\""), "expected the updateMany to still write CANCELLED");
+
+  const countCheckIdx = src.indexOf("result.count !== 1");
+  assert.ok(countCheckIdx !== -1, "expected a result.count check gating the side effects");
+  assert.ok(countCheckIdx > updateManyIdx, "expected the count check to come after the updateMany call");
+  const logAuditIdx = src.indexOf("logAudit(");
+  assert.ok(logAuditIdx > countCheckIdx, "expected the audit log to only run after the count check");
+});
+
+test("S17: appointment-reminders cron claims each row (conditional updateMany, count === 1) BEFORE calling sendSms, never after", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "app", "api", "cron", "appointment-reminders", "route.ts"),
+    "utf8",
+  );
+  const claimIdx = src.indexOf("prisma.appointment.updateMany(");
+  assert.ok(claimIdx !== -1, "expected a conditional updateMany claim call");
+  const claimCall = src.slice(claimIdx, src.indexOf(");", claimIdx));
+  assert.ok(claimCall.includes("reminderSentAt: null"), "expected the claim's where-clause to require reminderSentAt: null");
+  assert.ok(claimCall.includes("reminderSentAt: new Date()"), "expected the claim to set reminderSentAt");
+
+  const gateIdx = src.indexOf("claim.count !== 1");
+  assert.ok(gateIdx !== -1, "expected a claim.count check gating the send");
+  const sendSmsIdx = src.indexOf("sendSms(");
+  assert.ok(sendSmsIdx !== -1, "expected a sendSms call");
+  assert.ok(
+    claimIdx < gateIdx && gateIdx < sendSmsIdx,
+    "expected ordering: claim updateMany, then count check, then sendSms — never send before claiming",
+  );
+
+  // The old unconditional post-loop update ("mark regardless of success/failure")
+  // must be gone — there is now exactly one appointment write per row (the claim).
+  const updateCalls = (src.match(/prisma\.appointment\.(update|updateMany)\(/g) ?? []).length;
+  assert.equal(updateCalls, 1, "expected exactly one appointment write (the atomic claim), no separate post-send mark");
+});
+
+test("S17: shared cron-secret helper (lib/cron-auth.ts) checks only the Authorization header, never a query-string fallback", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "lib", "cron-auth.ts"), "utf8");
+  assert.ok(src.includes("export function verifyCronSecret("), "expected an exported verifyCronSecret helper");
+  assert.ok(src.includes('req.headers.get("authorization")'), "expected it to read the Authorization header");
+  assert.ok(!src.includes("searchParams"), "expected no query-string fallback in the helper");
+  assert.ok(!src.includes('"secret"'), "expected no reference to a ?secret= query param");
+});
+
+test("S17: all cron routes with the identical header-or-querystring pattern now import and use verifyCronSecret, with no local duplicate check left behind", () => {
+  const cronDir = path.join(__dirname, "..", "app", "api", "cron");
+  const migrated = [
+    "appointment-reminders",
+    "expire-appointments",
+    "expire-subscriptions",
+    "notifications-prune",
+    "subscription-reminders",
+  ];
+  for (const name of migrated) {
+    const src = fs.readFileSync(path.join(cronDir, name, "route.ts"), "utf8");
+    assert.ok(src.includes('from "@/lib/cron-auth"'), `expected ${name}/route.ts to import verifyCronSecret`);
+    assert.ok(src.includes("verifyCronSecret("), `expected ${name}/route.ts to call verifyCronSecret`);
+    assert.ok(!src.includes("searchParams.get(\"secret\")"), `expected ${name}/route.ts to have no leftover query-string secret check`);
+    assert.ok(!src.match(/const secret = process\.env\.CRON_SECRET/), `expected ${name}/route.ts to have no leftover local secret check`);
+  }
+});
+
+test("S17: reminder SMS formatting (formatWhen) specifies the explicit Asia/Ulaanbaatar business timezone, not host-local formatting", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "app", "api", "cron", "appointment-reminders", "route.ts"),
+    "utf8",
+  );
+  const fnStart = src.indexOf("function formatWhen(");
+  const fnEnd = src.indexOf("\n}", fnStart);
+  const fnBody = src.slice(fnStart, fnEnd);
+  assert.ok(fnBody.includes('timeZone: "Asia/Ulaanbaatar"'), "expected formatWhen to pass an explicit Asia/Ulaanbaatar timeZone option");
+});
+
+test("S17 Phase B: moveAppointmentInTransaction (customer reschedule) resets reminderSentAt in the same write that changes requestedAt", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "lib", "appointment-reservations.ts"), "utf8");
+  const fnStart = src.indexOf("export async function moveAppointmentInTransaction(");
+  assert.ok(fnStart !== -1, "expected moveAppointmentInTransaction to exist");
+  const fnBody = src.slice(fnStart);
+  const updateIdx = fnBody.indexOf("tx.appointment.update(");
+  assert.ok(updateIdx !== -1, "expected an appointment.update call");
+  const updateCall = fnBody.slice(updateIdx, fnBody.indexOf(");", updateIdx));
+  assert.ok(updateCall.includes("requestedAt: input.requestedAt"), "expected the write to set the new requestedAt");
+  assert.ok(updateCall.includes("reminderSentAt: null"), "expected the SAME write to reset reminderSentAt to null");
+});
+
+test("S17 Phase B: moveLinkedAppointmentOrder (staff linked reschedule) resets reminderSentAt in the same write that changes requestedAt", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "lib", "linked-reschedule.ts"), "utf8");
+  const fnStart = src.indexOf("export async function moveLinkedAppointmentOrder(");
+  assert.ok(fnStart !== -1, "expected moveLinkedAppointmentOrder to exist");
+  const fnBody = src.slice(fnStart);
+  const updateIdx = fnBody.indexOf("tx.appointment.update(");
+  assert.ok(updateIdx !== -1, "expected an appointment.update call");
+  const updateCall = fnBody.slice(updateIdx, fnBody.indexOf("});", updateIdx));
+  assert.ok(updateCall.includes("requestedAt: input.newTime"), "expected the write to set the new requestedAt");
+  assert.ok(updateCall.includes("reminderSentAt: null"), "expected the SAME write to reset reminderSentAt to null");
 });

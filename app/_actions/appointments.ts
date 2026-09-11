@@ -6,27 +6,28 @@ import { requireAccount } from "@/lib/auth/account";
 import { requireUser } from "@/lib/auth";
 import { assertActiveSubscription } from "@/lib/subscription-server";
 import { canCreate, canEdit, workingBranchScopeId } from "@/lib/auth/roles";
+import { canEditOrder } from "@/lib/auth/order-access";
 import { formatWhen, resolveCustomerForAccount } from "@/lib/appointments";
 import { ensureAppointmentFeeCheckout } from "@/lib/appointment-payments";
-import {
-  isSlotAvailable,
-  resolveBranchCategoryDurations,
-  resolveTakenCapacityIntervals,
-} from "@/lib/category-duration";
 import { ensureTenantVehicle } from "@/lib/vehicles";
 import {
-  DEFAULT_SLOT_CAPACITY,
   DEFAULT_SLOT_MINUTES,
   type DayAvailability,
-  buildDaySlots,
 } from "@/lib/appointment-slots";
+import { resolvePublicAvailability } from "@/lib/public-availability";
 import { logAudit } from "@/lib/audit";
 import { customerLabel } from "@/lib/customers";
 import { createNotification, notifyStaff } from "@/lib/notifications";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { isFeatureEnabled } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
-import { reserveAppointment, ReservationError, ReservationConflictError } from "@/lib/appointment-reservations";
+import {
+  reserveAppointment,
+  ReservationError,
+  ReservationConflictError,
+  moveAppointmentInTransaction,
+} from "@/lib/appointment-reservations";
+import { moveLinkedAppointmentOrder, LinkedRescheduleError } from "@/lib/linked-reschedule";
 import { bookingDateKey, bookingDayBounds } from "@/lib/booking-time";
 import { resolveEffectiveSchedule } from "@/lib/branch-effective-schedule";
 import { branchScheduleForDateSelect } from "@/lib/branch-effective-schedule-server";
@@ -63,62 +64,16 @@ export async function getBranchDaySlots(
   // Нэвтрээгүй зочид ч дуудах нийтэд нээлттэй action (booking-form-оос) тул
   // bypass ашиглана — org/[slug]/page.tsx-ийн адил зарчим.
   setBypassContext();
-  if (!branchId || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    return { open: false, reason: "Буруу өдөр.", slots: [] };
+  // S15-S16 (WEB_SCHEDULING_ASSESSMENT_2026-09-10.md): all boundary/eligibility
+  // validation (date-before-Prisma ordering, branch isActive, tenant
+  // suspended/online-booking-plan gates, category tenant/branch/active
+  // scoping) now lives in the shared lib/public-availability.ts service —
+  // see that file's doc comment for what it fixes and why.
+  const result = await resolvePublicAvailability({ branchId, dateStr, categoryIds });
+  if (!result.ok) {
+    return { open: false, reason: result.message, slots: [] };
   }
-  let date: Date;
-  try { date = bookingDayBounds(dateStr).start; } catch {
-    return { open: false, reason: "Буруу өдөр.", slots: [] };
-  }
-  if (!Number.isFinite(date.getTime())) {
-    return { open: false, reason: "Буруу өдөр.", slots: [] };
-  }
-  const branch = await prisma.branch.findUnique({
-    where: { id: branchId },
-    select: {
-      slotMinutes: true,
-      slotCapacity: true,
-      ...branchScheduleForDateSelect(dateStr),
-    },
-  });
-  if (!branch) return { open: false, reason: "Салбар олдсонгүй.", slots: [] };
-  const schedule = resolveEffectiveSchedule({ dateStr, branch });
-  const { open, openTime, closeTime } = schedule;
-
-  const dayStart = date;
-  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60000);
-  const slotMin = branch.slotMinutes ?? DEFAULT_SLOT_MINUTES;
-  const resolved = categoryIds.length > 0
-    ? await resolveBranchCategoryDurations(prisma, branchId, categoryIds)
-    : null;
-  // Захиалга болон хүчин чадал эзэлж буй идэвхтэй ажлыг ижил дүрмээр
-  // тооцно. Ингэснээр picker дээр сул мэт харагдсан цаг reservation дээр
-  // гэнэт мөргөлдөхгүй, linked appointment/order давхар тоологдохгүй.
-  const capacityIntervals = open
-    ? await resolveTakenCapacityIntervals(prisma, branchId, dayStart, dayEnd, slotMin)
-    : [];
-  const taken = capacityIntervals.map((interval) => ({
-    start: new Date(interval.startMs),
-    durationMinutes: Math.max(1, Math.ceil((interval.endMs - interval.startMs) / 60000)),
-  }));
-
-  const availability = buildDaySlots({
-    dateStr,
-    open,
-    openTime,
-    closeTime,
-    slotMinutes: slotMin,
-    capacity: branch.slotCapacity ?? DEFAULT_SLOT_CAPACITY,
-    taken,
-    now: new Date(),
-    appointmentMinutes: resolved?.totalMinutes,
-  });
-  return {
-    ...availability,
-    scheduleSource: schedule.source,
-    scheduleLabel: schedule.label,
-    durationMinutes: resolved?.totalMinutes || slotMin,
-  };
+  return result.availability;
 }
 
 // --- Хэрэглэгчийн тал (Account) -------------------------------------------
@@ -388,54 +343,15 @@ export async function rescheduleAppointmentByAccountCore(
 
   try {
     const { withBookingTransaction } = await import("@/lib/prisma");
-    await withBookingTransaction(appt.tenantId, async (tx) => {
-      const branch = await tx.branch.findFirst({
-        where: { id: appt.branchId, tenantId: appt.tenantId, isActive: true },
-        include: {
-          schedules: true,
-          scheduleExceptions: { where: { date: bookingDayBounds(bookingDateKey(requestedAt)).start } },
-          scheduleSeasons: {
-            where: {
-              isActive: true,
-              startsOn: { lte: bookingDayBounds(bookingDateKey(requestedAt)).start },
-              endsOn: { gt: bookingDayBounds(bookingDateKey(requestedAt)).start },
-            },
-            include: { days: true },
-          },
-        },
-      });
-      if (!branch) throw new ReservationError(403, "Салбар олдсонгүй.");
-
-      const duration =
-        appt.estimatedDurationMinutes ?? branch.slotMinutes ?? DEFAULT_SLOT_MINUTES;
-      const schedule = resolveEffectiveSchedule({
-        dateStr: bookingDateKey(requestedAt),
-        branch,
-      });
-      const slots = buildDaySlots({
-        dateStr: bookingDateKey(requestedAt),
-        open: schedule.open,
-        openTime: schedule.openTime,
-        closeTime: schedule.closeTime,
-        slotMinutes: branch.slotMinutes ?? DEFAULT_SLOT_MINUTES,
-        capacity: branch.slotCapacity ?? DEFAULT_SLOT_CAPACITY,
-        // Слот нээлттэй эсэхийг (цаг, ажиллах өдөр) шалгахад л ашиглана —
-        // багтаамжийг доор `isSlotAvailable`-аар (өөрийгөө хасаж) шалгана.
-        taken: [],
-        now: new Date(),
-      });
-      if (!slots.slots.some((slot) => slot.iso === requestedAt.toISOString() && slot.available)) {
-        throw new ReservationError(400, "Ажиллах цагт багтах сул цаг сонгоно уу.");
-      }
-      if (!(await isSlotAvailable(tx, appt.branchId, requestedAt, duration, appt.id))) {
-        throw new ReservationError(409, "Энэ цаг дүүрсэн байна. Өөр цаг сонгоно уу.");
-      }
-
-      await tx.appointment.update({
-        where: { id: appt.id },
-        data: { requestedAt },
-      });
-    });
+    await withBookingTransaction(appt.tenantId, (tx) =>
+      moveAppointmentInTransaction(tx, {
+        tenantId: appt.tenantId,
+        branchId: appt.branchId,
+        appointmentId: appt.id,
+        requestedAt,
+        allowedStatuses: ["PENDING", "CONFIRMED"],
+      }),
+    );
   } catch (error) {
     if (error instanceof ReservationError) return { ok: false, message: error.message };
     throw error;
@@ -660,8 +576,11 @@ export async function repairAppointmentOrderLinkAction(
       id: appointment.serviceOrderId,
       tenantId: appointment.tenantId,
     },
-    select: { id: true, branchId: true },
+    select: { id: true, branchId: true, assignedToId: true },
   });
+  if (linkedOrder && !canEditOrder(user, linkedOrder)) {
+    return { ok: false, message: "Танд холбогдсон засварын хуудсыг засах эрх байхгүй." };
+  }
   if (linkedOrder && linkedOrder.branchId === appointment.branchId) {
     return {
       ok: false,
@@ -688,7 +607,7 @@ export async function repairAppointmentOrderLinkAction(
         status: { in: ["SCHEDULED", "IN_PROGRESS", "POSTPONED"] },
         appointment: { is: null },
       },
-      select: { id: true, number: true },
+      select: { id: true, number: true, assignedToId: true },
     });
     if (!replacement) {
       return {
@@ -696,6 +615,7 @@ export async function repairAppointmentOrderLinkAction(
         message: "Сонгосон засварын хуудас энэ үйлчлүүлэгч, машин, салбарт тохирохгүй эсвэл аль хэдийн холбогдсон байна.",
       };
     }
+    if (!canEditOrder(user, replacement)) return { ok: false, message: "Танд сонгосон засварын хуудсыг засах эрх байхгүй." };
 
     try {
       await prisma.$transaction(async (tx) => {
@@ -1173,6 +1093,8 @@ export async function rescheduleAppointmentAction(
       requestedAt: true,
       accountId: true,
       estimatedDurationMinutes: true,
+      serviceOrderId: true,
+      serviceOrder: { select: { id: true, status: true } },
     },
   });
   if (!appt) return { ok: false, message: "Цаг захиалга олдсонгүй." };
@@ -1187,6 +1109,58 @@ export async function rescheduleAppointmentAction(
   }
   if (appt.status !== "CONFIRMED") {
     return { ok: false, message: "Зөвхөн баталгаажсан цагийг энд шилжүүлнэ." };
+  }
+
+  // S14: an appointment linked to a still-SCHEDULED order shares its slot
+  // with that order's own scheduledAt/OrderTimeBooking row — writing only
+  // `requestedAt` here would let the two drift apart (the bug this fix
+  // targets). Route this specific, dangerous window through the shared
+  // linked-move command instead of the simple single-entity write below.
+  // Once the order has moved past SCHEDULED (IN_PROGRESS/POSTPONED/
+  // COMPLETED/CANCELLED) it has its own separate time-changing mechanisms
+  // (postpone's return-time flow, etc.) — not touched here, so this action
+  // still refuses in that case rather than silently doing nothing useful.
+  if (appt.serviceOrderId) {
+    if (appt.serviceOrder?.status !== "SCHEDULED") {
+      return {
+        ok: false,
+        message:
+          "Энэ цаг захиалга эхэлсэн/хойшлуулсан ажлын хуудастай холбогдсон тул энд шилжүүлэх боломжгүй. Захиалгын хуудаснаас цагийг нь шилжүүлнэ үү.",
+      };
+    }
+    const linked = await prisma.serviceOrder.findFirst({ where: { id: appt.serviceOrderId, tenantId: appt.tenantId }, select: { assignedToId: true, branchId: true } });
+    if (!linked || !canEditOrder(user, linked)) return { ok: false, message: "Танд холбогдсон засварын хуудсыг засах эрх байхгүй." };
+    try {
+      const moved = await moveLinkedAppointmentOrder({
+        tenantId: appt.tenantId,
+        userId: user.id,
+        orderId: appt.serviceOrderId,
+        newTime: requestedAt,
+        confirmed,
+      });
+      if (appt.accountId) {
+        try {
+          await createNotification({
+            type: "appointment_rescheduled",
+            recipient: { accountId: appt.accountId },
+            input: { appointmentId: moved.appointmentId },
+          });
+        } catch (e) {
+          console.warn("[notify] rescheduleAppointmentAction (linked):", e);
+        }
+      }
+      revalidatePath("/dashboard/appointments");
+      revalidatePath("/dashboard/appointments/calendar");
+      revalidatePath("/dashboard/orders");
+      revalidatePath(`/dashboard/orders/${moved.orderId}`);
+      revalidatePath("/account");
+      return { ok: true, message: "Цаг болон холбогдсон захиалгын огноо шилжлээ." };
+    } catch (e) {
+      if (e instanceof LinkedRescheduleError) {
+        return { ok: false, message: e.message, fieldErrors: e.fieldErrors };
+      }
+      return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+    }
   }
 
   const requestedDateStr = bookingDateKey(requestedAt);

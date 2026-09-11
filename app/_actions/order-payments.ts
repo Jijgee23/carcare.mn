@@ -5,6 +5,8 @@ import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canEdit } from "@/lib/auth/roles";
+import { canEditOrder } from "@/lib/auth/order-access";
+import { workingBranchScopeId } from "@/lib/auth/roles";
 import {
   ORDER_PAYMENT_METHODS,
   ORDER_PAYMENT_METHOD_LABEL,
@@ -30,6 +32,16 @@ function parseAmount(v: string): Prisma.Decimal | null {
   const n = Number.parseFloat(cleaned);
   if (!Number.isFinite(n) || n <= 0) return null;
   return new Prisma.Decimal(cleaned);
+}
+
+async function canEditOrderForUser(user: Awaited<ReturnType<typeof requireUser>>, orderId: string) {
+  const order = await prisma.serviceOrder.findFirst({
+    where: { id: orderId, tenantId: user.tenantId },
+    select: { assignedToId: true, branchId: true },
+  });
+  if (!order) return false;
+  const branch = workingBranchScopeId(user);
+  return (!branch || branch === order.branchId) && canEditOrder(user, order);
 }
 
 /**
@@ -58,6 +70,7 @@ export async function createOrderQPayInvoiceAction(
     include: { customer: { select: { fullName: true, phone: true } } },
   });
   if (!order) return { ok: false, message: "Засварын хуудас олдсонгүй." };
+  if (!(await canEditOrderForUser(user, orderId))) return { ok: false, message: "Танд энэ төлбөрийг засах эрх байхгүй." };
   if (order.paymentStatus === "PAID") {
     return { ok: false, message: "Засварын хуудас бүрэн төлөгдсөн." };
   }
@@ -155,6 +168,7 @@ export async function checkOrderQPayPaymentAction(
     where: { id: paymentId, tenantId: user.tenantId },
   });
   if (!payment) return { ok: false, paid: false, message: "Төлбөр олдсонгүй." };
+  if (!(await canEditOrderForUser(user, payment.orderId))) return { ok: false, paid: false, message: "Танд энэ төлбөрийг засах эрх байхгүй." };
   if (payment.status === "PAID") {
     return { ok: true, paid: true };
   }
@@ -267,6 +281,7 @@ export async function cancelOrderQPayPaymentAction(
     select: { orderId: true, amount: true },
   });
   if (!payment) return;
+  if (!(await canEditOrderForUser(user, payment.orderId))) return;
 
   await prisma.orderPayment.updateMany({
     where: { id: paymentId, tenantId: user.tenantId, status: "PENDING" },
@@ -324,6 +339,7 @@ export async function recordOrderPaymentAction(
     select: { totalAmount: true, paidAmount: true },
   });
   if (!order) return { ok: false, message: "Засварын хуудас олдсонгүй." };
+  if (!(await canEditOrderForUser(user, orderId))) return { ok: false, message: "Танд энэ төлбөрийг засах эрх байхгүй." };
 
   const total = order.totalAmount ?? new Prisma.Decimal(0);
   const prevPaid = order.paidAmount ?? new Prisma.Decimal(0);
@@ -422,6 +438,7 @@ export async function reverseOrderPaymentAction(formData: FormData): Promise<voi
     select: { id: true, orderId: true, amount: true, method: true },
   });
   if (!payment) return;
+  if (!(await canEditOrderForUser(user, payment.orderId))) return;
 
   await prisma.$transaction(async (tx) => {
     const updated = await tx.orderPayment.updateMany({

@@ -3,6 +3,9 @@ import "server-only";
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@/app/generated/prisma/client";
 import { formatWhen } from "@/lib/appointments";
+import { isPendingAppointmentPaymentExpired } from "@/lib/appointment-payment-status";
+import { isSlotAvailable } from "@/lib/category-duration";
+import { DEFAULT_SLOT_MINUTES } from "@/lib/appointment-slots";
 import { notifyStaff } from "@/lib/notifications";
 import { getPlatformSettings } from "@/lib/platform-settings";
 import { prisma } from "@/lib/prisma";
@@ -254,9 +257,13 @@ export async function confirmAppointmentPayment(
       tenantId: true,
       branchId: true,
       accountId: true,
+      status: true,
+      createdAt: true,
+      estimatedDurationMinutes: true,
       feeAmount: true,
       feeCurrency: true,
       feeQpayInvoiceId: true,
+      feeUnderpaidAmount: true,
       requestedAt: true,
       payment: { select: { id: true } },
       account: { select: { name: true, phone: true } },
@@ -277,16 +284,24 @@ export async function confirmAppointmentPayment(
 
   if (!check.paid) {
     if (check.underpaidAmount != null) {
-      // Дутуу төлбөр — Invoice ҮҮСГЭХГҮЙ, зөвхөн Appointment дээр тэмдэглэж
-      // account/ажилтанд харагдуулна (pay хуудас "Дутуу төлсөн: X/Y₮" гэж
-      // харуулна). Дараа нь дутууг нөхөж бүрэн төлвөл цэвэрлэгдэнэ.
-      await prisma.appointment.update({
-        where: { id: appt.id },
-        data: {
-          feeUnderpaidAmount: check.underpaidAmount,
-          feeUnderpaidAt: new Date(),
-        },
+      // S05: a late partial payment must not silently re-mark an expired,
+      // now-taken hold as reserved (isPendingAppointmentPaymentExpired
+      // excludes any row with feeUnderpaidAmount set). Re-check under the
+      // branch lock before writing the underpaid marker.
+      const outcome = await recordLatePaymentUnderLock({ ...appt, accountId: appt.accountId! }, {
+        kind: "underpaid",
+        underpaidAmount: check.underpaidAmount,
       });
+      if (outcome.capacityLost) {
+        return {
+          ok: true,
+          paid: false,
+          underpaidAmount: check.underpaidAmount,
+          message:
+            `Дутуу төлбөр (${check.underpaidAmount.toLocaleString("mn-MN")}₮ / ${expectedAmount.toLocaleString("mn-MN")}₮) хүлээж авсан ч энэ цаг аль хэдийн эзлэгдсэн тул захиалга цуцлагдлаа. ` +
+            "Байгууллагатай холбогдож цаг дахин товлох/буцаан олголт хийлгэнэ үү.",
+        };
+      }
       return {
         ok: true,
         paid: false,
@@ -297,26 +312,15 @@ export async function confirmAppointmentPayment(
     return { ok: true, paid: false };
   }
 
+  let capacityLostOnFullPayment = false;
   try {
-    await prisma.appointmentPayment.create({
-      data: {
-        appointmentId: appt.id,
-        tenantId: appt.tenantId,
-        accountId: appt.accountId,
-        amount: appt.feeAmount,
-        currency: appt.feeCurrency ?? BOOKING_FEE_CURRENCY,
-        status: "PAID",
-        qpayInvoiceId: appt.feeQpayInvoiceId,
-        qpayPaymentId: check.paymentId,
-        paymentType: check.paymentType,
-        paidAt: check.paidAt ?? new Date(),
-      },
+    const outcome = await recordLatePaymentUnderLock({ ...appt, accountId: appt.accountId! }, {
+      kind: "paid",
+      qpayPaymentId: check.paymentId,
+      paymentType: check.paymentType,
+      paidAt: check.paidAt ?? new Date(),
     });
-    // Өмнө нь "дутуу" тэмдэглэгдсэн байсан бол цэвэрлэнэ (одоо бүрэн төлөгдсөн).
-    await prisma.appointment.update({
-      where: { id: appt.id },
-      data: { feeUnderpaidAmount: null, feeUnderpaidAt: null },
-    });
+    capacityLostOnFullPayment = outcome.capacityLost;
   } catch (e) {
     // Unique(appointmentId) зөрчил — webhook + polling зэрэг ирж өөр
     // transaction нь аль хэдийн үүсгэсэн. Idempotent-ээр амжилттай гэж үзнэ.
@@ -333,23 +337,139 @@ export async function confirmAppointmentPayment(
   // Тенант рүү шинэ цаг захиалгын мэдэгдэл — хураамж шаардлагатай захиалгад
   // үүсгэх үед биш, яг ЭНД (төлбөр баталгаажсаны дараа) л явна (харах:
   // createAppointment). Зөвхөн Invoice-ийг ЭНД шинээр үүсгэсэн дуудалт дээр
-  // л илгээнэ (давхар мэдэгдэхгүй, дээрх P2002 замд орохгүй).
-  try {
-    const who = appt.account?.name?.trim() || appt.account?.phone || "Хэрэглэгч";
-    await notifyStaff({
-      type: "appointment_created",
-      tenantId: appt.tenantId,
-      branchId: appt.branchId,
-      input: {
-        appointmentId: appt.id,
-        body: `${who} — ${formatWhen(appt.requestedAt)} цагт цаг захиаллаа.`,
-      },
-    });
-  } catch (e) {
-    console.warn("[notify] confirmAppointmentPayment:", e);
+  // л илгээнэ (давхар мэдэгдэхгүй, дээрх P2002 замд орохгүй). Хугацаа
+  // хэтэрч, цаг аль хэдийн эзлэгдсэн бол (capacityLostOnFullPayment) энэ
+  // мэдэгдлийн оронд "цуцлагдсан" гэсэн doorstop-г доор буцаана.
+  if (!capacityLostOnFullPayment) {
+    try {
+      const who = appt.account?.name?.trim() || appt.account?.phone || "Хэрэглэгч";
+      await notifyStaff({
+        type: "appointment_created",
+        tenantId: appt.tenantId,
+        branchId: appt.branchId,
+        input: {
+          appointmentId: appt.id,
+          body: `${who} — ${formatWhen(appt.requestedAt)} цагт цаг захиаллаа.`,
+        },
+      });
+    } catch (e) {
+      console.warn("[notify] confirmAppointmentPayment:", e);
+    }
   }
 
   revalidatePath("/account");
   revalidatePath("/dashboard/appointments");
+  if (capacityLostOnFullPayment) {
+    return {
+      ok: true,
+      paid: true,
+      message:
+        "Төлбөр хүлээж авсан ч энэ цаг аль хэдийн эзлэгдсэн тул захиалга цуцлагдлаа. " +
+        "Байгууллагатай холбогдож цаг дахин товлох/буцаан олголт хийлгэнэ үү.",
+    };
+  }
   return { ok: true, paid: true };
+}
+
+/**
+ * S05: records money received (AppointmentPayment or the underpaid marker)
+ * under the branch lock, but re-verifies the hold hasn't already expired AND
+ * been given to someone else before letting this appointment count toward
+ * capacity again. `isPendingAppointmentPaymentExpired`/occupancy resolution
+ * (lib/category-duration.ts) treat any PAID or underpaid row as "not
+ * expired" — i.e. reserved — so a late payment after the 15-minute TTL can
+ * otherwise silently revive a slot someone else already took. When capacity
+ * is genuinely gone, the payment is still recorded (money already changed
+ * hands) but the appointment is explicitly CANCELLED instead of being left
+ * to look reserved — staff/support then handles reschedule or refund
+ * manually; this deliberately does not implement that workflow itself.
+ */
+async function recordLatePaymentUnderLock(
+  appt: {
+    id: string;
+    tenantId: string;
+    branchId: string;
+    // Caller has already verified this is non-null before calling in.
+    accountId: string;
+    status: string;
+    createdAt: Date;
+    estimatedDurationMinutes: number | null;
+    requestedAt: Date;
+    feeAmount: Prisma.Decimal | null;
+    feeCurrency: string | null;
+    feeQpayInvoiceId: string | null;
+  },
+  write:
+    | { kind: "underpaid"; underpaidAmount: number }
+    | {
+        kind: "paid";
+        qpayPaymentId: string | null | undefined;
+        paymentType: string | null | undefined;
+        paidAt: Date;
+      },
+): Promise<{ capacityLost: boolean }> {
+  const { withBookingTransaction } = await import("@/lib/prisma");
+  return withBookingTransaction(appt.tenantId, async (tx) => {
+    await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "Branch" WHERE id = ${appt.branchId} AND "tenantId" = ${appt.tenantId} FOR UPDATE
+    `;
+    const now = new Date();
+    const wasExpired =
+      appt.status === "PENDING" &&
+      isPendingAppointmentPaymentExpired(
+        { feeAmount: appt.feeAmount, feeUnderpaidAmount: null, payment: null, createdAt: appt.createdAt },
+        now,
+      );
+    const capacityLost =
+      wasExpired &&
+      !(await isSlotAvailable(
+        tx,
+        appt.branchId,
+        appt.requestedAt,
+        appt.estimatedDurationMinutes ?? DEFAULT_SLOT_MINUTES,
+        appt.id,
+      ));
+
+    if (write.kind === "underpaid") {
+      await tx.appointment.update({
+        where: { id: appt.id },
+        data: capacityLost
+          ? {
+              feeUnderpaidAmount: write.underpaidAmount,
+              feeUnderpaidAt: now,
+              status: "CANCELLED",
+              note: appendCapacityLostNote(),
+            }
+          : { feeUnderpaidAmount: write.underpaidAmount, feeUnderpaidAt: now },
+      });
+      return { capacityLost };
+    }
+
+    if (!appt.feeAmount) return { capacityLost: false };
+    await tx.appointmentPayment.create({
+      data: {
+        appointmentId: appt.id,
+        tenantId: appt.tenantId,
+        accountId: appt.accountId,
+        amount: appt.feeAmount,
+        currency: appt.feeCurrency ?? BOOKING_FEE_CURRENCY,
+        status: "PAID",
+        qpayInvoiceId: appt.feeQpayInvoiceId,
+        qpayPaymentId: write.qpayPaymentId,
+        paymentType: write.paymentType,
+        paidAt: write.paidAt,
+      },
+    });
+    await tx.appointment.update({
+      where: { id: appt.id },
+      data: capacityLost
+        ? { feeUnderpaidAmount: null, feeUnderpaidAt: null, status: "CANCELLED", note: appendCapacityLostNote() }
+        : { feeUnderpaidAmount: null, feeUnderpaidAt: null },
+    });
+    return { capacityLost };
+  });
+
+  function appendCapacityLostNote(): string {
+    return "[Автомат] Хугацаа хэтэрсний дараа төлбөр ирсэн ч энэ цаг өөр захиалгад эзлэгдсэн тул цуцлагдав. Буцаан олголт/дахин товлолт шаардлагатай.";
+  }
 }

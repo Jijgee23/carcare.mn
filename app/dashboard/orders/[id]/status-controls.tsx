@@ -240,43 +240,71 @@ export function StatusControls({
 
   return (
     <div className="flex flex-col gap-2">
+      {/* `absolute` — эцэг картын (page.tsx-ийн `relative` wrapper) баруун
+          дээд буланд байрлана, StatusControls-ийн өөрийн urgtröm биш. */}
       <button
         type="button"
-        onClick={() => setShowActions((v) => !v)}
-        aria-expanded={showActions}
-        className="w-full flex items-center justify-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-white/[0.04] hover:bg-white/[0.08] text-[var(--oc-ink2)] border border-[var(--oc-line)]"
+        title="Статусын түүх"
+        aria-label="Статусын түүх"
+        onClick={() => {
+          setHistoryEntries(undefined);
+          setShowHistoryModal(true);
+        }}
+        className="absolute top-2 right-2 flex items-center justify-center w-8 h-8 rounded-lg transition-colors bg-white/[0.04] hover:bg-white/[0.08] text-[var(--oc-muted3)] hover:text-[var(--oc-ink2)] border border-[var(--oc-line)]"
       >
-        Үйлдэл
         <svg
-          width="14"
-          height="14"
+          width="16"
+          height="16"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
-          className={`transition-transform duration-300 ${showActions ? "rotate-180" : ""}`}
         >
-          <path d="m6 9 6 6 6-6" />
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7v5l3 3" />
         </svg>
       </button>
 
-      {/* grid-template-rows 0fr→1fr trick — JS-ээр өндөр хэмжихгүйгээр
-          гөлгөр "гулсаж гарах/орох" анимаци. Дотор нь давхар wrapper
-          (overflow-hidden) заавал хэрэгтэй, эс бөгөөс шилжилтийн явцад
-          дотоод контент тайрагдахгүй харагдана. */}
-      <div
-        className={`grid transition-[grid-template-rows] duration-300 ease-out ${
-          showActions ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
-        }`}
-      >
-        <div className="overflow-hidden">
-          <div
-            className={`flex flex-col gap-2 pt-2 transition-[opacity,transform] duration-300 ease-out ${
-              showActions ? "translate-y-0 opacity-100" : "-translate-y-2 opacity-0"
-            }`}
+      <div>
+        <button
+          type="button"
+          onClick={() => setShowActions((v) => !v)}
+          aria-expanded={showActions}
+          className={`w-full flex items-center justify-center gap-1.5 text-sm font-medium px-4 py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${showActions ? "rounded-t-xl rounded-b-none" : "rounded-xl"} ${STATUS_BTN_STYLE[currentStatus]}`}
+        >
+          {ORDER_STATUS_LABEL[currentStatus]}
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={`transition-transform duration-300 ${showActions ? "rotate-180" : ""}`}
           >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
+
+        {/* grid-template-rows 0fr→1fr trick — JS-ээр өндөр хэмжихгүйгээр
+            гөлгөр "гулсаж гарах/орох" анимаци. Дотор нь давхар wrapper
+            (overflow-hidden) заавал хэрэгтэй, эс бөгөөс шилжилтийн явцад
+            дотоод контент тайрагдахгүй харагдана. */}
+        <div
+          className={`grid transition-[grid-template-rows] duration-300 ease-out ${
+            showActions ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+          }`}
+        >
+          <div className="overflow-hidden">
+            <div
+              className={`flex flex-col gap-2 p-2 rounded-b-xl bg-white/[0.03] border border-t-0 border-[var(--oc-line)] transition-[opacity,transform] duration-300 ease-out ${
+                showActions ? "translate-y-0 opacity-100" : "-translate-y-2 opacity-0"
+              }`}
+            >
             {transitions.map((next) =>
               // Цуцлах нь буцаах боломжгүй тул эхлээд диалогоор баталгаажуулна.
               next === "CANCELLED" ? (
@@ -342,16 +370,7 @@ export function StatusControls({
           </ConfirmForm>
         ),
             )}
-            <button
-              type="button"
-              onClick={() => {
-                setHistoryEntries(undefined);
-                setShowHistoryModal(true);
-              }}
-              className="w-full text-sm font-medium px-4 py-2 rounded-xl transition-colors bg-white/[0.04] hover:bg-white/[0.08] text-[var(--oc-ink2)] border border-[var(--oc-line)]"
-            >
-              Түүх
-            </button>
+            </div>
           </div>
         </div>
       </div>
@@ -546,7 +565,7 @@ export function StatusControls({
           )
         : null}
 
-      {currentStatus === "IN_PROGRESS" || currentStatus === "POSTPONED" ? (
+      {currentStatus === "IN_PROGRESS" ? (
         <div className="rounded-xl border border-[var(--oc-line)] bg-white/[0.02] p-3">
           <div className="flex items-center justify-between gap-2 mb-1.5">
             <span className="text-xs text-[var(--oc-muted3)]">Дуусах хугацаа</span>

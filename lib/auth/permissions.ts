@@ -42,6 +42,9 @@ type CrudCode = `${ResourceKey}.${ActionKey}`;
 type StandaloneCode =
   | "audit.view"
   | "orders.assignable"
+  | "orders.assign"
+  | "orders.viewOwn"
+  | "orders.editOwn"
   | "services.duration"
   | "orders.itemStatus";
 
@@ -82,6 +85,24 @@ export const PERMISSIONS: readonly PermissionDef[] = [
     code: "orders.assignable",
     label: "Засварын хуудсанд хариуцагч болох",
     description: "Засварын хуудасны хариуцагч болгож сонгох боломжтой ажилтан.",
+    group: "Захиалга",
+  },
+  {
+    code: "orders.assign",
+    label: "Засварын хуудсанд хариуцагч оноох",
+    description: "Засварын хуудсанд ажилтан хариуцагчаар оноох.",
+    group: "Захиалга",
+  },
+  {
+    code: "orders.viewOwn",
+    label: "Засварын хуудсыг — Өөрийнхийг харах",
+    description: "Өөрт хариуцуулсан засварын хуудсыг харах.",
+    group: "Захиалга",
+  },
+  {
+    code: "orders.editOwn",
+    label: "Засварын хуудсыг — Өөрийнхийг засах",
+    description: "Өөрт хариуцуулсан засварын хуудсыг засах.",
     group: "Захиалга",
   },
   {
@@ -140,6 +161,7 @@ export const STANDALONE_PERMISSIONS: ReadonlyArray<PermissionDef> = PERMISSIONS.
   (p) =>
     p.code === "audit.view" ||
     p.code === "orders.assignable" ||
+    p.code === "orders.assign" ||
     p.code === "services.duration" ||
     p.code === "orders.itemStatus",
 );

@@ -13,6 +13,7 @@ import {
   type BranchScheduleActionState,
 } from "@/app/_actions/branch-schedules";
 import { WEEK_DAYS, type Weekday } from "@/lib/branches";
+import { ScheduleImpactPreview } from "@/app/dashboard/branches/_components/schedule-impact-preview";
 
 const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
   const value = `${String(Math.floor(i / 2)).padStart(2, "0")}:${i % 2 === 0 ? "00" : "30"}`;
@@ -52,6 +53,10 @@ export function BranchScheduleManager({ branchId, exceptions, seasons, baseDays 
   );
   const [exceptionOpen, setExceptionOpen] = useState(false);
   const [seasonOpen, setSeasonOpen] = useState(false);
+  // S13 Phase 4: same confirmed=true convention as the branch hours form —
+  // see app/dashboard/branches/branch-form.tsx.
+  const [exceptionImpactConfirmed, setExceptionImpactConfirmed] = useState(false);
+  const [seasonImpactConfirmed, setSeasonImpactConfirmed] = useState(false);
   const [exception, setException] = useState<ExceptionItem>({ id: "", date: "", isOpen: false, openTime: "", closeTime: "", label: "" });
   const [season, setSeason] = useState<SeasonItem>(() => newSeason(baseDays));
 
@@ -78,7 +83,19 @@ export function BranchScheduleManager({ branchId, exceptions, seasons, baseDays 
         {exceptionOpen ? (
           <form action={exceptionAction} className="space-y-4 border-b border-[var(--oc-line)] pb-5 mb-5">
             <input type="hidden" name="exceptionId" value={exception.id} />
+            <input type="hidden" name="confirmed" value={exceptionImpactConfirmed ? "true" : "false"} />
             <FormError message={exceptionState?.message} />
+            {exceptionState?.impact ? (
+              <div className="space-y-2">
+                <ScheduleImpactPreview impact={exceptionState.impact} />
+                {exceptionState.needsConfirm ? (
+                  <label className="flex items-center gap-2 text-sm text-[var(--oc-ink2)]">
+                    <input type="checkbox" checked={exceptionImpactConfirmed} onChange={(e) => setExceptionImpactConfirmed(e.target.checked)} className="accent-[var(--oc-accent)]" />
+                    Дээрх богиносгол(ууд)-ыг хүлээн зөвшөөрч үргэлжлүүлэх
+                  </label>
+                ) : null}
+              </div>
+            ) : null}
             <Field label="Огноо" htmlFor="exception-date" error={exceptionState?.fieldErrors?.date}>
               <input id="exception-date" name="date" type="date" required value={exception.date} onChange={(e) => setException({ ...exception, date: e.target.value })} className="auth-input" />
             </Field>
@@ -100,7 +117,7 @@ export function BranchScheduleManager({ branchId, exceptions, seasons, baseDays 
               <input id="exception-label" name="label" value={exception.label ?? ""} onChange={(e) => setException({ ...exception, label: e.target.value })} className="auth-input" placeholder="Наадам" />
             </Field>
             <div className="flex gap-2">
-              <Btn type="submit" disabled={exceptionPending}>{exceptionPending ? "..." : "Хадгалах"}</Btn>
+              <Btn type="submit" disabled={exceptionPending || Boolean(exceptionState?.needsConfirm && !exceptionImpactConfirmed)}>{exceptionPending ? "..." : "Хадгалах"}</Btn>
               <Btn type="button" variant="ghost" onClick={() => setExceptionOpen(false)}>Болих</Btn>
             </div>
           </form>
@@ -134,7 +151,19 @@ export function BranchScheduleManager({ branchId, exceptions, seasons, baseDays 
         {seasonOpen ? (
           <form action={seasonAction} className="space-y-4 border-b border-[var(--oc-line)] pb-5 mb-5">
             <input type="hidden" name="seasonId" value={season.id} />
+            <input type="hidden" name="confirmed" value={seasonImpactConfirmed ? "true" : "false"} />
             <FormError message={seasonState?.message} />
+            {seasonState?.impact ? (
+              <div className="space-y-2">
+                <ScheduleImpactPreview impact={seasonState.impact} />
+                {seasonState.needsConfirm ? (
+                  <label className="flex items-center gap-2 text-sm text-[var(--oc-ink2)]">
+                    <input type="checkbox" checked={seasonImpactConfirmed} onChange={(e) => setSeasonImpactConfirmed(e.target.checked)} className="accent-[var(--oc-accent)]" />
+                    Дээрх богиносгол(ууд)-ыг хүлээн зөвшөөрч үргэлжлүүлэх
+                  </label>
+                ) : null}
+              </div>
+            ) : null}
             <Field label="Нэр" htmlFor="season-name" error={seasonState?.fieldErrors?.name}>
               <input id="season-name" name="name" required value={season.name} onChange={(e) => setSeason({ ...season, name: e.target.value })} className="auth-input" placeholder="Зуны цаг" />
             </Field>
@@ -156,7 +185,7 @@ export function BranchScheduleManager({ branchId, exceptions, seasons, baseDays 
                 </div>;
               })}
             </div>
-            <div className="flex gap-2"><Btn type="submit" disabled={seasonPending}>{seasonPending ? "..." : "Хадгалах"}</Btn><Btn type="button" variant="ghost" onClick={() => setSeasonOpen(false)}>Болих</Btn></div>
+            <div className="flex gap-2"><Btn type="submit" disabled={seasonPending || Boolean(seasonState?.needsConfirm && !seasonImpactConfirmed)}>{seasonPending ? "..." : "Хадгалах"}</Btn><Btn type="button" variant="ghost" onClick={() => setSeasonOpen(false)}>Болих</Btn></div>
           </form>
         ) : null}
         {seasons.length === 0 ? <p className="text-sm text-[var(--oc-muted3)]">Улирлын хуваарь тохируулаагүй.</p> : (

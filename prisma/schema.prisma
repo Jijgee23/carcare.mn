@@ -799,14 +799,23 @@ model OrderTimeBooking {
   branchId String
   branch   Branch       @relation(fields: [branchId], references: [id], onDelete: Restrict)
 
-  kind     OrderBookingKind
-  startAt  DateTime
-  // NULL = дуусах хугацаа тодорхойгүй (одоогийн "тооцоолол алга" төлөвтэй адил)
-  endAt    DateTime?
+  kind    OrderBookingKind
+  startAt DateTime
+  // NULL = дуусах хугацаа тодорхойгүй (одоогийн "тооцоолол алга" төлөвтэй адил).
+  // S13 `applyScheduleClips` may shorten this to fit a new closing time —
+  // see `originalDurationMinutes` for the value as originally planned.
+  endAt   DateTime?
+  // S13: minutes between startAt and the originally planned endAt, set once
+  // when this row is created (SCHEDULED) and never rewritten afterward — lets
+  // a later clip of `endAt` be distinguished from what was first promised.
+  // null for rows created before this column existed, or with no planned end.
+  originalDurationMinutes Int?
   // Энэ мөр хэзээ идэвхгүй болсныг тэмдэглэнэ (түр зогсоосон/дуусгасан/
   // цуцалсан) — NULL = хараахан нээлттэй, тухайн захиалгын одоогийн бодит
-  // эзэмшил. Нэг захиалгад нэгэн зэрэг нэгээс олон нээлттэй мөр байх ёсгүй
-  // (аппликэйшн түвшинд хамгаалагдана, DB constraint-гүй).
+  // эзэмшил. Нэг захиалгад нэгэн зэрэг нэгээс олон нээлттэй мөр байх ёсгүй —
+  // DB-д partial unique index-ээр (orderId, kind) WHERE closedAt IS NULL
+  // хэлбэрээр хамгаалагдана (харах: migrations/20260911011720_order_time_booking_open_unique),
+  // Prisma schema DSL нөхцөлт unique илэрхийлэх боломжгүй тул raw SQL-д байна.
   closedAt DateTime?
 
   createdById String?
@@ -1258,12 +1267,18 @@ enum AppointmentStatus {
 }
 
 model Appointment {
-  id                       String            @id @default(cuid())
-  status                   AppointmentStatus @default(PENDING)
-  requestedAt              DateTime // хэрэглэгчийн хүссэн цаг
-  // Booking-time duration snapshot; later category edits must not rewrite this value.
+  id          String            @id @default(cuid())
+  status      AppointmentStatus @default(PENDING)
+  requestedAt DateTime // хэрэглэгчийн хүссэн цаг
+  // Effective reserved duration — hours/exception/season changes (S13
+  // `applyScheduleClips`) may shorten THIS value to fit a new closing time.
   // null preserves unknown historical estimates and supports older application writers.
   estimatedDurationMinutes Int?
+  // S13: the original booking-time duration snapshot, set once at creation and
+  // NEVER rewritten by clipping — lets staff see what was originally promised
+  // even after a later hours change shortened `estimatedDurationMinutes`.
+  // null for rows created before this column existed.
+  originalEstimatedDurationMinutes Int?
   // Actual customer arrival/check-in; does not mean work has started.
   arrivedAt                DateTime?
   note                     String?

@@ -135,3 +135,93 @@ export function resolveOrderEffectiveInterval(
 ): ResolvedOrderInterval {
   return resolveOrderIntervals(o, bookings).current;
 }
+
+/**
+ * S11 (WEEKD_SCHEDULING_ASSESSMENT_2026-09-10.md): historical query primitive
+ * for "what actually happened on this past day/range" — the counterpart to
+ * resolveOrderIntervals, which collapses an order's bookings down to a single
+ * "current" row and discards every closed row except the latest. That
+ * collapsing is correct for "what does this order occupy right now" but wrong
+ * for history: a Monday-worked, Tuesday-released, Wednesday-resumed order
+ * must still show its real Monday session when Monday's history is queried,
+ * even though Monday's row is neither the open ACTIVE row nor the most recent
+ * closed row by the time Wednesday exists.
+ *
+ * Returns EVERY booking row (open or closed) whose real interval
+ * `[startAt, endAt ?? now)` intersects `[rangeStart, rangeEnd)` — never
+ * collapsed to one primary row — each resolved to its actual start/end and
+ * tagged `wasWorked`.
+ *
+ * Classification heuristic (a proxy, not a certainty — see
+ * WEB_SCHEDULING_ASSESSMENT_2026-09-10.md S11-S12): a row is "performed work"
+ * (`wasWorked: true`) iff its `kind` is `"ACTIVE"` — meaning the order was
+ * physically started at some point during that row's interval. A `kind:
+ * "SCHEDULED"` row is treated as a reservation that was cancelled/postponed
+ * away without work ever happening (`wasWorked: false`), regardless of
+ * whether the *order* later had work done under a different (later) booking
+ * row. This can't be fully certain from OrderTimeBooking alone — e.g. it
+ * can't distinguish "cancelled outright" from "postponed and resumed later"
+ * for a given SCHEDULED row.
+ *
+ * S12 follow-up (this pass): when the caller has the order's
+ * `OrderStatusChange` timeline on hand (populated on every transition as of
+ * S12 — start/resume/complete/cancel/postpone), pass it via
+ * `statusChanges` and it is used as ground truth instead of the `kind`
+ * proxy: a session is `wasWorked: true` iff the timeline records a
+ * transition `toStatus: "IN_PROGRESS"` with `createdAt` inside
+ * `[session.start, session.end]` (inclusive of both bounds — a transition
+ * landing exactly on the row's own startAt/endAt edge still counts, since
+ * that's precisely when a booking row is opened/closed by the same status
+ * change in practice). If `statusChanges` is omitted or empty — the order
+ * predates S12, or for any other reason has no recorded transitions — this
+ * silently falls back to the `kind === "ACTIVE"` proxy above; it never
+ * throws and never regresses pre-S12 accuracy.
+ */
+export type HistoricalOrderSession = {
+  kind: "SCHEDULED" | "ACTIVE";
+  start: Date;
+  end: Date;
+  wasWorked: boolean;
+};
+
+export type OrderStatusChangeLike = {
+  fromStatus: string | null;
+  toStatus: string;
+  createdAt: Date;
+};
+
+function wasWorkedFromStatusChanges(
+  start: Date,
+  end: Date,
+  statusChanges: OrderStatusChangeLike[],
+): boolean {
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+  return statusChanges.some(
+    (c) =>
+      c.toStatus === "IN_PROGRESS" &&
+      c.createdAt.getTime() >= startMs &&
+      c.createdAt.getTime() <= endMs,
+  );
+}
+
+export function resolveHistoricalOrderSessions(
+  bookings: OrderTimeBookingLike[],
+  rangeStart: Date,
+  rangeEnd: Date,
+  now: Date = new Date(),
+  statusChanges: OrderStatusChangeLike[] = [],
+): HistoricalOrderSession[] {
+  return bookings
+    .map((b) => {
+      const start = b.startAt;
+      const end = b.endAt ?? now;
+      const wasWorked =
+        statusChanges.length > 0
+          ? wasWorkedFromStatusChanges(start, end, statusChanges)
+          : b.kind === "ACTIVE";
+      return { kind: b.kind, start, end, wasWorked };
+    })
+    .filter((s) => s.start.getTime() < rangeEnd.getTime() && s.end.getTime() > rangeStart.getTime())
+    .sort((a, b) => a.start.getTime() - b.start.getTime());
+}

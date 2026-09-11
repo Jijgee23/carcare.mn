@@ -13,6 +13,7 @@ import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { customerLabel } from "@/lib/customers";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canView, workingBranchScopeId } from "@/lib/auth/roles";
+import { orderReadWhere } from "@/lib/auth/order-access";
 import { redirect } from "next/navigation";
 import {
   ITEM_KIND_BADGE,
@@ -78,6 +79,7 @@ export default async function OrdersPage({
 
   const where: Prisma.ServiceOrderWhereInput = {
     tenantId: user.tenantId,
+    ...orderReadWhere(user),
     ...(status ? { status } : {}),
   };
   if (scopeBranchId) where.branchId = scopeBranchId;
@@ -134,6 +136,7 @@ export default async function OrdersPage({
       by: ["status"],
       where: {
         tenantId: user.tenantId,
+        ...orderReadWhere(user),
         ...(scopeBranchId ? { branchId: scopeBranchId } : {}),
       },
       _count: { _all: true },
@@ -147,7 +150,7 @@ export default async function OrdersPage({
       select: { id: true, name: true },
     }),
     prisma.customer.findMany({
-      where: { tenantId: user.tenantId },
+      where: { tenantId: user.tenantId, serviceOrders: { some: { ...orderReadWhere(user) } } },
       orderBy: { fullName: "asc" },
       select: { id: true, fullName: true, phone: true },
     }),

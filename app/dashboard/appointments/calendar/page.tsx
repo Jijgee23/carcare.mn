@@ -19,6 +19,7 @@ import {
   loadBranchSchedule,
   loadBranchAttentionOrders,
   loadBranchAttentionAppointments,
+  loadBranchScheduleHistory,
 } from "@/lib/branch-schedule-loader";
 import { branchHoursForDate } from "@/lib/branches";
 import { branchScheduleDisplaySelect } from "@/lib/branch-effective-schedule-server";
@@ -112,9 +113,14 @@ export default async function AppointmentsCalendarPage({
     select: { id: true, name: true },
   });
 
-  // Өдрийн хуваарь салбар тус бүрээр тооцоологддог тул сонголт заавал хэрэгтэй —
-  // тодорхой сонгоогүй бол эхний идэвхтэй салбарыг анхны утга болгоно.
-  const dayBranchId = branchId || branches[0]?.id || "";
+  // Хоцорсон ажлууд/Тэр өдрийн түүх зэрэг нэг салбарын хуваарь шаарддаг
+  // харагдацуудад ашиглах "нэг сонгогдсон салбар" — тодорхой сонгосон бол тэр,
+  // эсвэл идэвхтэй салбар яг ганц бол тэрийг л ашиглана. Хэд хэдэн салбартай
+  // тохиолдолд ямар нэг салбарыг санаачлагагүйгээр сонгож (жишээ нь эхнийх)
+  // "Бүх салбар" мэт харагдуулж байгаад цөөрүүлж харуулах эрсдэлтэй тул энд
+  // санаатайгаар хоосон үлдээнэ — Өдрийн үндсэн хуваарь доор (isMultiBranchDay)
+  // үүнээс үл хамааран бүх салбараар тусад нь ачаалдаг.
+  const dayBranchId = branchId || (branches.length === 1 ? branches[0].id : "");
 
   const appointments =
     cal.interval === "day"
@@ -131,15 +137,43 @@ export default async function AppointmentsCalendarPage({
             account: { select: { name: true, phone: true } },
             customer: { select: { fullName: true, phone: true } },
             branch: { select: { name: true } },
+            // S14: this week/month view lists appointments directly (not the
+            // interval-projected day schedule, which already reads the
+            // order-derived time once linked) — without this it kept showing
+            // only requestedAt even after the linked order progressed past
+            // SCHEDULED (e.g. a POSTPONED return time), diverging from the
+            // day view. Mirrors the dashboard list page's same fix.
+            serviceOrder: {
+              select: {
+                status: true,
+                scheduledAt: true,
+                timeBookings: {
+                  where: { kind: "SCHEDULED", closedAt: null },
+                  select: { startAt: true },
+                  take: 1,
+                },
+              },
+            },
           },
         });
 
   const isAttention = sp.view === "attention";
-  const isDay = cal.interval === "day" && !isAttention;
+  // History mode only makes sense for a single past day — a future/today day
+  // has no "what actually happened" to show yet, so requesting it on such a
+  // day is a no-op that falls back to the normal live day view.
+  const isPastDay = cal.interval === "day" && cal.days[0].key < cal.todayKey;
+  const isHistory = sp.view === "history" && cal.interval === "day" && isPastDay;
+  const isDay = cal.interval === "day" && !isAttention && !isHistory;
   const isGrid = isDay && sp.layout !== "list";
 
+  // Өдөр харагдацад тодорхой салбар сонгоогүй, харин идэвхтэй хэд хэдэн салбар
+  // байгаа тохиолдолд — өмнө нь дур мэдэн эхний салбарыг сонгоод "Бүх салбар"
+  // гэж харуулсан хэвээрээ үлдэж, бусад салбарын ажлыг нуудаг байсан алдааг
+  // засаж, салбар тус бүрийг тусад нь (Promise.all-аар зэрэг) ачаалж харуулна.
+  const isMultiBranchDay = isDay && !branchId && branches.length > 1;
+
   const daySchedule =
-    isDay && dayBranchId
+    isDay && !isMultiBranchDay && dayBranchId
       ? await loadBranchSchedule({
           tenantId: user.tenantId,
           branchId: dayBranchId,
@@ -147,11 +181,33 @@ export default async function AppointmentsCalendarPage({
         })
       : null;
 
+  const multiDaySchedules = isMultiBranchDay
+    ? await Promise.all(
+        branches.map((b) =>
+          loadBranchSchedule({
+            tenantId: user.tenantId,
+            branchId: b.id,
+            dateStr: cal.days[0].key,
+          }),
+        ),
+      )
+    : null;
+
+  const dayHistory =
+    isHistory && dayBranchId
+      ? await loadBranchScheduleHistory({
+          tenantId: user.tenantId,
+          branchId: dayBranchId,
+          rangeStart: cal.rangeStart,
+          rangeEnd: cal.rangeEnd,
+        })
+      : null;
+
 
   // Grid харагдацын цагийн тэнхлэгийг салбарын тухайн өдрийн ажиллах цагаар
   // хязгаарлана — тодорхойгүй бол ердийн ажлын цонх руу буцна (доор).
   const dayBranchHours =
-    isGrid && dayBranchId
+    isGrid && !isMultiBranchDay && dayBranchId
       ? await prisma.branch.findFirst({
           where: { id: dayBranchId, tenantId: user.tenantId },
           select: {
@@ -159,6 +215,19 @@ export default async function AppointmentsCalendarPage({
           },
         })
       : null;
+
+  const multiDayBranchHours = isGrid && isMultiBranchDay
+    ? await Promise.all(
+        branches.map((b) =>
+          prisma.branch.findFirst({
+            where: { id: b.id, tenantId: user.tenantId },
+            select: {
+              ...branchScheduleDisplaySelect(),
+            },
+          }),
+        ),
+      )
+    : null;
 
   // Идэвхтэй харагдац эсэхээс үл хамааран товчлуурын дэргэдэх тоог үзүүлэхийн
   // тулд байнга (салбар сонгогдсон бол) ачаална.
@@ -241,7 +310,9 @@ export default async function AppointmentsCalendarPage({
         <div>
           <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">Цаг захиалгын календарь</h1>
           <p className="text-sm text-[var(--oc-muted3)] mt-1">
-            Аль салбарт, хэзээ цаг захиалагдсан, аль нь сул болохыг харна.
+            {cal.interval === "day"
+              ? "Аль салбарт, хэзээ цаг захиалагдсан, аль нь сул болохыг харна."
+              : "Энэ хугацаанд ирсэн цаг захиалгуудыг харна — захиалгагүй (walk-in) ажил болон хойшлуулсан ажлын буцах цаг эндэхгүй тул сул мэт харагдах өдөр бодит дээрээ завгүй байж болно. Бодит сул/завгүй байдлыг өдрийн харагдацаас шалгана уу."}
           </p>
         </div>
         <BtnLink href="/dashboard/appointments" variant="ghost">
@@ -324,6 +395,19 @@ export default async function AppointmentsCalendarPage({
           ) : null}
         </Link>
 
+        {isPastDay ? (
+          <Link
+            href={hrefWith({ view: "history" })}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm transition-colors ${
+              isHistory
+                ? "border-sky-500/50 bg-sky-500/20 text-sky-300 font-medium"
+                : "border-sky-500/25 bg-sky-500/10 text-sky-300 hover:border-sky-500/40 hover:bg-sky-500/15"
+            }`}
+          >
+            Тэр өдрийн түүх
+          </Link>
+        ) : null}
+
         {isDay ? (
           <div className="flex rounded-lg border border-[var(--oc-line)] overflow-hidden">
             <Link
@@ -366,6 +450,28 @@ export default async function AppointmentsCalendarPage({
           expiredAppointments={attentionAppointments}
           branchName={branches.find((b) => b.id === dayBranchId)?.name ?? null}
         />
+      ) : isHistory ? (
+        <HistoryView
+          data={dayHistory}
+          branchName={branches.find((b) => b.id === dayBranchId)?.name ?? null}
+        />
+      ) : cal.interval === "day" && isGrid && isMultiBranchDay ? (
+        <div className="flex flex-col gap-6">
+          {branches.map((b, i) => (
+            <DayScheduleGrid
+              key={b.id}
+              schedule={multiDaySchedules?.[i] ?? null}
+              branchHours={multiDayBranchHours?.[i] ?? null}
+              dateKey={cal.days[0].key}
+              branchId={b.id}
+              branchName={b.name}
+              canRespondAppointments={canRespondAppointments}
+              canEditOrders={canEditOrders}
+              canChangeItemStatus={canChangeItemStatus}
+              returnTo={returnTo}
+            />
+          ))}
+        </div>
       ) : cal.interval === "day" && isGrid ? (
         <DayScheduleGrid
           schedule={daySchedule}
@@ -378,6 +484,21 @@ export default async function AppointmentsCalendarPage({
           canChangeItemStatus={canChangeItemStatus}
           returnTo={returnTo}
         />
+      ) : cal.interval === "day" && isMultiBranchDay ? (
+        <div className="flex flex-col gap-6">
+          {branches.map((b, i) => (
+            <DaySchedule
+              key={b.id}
+              schedule={multiDaySchedules?.[i] ?? null}
+              branchName={b.name}
+              attentionHref={hrefWith({ view: "attention" })}
+              canRespondAppointments={canRespondAppointments}
+              canEditOrders={canEditOrders}
+              canChangeItemStatus={canChangeItemStatus}
+              returnTo={returnTo}
+            />
+          ))}
+        </div>
       ) : cal.interval === "day" ? (
         <DaySchedule
           schedule={daySchedule}
@@ -437,6 +558,16 @@ export default async function AppointmentsCalendarPage({
                       <div className="text-xs text-[var(--oc-muted2)] truncate mt-0.5">
                         {apptName(a)}
                       </div>
+                      {a.serviceOrder && a.serviceOrder.status !== "SCHEDULED" ? (
+                        <div className="text-[10px] text-[var(--oc-muted4)] truncate">
+                          {a.serviceOrder.status === "POSTPONED" &&
+                          a.serviceOrder.timeBookings[0]?.startAt
+                            ? `Үргэлжлэх: ${fmtTime(a.serviceOrder.timeBookings[0].startAt)}`
+                            : a.serviceOrder.scheduledAt
+                              ? `Товлосон: ${fmtTime(a.serviceOrder.scheduledAt)}`
+                              : null}
+                        </div>
+                      ) : null}
                       {!branchId ? (
                         <div className="text-[10px] text-[var(--oc-muted4)] truncate">
                           {a.branch.name}
@@ -446,7 +577,7 @@ export default async function AppointmentsCalendarPage({
                   ))
                 ) : (
                   <div className="flex-1 flex items-center justify-center text-xs text-[var(--oc-muted4)]">
-                    Сул
+                    Захиалга алга
                   </div>
                 )}
               </Link>
@@ -692,7 +823,7 @@ function DaySchedule({
               return (
                 <div
                   key={`${row.source}-${row.id}`}
-                  className="px-3 py-2.5 flex flex-wrap items-center gap-3"
+                  className="relative px-3 py-2.5 flex flex-wrap items-center gap-3"
                 >
                   <span className="font-plex-mono text-xs font-semibold text-[var(--oc-ink2)] tabular-nums w-32 shrink-0">
                     {continuesFromPreviousDay ? "Өмнөх өдөр → " : null}
@@ -903,6 +1034,110 @@ function DayScheduleGrid({
         branchId={branchId}
         returnTo={returnTo}
       />
+    </div>
+  );
+}
+
+type DayHistoryData = Awaited<ReturnType<typeof loadBranchScheduleHistory>>;
+
+// S11: read-only view of what actually happened on a past day — every real
+// OrderTimeBooking session intersecting that day (open or closed), not the
+// single "current" row loadBranchSchedule's live pipeline collapses down to.
+// No status-change controls here: this is history, not a page for acting on
+// the present.
+function HistoryView({
+  data,
+  branchName,
+}: {
+  data: DayHistoryData | null;
+  branchName: string | null;
+}) {
+  if (!data) {
+    return (
+      <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-6 text-sm text-[var(--oc-muted3)]">
+        Түүхийг харахын тулд эхлээд салбар сонгоно уу.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {branchName ? (
+        <div className="text-sm text-[var(--oc-muted3)]">
+          Салбар: <span className="text-[var(--oc-ink2)] font-medium">{branchName}</span>
+        </div>
+      ) : null}
+      <p className="text-sm text-[var(--oc-muted3)]">
+        Тэр өдөр бодитоор болсон бүх ажлын сессүүд — одоогийн байдал биш,
+        байсан цаг захиргаа. &ldquo;Ажилласан&rdquo; тэмдэглэгээ нь тухайн
+        сесс ямар нэг байдлаар ажил эхэлж (ACTIVE) байсныг илэрхийлнэ;
+        &ldquo;Цуцлагдсан/эхлээгүй&rdquo; нь ажил эхлэхээс өмнө хугацаа
+        хаагдсан (жишээ нь өөр өдөр рүү шилжсэн) захиалгыг илэрхийлнэ — энэ нь
+        тодорхой байдлыг батлах биш, ойролцоо тооцоолол.
+      </p>
+
+      <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden">
+        {data.sessions.length === 0 ? (
+          <div className="p-6 text-center text-sm text-[var(--oc-muted4)]">
+            Энэ өдөр түүхэн бичлэг алга.
+          </div>
+        ) : (
+          <div className="divide-y divide-[var(--oc-line)]">
+            {data.sessions.map((session, i) => {
+              const order = session.order;
+              const name = order
+                ? (() => {
+                    const vehicle = order.vehicle
+                      ? `${order.vehicle.plate} · ${order.vehicle.make} ${order.vehicle.model}`
+                      : null;
+                    const customer = customerLabel({
+                      fullName: order.customer?.fullName,
+                      phone: order.customer?.phone,
+                    });
+                    return vehicle ? `${customer} — ${vehicle}` : customer;
+                  })()
+                : session.orderId;
+              return (
+                <div
+                  key={`${session.orderId}-${i}`}
+                  className="px-3 py-2.5 flex flex-wrap items-center gap-3"
+                >
+                  <span className="font-plex-mono text-xs font-semibold text-[var(--oc-ink2)] tabular-nums w-32 shrink-0">
+                    {fmtUbTime(session.start)}–{fmtUbTime(session.end)}
+                  </span>
+                  {order ? (
+                    <span
+                      className={`font-plex-mono text-[10px] px-1.5 py-0.5 rounded-full ${ORDER_STATUS_BADGE[order.status]} shrink-0`}
+                    >
+                      {ORDER_STATUS_LABEL[order.status]}
+                    </span>
+                  ) : null}
+                  <span
+                    className={`font-plex-mono text-[10px] px-1.5 py-0.5 rounded-full border shrink-0 ${
+                      session.wasWorked
+                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                        : "bg-[var(--oc-panel2)] text-[var(--oc-muted3)] border-[var(--oc-line)]"
+                    }`}
+                  >
+                    {session.wasWorked ? "Ажилласан" : "Цуцлагдсан/эхлээгүй"}
+                  </span>
+                  <span className="text-sm text-[var(--oc-ink2)] truncate flex-1">
+                    {name}
+                  </span>
+                  {order ? (
+                    <Link
+                      href={`/dashboard/orders/${order.id}`}
+                      className="font-plex-mono text-[10px] px-2 py-1 rounded-full border border-[var(--oc-line)] bg-[var(--oc-panel2)] text-[var(--oc-muted3)] hover:border-[var(--oc-line2)] hover:bg-white/[0.05] transition-colors shrink-0"
+                    >
+                      Захиалга руу →
+                    </Link>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

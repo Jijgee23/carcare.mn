@@ -2,6 +2,7 @@ import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
 import { logAudit } from "@/lib/audit";
 import { branchScopeId } from "@/lib/auth/roles";
+import { canEditOrder, canViewOrder } from "@/lib/auth/order-access";
 import { prisma } from "@/lib/prisma";
 import { TenantQPayService } from "@/lib/qpay-tenant";
 
@@ -50,9 +51,10 @@ export async function GET(
       tenantId: auth.user.tenantId,
       ...(scope ? { branchId: scope } : {}),
     },
-    select: { id: true },
+    select: { id: true, assignedToId: true },
   });
   if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
+  if (!canViewOrder(auth.user, order)) return jsonError(403, "Танд энэ засварын хуудсыг харах эрх байхгүй.");
 
   const [qpayConfig, pending] = await Promise.all([
     prisma.tenantQPaySettings.findUnique({
@@ -114,6 +116,7 @@ export async function POST(
     include: { customer: { select: { fullName: true, phone: true } } },
   });
   if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
+  if (!canEditOrder(auth.user, order)) return jsonError(403, "Танд энэ засварын хуудсыг засах эрх байхгүй.");
   if (order.paymentStatus === "PAID") {
     return jsonError(422, "Засварын хуудас бүрэн төлөгдсөн.");
   }
@@ -231,6 +234,9 @@ export async function DELETE(
   if (denied) return denied;
 
   const { id } = await ctx.params;
+  const order = await prisma.serviceOrder.findFirst({ where: { id, tenantId: auth.user.tenantId, ...(branchScopeId(auth.user) ? { branchId: branchScopeId(auth.user)! } : {}) }, select: { assignedToId: true } });
+  if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
+  if (!canEditOrder(auth.user, order)) return jsonError(403, "Танд энэ төлбөрийг засах эрх байхгүй.");
 
   let body: unknown;
   try {

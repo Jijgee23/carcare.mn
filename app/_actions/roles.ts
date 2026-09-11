@@ -30,6 +30,17 @@ function getCheckedPermissions(fd: FormData): string[] {
   return out;
 }
 
+function validateOrderScopes(permissions: string[], errors: Record<string, string>) {
+  const view = permissions.includes("orders.view") || permissions.includes("orders.viewOwn");
+  const edit = permissions.includes("orders.edit") || permissions.includes("orders.editOwn");
+  if (edit && !view) {
+    errors.orderScopes = "Засах эрх олгохын өмнө засварын хуудсыг харах хүрээг сонгоно уу.";
+  }
+  if (permissions.includes("orders.edit") && !permissions.includes("orders.view")) {
+    errors.orderScopes = "Салбарын засах эрхэд Салбарын харах эрх шаардлагатай.";
+  }
+}
+
 async function authorize() {
   const user = await requireUser();
   // Зөвхөн тенант админ (OWNER) Role-ийн жагсаалтыг удирдана. Бусдад өөрсдийн
@@ -62,6 +73,7 @@ function validate(fd: FormData): {
   if (permissions.length === 0) {
     errors.permissions = "Хамгийн багадаа нэг эрх сонгоно уу.";
   }
+  validateOrderScopes(permissions, errors);
 
   return {
     data: {

@@ -9,12 +9,15 @@ import { bookingDayBounds } from "@/lib/booking-time";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { resolveEffectiveSchedule } from "@/lib/branch-effective-schedule";
-import { applyScheduleClips, inspectScheduleImpact } from "@/lib/branch-schedule-impact";
+import { applyScheduleClips, inspectScheduleImpact, type ScheduleImpact } from "@/lib/branch-schedule-impact";
 
 export type BranchScheduleActionState = {
   ok: boolean;
   message?: string;
   fieldErrors?: Record<string, string>;
+  // S13 Phase 4 — see app/dashboard/branches/_components/schedule-impact-preview.tsx.
+  impact?: ScheduleImpact;
+  needsConfirm?: boolean;
 } | null;
 
 function s(fd: FormData, key: string): string {
@@ -82,9 +85,14 @@ export async function upsertBranchScheduleExceptionAction(
   if (label.length > 120) errors.label = "Тайлбар 120 тэмдэгтээс урт байж болохгүй.";
   const times = parseOpenTimes(formData, "exception", errors);
   if (Object.keys(errors).length > 0) return { ok: false, fieldErrors: errors };
+  const confirmed = s(formData, "confirmed") === "true";
 
   try {
     const result = await prisma.$transaction(async (tx) => {
+      // S13: same branch-row lock as lib/appointment-reservations.ts, so the
+      // overlap check + impact inspection + save serialize against concurrent
+      // bookings on this branch.
+      await tx.$queryRaw`SELECT id FROM "Branch" WHERE id = ${branchId} AND "tenantId" = ${auth.branch.tenantId} FOR UPDATE`;
       const current = await tx.branch.findFirst({
         where: { id: branchId, tenantId: auth.branch.tenantId },
         include: { schedules: true, scheduleExceptions: true, scheduleSeasons: { include: { days: true } } },
@@ -129,7 +137,20 @@ export async function upsertBranchScheduleExceptionAction(
         fallbackDurationMinutes: current.slotMinutes ?? 30,
       });
       if (impact.erased.length > 0) {
-        throw new Error(`Энэ өөрчлөлт ${impact.erased.length} захиалгыг бүрэн хүчингүй болгоно. Ажилтан эхлээд шийднэ үү.`);
+        return {
+          blocked: true as const,
+          needsConfirm: false,
+          impact,
+          message: `Энэ өөрчлөлт ${impact.erased.length} захиалгыг бүрэн хүчингүй болгоно. Ажилтан эхлээд шийднэ үү.`,
+        };
+      }
+      if (impact.clipped.length > 0 && !confirmed) {
+        return {
+          blocked: true as const,
+          needsConfirm: true,
+          impact,
+          message: `Энэ өөрчлөлт ${impact.clipped.length} захиалгын үргэлжлэх хугацааг богиносгоно. Доор жагсаалтыг харж баталгаажуулна уу.`,
+        };
       }
       const existing = await tx.branchScheduleException.findUnique({
         where: { branchId_date: { branchId, date: date! } },
@@ -145,8 +166,16 @@ export async function upsertBranchScheduleExceptionAction(
         await tx.branchScheduleException.delete({ where: { id: previous.id } });
       }
       await applyScheduleClips(tx, impact);
-      return { existing: existing ?? previous, saved, clipped: impact.clipped.length };
+      return {
+        blocked: false as const,
+        existing: existing ?? previous,
+        saved,
+        clipped: impact.clipped.length,
+      };
     });
+    if (result.blocked) {
+      return { ok: false, message: result.message, impact: result.impact, needsConfirm: result.needsConfirm };
+    }
     await logAudit({
       tenantId: auth.branch.tenantId,
       userId: auth.user.id,
@@ -173,6 +202,7 @@ export async function deleteBranchScheduleExceptionAction(formData: FormData): P
   if (!branchId || !id) return;
   const { user } = await authorizeBranch(branchId);
   const deleted = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Branch" WHERE id = ${branchId} AND "tenantId" = ${user.tenantId} FOR UPDATE`;
     const current = await tx.branch.findFirst({
       where: { id: branchId, tenantId: user.tenantId },
       include: { schedules: true, scheduleExceptions: true, scheduleSeasons: { include: { days: true } } },
@@ -234,76 +264,110 @@ export async function upsertBranchScheduleSeasonAction(
   const days = {} as Record<Weekday, ReturnType<typeof parseOpenTimes>>;
   for (const wd of ALL_WEEKDAYS) days[wd] = parseOpenTimes(formData, `season_${wd}`, errors);
   if (Object.keys(errors).length > 0) return { ok: false, fieldErrors: errors };
+  const confirmed = s(formData, "confirmed") === "true";
 
   try {
-    const overlap = await prisma.branchScheduleSeason.findFirst({
-      where: {
-        branchId,
-        isActive: true,
-        ...(id ? { id: { not: id } } : {}),
-        startsOn: { lt: ends! },
-        endsOn: { gt: starts! },
-      },
-      select: { id: true, name: true },
-    });
-    if (overlap) return { ok: false, message: `Энэ хугацаа "${overlap.name}" улиралтай давхцаж байна.` };
+    const txResult = await prisma.$transaction(async (tx) => {
+      // S13: previously this whole action (overlap check through save) ran as
+      // bare `prisma.*` calls with no transaction and no lock at all — the
+      // overlap check could pass against a stale snapshot that a concurrent
+      // write already invalidated. Now matches the branch-row lock pattern
+      // used by lib/appointment-reservations.ts and the other 4 mutation
+      // actions in this file/branches.ts.
+      await tx.$queryRaw`SELECT id FROM "Branch" WHERE id = ${branchId} AND "tenantId" = ${auth.branch.tenantId} FOR UPDATE`;
 
-    const existing = id
-      ? await prisma.branchScheduleSeason.findFirst({ where: { id, branchId }, include: { days: true } })
-      : null;
-    if (id && !existing) return { ok: false, message: "Улирал олдсонгүй." };
-    const currentBranch = await prisma.branch.findFirst({
-      where: { id: branchId, tenantId: auth.branch.tenantId },
-      include: { schedules: true, scheduleExceptions: true, scheduleSeasons: { include: { days: true } } },
-    });
-    if (!currentBranch) return { ok: false, message: "Салбар олдсонгүй." };
-    const proposedSeason = {
-      name,
-      startsOn: starts!,
-      endsOn: ends!,
-      isActive: true,
-      days: ALL_WEEKDAYS.map((weekday) => ({ weekday, ...days[weekday] })),
-    };
-    const now = new Date();
-    const seasonImpactStart = bookingDayBounds(startsOn).start;
-    const seasonImpactEnd = bookingDayBounds(endsOn).start;
-    const impactFrom = seasonImpactStart.getTime() > now.getTime() ? seasonImpactStart : now;
-    const impact = impactFrom < seasonImpactEnd
-      ? await inspectScheduleImpact(prisma, {
-          tenantId: auth.branch.tenantId,
+      const overlap = await tx.branchScheduleSeason.findFirst({
+        where: {
           branchId,
-          from: impactFrom,
-          to: seasonImpactEnd,
-          resolve: (dateStr) => resolveEffectiveSchedule({
-            dateStr,
-            branch: {
-              openTime: currentBranch.openTime,
-              closeTime: currentBranch.closeTime,
-              schedules: currentBranch.schedules,
-              scheduleExceptions: currentBranch.scheduleExceptions,
-              scheduleSeasons: [
-                ...currentBranch.scheduleSeasons.filter((item) => item.id !== id),
-                proposedSeason,
-              ],
-            },
-          }),
-          fallbackDurationMinutes: currentBranch.slotMinutes ?? 30,
-        })
-      : { erased: [], clipped: [] };
-    if (impact.erased.length > 0) {
-      return { ok: false, message: `Энэ улирал ${impact.erased.length} захиалгыг бүрэн хүчингүй болгоно. Ажилтан эхлээд шийднэ үү.` };
+          isActive: true,
+          ...(id ? { id: { not: id } } : {}),
+          startsOn: { lt: ends! },
+          endsOn: { gt: starts! },
+        },
+        select: { id: true, name: true },
+      });
+      if (overlap) return { ok: false as const, message: `Энэ хугацаа "${overlap.name}" улиралтай давхцаж байна.` };
+
+      const existing = id
+        ? await tx.branchScheduleSeason.findFirst({ where: { id, branchId }, include: { days: true } })
+        : null;
+      if (id && !existing) return { ok: false as const, message: "Улирал олдсонгүй." };
+      const currentBranch = await tx.branch.findFirst({
+        where: { id: branchId, tenantId: auth.branch.tenantId },
+        include: { schedules: true, scheduleExceptions: true, scheduleSeasons: { include: { days: true } } },
+      });
+      if (!currentBranch) return { ok: false as const, message: "Салбар олдсонгүй." };
+      const proposedSeason = {
+        name,
+        startsOn: starts!,
+        endsOn: ends!,
+        isActive: true,
+        days: ALL_WEEKDAYS.map((weekday) => ({ weekday, ...days[weekday] })),
+      };
+      const now = new Date();
+      const seasonImpactStart = bookingDayBounds(startsOn).start;
+      const seasonImpactEnd = bookingDayBounds(endsOn).start;
+      const impactFrom = seasonImpactStart.getTime() > now.getTime() ? seasonImpactStart : now;
+      const impact = impactFrom < seasonImpactEnd
+        ? await inspectScheduleImpact(tx, {
+            tenantId: auth.branch.tenantId,
+            branchId,
+            from: impactFrom,
+            to: seasonImpactEnd,
+            resolve: (dateStr) => resolveEffectiveSchedule({
+              dateStr,
+              branch: {
+                openTime: currentBranch.openTime,
+                closeTime: currentBranch.closeTime,
+                schedules: currentBranch.schedules,
+                scheduleExceptions: currentBranch.scheduleExceptions,
+                scheduleSeasons: [
+                  ...currentBranch.scheduleSeasons.filter((item) => item.id !== id),
+                  proposedSeason,
+                ],
+              },
+            }),
+            fallbackDurationMinutes: currentBranch.slotMinutes ?? 30,
+          })
+        : { erased: [], clipped: [] };
+      if (impact.erased.length > 0) {
+        return {
+          ok: false as const,
+          message: `Энэ улирал ${impact.erased.length} захиалгыг бүрэн хүчингүй болгоно. Ажилтан эхлээд шийднэ үү.`,
+          impact,
+          needsConfirm: false,
+        };
+      }
+      if (impact.clipped.length > 0 && !confirmed) {
+        return {
+          ok: false as const,
+          message: `Энэ улирал ${impact.clipped.length} захиалгын үргэлжлэх хугацааг богиносгоно. Доор жагсаалтыг харж баталгаажуулна уу.`,
+          impact,
+          needsConfirm: true,
+        };
+      }
+      const saved = existing
+        ? await tx.branchScheduleSeason.update({
+            where: { id: id! },
+            data: { name, startsOn: starts!, endsOn: ends!, isActive: true, days: { deleteMany: {}, create: ALL_WEEKDAYS.map((weekday) => ({ weekday, isOpen: days[weekday].isOpen, openTime: days[weekday].isOpen ? days[weekday].openTime : undefined, closeTime: days[weekday].isOpen ? days[weekday].closeTime : undefined })) } },
+            select: { id: true },
+          })
+        : await tx.branchScheduleSeason.create({
+            data: { branchId, name, startsOn: starts!, endsOn: ends!, isActive: true, days: { create: ALL_WEEKDAYS.map((weekday) => ({ weekday, isOpen: days[weekday].isOpen, openTime: days[weekday].openTime || undefined, closeTime: days[weekday].closeTime || undefined })) } },
+            select: { id: true },
+          });
+      await applyScheduleClips(tx, impact);
+      return { ok: true as const, existing, saved, clipped: impact.clipped.length };
+    });
+    if (!txResult.ok) {
+      return {
+        ok: false,
+        message: txResult.message,
+        impact: "impact" in txResult ? txResult.impact : undefined,
+        needsConfirm: "needsConfirm" in txResult ? txResult.needsConfirm : undefined,
+      };
     }
-    const saved = existing
-      ? await prisma.branchScheduleSeason.update({
-          where: { id: id! },
-          data: { name, startsOn: starts!, endsOn: ends!, isActive: true, days: { deleteMany: {}, create: ALL_WEEKDAYS.map((weekday) => ({ weekday, isOpen: days[weekday].isOpen, openTime: days[weekday].isOpen ? days[weekday].openTime : undefined, closeTime: days[weekday].isOpen ? days[weekday].closeTime : undefined })) } },
-          select: { id: true },
-        })
-      : await prisma.branchScheduleSeason.create({
-          data: { branchId, name, startsOn: starts!, endsOn: ends!, isActive: true, days: { create: ALL_WEEKDAYS.map((weekday) => ({ weekday, isOpen: days[weekday].isOpen, openTime: days[weekday].openTime || undefined, closeTime: days[weekday].closeTime || undefined })) } },
-          select: { id: true },
-        });
-    await applyScheduleClips(prisma, impact);
+    const { existing, saved, clipped } = txResult;
     await logAudit({
       tenantId: auth.branch.tenantId,
       userId: auth.user.id,
@@ -318,7 +382,7 @@ export async function upsertBranchScheduleSeasonAction(
     revalidatePath(`/dashboard/branches/${branchId}/schedule`);
     revalidatePath(`/dashboard/branches/${branchId}`);
     revalidatePath("/dashboard/branches");
-    return { ok: true, message: impact.clipped.length ? `Хадгаллаа. ${impact.clipped.length} захиалгын үргэлжлэх хугацааг хаах цагт таарууллаа.` : "Улирлын хуваарь хадгалагдлаа." };
+    return { ok: true, message: clipped ? `Хадгаллаа. ${clipped} захиалгын үргэлжлэх хугацааг хаах цагт таарууллаа.` : "Улирлын хуваарь хадгалагдлаа." };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Улирлын хуваарь хадгалахад алдаа гарлаа." };
   }
@@ -330,6 +394,7 @@ export async function deleteBranchScheduleSeasonAction(formData: FormData): Prom
   if (!branchId || !id) return;
   const { user } = await authorizeBranch(branchId);
   const deleted = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Branch" WHERE id = ${branchId} AND "tenantId" = ${user.tenantId} FOR UPDATE`;
     const current = await tx.branch.findFirst({
       where: { id: branchId, tenantId: user.tenantId },
       include: { schedules: true, scheduleExceptions: true, scheduleSeasons: { include: { days: true } } },

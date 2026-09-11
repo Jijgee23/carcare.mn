@@ -123,10 +123,16 @@ export async function withBookingTransaction<T>(
  * ажиллуулна.
  */
 if (baseClient && process.env.NEXT_PHASE !== "phase-production-build") {
-  const warm = Array.from({ length: poolMax() }, () =>
-    baseClient.$queryRaw`SELECT 1`.catch(() => {}),
-  );
-  Promise.all(warm).catch(() => {});
+  // Дараалуулж (Promise.all-аар зэрэг биш) явуулна: `baseClient.$queryRaw` бүр
+  // адаптерын нэг pg Pool-оос холболт авахыг оролддог тул поол бүрэн дүүрээгүй
+  // үед нэг зэрэг олон дуудлага "client already executing a query" (pg-ийн
+  // deprecation warning) үүсгэдэг байсан — pool аль хэдийн дүүрсэн тохиолдолд
+  // ажиглагдаагүй ч энд ч давхцах боломжтой тул урьдчилан зайлсхийнэ.
+  void (async () => {
+    for (let i = 0; i < poolMax(); i++) {
+      await baseClient.$queryRaw`SELECT 1`.catch(() => {});
+    }
+  })();
 }
 
 /**
