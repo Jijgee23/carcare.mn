@@ -275,6 +275,7 @@ export async function createEmployeeAction(
       lastName: data.lastName,
       email: data.email,
       roleId: data.roleId,
+      isOwner: wantsOwner,
       branchId: data.branchId,
       assignableBranchIds: data.assignableBranchIds,
     },

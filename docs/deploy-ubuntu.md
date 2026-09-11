@@ -202,6 +202,24 @@ sudo certbot --nginx -d carservice.mn -d www.carservice.mn
 
 ## 7. Шинэчлэх (re-deploy)
 
+Нэг командаар (`scripts/deploy.sh`) — `git pull` хийгээд шинэ commit байвал
+`package.json`/`package-lock.json` өөрчлөгдсөн эсэхээс хамааруулж `npm ci`
+(эсвэл зөвхөн `schema.prisma` өөрчлөгдсөн бол `prisma generate`) ажиллуулж,
+дараа нь `prisma migrate deploy` (шинэ migration байхгүй үед no-op, аюулгүй),
+`npm run build`, `pm2 restart carcare` дараалалтайгаар хийнэ.
+`.env`-д гараар нэмсэн/өөрчилсөн утга бол зөвхөн `pm2 restart`-аар л шинэчлэгдэнэ
+(process шинээр асахдаа `.env`-ийг дахин уншина) — script-д тусад нь алхам
+хэрэггүй:
+```bash
+cd /home/ubuntu/carcare.mn
+bash scripts/deploy.sh
+```
+
+> `git init` / `git add .` хэрэггүй — эдгээр нь зөвхөн section 2-т нэг удаа
+> хийсэн `git clone`-той холбоотой анхны алхам. Re-deploy бүрт зүгээр
+> **local**-аасаа `git push` хийчихээд, серверт дээрх нэг команд ажиллуулна.
+
+Гараар алхам алхмаар хийх бол (script амжилтгүй болвол дебаг хийхэд):
 ```bash
 cd /home/ubuntu/carcare.mn
 git pull
