@@ -53,6 +53,13 @@ export async function signInSystemAction(
       values: { email },
     };
   }
+  if (!admin.isActive) {
+    return {
+      ok: false,
+      message: "Энэ admin эрх идэвхгүй болсон байна.",
+      values: { email },
+    };
+  }
 
   const token = await signSystemSession({
     adminId: admin.id,

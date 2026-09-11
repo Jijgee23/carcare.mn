@@ -154,10 +154,20 @@ const navItems: NavItem[] = [
       </svg>
     ),
   },
+  {
+    href: "/system/admins",
+    label: "Admin эрхүүд",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 2 4 6v6c0 5 3.4 8.7 8 10 4.6-1.3 8-5 8-10V6z" />
+        <path d="m9 12 2 2 4-4" />
+      </svg>
+    ),
+  },
 ];
 
 const activePillClasses =
-  "bg-red-500/90 text-white shadow-[0_10px_28px_-12px_rgba(239,68,68,0.7)]";
+  "bg-[var(--oc-accent)] text-[var(--oc-on-accent)] shadow-[0_10px_28px_-12px_rgba(34,211,238,0.55)]";
 const inactivePillClasses =
   "text-[var(--oc-muted)] hover:bg-white/[0.04] hover:text-[var(--oc-ink)]";
 
@@ -184,7 +194,7 @@ export function SystemSidebar({
     item.exact ? pathname === item.href : pathname.startsWith(item.href);
 
   return (
-    <aside className="app-sidebar fixed top-0 left-0 h-screen bg-[var(--oc-panel)] border-r border-red-500/[0.15] flex-col z-40 hidden lg:flex">
+    <aside className="app-sidebar fixed top-0 left-0 h-screen bg-[var(--oc-panel)] border-r border-[var(--oc-accent)]/15 flex-col z-40 hidden lg:flex">
       <div className="relative h-16 border-b border-[var(--oc-line2)] flex items-center shrink-0">
         <Link
           href="/system"
@@ -192,7 +202,7 @@ export function SystemSidebar({
         >
           {collapsed ? <BrandMark size="sm" /> : <Brand />}
           {!collapsed ? (
-            <div className="font-plex-mono text-[10px] text-red-400 light:text-red-600 uppercase tracking-[0.1em] leading-none whitespace-nowrap">
+            <div className="font-plex-mono text-[10px] text-[var(--oc-accent)] uppercase tracking-[0.1em] leading-none whitespace-nowrap">
               SYSTEM
             </div>
           ) : null}
@@ -202,7 +212,7 @@ export function SystemSidebar({
           onClick={toggle}
           data-collapsed={collapsed}
           aria-label={collapsed ? "Цэс дэлгэх" : "Цэс хумих"}
-          className="sidebar-collapse-btn absolute top-1/2 -right-3 -translate-y-1/2 w-6 h-6 rounded-full border border-red-500/20 bg-[var(--oc-panel)] text-[var(--oc-muted)] hover:text-[var(--oc-ink)] flex items-center justify-center shadow-md z-10"
+          className="sidebar-collapse-btn absolute top-1/2 -right-3 -translate-y-1/2 w-6 h-6 rounded-full border border-[var(--oc-accent)]/20 bg-[var(--oc-panel)] text-[var(--oc-muted)] hover:text-[var(--oc-ink)] flex items-center justify-center shadow-md z-10"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="15 18 9 12 15 6" />
@@ -211,7 +221,7 @@ export function SystemSidebar({
       </div>
 
       {!collapsed ? (
-        <div className="px-4 pt-4 pb-2 font-plex-mono text-[10px] text-red-400/70 light:text-red-600/80 uppercase tracking-[0.1em]">
+        <div className="px-4 pt-4 pb-2 font-plex-mono text-[10px] text-[var(--oc-accent)]/70 uppercase tracking-[0.1em]">
           Платформын админ
         </div>
       ) : null}
@@ -243,7 +253,7 @@ export function SystemSidebar({
         <div className="p-3 border-t border-[var(--oc-line2)] flex flex-col items-center gap-2">
           <div
             title={adminName}
-            className="w-9 h-9 rounded-full bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center text-xs font-bold text-white shrink-0"
+            className="w-9 h-9 rounded-full border border-[var(--oc-line)] bg-[var(--oc-panel2)] flex items-center justify-center text-xs font-bold text-[var(--oc-ink2)] shrink-0"
           >
             {initials}
           </div>
@@ -264,7 +274,7 @@ export function SystemSidebar({
       ) : (
         <div className="p-3 border-t border-[var(--oc-line2)] space-y-2">
           <div className="flex items-center gap-3 p-2.5 rounded-xl">
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center text-xs font-bold text-white shrink-0">
+            <div className="w-9 h-9 rounded-full border border-[var(--oc-line)] bg-[var(--oc-panel2)] flex items-center justify-center text-xs font-bold text-[var(--oc-ink2)] shrink-0">
               {initials}
             </div>
             <div className="flex-1 min-w-0">
@@ -298,13 +308,13 @@ export function SystemMobileTopbar({
   const pathname = usePathname();
 
   return (
-    <header className="lg:hidden sticky top-0 z-30 bg-[var(--oc-panel)]/95 backdrop-blur border-b border-red-500/[0.15]">
+    <header className="lg:hidden sticky top-0 z-30 bg-[var(--oc-panel)]/95 backdrop-blur border-b border-[var(--oc-accent)]/15">
       <div className="px-4 py-3 flex items-center justify-between">
         <Link href="/system" className="flex items-center gap-2">
           <Brand size="sm" />
-          <span className="font-plex-mono text-[10px] text-red-400 light:text-red-600">SYSTEM</span>
+          <span className="font-plex-mono text-[10px] text-[var(--oc-accent)]">SYSTEM</span>
         </Link>
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center text-xs font-bold text-white">
+        <div className="w-8 h-8 rounded-full border border-[var(--oc-line)] bg-[var(--oc-panel2)] flex items-center justify-center text-xs font-bold text-[var(--oc-ink2)]">
           {initials}
         </div>
       </div>
@@ -320,7 +330,7 @@ export function SystemMobileTopbar({
               href={item.href}
               className={`shrink-0 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                 active
-                  ? "bg-red-500/15 text-red-200 border border-red-500/25 light:bg-red-100 light:text-red-700 light:border-red-300"
+                  ? "bg-[var(--oc-accent)]/15 text-[var(--oc-accent)] border border-[var(--oc-accent)]/25"
                   : "text-[var(--oc-muted)] border border-[var(--oc-line2)]"
               }`}
             >

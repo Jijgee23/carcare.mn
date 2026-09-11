@@ -2,6 +2,8 @@ import type {
   BillingPeriod,
   Plan,
   Subscription,
+  SubscriptionPaymentMethod,
+  SubscriptionPaymentStatus,
   SubscriptionStatus,
 } from "@/app/generated/prisma/client";
 
@@ -60,6 +62,38 @@ export const PLAN_LABEL: Record<Plan, string> = {
   FREE: "FREE",
   BUSINESS: "BUSINESS",
   ENTERPRISE: "ENTERPRISE",
+};
+
+export const SUBSCRIPTION_PAYMENT_STATUS_LABEL: Record<
+  SubscriptionPaymentStatus,
+  string
+> = {
+  PENDING: "Хүлээгдэж буй",
+  PAID: "Төлөгдсөн",
+  CANCELLED: "Төлөгдөөгүй",
+  FAILED: "Амжилтгүй",
+};
+
+export const SUBSCRIPTION_PAYMENT_STATUS_BADGE: Record<
+  SubscriptionPaymentStatus,
+  string
+> = {
+  PENDING: "bg-[var(--oc-warn)]/15 text-[var(--oc-warn)] border border-[var(--oc-warn)]/30",
+  PAID: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 light:bg-emerald-100 light:border-emerald-300 light:text-emerald-700",
+  CANCELLED:
+    "bg-white/10 text-white/50 border border-white/15 light:bg-slate-100 light:border-slate-300 light:text-slate-600",
+  FAILED:
+    "bg-red-500/15 text-red-300 border border-red-500/30 light:bg-red-100 light:border-red-300 light:text-red-700",
+};
+
+export const SUBSCRIPTION_PAYMENT_METHOD_LABEL: Record<
+  SubscriptionPaymentMethod,
+  string
+> = {
+  QPAY: "QPay",
+  BANK_TRANSFER: "Банкны шилжүүлэг",
+  CASH: "Бэлнээр",
+  OTHER: "Бусад",
 };
 
 export type ActiveSubscriptionInfo = {

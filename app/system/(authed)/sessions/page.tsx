@@ -74,7 +74,7 @@ export default async function SystemSessionsPage({
           href={tabHref("staff")}
           className={`px-4 py-1.5 text-sm transition-colors ${
             tab === "staff"
-              ? "bg-red-500/20 text-red-300 light:bg-red-100 light:text-red-700"
+              ? "bg-[var(--oc-accent)]/20 text-[var(--oc-accent)]"
               : "text-[var(--oc-muted)] hover:bg-white/[0.06]"
           }`}
         >
@@ -84,7 +84,7 @@ export default async function SystemSessionsPage({
           href={tabHref("customer")}
           className={`px-4 py-1.5 text-sm transition-colors border-l border-[var(--oc-line)] ${
             tab === "customer"
-              ? "bg-red-500/20 text-red-300 light:bg-red-100 light:text-red-700"
+              ? "bg-[var(--oc-accent)]/20 text-[var(--oc-accent)]"
               : "text-[var(--oc-muted)] hover:bg-white/[0.06]"
           }`}
         >

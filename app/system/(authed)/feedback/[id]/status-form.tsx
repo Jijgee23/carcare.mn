@@ -58,7 +58,7 @@ export function FeedbackStatusForm({
       <button
         type="submit"
         disabled={pending}
-        className="self-end rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-500 disabled:opacity-60 disabled:cursor-not-allowed"
+        className="self-end rounded-lg bg-[var(--oc-accent)] px-4 py-2 text-sm font-medium text-[var(--oc-on-accent)] transition-colors hover:bg-[var(--oc-accent-hi)] disabled:opacity-60 disabled:cursor-not-allowed"
       >
         {pending ? "Хадгалж байна..." : "Хадгалах"}
       </button>

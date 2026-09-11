@@ -23,12 +23,12 @@ export default function SystemLoginPage() {
     <div
       className={`${plexSans.variable} ${plexMono.variable} landing-ops relative min-h-screen flex flex-col bg-[var(--oc-carbon)] bg-oc-grid overflow-hidden`}
     >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(900px_520px_at_50%_0%,rgba(239,68,68,0.12),transparent_70%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(900px_520px_at_50%_0%,rgba(34,211,238,0.12),transparent_70%)]" />
 
       <header className="relative z-10 flex items-center justify-between px-6 py-4 border-b border-[var(--oc-line2)]">
         <Link href="/" className="flex items-center gap-2.5">
           <Brand />
-          <span className="font-plex-mono text-[11px] uppercase tracking-[0.14em] text-red-400 border-l border-[var(--oc-line)] pl-2.5">
+          <span className="font-plex-mono text-[11px] uppercase tracking-[0.14em] text-[var(--oc-accent)] border-l border-[var(--oc-line)] pl-2.5">
             System
           </span>
         </Link>
@@ -43,8 +43,8 @@ export default function SystemLoginPage() {
       <main className="relative z-10 flex-1 flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
-            <div className="inline-flex items-center gap-2 rounded-full border border-red-500/30 bg-[var(--oc-panel)] px-3 py-1.5 font-plex-mono text-[12px] text-red-300 mb-4">
-              <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-[var(--oc-accent)]/30 bg-[var(--oc-panel)] px-3 py-1.5 font-plex-mono text-[12px] text-[var(--oc-accent)] mb-4">
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--oc-accent)] animate-pulse" />
               Платформын админ
             </div>
             <h1 className="text-2xl sm:text-3xl font-semibold tracking-[-0.02em] text-[var(--oc-ink)]">
@@ -55,7 +55,7 @@ export default function SystemLoginPage() {
             </p>
           </div>
 
-          <div className="rounded-[10px] border border-red-500/20 bg-[var(--oc-panel)] p-6 sm:p-8">
+          <div className="rounded-[10px] border border-[var(--oc-accent)]/20 bg-[var(--oc-panel)] p-6 sm:p-8">
             <SystemLoginForm />
           </div>
 

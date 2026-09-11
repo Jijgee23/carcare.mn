@@ -104,7 +104,7 @@ function ViewRow({
             {feature.label}
           </span>
           {feature.highlighted ? (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-300 border border-red-500/25 light:bg-red-100 light:border-red-300 light:text-red-700">
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--oc-accent)]/15 text-[var(--oc-accent)] border border-[var(--oc-accent)]/25">
               Тод
             </span>
           ) : null}
@@ -205,7 +205,7 @@ function EditRow({
               type="checkbox"
               name="highlighted"
               defaultChecked={feature.highlighted}
-              className="accent-red-500"
+              className="accent-[var(--oc-accent)]"
             />
             Тод
           </label>
@@ -221,7 +221,7 @@ function EditRow({
           <button
             type="submit"
             disabled={pending}
-            className="text-xs bg-red-600 hover:bg-red-500 text-white disabled:opacity-60 px-3 py-1 rounded"
+            className="text-xs bg-[var(--oc-accent)] hover:bg-[var(--oc-accent-hi)] text-[var(--oc-on-accent)] disabled:opacity-60 px-3 py-1 rounded"
           >
             {pending ? "..." : "Хадгалах"}
           </button>
@@ -310,7 +310,7 @@ function CreateForm() {
         <input
           type="checkbox"
           name="highlighted"
-          className="accent-red-500"
+          className="accent-[var(--oc-accent)]"
         />
         Тод (тенант хуудаст онцлоход харагдана)
       </label>
@@ -319,7 +319,7 @@ function CreateForm() {
         <button
           type="submit"
           disabled={pending}
-          className="bg-red-600 hover:bg-red-500 text-white disabled:opacity-60 px-4 py-2.5 rounded-xl text-sm font-medium"
+          className="bg-[var(--oc-accent)] hover:bg-[var(--oc-accent-hi)] text-[var(--oc-on-accent)] disabled:opacity-60 px-4 py-2.5 rounded-xl text-sm font-medium"
         >
           {pending ? "Нэмж..." : "Боломж нэмэх"}
         </button>

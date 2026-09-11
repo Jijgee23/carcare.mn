@@ -2,6 +2,7 @@ import "server-only";
 
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@/app/generated/prisma/client";
+import type { SubscriptionPayment } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { QPayService } from "@/lib/qpay";
@@ -10,9 +11,85 @@ import { periodEndDate } from "@/lib/subscription";
 export type ConfirmResult = { ok: boolean; paid: boolean; message?: string };
 
 /**
+ * PENDING нэг SubscriptionPayment-ийг PAID болгож, түүнтэй холбоотой
+ * subscription-г идэвхжүүлнэ: хуучин TRIAL/ACTIVE sub-уудыг EXPIRED, шинэ
+ * ACTIVE sub үүсгэж, tenant.plan-г sync хийнэ. QPay (confirmSubscriptionPayment)
+ * БОЛОН SuperAdmin-ийн гар аргаар баталгаажуулах (харах:
+ * app/_actions/system-subscription-payments.ts) хоёул ЭНД дайран өнгөрнө —
+ * "төлбөр баталгаажив" гэдгийн цорын ганц бодит үр дагавар. Дахин дуудсан ч
+ * idempotent (transaction дотор status-г дахин шалгана).
+ */
+export async function activateSubscriptionPayment(
+  payment: Pick<
+    SubscriptionPayment,
+    "id" | "tenantId" | "plan" | "period" | "amount"
+  >,
+  opts: { paidAt: Date; qpayPaymentId?: string | null; note: string },
+): Promise<{ subscriptionId: string } | null> {
+  const end = periodEndDate(opts.paidAt, payment.period);
+
+  return prisma.$transaction(async (tx) => {
+    // Хэрэв өөр transaction-аар аль хэдийн PAID болсон бол давхар үүсгэхгүй.
+    const fresh = await tx.subscriptionPayment.findUnique({
+      where: { id: payment.id },
+      select: { status: true },
+    });
+    if (fresh?.status === "PAID") return null;
+
+    await tx.subscription.updateMany({
+      where: { tenantId: payment.tenantId, status: { in: ["TRIAL", "ACTIVE"] } },
+      data: { status: "EXPIRED" },
+    });
+    const created = await tx.subscription.create({
+      data: {
+        tenantId: payment.tenantId,
+        plan: payment.plan,
+        status: "ACTIVE",
+        startsAt: opts.paidAt,
+        endsAt: end,
+        amount: payment.amount,
+        notes: opts.note,
+      },
+      select: { id: true },
+    });
+    await tx.tenant.update({
+      where: { id: payment.tenantId },
+      data: { plan: payment.plan },
+    });
+    await tx.subscriptionPayment.update({
+      where: { id: payment.id },
+      data: {
+        status: "PAID",
+        paidAt: opts.paidAt,
+        qpayPaymentId: opts.qpayPaymentId ?? undefined,
+        createdSubscriptionId: created.id,
+      },
+    });
+
+    await logAudit(
+      {
+        tenantId: payment.tenantId,
+        entity: "Tenant",
+        entityId: payment.tenantId,
+        action: "PAYMENT_CHANGE",
+        summary: `Багц идэвхжив: ${payment.plan} · ${payment.amount.toString()}₮`,
+        after: {
+          paymentId: payment.id,
+          plan: payment.plan,
+          amount: payment.amount.toString(),
+          subscriptionId: created.id,
+        },
+      },
+      tx,
+    );
+
+    return { subscriptionId: created.id };
+  });
+}
+
+/**
  * QPay-аас тухайн SubscriptionPayment-ийн төлөвийг шалгаж, бүрэн төлөгдсөн бол
- * атомт байдлаар: хуучин TRIAL/ACTIVE sub-уудыг EXPIRED, шинэ ACTIVE sub үүсгэж,
- * tenant.plan-г sync, payment-ийг PAID болгоно. Дахин дуудсан ч idempotent —
+ * activateSubscriptionPayment-ээр идэвхжүүлнэ. Дахин дуудсан ч idempotent —
  * web-ийн polling action болон QPay callback хоёулаа үүнийг дуудна.
  *
  * Тэмдэглэл: callback-аас ирсэн мэдээлэлд НАЙДАХГҮЙ — үргэлж QPay.checkPayment-ээр
@@ -45,64 +122,11 @@ export async function confirmSubscriptionPayment(
     };
   }
 
-  const start = check.paidAt ?? new Date();
-  const end = periodEndDate(start, payment.period);
-
   try {
-    await prisma.$transaction(async (tx) => {
-      // Хэрэв өөр transaction-аар аль хэдийн PAID болсон бол давхар үүсгэхгүй.
-      const fresh = await tx.subscriptionPayment.findUnique({
-        where: { id: payment.id },
-        select: { status: true },
-      });
-      if (fresh?.status === "PAID") return;
-
-      await tx.subscription.updateMany({
-        where: { tenantId: payment.tenantId, status: { in: ["TRIAL", "ACTIVE"] } },
-        data: { status: "EXPIRED" },
-      });
-      const created = await tx.subscription.create({
-        data: {
-          tenantId: payment.tenantId,
-          plan: payment.plan,
-          status: "ACTIVE",
-          startsAt: start,
-          endsAt: end,
-          amount: payment.amount,
-          notes: `QPay төлбөр #${payment.id}`,
-        },
-        select: { id: true },
-      });
-      await tx.tenant.update({
-        where: { id: payment.tenantId },
-        data: { plan: payment.plan },
-      });
-      await tx.subscriptionPayment.update({
-        where: { id: payment.id },
-        data: {
-          status: "PAID",
-          paidAt: start,
-          qpayPaymentId: check.paymentId,
-          createdSubscriptionId: created.id,
-        },
-      });
-
-      await logAudit(
-        {
-          tenantId: payment.tenantId,
-          entity: "Tenant",
-          entityId: payment.tenantId,
-          action: "PAYMENT_CHANGE",
-          summary: `Багц идэвхжив: ${payment.plan} · ${payment.amount.toString()}₮`,
-          after: {
-            paymentId: payment.id,
-            plan: payment.plan,
-            amount: payment.amount.toString(),
-            subscriptionId: created.id,
-          },
-        },
-        tx,
-      );
+    await activateSubscriptionPayment(payment, {
+      paidAt: check.paidAt ?? new Date(),
+      qpayPaymentId: check.paymentId,
+      note: `QPay төлбөр #${payment.id}`,
     });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError) {

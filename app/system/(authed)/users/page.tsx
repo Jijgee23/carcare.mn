@@ -141,7 +141,7 @@ export default async function SystemUsersPage({
                     </td>
                     <td className="px-5 py-4 text-sm">
                       {u.isOwner ? (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-500/25 light:bg-red-100 light:border-red-300 light:text-red-700">
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--oc-accent)]/15 text-[var(--oc-accent)] border border-[var(--oc-accent)]/25">
                           Админ
                         </span>
                       ) : (

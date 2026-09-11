@@ -64,7 +64,7 @@ export function SystemLoginForm() {
         </div>
       </Field>
 
-      <SubmitButton pending={pending} tone="danger">
+      <SubmitButton pending={pending}>
         Нэвтрэх →
       </SubmitButton>
     </form>

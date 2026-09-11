@@ -102,7 +102,7 @@ export default async function SystemTenantsPage({
                   href={href}
                   className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${
                     active
-                      ? "bg-red-500/20 text-red-200 border border-red-500/30 light:bg-red-100 light:border-red-300 light:text-red-700"
+                      ? "bg-[var(--oc-accent)]/20 text-[var(--oc-accent)] border border-[var(--oc-accent)]/30"
                       : "text-[var(--oc-muted3)] hover:text-[var(--oc-muted)] border border-[var(--oc-line)] hover:border-[var(--oc-line2)]"
                   }`}
                 >
@@ -128,7 +128,7 @@ export default async function SystemTenantsPage({
             />
             <button
               type="submit"
-              className="text-xs bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 light:bg-red-100 light:hover:bg-red-200 light:border-red-300 light:text-red-700 transition-colors px-3 py-1.5 rounded-lg font-medium"
+              className="text-xs bg-[var(--oc-accent)]/20 hover:bg-[var(--oc-accent)]/30 border border-[var(--oc-accent)]/30 text-[var(--oc-accent)] transition-colors px-3 py-1.5 rounded-lg font-medium"
             >
               Хайх
             </button>
@@ -175,11 +175,11 @@ export default async function SystemTenantsPage({
                         href={`/system/tenants/${t.id}`}
                         className="flex items-center gap-3 group"
                       >
-                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-red-500/30 to-red-600/20 flex items-center justify-center text-sm font-bold text-red-300 light:text-red-700 shrink-0">
+                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[var(--oc-accent)]/30 to-[var(--oc-accent-hi)]/20 flex items-center justify-center text-sm font-bold text-[var(--oc-accent)] shrink-0">
                           {t.name[0]?.toUpperCase() ?? "?"}
                         </div>
                         <div>
-                          <div className="text-sm font-medium text-[var(--oc-ink2)] group-hover:text-red-200 light:group-hover:text-red-700 transition-colors">
+                          <div className="text-sm font-medium text-[var(--oc-ink2)] group-hover:text-[var(--oc-accent)] transition-colors">
                             {t.name}
                           </div>
                           <div className="text-xs text-[var(--oc-muted3)]">

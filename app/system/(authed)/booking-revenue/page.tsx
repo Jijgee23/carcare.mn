@@ -86,7 +86,7 @@ export default async function BookingRevenuePage({
         </div>
         <Link
           href="/system/settings"
-          className="text-xs text-red-300 hover:text-red-200 light:text-red-600 light:hover:text-red-700"
+          className="text-xs text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]"
         >
           Тохиргоо засах →
         </Link>

@@ -22,6 +22,8 @@ import {
   formatDaysLeft,
   resolveActiveSubscription,
 } from "@/lib/subscription";
+import { SubscriptionPaymentCreateForm } from "./subscription-payment-create-form";
+import { SubscriptionPaymentRow } from "./subscription-payment-row";
 
 export const metadata = {
   title: "Байгууллагын дэлгэрэнгүй",
@@ -65,7 +67,7 @@ export default async function SystemTenantDetailPage({
 
   if (!tenant) notFound();
 
-  const [revenueAgg, subscriptions] = await Promise.all([
+  const [revenueAgg, subscriptions, subscriptionPayments] = await Promise.all([
     prisma.serviceOrder.aggregate({
       where: { tenantId: tenant.id, status: "COMPLETED" },
       _sum: { totalAmount: true },
@@ -76,6 +78,20 @@ export default async function SystemTenantDetailPage({
       orderBy: { createdAt: "desc" },
       include: {
         createdBy: { select: { firstName: true, lastName: true } },
+      },
+    }),
+    prisma.subscriptionPayment.findMany({
+      where: { tenantId: tenant.id },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        plan: true,
+        period: true,
+        amount: true,
+        method: true,
+        status: true,
+        createdAt: true,
+        paidAt: true,
       },
     }),
   ]);
@@ -260,6 +276,63 @@ export default async function SystemTenantDetailPage({
             )}
           </section>
 
+          <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden">
+            <div className="px-6 py-4 border-b border-[var(--oc-line2)]">
+              <h2 className="font-semibold text-[var(--oc-ink)]">Төлбөрийн бүртгэл</h2>
+              <p className="text-xs text-[var(--oc-muted3)] mt-0.5">
+                Багцын төлбөр (QPay эсвэл гар аргаар — банк шилжүүлэг, бэлэн) —
+                төлөгдсөн эсэхийг тэмдэглэх, түүхийг харах.
+              </p>
+            </div>
+            {subscriptionPayments.length === 0 ? (
+              <div className="px-6 py-8 text-sm text-[var(--oc-muted3)] text-center">
+                Төлбөрийн бүртгэл алга.
+              </div>
+            ) : (
+              <div className="overflow-auto">
+                <table className="w-full min-w-[720px]">
+                  <thead>
+                    <tr className="border-b border-[var(--oc-line2)]">
+                      {[
+                        "Багц",
+                        "Хугацаа",
+                        "Дүн",
+                        "Арга",
+                        "Төлөв",
+                        "Огноо",
+                        "",
+                      ].map((h) => (
+                        <th
+                          key={h}
+                          className="text-left text-xs text-[var(--oc-muted3)] font-medium px-5 py-3"
+                        >
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {subscriptionPayments.map((p) => (
+                      <SubscriptionPaymentRow
+                        key={p.id}
+                        payment={{ ...p, amount: p.amount.toString() }}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="px-6 py-5 border-t border-[var(--oc-line2)] bg-[var(--oc-panel2)]">
+              <h3 className="font-plex-mono text-xs uppercase tracking-[0.1em] text-[var(--oc-muted3)] mb-3">
+                Гар аргаар төлбөр бүртгэх
+              </h3>
+              <SubscriptionPaymentCreateForm
+                tenantId={tenant.id}
+                defaultPlan={tenant.plan}
+              />
+            </div>
+          </section>
+
           <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-6">
             <h2 className="font-semibold text-[var(--oc-ink)] mb-4">Админ (OWNER)</h2>
             {tenant.users.length === 0 ? (
@@ -277,7 +350,7 @@ export default async function SystemTenantDetailPage({
                           {u.email} · {u.phone}
                         </div>
                       </div>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-500/30 light:bg-red-100 light:border-red-300 light:text-red-700">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--oc-accent)]/15 text-[var(--oc-accent)] border border-[var(--oc-accent)]/30">
                         Админ
                       </span>
                     </div>
@@ -406,7 +479,7 @@ export default async function SystemTenantDetailPage({
               />
               <button
                 type="submit"
-                className="w-full bg-red-600 hover:bg-red-500 text-white transition-colors py-2 rounded-xl text-sm font-medium"
+                className="w-full bg-[var(--oc-accent)] hover:bg-[var(--oc-accent-hi)] text-[var(--oc-on-accent)] transition-colors py-2 rounded-xl text-sm font-medium"
               >
                 Subscription нэмэх
               </button>
@@ -521,12 +594,12 @@ function BigStat({
   return (
     <div
       className={`rounded-xl border bg-[var(--oc-panel)] p-4 ${
-        accent ? "border-red-500/30" : "border-[var(--oc-line)]"
+        accent ? "border-[var(--oc-accent)]/30" : "border-[var(--oc-line)]"
       }`}
     >
       <div
         className={`text-xl font-bold ${
-          color ?? (accent ? "text-red-400 light:text-red-600" : "text-[var(--oc-ink)]")
+          color ?? (accent ? "text-[var(--oc-accent)]" : "text-[var(--oc-ink)]")
         }`}
       >
         {value}

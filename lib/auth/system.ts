@@ -2,7 +2,7 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { setBypassContext } from "@/lib/tenant-context";
-import { getSystemSessionCookie } from "./system-cookies";
+import { clearSystemSessionCookie, getSystemSessionCookie } from "./system-cookies";
 import {
   verifySystemSession,
   type SystemSessionPayload,
@@ -35,5 +35,11 @@ export const requireSuperAdmin = cache(async () => {
     where: { id: session.adminId },
   });
   if (!admin) redirect("/system/login");
+  // Өөр admin идэвхгүй болгосон бол сесс хүчинтэй ч энд түлхэж гаргана
+  // (харах: app/system/(authed)/admins/ — идэвхгүй болгох, устгахгүй).
+  if (!admin.isActive) {
+    await clearSystemSessionCookie();
+    redirect("/system/login");
+  }
   return admin;
 });

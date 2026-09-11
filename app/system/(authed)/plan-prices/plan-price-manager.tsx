@@ -224,7 +224,7 @@ function EditRow({
               type="checkbox"
               name="isActive"
               defaultChecked={row.isActive}
-              className="accent-red-500"
+              className="accent-[var(--oc-accent)]"
             />
             Идэвхтэй (тенант сонгох боломжтой)
           </label>
@@ -239,7 +239,7 @@ function EditRow({
             <button
               type="submit"
               disabled={pending}
-              className="text-xs px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white disabled:opacity-60 font-medium"
+              className="text-xs px-3 py-1.5 rounded-lg bg-[var(--oc-accent)] hover:bg-[var(--oc-accent-hi)] text-[var(--oc-on-accent)] disabled:opacity-60 font-medium"
             >
               {pending ? "Хадгалж..." : "Хадгалах"}
             </button>
@@ -319,7 +319,7 @@ function CreateForm() {
             type="checkbox"
             name="isActive"
             defaultChecked
-            className="accent-red-500"
+            className="accent-[var(--oc-accent)]"
           />
           Идэвхтэй
         </label>
@@ -339,7 +339,7 @@ function CreateForm() {
         <button
           type="submit"
           disabled={pending}
-          className="bg-red-600 hover:bg-red-500 text-white disabled:opacity-60 transition-colors px-4 py-2.5 rounded-xl text-sm font-medium"
+          className="bg-[var(--oc-accent)] hover:bg-[var(--oc-accent-hi)] text-[var(--oc-on-accent)] disabled:opacity-60 transition-colors px-4 py-2.5 rounded-xl text-sm font-medium"
         >
           {pending ? "Нэмж..." : "Үнэ нэмэх"}
         </button>

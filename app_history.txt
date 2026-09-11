@@ -6,6 +6,117 @@ CARCARE.MN — Хөгжүүлэлтийн түүх (Dev history)
 
 
 ------------------------------------------------------------------------
+2026-09-10  ·  суурь commit d983188 (branch swap)
+------------------------------------------------------------------------
+
+Олон super admin дэмжих (feature)
+------------------------------------------------------------------------
+Өмнө нь /system/(authed) V1-д зөвхөн НЭГ super admin (CLI script-ээр
+үүсгэсэн) дэмжигддэг байсан. Одоо /system/admins хуудаснаас шинэ admin
+урьж, идэвхгүй болгож (устгахгүй — subscriptionsCreated/
+refundedAppointmentPayments зэрэг түүхэн бичлэгтэй холбогдсон байж болно)
+болно.
+
+- prisma/schema.prisma: SuperAdmin-д isActive (default true) + createdById
+  (self-relation "SuperAdminInvites", SetNull) нэмэв. Migration:
+  20260910090920_super_admin_multi_admin_support.
+- lib/auth/system.ts: requireSuperAdmin() isActive=false бол сессийг
+  цэвэрлэж /system/login руу түлхэнэ.
+- app/_actions/system-auth.ts: signInSystemAction идэвхгүй admin-ыг
+  нэвтрүүлэхгүй.
+- app/_actions/system-admins.ts (шинэ): createSuperAdminAction
+  (validation, давхардсан имэйл шалгалт, createdById бичнэ),
+  setSuperAdminActiveAction (өөрийгөө болон хамгийн сүүлийн идэвхтэй
+  admin-ыг идэвхгүй болгохоос сервер талд хамгаална).
+- app/system/(authed)/admins/{page,admin-row,admin-create-form}.tsx
+  (шинэ) — жагсаалт (нэр/имэйл/урьсан/бүртгүүлсэн/төлөв) + урих form.
+- app/_components/system-sidebar.tsx: "Admin эрхүүд" nav item нэмэв.
+- scripts/create-super-admin.ts: "V1 нь зөвхөн нэг admin" хатуу хоригийг
+  хассан (одоо давхар имэйл шалгаад олон удаа ажиллаж болно — бүтэн
+  bootstrap хэрэгсэл хэвээр).
+
+Ops Console-ийн "шар" брэндийг cyan (dashboard/account) + улаанаас буцаж
+cyan руу (system admin) нэгтгэсэн (branding)
+------------------------------------------------------------------------
+Хэрэглэгчийн зааврыг дагаж хэд хэдэн давталттайгаар: эхлээд бүх
+--oc-accent (amber→teal→cyan) сольсон, дараа нь эргэлзээгээр system admin-д
+тусад нь улаан branding туршиж (globals.css .system-console scope), эцэст нь
+"buруу ойлголоо" гэдгийг тодотгосны дараа /system-ийг мөн cyan-руу
+буцаасан бөгөөд sidebar/login/page.tsx доtorх УЛААН hardcode literal-уудыг
+(activePillClasses, avatar gradient, glow, badge-үүд) var(--oc-accent)-руу
+шилжүүлж ганц эх сурвалжтай болгов. Дараа нь /system/(authed)/**-ийн
+~25 файлаас зөвхөн brand/декоратив зориулалттай улааныг (товч, checkbox,
+text-button, border, tenant avatar box) cyan болгов — жинхэнэ
+устгах/цуцлах/буцаах зэрэг аюултай үйлдэл болон "Хугацаа дууссан"/"NEW"
+статус семантик улаан хэвээр үлдэв (заавал ялгаатай байх ёстой).
+
+Салбар солих боломж (feature)
+------------------------------------------------------------------------
+- app/dashboard/branch-switcher.tsx (шинэ): нэвтэрсний дараа сонгосон
+  "ажиллах салбар"-аа dashboard дотроос гарахгүйгээр солих dropdown —
+  chooseBranchAction-г дахин ашиглав (өөрөө дахин сонголтыг хориглодоггүй
+  байсан, зөвхөн /page/choose-branch хуудасны redirect л саад байсныг
+  илрүүлэв). Цор ганц бичлэгийн дэлгэрэнгүй хуудаснаас ("/dashboard/
+  orders/<id>") сольсон бол тухайн хэсгийн жагсаалт руу буцаана (404-с
+  сэргийлнэ). Бүх сонголтыг (одоогийнхыг оролцуулаад) ✓ тэмдэглэгээгээр
+  харуулна — Flutter-ийн mainAxisAlignment.spaceBetween шиг зохион
+  байгуулалттай.
+- app/dashboard/layout.tsx: eligible салбаруудын жагсаалт татаж дамжуулав.
+- app/dashboard/employees/employee-form.tsx: "Үндсэн салбар"-ыг хоосон
+  орхивол "Бүх салбар" эрхтэй болохыг тайлбарласан hint нэмэв (өмнө нь энэ
+  зан үйл баримтжуулагдаагүй байснаас "tenant admin-д бүх салбар боломж
+  байхгүй" гэсэн confusion үүссэн байв).
+- app/layout.tsx: theme-init script-ийг raw <script> → next/script
+  Script(strategy="beforeInteractive") болгож, "script tag never executed
+  on client" анхааруулгыг арилгав (redirect-ийн дараах client transition
+  дээр гардаг байсан).
+
+Хяналтын самбарын багцын хэрэглээ, layout цэвэрлэгээ (feature/polish)
+------------------------------------------------------------------------
+- app/dashboard/plan-usage-ring.tsx (шинэ): animated radial progress ring
+  — өнөөдрийн засварын хуудас/машин/ажилтан/салбарын тоог PlanLimit-той
+  харьцуулж харуулна. lib/plan-limits-server.ts: getLimitsMap() (олон
+  PlanLimit-ийг нэг query-ээр авах, N+1-ээс сэргийлнэ).
+- app/_components/landing-ops-ui.tsx: ToggleChip (шинэ, дахин ашиглах
+  боломжтой pill toggle checkbox, h-11 бусад талбартай ижил өндөртэй) —
+  units-section.tsx болон tenant-form.tsx-ийн давхардсан markup-ыг
+  нэгтгэв.
+- app/dashboard/settings/{units-section,tenant-form,logo-form,qpay/
+  qpay-form}.tsx: талбар/товч/checkbox-ийн өндөр (h-11), grid/flex
+  зохион байгуулалтыг нэгтгэж цэгцлэв (max 4 багана, space-between
+  align).
+- app/dashboard/orders/[id]/order-items.tsx: захиалга эхлээгүй үед
+  ("SCHEDULED") үйлчилгээний төлөв солих dropdown disabled болов
+  (orderStarted prop, OrderDetailPanel-д ч дамжуулав).
+
+Platform орлого субскрипшн-с тооцоолохоор засаж, гар аргаар (bank
+transfer гэх мэт) төлбөр бүртгэх боломж нэмэв (fix + feature)
+------------------------------------------------------------------------
+- app/system/(authed)/page.tsx: "Нийт орлого (платформ)" stat өмнө нь
+  БУРУУГААР бүх tenant-ийн ДУУССАН засварын хуудасны нийлбэрээр (тэдгээрийн
+  ӨӨРСДИЙН орлого) тооцоологдож байсныг prisma.subscriptionPayment.aggregate
+  (status: PAID)-руу сольсон — booking-revenue-ийн AppointmentPayment
+  aggregate-тай ижил хэв маяг.
+- lib/subscription-payments.ts: confirmSubscriptionPayment-ийн дотоод
+  transaction-ыг activateSubscriptionPayment(payment, opts) нэртэйгээр
+  тусад нь гаргаж (экспорт) QPay болон SuperAdmin-ийн гар аргаар
+  баталгаажуулах хоёр урсгал НЭГ л "багц идэвхжүүлэх" логикийг хуваалцдаг
+  болгов (өмнө нь QPay замд л бичигдсэн байсан).
+- app/_actions/system-subscription-payments.ts (шинэ):
+  createManualSubscriptionPaymentAction (SubscriptionPayment мөр гараар
+  нэмэх — банк шилжүүлэг/бэлэн; "Шууд Төлөгдсөн" сонговол
+  activateSubscriptionPayment-ыг шууд дуудна), markSubscriptionPaymentPaidAction
+  / markSubscriptionPaymentUnpaidAction (PENDING мөрийг дараа нь
+  баталгаажуулах/цуцлах — PAID болсныг буцаахыг хориглоно).
+- lib/subscription.ts: SUBSCRIPTION_PAYMENT_{STATUS_LABEL,STATUS_BADGE,
+  METHOD_LABEL} нэмэв (SUBSCRIPTION_STATUS_*-тай ижил хэв маяг).
+- app/system/(authed)/tenants/[id]/{page,subscription-payment-row,
+  subscription-payment-create-form}.tsx: тухайн tenant-ийн "Төлбөрийн
+  бүртгэл" шинэ section — түүх (Багц/Хугацаа/Дүн/Арга/Төлөв/Огноо) +
+  PENDING мөр бүрт "Төлөгдсөн"/"Цуцлах" товч (ConfirmForm) + доор нь
+  гар аргаар шинэ төлбөр бүртгэх компакт форм.
+
+------------------------------------------------------------------------
 2026-09-02  ·  суурь commit 27a9875 (Auto-select vehicle when a single-vehicle
                 customer is chosen on order form)
 ------------------------------------------------------------------------

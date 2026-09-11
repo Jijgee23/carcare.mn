@@ -43,11 +43,21 @@ const prisma = new PrismaClient({
 });
 
 async function main() {
+  // V2: олон super admin дэмжинэ (харах: app/system/(authed)/admins/) — энэ
+  // script ихэвчлэн ХАМГИЙН ЭХНИЙ (bootstrap) admin-ыг үүсгэхэд хэрэглэгдэнэ,
+  // учир нь нэг ч admin байхгүй үед аппаас нэвтэрч урих боломжгүй. Дараагийн
+  // admin-уудыг /system/admins хуудаснаас урих нь илүү тохиромжтой (аль
+  // admin урьсныг хадгална), гэхдээ энэ script-ийг ч давтан ажиллуулж болно.
   const existing = await prisma.superAdmin.count();
   if (existing > 0) {
-    console.error(
-      `Аль хэдийн ${existing} super admin бүртгэлтэй байна. V1 нь зөвхөн нэг admin-ыг дэмжинэ.`,
+    console.log(
+      `\n⚠ Аль хэдийн ${existing} super admin бүртгэлтэй байна — үргэлжлүүлж шинийг нэмж байна.`,
     );
+  }
+
+  const dup = await prisma.superAdmin.findUnique({ where: { email } });
+  if (dup) {
+    console.error(`Энэ имэйлтэй admin аль хэдийн байна: ${email}`);
     process.exit(1);
   }
 

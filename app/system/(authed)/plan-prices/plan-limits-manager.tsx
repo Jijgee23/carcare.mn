@@ -85,7 +85,7 @@ export function PlanLimitsManager({ limits }: { limits: PlanLimitRow[] }) {
                     <div className="text-[11px] text-[var(--oc-muted3)] mt-0.5">
                       {meta.description}
                     </div>
-                    <code className="text-[10px] text-red-300/70 light:text-red-700/80 mt-0.5 inline-block">
+                    <code className="text-[10px] text-[var(--oc-muted4)] mt-0.5 inline-block">
                       {code}
                     </code>
                   </td>
@@ -164,7 +164,7 @@ function LimitCell({
               setBoolValue(e.target.checked);
             }}
             onBlur={save}
-            className="accent-red-500"
+            className="accent-[var(--oc-accent)]"
           />
           <span className="text-xs text-[var(--oc-muted)]">
             {boolValue ? "Нээлттэй" : "Хаалттай"}
@@ -177,13 +177,13 @@ function LimitCell({
           checked={highlighted}
           onChange={(e) => setHighlighted(e.target.checked)}
           onBlur={save}
-          className="accent-red-500 scale-75"
+          className="accent-[var(--oc-accent)] scale-75"
         />
         Тодруулах
       </label>
       <div className="text-[10px] h-3">
         {pending ? (
-          <span className="text-red-300 light:text-red-700">Хадгалж...</span>
+          <span className="text-[var(--oc-muted3)]">Хадгалж...</span>
         ) : savedAt ? (
           <span className="text-emerald-400 light:text-emerald-700">✓ Хадгалав</span>
         ) : null}

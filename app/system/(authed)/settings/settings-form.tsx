@@ -82,7 +82,7 @@ export function SettingsForm({
             name="appointmentFeeEnabled"
             checked={feeEnabled}
             onChange={(e) => setFeeEnabled(e.target.checked)}
-            className="mt-0.5 h-4 w-4 accent-red-500"
+            className="mt-0.5 h-4 w-4 accent-[var(--oc-accent)]"
           />
           <span className="flex flex-col gap-0.5">
             <span className="text-sm font-medium text-[var(--oc-ink2)]">
@@ -119,7 +119,7 @@ export function SettingsForm({
         <button
           type="submit"
           disabled={pending}
-          className="bg-red-600 hover:bg-red-500 disabled:opacity-60 transition-all px-6 py-2 rounded-lg font-medium text-sm text-white"
+          className="bg-[var(--oc-accent)] hover:bg-[var(--oc-accent-hi)] disabled:opacity-60 transition-all px-6 py-2 rounded-lg font-medium text-sm text-[var(--oc-on-accent)]"
         >
           {pending ? "..." : "Хадгалах"}
         </button>

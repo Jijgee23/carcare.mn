@@ -146,7 +146,7 @@ function PriceCell({
             setIsActive(e.target.checked);
           }}
           onBlur={save}
-          className="accent-red-500"
+          className="accent-[var(--oc-accent)]"
         />
         Идэвхтэй
       </label>
@@ -160,7 +160,7 @@ function PriceCell({
       />
       <div className="text-[10px] h-3">
         {pending ? (
-          <span className="text-red-300 light:text-red-700">Хадгалж...</span>
+          <span className="text-[var(--oc-muted3)]">Хадгалж...</span>
         ) : error ? (
           <span className="text-red-400 light:text-red-700">{error}</span>
         ) : savedAt ? (

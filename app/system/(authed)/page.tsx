@@ -17,7 +17,7 @@ export default async function SystemOverviewPage() {
     suspendedTenants,
     userCount,
     orderCount,
-    completedRevenueAgg,
+    subscriptionRevenueAgg,
     bookingRevenueAgg,
     planCounts,
     recentTenants,
@@ -27,9 +27,13 @@ export default async function SystemOverviewPage() {
     prisma.tenant.count({ where: { suspended: true } }),
     prisma.user.count(),
     prisma.serviceOrder.count(),
-    prisma.serviceOrder.aggregate({
-      where: { status: "COMPLETED" },
-      _sum: { totalAmount: true },
+    // Платформын өөрийн орлого — байгууллагуудаас авсан багцын (subscription)
+    // ТӨЛӨГДСӨН төлбөрийн нийлбэр. Өмнө нь энд буруугаар бүх тенантын
+    // ДУУССАН засварын хуудасны нийлбэр (тэдгээрийн ӨӨРСДИЙН орлого, платформын
+    // орлого биш) харагдаж байсныг засав.
+    prisma.subscriptionPayment.aggregate({
+      where: { status: "PAID" },
+      _sum: { amount: true },
     }),
     // Цэвэр орлого — буцаагдсаныг (REFUNDED) хасна.
     prisma.appointmentPayment.aggregate({
@@ -55,8 +59,8 @@ export default async function SystemOverviewPage() {
     }),
   ]);
 
-  const totalRevenue = Number.parseFloat(
-    completedRevenueAgg._sum.totalAmount?.toString() ?? "0",
+  const subscriptionRevenue = Number.parseFloat(
+    subscriptionRevenueAgg._sum.amount?.toString() ?? "0",
   );
   const bookingRevenue = Number.parseFloat(
     bookingRevenueAgg._sum.amount?.toString() ?? "0",
@@ -105,7 +109,7 @@ export default async function SystemOverviewPage() {
             </div>
             <Link
               href="/system/tenants"
-              className="text-xs text-red-300 hover:text-red-200 light:text-red-600 light:hover:text-red-700"
+              className="text-xs text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]"
             >
               Бүгдийг харах →
             </Link>
@@ -123,7 +127,7 @@ export default async function SystemOverviewPage() {
                     href={`/system/tenants/${t.id}`}
                     className="flex items-center gap-3 py-3 hover:bg-white/[0.02] -mx-2 px-2 rounded-lg transition-colors"
                   >
-                    <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-red-500/30 to-red-600/20 flex items-center justify-center text-sm font-bold text-red-300 light:text-red-700 shrink-0">
+                    <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[var(--oc-accent)]/30 to-[var(--oc-accent-hi)]/20 flex items-center justify-center text-sm font-bold text-[var(--oc-accent)] shrink-0">
                       {t.name[0]?.toUpperCase() ?? "?"}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -167,7 +171,7 @@ export default async function SystemOverviewPage() {
                     </div>
                     <div className="h-1.5 bg-[var(--oc-line)] rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-gradient-to-r from-red-500 to-red-600"
+                        className="h-full bg-gradient-to-r from-[var(--oc-accent)] to-[var(--oc-accent-hi)]"
                         style={{ width: `${pct}%` }}
                       />
                     </div>
@@ -182,16 +186,16 @@ export default async function SystemOverviewPage() {
               Нийт орлого (платформ)
             </div>
             <div className="mt-2 text-2xl sm:text-3xl font-bold text-[var(--oc-ink)]">
-              {formatTugrik(totalRevenue)}
+              {formatTugrik(subscriptionRevenue)}
             </div>
             <p className="text-xs text-[var(--oc-muted3)] mt-2">
-              Бүх байгууллагын дууссан засварын хуудасны нийлбэр
+              Байгууллагуудын багцын (subscription) төлсөн төлбөрийн нийлбэр
             </p>
           </div>
 
           <Link
             href="/system/booking-revenue"
-            className="rounded-[10px] border border-red-500/20 bg-[var(--oc-panel)] hover:border-red-500/40 transition-colors p-6"
+            className="rounded-[10px] border border-[var(--oc-accent)]/20 bg-[var(--oc-panel)] hover:border-[var(--oc-accent)]/40 transition-colors p-6"
           >
             <div className="text-xs text-[var(--oc-muted3)] uppercase tracking-wider">
               Цаг захиалгын орлого
@@ -223,12 +227,12 @@ function BigStat({
   return (
     <div
       className={`rounded-[10px] border bg-[var(--oc-panel)] p-5 ${
-        accent ? "border-red-500/30" : "border-[var(--oc-line)]"
+        accent ? "border-[var(--oc-accent)]/30" : "border-[var(--oc-line)]"
       }`}
     >
       <div
         className={`text-2xl sm:text-3xl font-bold ${
-          color ?? (accent ? "text-red-400 light:text-red-600" : "text-[var(--oc-ink)]")
+          color ?? (accent ? "text-[var(--oc-accent)]" : "text-[var(--oc-ink)]")
         }`}
       >
         {value}
