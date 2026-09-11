@@ -172,7 +172,14 @@ export async function moveLinkedAppointmentOrder(
         input.newTime,
         durationMinutes,
       );
-      if (hoursError) throw new LinkedRescheduleError(hoursError, { scheduledAt: hoursError });
+      // D-087 superseded: an hours violation is now a confirmable warning,
+      // not a hard block — matches the schedule-conflict check below.
+      if (hoursError && !input.confirmed) {
+        throw new LinkedRescheduleError(
+          `${hoursError} Үргэлжлүүлэхийн тулд дахин "Хадгалах" дарна уу.`,
+          { confirmNeeded: "true" },
+        );
+      }
 
       const endAt = new Date(input.newTime.getTime() + durationMinutes * 60000);
       if (!input.confirmed) {

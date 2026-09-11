@@ -1000,6 +1000,10 @@ function DayScheduleGrid({
   // тул тэнхлэгийг мөрүүдийн бодит цаг хамарч байгаа эсэхээр өргөтгөнө.
   let axisStartMs = bookingSlotTime(dayKey, openMinutes).getTime();
   let axisEndMs = bookingSlotTime(dayKey, closeMinutes).getTime();
+  // Хаалтын цагийн тэмдэглэгээ (GridSchedule доторх "Хаалт" шугам) — ажил
+  // хаалтаас цааш явж болно (D-087 superseded, зөвхөн confirm-той анхааруулга),
+  // тул grid дээр хаалтын цагийг тодруулж харуулна.
+  const closingAtMs = bookingSlotTime(dayKey, closeMinutes).getTime();
   for (const row of rows) {
     if (row.startMs < axisStartMs) axisStartMs = row.startMs;
     if (!row.uncertain && row.endMs > axisEndMs) axisEndMs = row.endMs;
@@ -1030,6 +1034,7 @@ function DayScheduleGrid({
         rows={rows}
         axisStartMs={axisStartMs}
         axisEndMs={axisEndMs}
+        closingAtMs={closingAtMs}
         canChangeItemStatus={canChangeItemStatus}
         branchId={branchId}
         returnTo={returnTo}

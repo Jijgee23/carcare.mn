@@ -110,9 +110,19 @@ export async function postponeOrderCore(input: PostponeCoreInput): Promise<Postp
   // S09: apply the same effective-hours validator general create/update
   // already use (validateScheduledOrderHours) — postpone previously only
   // checked overlaps, letting a return time land outside opening hours.
+  // D-087 superseded: a return time is staff's own estimate, not a customer
+  // commitment, so an hours violation is now a confirmable warning (matching
+  // rescheduleOrderAction/moveLinkedAppointmentOrder), not a hard block.
   const hoursError = await validateScheduledOrderHours(tenantId, order.branchId, returnAt, durationMinutes);
-  if (hoursError) {
-    return { ok: false, error: { code: "validation", fieldErrors: { returnAt: hoursError } } };
+  if (hoursError && !confirmed) {
+    return {
+      ok: false,
+      error: {
+        code: "conflict",
+        message: `${hoursError} Үргэлжлүүлэхийн тулд дахин "Хойшлуулах" дарна уу.`,
+        fieldErrors: { confirmNeeded: "true" },
+      },
+    };
   }
   const conflictEnd = new Date(returnAt.getTime() + durationMinutes * 60000);
   if (!confirmed) {

@@ -47,7 +47,7 @@ import {
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { enforceCountLimit } from "@/lib/plan-limits-server";
 import { prisma, withBookingTransaction, type PrismaTransactionClient } from "@/lib/prisma";
-import { bookingDateKey, bookingDayBounds, bookingSlotTime, parseBusinessLocalDateTime } from "@/lib/booking-time";
+import { bookingDateKey, bookingDayBounds, parseBusinessLocalDateTime } from "@/lib/booking-time";
 import { resolveEffectiveSchedule } from "@/lib/branch-effective-schedule";
 import { branchScheduleForDateSelect } from "@/lib/branch-effective-schedule-server";
 import { timeToMinutes } from "@/lib/branches";
@@ -1492,39 +1492,10 @@ export async function reviseExpectedFinishAction(
         },
       };
     }
-    // Ажил эхэлсэн өдрийн салбарын ажлын цагийн төгсгөлөөс цааш сунгахгүй —
-    // дараагийн өдөр рүү "дуусах хугацаа" гэдэг ойлголт хамааралгүй болно
-    // (тухайн өдрийн ажлын цаг өнгөрсөн бол ажил дараагийн өдөр үргэлжлэх
-    // ёсгүй, харин хойшлуулах эсвэл шинэ захиалга нээх ёстой).
-    const workDayStr = bookingDateKey(activeStartAt);
-    const branch = await prisma.branch.findUnique({
-      where: { id: order.branchId },
-      select: branchScheduleForDateSelect(workDayStr),
-    });
-    if (branch) {
-      const effective = resolveEffectiveSchedule({
-        dateStr: workDayStr,
-        branch: {
-          openTime: branch.openTime,
-          closeTime: branch.closeTime,
-          schedules: branch.schedules,
-          scheduleExceptions: branch.scheduleExceptions,
-          scheduleSeasons: branch.scheduleSeasons,
-        },
-      });
-      const closeMinutes = timeToMinutes(effective.closeTime);
-      if (effective.open && closeMinutes != null) {
-        const workDayCloseAt = bookingSlotTime(workDayStr, closeMinutes);
-        if (expectedFinishAt.getTime() > workDayCloseAt.getTime()) {
-          return {
-            ok: false,
-            fieldErrors: {
-              expectedFinishAt: `Дуусах хугацаа тухайн өдрийн ажлын цагийн төгсгөлөөс (${effective.closeTime}) хэтрэхгүй байх ёстой.`,
-            },
-          };
-        }
-      }
-    }
+    // D-087 superseded: closing-time overrun used to be a hard block here.
+    // Staff work legitimately runs past closing; that is now a confirmable
+    // warning via expectedFinishNeedsScheduleWarning below (called when
+    // !confirmed), not an unconditional rejection.
   }
 
   if (expectedFinishAt && !confirmed) {
@@ -1779,14 +1750,21 @@ export async function rescheduleOrderAction(
   // S09: apply the same effective-hours validator general create/update use
   // (validateScheduledOrderHours) — direct reschedule previously only
   // checked overlaps, letting a new time land outside opening hours.
+  // D-087 superseded: an hours violation on staff-initiated reschedule is now
+  // a confirmable warning, not a hard block — matches the schedule-conflict
+  // check immediately below.
   const hoursError = await validateScheduledOrderHours(
     user.tenantId,
     order.branchId,
     scheduledAt,
     durationMinutes,
   );
-  if (hoursError) {
-    return { ok: false, fieldErrors: { scheduledAt: hoursError } };
+  if (hoursError && !confirmed) {
+    return {
+      ok: false,
+      message: `${hoursError} Үргэлжлүүлэхийн тулд дахин "Хадгалах" дарна уу.`,
+      fieldErrors: { confirmNeeded: "true" },
+    };
   }
   const conflictEnd = new Date(scheduledAt.getTime() + durationMinutes * 60000);
   if (!confirmed) {

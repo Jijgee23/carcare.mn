@@ -38,6 +38,7 @@ export function GridSchedule({
   rows,
   axisStartMs,
   axisEndMs,
+  closingAtMs,
   canChangeItemStatus,
   branchId,
   returnTo,
@@ -45,6 +46,7 @@ export function GridSchedule({
   rows: DayRow[];
   axisStartMs: number;
   axisEndMs: number;
+  closingAtMs?: number | null;
   canChangeItemStatus: boolean;
   branchId: string;
   returnTo: string;
@@ -70,6 +72,15 @@ export function GridSchedule({
   const pastFillEndMs = Math.min(now, axisEndMs);
   const showPastFill = pastFillEndMs > axisStartMs;
   const showNowMarker = now > axisStartMs && now < axisEndMs;
+
+  // Хаалтын цагийн шугам — ажил хаалтаас цааш үргэлжилж болно (staff-side
+  // confirm-able warning, D-087 superseded), тул хаалтын цагийг тэнхлэг дээр
+  // тодруулж, хаалтаас хойших хэсэгт хөнгөн өнгө өгнө (past-fill-тэй адил
+  // хэв маягаар, гэхдээ "past/unavailable" гэсэн санааг өгөхгүйн тулд бүдэг).
+  const showClosingMarker =
+    closingAtMs != null && closingAtMs > axisStartMs && closingAtMs < axisEndMs;
+  const showClosingTint = closingAtMs != null && closingAtMs < axisEndMs;
+  const closingTintStartMs = closingAtMs != null ? Math.max(closingAtMs, axisStartMs) : axisStartMs;
 
   // Босоо саарал шугам харуулах цагийн тэмдэглэгээ — цаг тутам.
   const hourMarks = useMemo(
@@ -171,6 +182,25 @@ export function GridSchedule({
               >
                 <span className="absolute -top-0.5 left-1.5 whitespace-nowrap rounded-full bg-[var(--oc-muted2)] px-1.5 py-0.5 font-plex-mono text-[9px] text-[var(--oc-carbon)]">
                   Одоо · {fmtUbTime(now)}
+                </span>
+              </div>
+            ) : null}
+
+            {showClosingTint ? (
+              <div
+                className="absolute top-0 bottom-0 right-0 bg-[var(--oc-warn)]/[0.06] pointer-events-none"
+                style={{ width: `${100 - pct(closingTintStartMs)}%` }}
+                title="Хаалтын цагаас хойш"
+              />
+            ) : null}
+
+            {showClosingMarker ? (
+              <div
+                className="absolute top-0 bottom-0 w-0.5 bg-[var(--oc-warn)]/70 pointer-events-none"
+                style={{ left: `${pct(closingAtMs!)}%` }}
+              >
+                <span className="absolute -top-0.5 left-1.5 whitespace-nowrap rounded-full bg-[var(--oc-warn)]/80 px-1.5 py-0.5 font-plex-mono text-[9px] text-[var(--oc-carbon)]">
+                  Хаалт · {fmtUbTime(closingAtMs!)}
                 </span>
               </div>
             ) : null}

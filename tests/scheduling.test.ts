@@ -992,7 +992,7 @@ test("reviseExpectedFinishAction rejects POSTPONED orders outright, before ever 
   assert.ok(preCheckPostponedIdx < preCheckGenericIdx, "POSTPONED-specific rejection must come first");
 });
 
-test("reviseExpectedFinishAction validates the past-check and closing-cap lookup against the open ACTIVE booking's startAt, not order.startedAt", () => {
+test("reviseExpectedFinishAction validates the past-check against the open ACTIVE booking's startAt, not order.startedAt", () => {
   const body = reviseExpectedFinishActionBody();
   assert.ok(
     body.includes("getOpenOrderTimeBookings(prisma, order.id)"),
@@ -1006,18 +1006,17 @@ test("reviseExpectedFinishAction validates the past-check and closing-cap lookup
     body.includes("activeBooking?.startAt ?? order.startedAt"),
     "expected the ACTIVE booking's startAt to take precedence, falling back to startedAt only when no ACTIVE row is open",
   );
-  // The past-check and the workday-close lookup must key off activeStartAt.
+  // The past-check must key off activeStartAt. (The closing-cap hard block
+  // that used to key a workday lookup off activeStartAt was removed under
+  // D-087 superseded — closing-time overrun is now a confirm-based warning,
+  // see expectedFinishNeedsScheduleWarning, not a hard reject here.)
   assert.ok(
     body.includes("expectedFinishAt.getTime() <= activeStartAt.getTime()"),
     "expected the past-check to compare against activeStartAt",
   );
   assert.ok(
-    body.includes("bookingDateKey(activeStartAt)"),
-    "expected the closing-cap workday lookup to key off activeStartAt",
-  );
-  assert.ok(
     !body.includes("bookingDateKey(order.startedAt)"),
-    "must no longer key the closing-cap lookup off the stale order.startedAt",
+    "must not key any lookup off the stale order.startedAt",
   );
   // The locked re-check (inside withOrderTransaction) must repeat this against
   // a fresh read of the open bookings, not the fresh.startedAt scalar alone.
@@ -1838,4 +1837,71 @@ test("S17 Phase B: moveLinkedAppointmentOrder (staff linked reschedule) resets r
   const updateCall = fnBody.slice(updateIdx, fnBody.indexOf("});", updateIdx));
   assert.ok(updateCall.includes("requestedAt: input.newTime"), "expected the write to set the new requestedAt");
   assert.ok(updateCall.includes("reminderSentAt: null"), "expected the SAME write to reset reminderSentAt to null");
+});
+
+test("D-087 superseded: reviseExpectedFinishAction's hard closing-time block is gone; past-check and confirm-warning remain", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "app", "_actions", "orders.ts"), "utf8");
+  const fnStart = src.indexOf("export async function reviseExpectedFinishAction");
+  assert.ok(fnStart >= 0, "reviseExpectedFinishAction not found");
+  const fnEnd = src.indexOf("\nexport async function", fnStart + 10);
+  const body = src.slice(fnStart, fnEnd > fnStart ? fnEnd : undefined);
+
+  assert.ok(!body.includes("workDayCloseAt"), "expected the hard workDayCloseAt block to be removed");
+  assert.ok(
+    !/тухайн өдрийн ажлын цагийн төгсгөлөөс.*хэтрэхгүй байх ёстой/.test(body),
+    "expected the old unconditional closing-time rejection message to be gone",
+  );
+  assert.ok(
+    body.includes("Дуусах хугацаа эхэлсэн хугацаанаас хойш байх ёстой."),
+    "expected the past-check to remain",
+  );
+  assert.ok(
+    body.includes("expectedFinishNeedsScheduleWarning("),
+    "expected the confirm-based schedule warning to still be called",
+  );
+  assert.ok(body.includes('fieldErrors: { confirmNeeded: "true" }'), "expected the confirm warning to use the confirmNeeded shape");
+});
+
+test("D-087 superseded: rescheduleOrderAction's hours check only blocks when !confirmed, using the confirmNeeded shape", () => {
+  const body = rescheduleOrderActionBody();
+  const hoursIdx = body.indexOf("validateScheduledOrderHours(");
+  assert.ok(hoursIdx >= 0, "expected a call to validateScheduledOrderHours");
+  const afterCall = body.slice(hoursIdx, hoursIdx + 500);
+  assert.ok(
+    /if\s*\(\s*hoursError\s*&&\s*!confirmed\s*\)/.test(afterCall),
+    "expected the hours check to only short-circuit when !confirmed",
+  );
+  assert.ok(afterCall.includes('fieldErrors: { confirmNeeded: "true" }'), "expected the confirmNeeded fieldErrors shape");
+  assert.ok(!/fieldErrors:\s*{\s*scheduledAt:\s*hoursError\s*}/.test(afterCall), "expected the old hard-block scheduledAt fieldErrors shape to be gone");
+});
+
+test("D-087 superseded: moveLinkedAppointmentOrder's hours check is gated by !input.confirmed, using the confirmNeeded shape", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "lib", "linked-reschedule.ts"), "utf8");
+  const hoursIdx = src.indexOf("validateScheduledOrderHours(");
+  assert.ok(hoursIdx >= 0, "expected a call to validateScheduledOrderHours");
+  const afterCall = src.slice(hoursIdx, hoursIdx + 500);
+  assert.ok(
+    /if\s*\(\s*hoursError\s*&&\s*!input\.confirmed\s*\)/.test(afterCall),
+    "expected the hours check to only throw when !input.confirmed",
+  );
+  assert.ok(afterCall.includes('{ confirmNeeded: "true" }'), "expected the confirmNeeded fieldErrors shape");
+  assert.ok(!/scheduledAt:\s*hoursError/.test(afterCall), "expected the old hard-throw scheduledAt fieldErrors shape to be gone");
+});
+
+test("D-087 superseded regression guard: customer-facing appointment-reservations.ts hour validation is untouched (still hard-blocks, no confirm bypass)", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "lib", "appointment-reservations.ts"), "utf8");
+  assert.ok(
+    src.includes("export async function reserveAppointmentInTransaction") ||
+      src.includes("export function reserveAppointmentInTransaction"),
+    "expected reserveAppointmentInTransaction to still exist",
+  );
+  assert.ok(
+    src.includes("export async function moveAppointmentInTransaction") ||
+      src.includes("export function moveAppointmentInTransaction"),
+    "expected moveAppointmentInTransaction to still exist",
+  );
+  assert.ok(
+    !src.includes("hoursError && !confirmed") && !src.includes("hoursError && !input.confirmed"),
+    "expected no confirm-gated hours bypass to have been introduced in appointment-reservations.ts",
+  );
 });
