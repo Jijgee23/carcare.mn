@@ -58,6 +58,7 @@ export function EmployeeForm({
   branches,
   roles,
   accessInfo,
+  canGrantOwner,
 }: {
   initial?: Initial;
   branches: Branch[];
@@ -67,6 +68,8 @@ export function EmployeeForm({
     lastSeenAt: string | null;
     createdBy: string;
   };
+  /** Одоогийн нэвтэрсэн хэрэглэгч isOwner эсэх — зөвхөн тэр шинэ админ (isOwner) үүсгэж болно. */
+  canGrantOwner?: boolean;
 }) {
   const isEdit = Boolean(initial?.id);
   const action = isEdit
@@ -84,6 +87,8 @@ export function EmployeeForm({
   const [email, setEmail] = useState(initial?.email ?? "");
   const [phone, setPhone] = useState(initial?.phone ?? "");
   const [roleId, setRoleId] = useState(initial?.roleId ?? "");
+  const [wantsOwner, setWantsOwner] = useState(false);
+  const canShowOwnerToggle = Boolean(canGrantOwner) && !isEdit;
   const [branchId, setBranchId] = useState(initial?.branchId ?? "");
   const [assignableBranchIds, setAssignableBranchIds] = useState<string[]>(
     initial?.assignableBranchIds ?? [],
@@ -172,28 +177,61 @@ export function EmployeeForm({
       </SectionPanel>
 
       <SectionPanel index={2} total={3} title="Үүрэг ба салбар">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Field
-            label="Үүрэг"
-            htmlFor="roleId"
-            error={fe.roleId}
-            hint={
-              roles.length === 0
-                ? "Үүрэг үүсээгүй. Эхлээд үүрэг үүсгэнэ үү."
-                : undefined
-            }
+        {canShowOwnerToggle ? (
+          <label
+            className={`mb-4 flex items-start gap-3 p-3.5 rounded-[10px] border cursor-pointer transition-colors ${wantsOwner
+                ? "border-[var(--oc-accent)] bg-[var(--oc-accent)]/[0.08]"
+                : "border-[var(--oc-line)] bg-[var(--oc-panel2)] hover:border-[var(--oc-line2)]"
+              }`}
           >
-            <Select
-              id="roleId"
-              name="roleId"
-              required
-              value={roleId}
-              onChange={(v) => { setDirty(true); setRoleId(v); }}
-              error={fe.roleId}
-              placeholder="— Үүрэг сонгох —"
-              options={roles.map((r) => ({ value: r.id, label: r.name }))}
+            <input
+              type="checkbox"
+              name="isOwner"
+              checked={wantsOwner}
+              onChange={(e) => {
+                setDirty(true);
+                setWantsOwner(e.target.checked);
+                if (e.target.checked) setRoleId("");
+              }}
+              className="mt-0.5 accent-[var(--oc-accent)]"
             />
-          </Field>
+            <div className="flex-1">
+              <div className="text-sm font-medium text-[var(--oc-ink2)]">
+                Админ эрхтэй болгох
+              </div>
+              <div className="text-xs text-[var(--oc-muted3)] mt-0.5">
+                Танайтай адил бүх эрхтэй болно (тусад нь үүрэг сонгох
+                шаардлагагүй). Админыг дараа нь идэвхгүй болгох, устгах, эсвэл
+                үүргийг нь солихдоо сүүлийн идэвхтэй админыг үлдээх ёстой.
+              </div>
+            </div>
+          </label>
+        ) : null}
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {!wantsOwner ? (
+            <Field
+              label="Үүрэг"
+              htmlFor="roleId"
+              error={fe.roleId}
+              hint={
+                roles.length === 0
+                  ? "Үүрэг үүсээгүй. Эхлээд үүрэг үүсгэнэ үү."
+                  : undefined
+              }
+            >
+              <Select
+                id="roleId"
+                name="roleId"
+                required
+                value={roleId}
+                onChange={(v) => { setDirty(true); setRoleId(v); }}
+                error={fe.roleId}
+                placeholder="— Үүрэг сонгох —"
+                options={roles.map((r) => ({ value: r.id, label: r.name }))}
+              />
+            </Field>
+          ) : null}
           <Field
             label="Үндсэн салбар"
             htmlFor="branchId"

@@ -48,7 +48,7 @@ export default async function NewEmployeePage() {
           <BtnLink href="/dashboard/employees" variant="ghost">
             ← Буцах
           </BtnLink>
-          {roles.length > 0 ? (
+          {roles.length > 0 || me.isOwner ? (
             <Btn type="submit" form={EMPLOYEE_FORM_ID}>
               Үүсгэх
             </Btn>
@@ -56,7 +56,7 @@ export default async function NewEmployeePage() {
         </div>
       </div>
 
-      {roles.length === 0 ? (
+      {roles.length === 0 && !me.isOwner ? (
         <div className="rounded-[10px] border border-[var(--oc-accent)]/30 bg-[var(--oc-panel)] p-5 text-sm text-[var(--oc-ink2)]">
           Эхлээд{" "}
           <a
@@ -68,7 +68,7 @@ export default async function NewEmployeePage() {
           . Ажилтны үүргийг үүсгэсэн үүргүүдээс сонгох болно.
         </div>
       ) : (
-        <EmployeeForm branches={branches} roles={roles} />
+        <EmployeeForm branches={branches} roles={roles} canGrantOwner={me.isOwner} />
       )}
     </div>
   );

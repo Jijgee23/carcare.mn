@@ -56,10 +56,14 @@ type Validated = {
   activeUntil: Date | null;
 };
 
-function validateCommon(fd: FormData): {
+function validateCommon(
+  fd: FormData,
+  opts?: { requireRole?: boolean },
+): {
   data: Validated;
   errors: Record<string, string>;
 } {
+  const requireRole = opts?.requireRole ?? true;
   const firstName = s(fd, "firstName");
   const lastName = s(fd, "lastName");
   // Нэвтрэх үед имэйлийг lowercase хийдэг тул хадгалахдаа ч мөн адил болгоно —
@@ -82,7 +86,7 @@ function validateCommon(fd: FormData): {
   if (!phone) errors.phone = "Утасны дугаар оруулна уу.";
   else if (!isValidPhone(phone))
     errors.phone = "Утасны дугаар 8 оронтой тоо байх ёстой.";
-  if (!roleId) errors.roleId = "Үүрэг сонгоно уу.";
+  if (requireRole && !roleId) errors.roleId = "Үүрэг сонгоно уу.";
 
   let activeUntil: Date | null = null;
   if (activeUntilRaw) {
@@ -175,14 +179,22 @@ export async function createEmployeeAction(
     return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
   }
 
-  const { data, errors } = validateCommon(formData);
+  // Зөвхөн одоо байгаа админ (isOwner) шинэ хэрэглэгчийг мөн адил бүх
+  // эрхтэй админаар үүсгэж болно — энгийн ажилтан бол (canCreate эрхтэй ч)
+  // энэ flag-ийг үл тоомсорлоно, аюулгүй байдлын үүднээс.
+  const wantsOwner = user.isOwner && s(formData, "isOwner") === "on";
+
+  const { data, errors } = validateCommon(formData, { requireRole: !wantsOwner });
   // Нууц үгийг админ тавихгүй — ажилтан анх удаа нэвтрэхдээ OTP-ээр өөрөө
   // үүсгэнэ (verified=false → идэвхжүүлэх урсгал).
   if (Object.keys(errors).length > 0) {
     return { ok: false, fieldErrors: errors };
   }
 
-  if (data.roleId) {
+  if (wantsOwner) {
+    // Админ өөрөө permission системээс дээгүүр тул тусад нь Role хэрэггүй.
+    data.roleId = null;
+  } else if (data.roleId) {
     const r = await ensureRoleBelongsToTenant(user.tenantId, data.roleId);
     if (!r.ok) {
       return { ok: false, fieldErrors: { roleId: "Үүрэг олдсонгүй эсвэл идэвхгүй байна." } };
@@ -222,6 +234,7 @@ export async function createEmployeeAction(
         email: data.email,
         phone: data.phone,
         roleId: data.roleId,
+        isOwner: wantsOwner,
         // Нууц үггүй, баталгаажаагүй — ажилтан анхны нэвтрэлтэд өөрөө үүсгэнэ.
         passwordHash: null,
         verified: false,
@@ -256,7 +269,7 @@ export async function createEmployeeAction(
     entity: "User",
     entityId: created.id,
     action: "CREATE",
-    summary: `${data.lastName} ${data.firstName} · ${created.role?.name ?? "—"}`,
+    summary: `${data.lastName} ${data.firstName} · ${wantsOwner ? "Админ" : (created.role?.name ?? "—")}`,
     after: {
       firstName: data.firstName,
       lastName: data.lastName,

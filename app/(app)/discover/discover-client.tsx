@@ -601,7 +601,7 @@ export function DiscoverClient({
               type="button"
               onClick={() => setView("map")}
               className={`h-10 flex items-center px-4 rounded-lg text-sm font-medium transition-colors ${view === "map"
-                ? "bg-violet-600 text-white"
+                ? "bg-[var(--oc-accent)] text-[var(--oc-on-accent)]"
                 : "text-white/55 hover:text-white/80"
                 }`}
             >
@@ -612,7 +612,7 @@ export function DiscoverClient({
             type="button"
             onClick={() => setView("list")}
             className={`h-10 flex items-center px-4 rounded-lg text-sm font-medium transition-colors ${view === "list" || !mapConfigured
-              ? "bg-violet-600 text-white"
+              ? "bg-[var(--oc-accent)] text-[var(--oc-on-accent)]"
               : "text-white/55 hover:text-white/80"
               }`}
           >
@@ -687,7 +687,7 @@ export function DiscoverClient({
           aria-busy={locationPending}
           className={`shrink-0 text-xs px-3 h-10 rounded-lg border transition-colors disabled:opacity-60 disabled:cursor-wait ${
             nearMeOnly
-              ? "bg-[#7c5cff] border-[#7c5cff] text-white"
+              ? "bg-[var(--oc-accent)] border-[var(--oc-accent)] text-[var(--oc-on-accent)]"
               : "border-white/[0.12] bg-white/[0.04] text-white/70 hover:bg-white/[0.08]"
           }`}
         >
@@ -703,7 +703,7 @@ export function DiscoverClient({
           aria-pressed={openNowOnly}
           className={`shrink-0 text-xs px-3 h-10 rounded-lg border transition-colors ${
             openNowOnly
-              ? "bg-[#7c5cff] border-[#7c5cff] text-white"
+              ? "bg-[var(--oc-accent)] border-[var(--oc-accent)] text-[var(--oc-on-accent)]"
               : "border-white/[0.12] bg-white/[0.04] text-white/70 hover:bg-white/[0.08]"
           }`}
         >
@@ -719,7 +719,7 @@ export function DiscoverClient({
           aria-pressed={weekendOnly}
           className={`shrink-0 text-xs px-3 h-10 rounded-lg border transition-colors ${
             weekendOnly
-              ? "bg-[#7c5cff] border-[#7c5cff] text-white"
+              ? "bg-[var(--oc-accent)] border-[var(--oc-accent)] text-[var(--oc-on-accent)]"
               : "border-white/[0.12] bg-white/[0.04] text-white/70 hover:bg-white/[0.08]"
           }`}
         >

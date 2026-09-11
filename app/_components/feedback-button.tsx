@@ -96,126 +96,126 @@ export function FeedbackButton({
 
       {open && typeof document !== "undefined"
         ? createPortal(
-            <>
-              <button
-                type="button"
-                tabIndex={-1}
-                aria-label="Хаах"
-                onClick={closeDialog}
-                className="fixed inset-0 z-[100] cursor-default bg-black/60"
-              />
-              <div
-                role="dialog"
-                aria-modal="true"
-                className="fixed left-1/2 top-1/2 z-[110] w-[min(92vw,28rem)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-white/10 bg-[var(--surface)] p-5 shadow-2xl backdrop-blur-xl"
+          <div className="landing-ops">
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-label="Хаах"
+              onClick={closeDialog}
+              className="fixed inset-0 z-[100] cursor-default bg-black/60"
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              className="fixed left-1/2 top-1/2 z-[110] w-[min(92vw,28rem)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-white/10 bg-[var(--surface)] p-5 shadow-2xl backdrop-blur-xl"
+            >
+              <h3 className="font-semibold text-white">Санал хүсэлт илгээх</h3>
+              <p className="mt-1 text-sm text-white/50">
+                Алдаа ажигласан эсвэл санал байвал бидэнд бичээрэй.
+              </p>
+
+              <form
+                ref={formRef}
+                action={formAction}
+                className="mt-4 flex flex-col gap-3"
               >
-                <h3 className="font-semibold text-white">Санал хүсэлт илгээх</h3>
-                <p className="mt-1 text-sm text-white/50">
-                  Алдаа ажигласан эсвэл санал байвал бидэнд бичээрэй.
-                </p>
+                <input
+                  type="hidden"
+                  name="pageUrl"
+                  value={typeof window !== "undefined" ? window.location.href : ""}
+                />
+                <input
+                  type="hidden"
+                  name="userAgent"
+                  value={typeof navigator !== "undefined" ? navigator.userAgent : ""}
+                />
 
-                <form
-                  ref={formRef}
-                  action={formAction}
-                  className="mt-4 flex flex-col gap-3"
-                >
-                  <input
-                    type="hidden"
-                    name="pageUrl"
-                    value={typeof window !== "undefined" ? window.location.href : ""}
-                  />
-                  <input
-                    type="hidden"
-                    name="userAgent"
-                    value={typeof navigator !== "undefined" ? navigator.userAgent : ""}
-                  />
-
-                  <label className="text-xs text-white/50">
-                    Төрөл
-                    <div className="mt-1">
-                      <Select
-                        name="type"
-                        required
-                        defaultValue="BUG"
-                        options={FEEDBACK_TYPE_VALUES.map((t) => ({
-                          value: t,
-                          label: FEEDBACK_TYPE_LABEL[t],
-                        }))}
-                      />
-                    </div>
-                  </label>
-
-                  <label className="text-xs text-white/50">
-                    Мессеж
-                    <textarea
-                      name="message"
+                <label className="text-xs text-white/50">
+                  Төрөл
+                  <div className="mt-1">
+                    <Select
+                      name="type"
                       required
-                      minLength={5}
-                      maxLength={2000}
-                      rows={4}
-                      placeholder="Юу ажигласан бэ?"
-                      className="auth-input mt-1 w-full resize-none"
+                      defaultValue="BUG"
+                      options={FEEDBACK_TYPE_VALUES.map((t) => ({
+                        value: t,
+                        label: FEEDBACK_TYPE_LABEL[t],
+                      }))}
                     />
-                  </label>
+                  </div>
+                </label>
 
-                  <label className="text-xs text-white/50">
-                    Дэлгэцийн зураг (заавал биш)
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      name="screenshot"
-                      accept="image/png,image/jpeg,image/webp"
-                      onChange={onScreenshotChange}
-                      className="mt-1 block w-full text-xs text-white/60 file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-white/[0.08] file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-white/80 hover:file:bg-white/[0.12]"
+                <label className="text-xs text-white/50">
+                  Мессеж
+                  <textarea
+                    name="message"
+                    required
+                    minLength={5}
+                    maxLength={2000}
+                    rows={4}
+                    placeholder="Юу ажигласан бэ?"
+                    className="auth-input mt-1 w-full resize-none"
+                  />
+                </label>
+
+                <label className="text-xs text-white/50">
+                  Зураг хавсаргах (заавал биш)
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    name="screenshot"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={onScreenshotChange}
+                    className="mt-1 block w-full text-xs text-white/60 file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-white/[0.08] file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-white/80 hover:file:bg-white/[0.12]"
+                  />
+                  <span className="mt-1 block text-[11px] text-white/30">
+                    PNG, JPG, WEBP · хамгийн ихдээ 2MB
+                  </span>
+                </label>
+                {screenshotPreview ? (
+                  <div className="relative self-start">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={screenshotPreview}
+                      alt=""
+                      className="max-h-32 rounded-lg border border-white/10 object-contain"
                     />
-                    <span className="mt-1 block text-[11px] text-white/30">
-                      PNG, JPG, WEBP · хамгийн ихдээ 2MB
-                    </span>
-                  </label>
-                  {screenshotPreview ? (
-                    <div className="relative self-start">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={screenshotPreview}
-                        alt=""
-                        className="max-h-32 rounded-lg border border-white/10 object-contain"
-                      />
-                      <button
-                        type="button"
-                        onClick={clearScreenshot}
-                        aria-label="Зураг арилгах"
-                        className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white/80 transition-colors hover:bg-black/90 hover:text-white"
-                      >
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <line x1="18" y1="6" x2="6" y2="18" />
-                          <line x1="6" y1="6" x2="18" y2="18" />
-                        </svg>
-                      </button>
-                    </div>
-                  ) : null}
-
-                  <div className="mt-1 flex items-center justify-end gap-2">
                     <button
                       type="button"
-                      onClick={closeDialog}
-                      disabled={pending}
-                      className="rounded-lg border border-white/10 bg-white/[0.04] px-3.5 py-2 text-sm text-white/70 transition-colors hover:bg-white/[0.08] disabled:opacity-50"
+                      onClick={clearScreenshot}
+                      aria-label="Зураг арилгах"
+                      className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white/80 transition-colors hover:bg-black/90 hover:text-white"
                     >
-                      Болих
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={pending}
-                      className="rounded-lg bg-violet-600 px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      {pending ? "Илгээж байна..." : "Илгээх"}
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
                     </button>
                   </div>
-                </form>
-              </div>
-            </>,
-            document.body,
-          )
+                ) : null}
+
+                <div className="mt-1 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={closeDialog}
+                    disabled={pending}
+                    className="rounded-lg border border-white/10 bg-white/[0.04] px-3.5 py-2 text-sm text-white/70 transition-colors hover:bg-white/[0.08] disabled:opacity-50"
+                  >
+                    Болих
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={pending}
+                    className="rounded-lg bg-[var(--oc-accent)] px-3.5 py-2 text-sm font-medium text-[var(--oc-on-accent)] transition-colors hover:bg-[var(--oc-accent-hi)] disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {pending ? "Илгээж байна..." : "Илгээх"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>,
+          document.body,
+        )
         : null}
     </>
   );
