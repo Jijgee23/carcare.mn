@@ -10,7 +10,6 @@ import {
   canCreate,
   canDelete,
   canEdit,
-  canView,
   hasPermission,
   workingBranchScopeId,
 } from "@/lib/auth/roles";
@@ -30,7 +29,6 @@ import {
   getBranchSlotMinutes,
   validateScheduledOrderHours,
 } from "@/lib/order-schedule-validation";
-import { postponeOrderCore } from "@/lib/order-postpone";
 import { moveLinkedAppointmentOrder, LinkedRescheduleError } from "@/lib/linked-reschedule";
 import {
   ITEM_KINDS,
@@ -40,7 +38,6 @@ import {
   isOrderLocked,
   isServiceItemCancellable,
   type ItemKind,
-  type OrderPostponeReasonTag,
   type OrderStatus,
   type ServiceItemStatus,
 } from "@/lib/orders";
@@ -55,7 +52,12 @@ import { DEFAULT_SLOT_MINUTES } from "@/lib/appointment-slots";
 import { safeNext } from "@/lib/safe-redirect";
 import { ensureTenantVehicle } from "@/lib/vehicles";
 import { nextOrderNumber } from "@/lib/order-number";
-import { canEditOrder, canAssignOrders, canChangeOrderItemStatus } from "@/lib/auth/order-access";
+import {
+  canEditOrder,
+  canAssignOrders,
+  canChangeOrderItemStatus,
+  canChangeOrderItemPrice,
+} from "@/lib/auth/order-access";
 
 export type OrderActionState = {
   ok: boolean;
@@ -166,6 +168,19 @@ async function authorizeItemStatus() {
   const user = await requireUser();
   if (!hasPermission(user, "orders.itemStatus")) {
     throw new Error("Танд үйлчилгээний мөрийн явц өөрчлөх эрх байхгүй.");
+  }
+  await assertActiveSubscription(user.tenantId);
+  return user;
+}
+
+// Мөрийн үнэ өөрчлөх нь орлогын хуудсанд ерөнхий засах эрхээс тусдаа,
+// `orders.itemPrice` тусгай эрхээр хамгаалагдана (харах: lib/auth/permissions.ts).
+// Шинэ мөр гараар нэмэхэд (addOrderItemAction) хамаарахгүй — тэр endpoint нь
+// ердийн `orders.edit`-ээр л хамгаалагдсан хэвээр байна.
+async function authorizeItemPrice() {
+  const user = await requireUser();
+  if (!hasPermission(user, "orders.itemPrice")) {
+    throw new Error("Танд үйлчилгээний мөрийн үнэ өөрчлөх эрх байхгүй.");
   }
   await assertActiveSubscription(user.tenantId);
   return user;
@@ -496,7 +511,7 @@ export async function createOrderAction(
       prisma.serviceOrder.count({
         where: {
           tenantId: user.tenantId,
-          status: { in: ["SCHEDULED", "IN_PROGRESS", "POSTPONED"] },
+          status: { in: ["SCHEDULED", "IN_PROGRESS"] },
         },
       }),
   );
@@ -907,18 +922,6 @@ export async function changeOrderStatusAction(
         if (!allowed?.includes(next)) {
           throw new OrderActionValidationError("Энэ статус руу шилжих боломжгүй.");
         }
-        // S12: POSTPONED needs a mandatory reason/return-time and a structured
-        // OrderStatusChange row — route it exclusively through the dedicated
-        // postponeOrderAction (dashboard) / POST /api/v1/orders/[id]/postpone
-        // (API), which share lib/order-postpone.ts's postponeOrderCore. This
-        // generic action used to also accept POSTPONED with none of that
-        // validation (WEB_SCHEDULING_ASSESSMENT S11-S12).
-        if (next === "POSTPONED") {
-          throw new OrderActionValidationError(
-            "Хойшлуулахын тулд тусгай хойшлуулах цэсийг ашиглана уу.",
-          );
-        }
-
         // Дуусгахаас өмнө нэмэгдсэн оношилгооны мөр бүгд тайлантай (бөглөгдсөн) байх ёстой.
         if (next === "COMPLETED") {
           const pending = await tx.serviceItem.count({
@@ -939,9 +942,8 @@ export async function changeOrderStatusAction(
         const now = new Date();
         const enteringInProgress = next === "IN_PROGRESS";
         const startingFresh = enteringInProgress && order.status === "SCHEDULED";
-        const resuming = enteringInProgress && order.status === "POSTPONED";
 
-        // Ажил эхлэхэд (эсвэл сэлбэгээс сэргэхэд) үргэлжлэх хугацааны тооцоолол
+        // Ажил эхлэхэд үргэлжлэх хугацааны тооцоолол
         // байх ёстой — эс бөгөөс энэ захиалга хугацаагүй, тодорхойгүй хугацаагаар
         // ажлын байрыг эзэлж, cap=1 мэт бага багтаамжтай салбарт БҮХ цаг захиалгыг
         // бүрмөсөн хаадаг байсан (D-хугацааны шийдвэр). Аль хэдийн тооцоолол байвал
@@ -981,41 +983,28 @@ export async function changeOrderStatusAction(
           updates.completedAt = new Date();
         }
         // Хүчин чадлын эзэмшил: идэвхтэй ажил хүчин чадал эзэлнэ; дууссан/цуцлагдсан
-        // ажил тэр даруй суллана. (POSTPONED-ийг S12-оор дээр нь хасав — тусгай
-        // postponeOrderCore л энэ шилжилтийг хийнэ.)
+        // ажил тэр даруй суллана.
         if (next === "COMPLETED" || next === "CANCELLED") {
           updates.occupiesCapacity = false;
         } else {
           updates.occupiesCapacity = true;
         }
-        if (enteringInProgress && effectiveDurationMinutes != null) {
-          // Хойшлуулснаас сэргэхэд анхны эхэлсэн цагаас биш, ОДООгоос тоолж
-          // дуусах хугацааг дахин тооцоолно — эс бөгөөс хойшлуулсан хугацаа
-          // тооцогдохгүй, дуусах хугацаа хуучирсан хэвээр үлдэнэ.
-          const anchor = resuming ? now : startedAt;
-          if (anchor) {
-            updates.expectedFinishAt = new Date(
-              anchor.getTime() + effectiveDurationMinutes * 60000,
-            );
-          }
+        if (enteringInProgress && effectiveDurationMinutes != null && startedAt) {
+          updates.expectedFinishAt = new Date(
+            startedAt.getTime() + effectiveDurationMinutes * 60000,
+          );
         }
 
         await tx.serviceOrder.update({
           where: { id: order.id },
           data: updates,
         });
-        // D-068/D-076 dual-write: close() is a no-op when nothing matching is
-        // open, so this stays correct regardless of the order's prior booking
-        // state. Starting/resuming active work ("all") consumes whatever was
-        // next in line for this order — a prior SCHEDULED booking that's now
-        // actually starting, a still-open ACTIVE one (resuming without ever
-        // releasing the bay), or an independent follow-up reservation, since
-        // only one SCHEDULED slot can exist at a time and the car is back now.
-        // COMPLETED closes only ACTIVE — a pending follow-up (D-076) is a
-        // separate future commitment and must survive the current work ending.
-        // CANCELLED closes "all": the whole order is void, so nothing about it
-        // — including any pending follow-up — should remain open, matching the
-        // service-item cancellation just below.
+        // D-068 dual-write: close() is a no-op when nothing matching is open,
+        // so this stays correct regardless of the order's prior booking state.
+        // Starting active work ("all") consumes any prior SCHEDULED booking
+        // that's now actually starting. COMPLETED closes only ACTIVE. CANCELLED
+        // closes "all": the whole order is void, so nothing about it should
+        // remain open, matching the service-item cancellation just below.
         if (enteringInProgress) {
           await closeOpenOrderTimeBooking(tx, order.id, now, "all");
           await openOrderTimeBooking(tx, {
@@ -1041,18 +1030,6 @@ export async function changeOrderStatusAction(
             data: { status: "CANCELLED", cancelledAt: new Date(), cancelledById: user.id },
           });
         }
-        // S12: every transition writes a structured OrderStatusChange row in
-        // the same transaction, not just postpone (WEB_SCHEDULING_ASSESSMENT
-        // S11-S12) — no reason/reasonTag for these ordinary transitions.
-        await tx.orderStatusChange.create({
-          data: {
-            tenantId: user.tenantId,
-            orderId: order.id,
-            fromStatus: order.status,
-            toStatus: next,
-            changedById: user.id,
-          },
-        });
         await logAudit(
           {
             tenantId: user.tenantId,
@@ -1076,285 +1053,6 @@ export async function changeOrderStatusAction(
   revalidatePath(`/dashboard/orders/${id}`);
   revalidatePath("/dashboard");
   return { ok: true, message: "Статус шинэчлэгдлээ." };
-}
-
-// --- POSTPONE (D-078: merges the status transition with reason/tag capture
-// and an optional return-time booking, in one modal/one submit) -----------
-
-// Хойшлуулах нь ердийн статус шилжилт биш — яагаад хойшилж байгааг (шалгаж
-// шалгаагаад, гар бичсэн reason + сонгосон reasonTag хосоор) OrderStatusChange
-// мөрөнд заавал тэмдэглэнэ, мөн хүсвэл (заавал биш) буцах цагийг нэг дор
-// товлож болно. changeOrderStatusAction-ийн POSTPONED-той адил dual-write
-// зарчим ашиглана (ACTIVE-г л хаана, follow-up SCHEDULED мөрийг хөндөхгүй).
-export async function postponeOrderAction(
-  _prev: OrderActionState,
-  formData: FormData,
-): Promise<OrderActionState> {
-  let user;
-  try {
-    user = await authorize("edit");
-  } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
-  }
-  const id = s(formData, "id");
-  if (!id) return { ok: false, message: "Буруу хүсэлт." };
-  try { await assertOrderEditAccess(user, id); } catch (e) { return { ok: false, message: e instanceof Error ? e.message : "Алдаа" }; }
-
-  // S12: all validation and writes now live in postponeOrderCore
-  // (lib/order-postpone.ts), shared with POST /api/v1/orders/[id]/postpone —
-  // this action only adapts FormData in and OrderActionState out.
-  const result = await postponeOrderCore({
-    tenantId: user.tenantId,
-    orderId: id,
-    branchScope: workingBranchScopeId(user),
-    reasonRaw: s(formData, "reason"),
-    reasonTagRaw: s(formData, "reasonTag"),
-    returnAtRaw: s(formData, "returnAt"),
-    confirmed: s(formData, "confirmed") === "true",
-    actorId: user.id,
-  });
-  if (!result.ok) {
-    return { ok: false, message: result.error.message, fieldErrors: result.error.fieldErrors };
-  }
-
-  revalidatePath("/dashboard/orders");
-  revalidatePath(`/dashboard/orders/${id}`);
-  revalidatePath("/dashboard/appointments/calendar");
-  revalidatePath("/dashboard");
-  return { ok: true, message: "Хойшлууллаа." };
-}
-
-// --- STATUS HISTORY (D-078: read OrderStatusChange for display) ----------
-
-export type OrderStatusHistoryEntry = {
-  id: string;
-  fromStatus: OrderStatus | null;
-  toStatus: OrderStatus;
-  reason: string | null;
-  reasonTag: OrderPostponeReasonTag | null;
-  changedByName: string | null;
-  createdAt: Date;
-};
-
-// Зөвхөн харах эрх шаардлагатай (засах биш) — тухайн захиалгын статус
-// шилжилтийн түүхийг цагийн дарааллаар (сүүлийнхээс) буцаана. Алдаа/эрхгүй
-// үед `null` буцаана (throw биш) — modal-ийг "олдсонгүй" гэж энгийн харуулна.
-export async function getOrderStatusHistoryAction(
-  orderId: string,
-): Promise<OrderStatusHistoryEntry[] | null> {
-  let user;
-  try {
-    user = await requireUser();
-  } catch {
-    return null;
-  }
-  if (!canView(user, "orders")) return null;
-  if (!orderId) return null;
-
-  const order = await prisma.serviceOrder.findFirst({
-    where: { id: orderId, tenantId: user.tenantId },
-    select: { id: true, branchId: true },
-  });
-  if (!order) return null;
-  try {
-    assertOrderBranchScope(user, order.branchId);
-  } catch {
-    return null;
-  }
-
-  const rows = await prisma.orderStatusChange.findMany({
-    where: { orderId },
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      fromStatus: true,
-      toStatus: true,
-      reason: true,
-      reasonTag: true,
-      createdAt: true,
-      changedBy: { select: { firstName: true, lastName: true } },
-    },
-  });
-  return rows.map((row) => ({
-    id: row.id,
-    fromStatus: row.fromStatus,
-    toStatus: row.toStatus,
-    reason: row.reason,
-    reasonTag: row.reasonTag,
-    changedByName: row.changedBy
-      ? `${row.changedBy.firstName} ${row.changedBy.lastName}`.trim() || null
-      : null,
-    createdAt: row.createdAt,
-  }));
-}
-
-// --- SCHEDULE A RETURN TIME (D-068: a SCHEDULED-kind OrderTimeBooking while
-// still POSTPONED, without touching occupiesCapacity) ------------------
-
-// D-076: POSTPONED is now always released (occupiesCapacity: false, no
-// toggle — see COWORK.md) — this schedules the car's return time. A
-// separate "resume now" happens via changeOrderStatusAction transitioning
-// straight to IN_PROGRESS, which itself handles closing this booking. Bay
-// occupancy is never independently toggled while POSTPONED any more.
-// Аль хэдийн товлосон буцах цаг байвал (нээлттэй SCHEDULED мөр) шинээр
-// нээхгүй, байгааг нь л шинэчилнэ (rescheduleOrderAction-той адил зарчим).
-export async function scheduleOrderReturnAction(
-  _prev: OrderActionState,
-  formData: FormData,
-): Promise<OrderActionState> {
-  let user;
-  try {
-    user = await authorize("edit");
-  } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
-  }
-  const id = s(formData, "id");
-  const returnRaw = s(formData, "returnAt");
-  const confirmed = s(formData, "confirmed") === "true";
-  if (!id || !returnRaw) return { ok: false, message: "Буруу хүсэлт." };
-
-  const returnAt = parseBusinessLocalDateTime(returnRaw);
-  if (!Number.isFinite(returnAt.getTime())) {
-    return { ok: false, fieldErrors: { returnAt: "Огноо буруу." } };
-  }
-
-  const order = await prisma.serviceOrder.findFirst({
-    where: { id, tenantId: user.tenantId },
-    select: {
-      id: true,
-      branchId: true,
-      status: true,
-      occupiesCapacity: true,
-      estimatedDurationMinutes: true,
-    },
-  });
-  if (!order) return { ok: false, message: "Засварын хуудас олдсонгүй." };
-  try {
-    assertOrderBranchScope(user, order.branchId);
-  } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
-  }
-  // D-076: two cases. A POSTPONED order (always released, see D-076) books
-  // a return time — the single reservation representing when the car comes
-  // back, replacing any prior one. An IN_PROGRESS order books an
-  // independent follow-up — additive, alongside the still-open ACTIVE
-  // booking for today's work, never touching it.
-  const isReturnTime = order.status === "POSTPONED";
-  const isFollowUp = order.status === "IN_PROGRESS";
-  if (!isReturnTime && !isFollowUp) {
-    return {
-      ok: false,
-      message: "Зөвхөн хойшлуулсан, эсвэл идэвхтэй ажиллаж буй захиалгад л дараагийн цаг товлоно.",
-    };
-  }
-
-  const durationMinutes = order.estimatedDurationMinutes ?? await getBranchSlotMinutes(
-    user.tenantId,
-    order.branchId,
-  );
-  const conflictEnd = new Date(returnAt.getTime() + durationMinutes * 60000);
-  if (!confirmed) {
-    const conflict = await findScheduleConflict(
-      user.tenantId,
-      order.branchId,
-      order.id,
-      returnAt,
-      conflictEnd,
-    );
-    if (conflict) {
-      const actionLabel = isFollowUp ? "Дараагийн цаг товлох" : "Товлох";
-      return {
-        ok: false,
-        message:
-          conflict.certainty === "possible"
-            ? `Товлосон цаг ${conflict.label}-тай давхцах магадлалтай. Үргэлжлүүлэхийн тулд дахин "${actionLabel}" дарна уу.`
-            : `Товлосон цаг ${conflict.label}-тай давхцаж байна. Үргэлжлүүлэхийн тулд дахин "${actionLabel}" дарна уу.`,
-        fieldErrors: { confirmNeeded: "true" },
-      };
-    }
-  }
-
-  // S06 fix — the worst race in this batch: two concurrent calls could each
-  // read "no open SCHEDULED row" (unlocked) and each insert one. Take the
-  // order lock, re-read status fresh, and do the "does an open SCHEDULED
-  // row already exist?" check AND the resulting update-in-place-or-insert
-  // under that SAME lock so only one of two concurrent callers can win the
-  // insert branch.
-  try {
-    await withOrderTransaction(
-      user.tenantId,
-      id,
-      { id: true, branchId: true, status: true },
-      async (tx, freshRaw) => {
-        const fresh = freshRaw as { id: string; branchId: string; status: OrderStatus } | null;
-        if (!fresh) throw new OrderActionValidationError("Засварын хуудас олдсонгүй.");
-        assertOrderBranchScope(user, fresh.branchId);
-        const freshIsReturnTime = fresh.status === "POSTPONED";
-        const freshIsFollowUp = fresh.status === "IN_PROGRESS";
-        if (!freshIsReturnTime && !freshIsFollowUp) {
-          throw new OrderActionValidationError(
-            "Зөвхөн хойшлуулсан, эсвэл идэвхтэй ажиллаж буй захиалгад л дараагийн цаг товлоно.",
-          );
-        }
-
-        const open = await getOpenOrderTimeBookings(tx, fresh.id);
-        const openScheduled = open.find((b) => b.kind === "SCHEDULED");
-        if (openScheduled) {
-          // Аль хэдийн товлосон цаг байгааг л шинэчилнэ — шинэ мөр нээхгүй
-          // (rescheduleOrderAction-той адил "засварлах", шатлал шилжилт биш).
-          await updateOpenOrderTimeBookingSchedule(tx, fresh.id, {
-            startAt: returnAt,
-            endAt: conflictEnd,
-          });
-        } else if (freshIsReturnTime) {
-          // occupiesCapacity === false байх ёстой тул энд ямар нэгэн ACTIVE
-          // нээлттэй мөр байх ёсгүй, гэвч бай хамгаалалтын үүднээс ямар ч
-          // нээлттэй мөрийг хаагаад шинээр SCHEDULED нээнэ.
-          await closeOpenOrderTimeBooking(tx, fresh.id, new Date(), "all");
-          await openOrderTimeBooking(tx, {
-            tenantId: user.tenantId,
-            orderId: fresh.id,
-            branchId: fresh.branchId,
-            kind: "SCHEDULED",
-            startAt: returnAt,
-            endAt: conflictEnd,
-            createdById: user.id,
-          });
-        } else {
-          // D-076 follow-up (freshIsFollowUp, IN_PROGRESS): additive only — the
-          // open ACTIVE booking for today's work must NEVER be closed here.
-          await openOrderTimeBooking(tx, {
-            tenantId: user.tenantId,
-            orderId: fresh.id,
-            branchId: fresh.branchId,
-            kind: "SCHEDULED",
-            startAt: returnAt,
-            endAt: conflictEnd,
-            createdById: user.id,
-          });
-        }
-        await logAudit(
-          {
-            tenantId: user.tenantId,
-            userId: user.id,
-            entity: "ServiceOrder",
-            entityId: fresh.id,
-            action: "UPDATE",
-            summary: freshIsFollowUp ? "Дараагийн цаг товлов" : "Машины буцах цаг товлов",
-            after: { returnAt: returnAt.toISOString() },
-          },
-          tx,
-        );
-      },
-    );
-  } catch (e) {
-    return orderActionErrorResult(e);
-  }
-
-  revalidatePath("/dashboard/orders");
-  revalidatePath(`/dashboard/orders/${id}`);
-  revalidatePath("/dashboard/appointments/calendar");
-  return { ok: true, message: isFollowUp ? "Дараагийн цаг товлолоо." : "Буцах цаг товлолоо." };
 }
 
 // --- EXPECTED FINISH TIME (manual revision) --------------------------------
@@ -1452,14 +1150,6 @@ export async function reviseExpectedFinishAction(
     };
   }
 
-  if (order.status === "POSTPONED") {
-    return {
-      ok: false,
-      message:
-        "Хойшлуулсан ажлын дуусах хугацааг засах боломжгүй — ажлыг үргэлжлүүлсний дараа л засварлана уу.",
-    };
-  }
-
   if (order.status !== "IN_PROGRESS") {
     return {
       ok: false,
@@ -1469,10 +1159,8 @@ export async function reviseExpectedFinishAction(
 
   // S10 fix (WEB_SCHEDULING_ASSESSMENT_2026-09-10.md): validate against the
   // currently open ACTIVE booking's startAt, not the stale ServiceOrder.startedAt
-  // scalar — resume (POSTPONED -> IN_PROGRESS) opens a fresh ACTIVE row anchored
-  // to "now" but deliberately leaves startedAt untouched (see changeOrderStatusAction
-  // above), so after a pause/resume cycle startedAt still points at the original
-  // (possibly days-old) start rather than the real current session's start.
+  // scalar — the open booking is the source of truth for when this work
+  // session actually started.
   const openBookings = await getOpenOrderTimeBookings(prisma, order.id);
   const activeBooking = openBookings.find((b) => b.kind === "ACTIVE");
   const activeStartAt = activeBooking?.startAt ?? order.startedAt;
@@ -1548,7 +1236,7 @@ export async function reviseExpectedFinishAction(
   // S06 fix: re-validate the order's phase/startedAt against a fresh, locked
   // read before writing — the pre-checks above (hours/conflict) ran against
   // the earlier unlocked read and are only advisory warnings, but "is this
-  // order still IN_PROGRESS/POSTPONED with the same startedAt" is the actual
+  // order still IN_PROGRESS with the same startedAt" is the actual
   // correctness gate and must be re-checked under the lock.
   try {
     await withOrderTransaction(
@@ -1570,11 +1258,6 @@ export async function reviseExpectedFinishAction(
             fresh.status === "COMPLETED"
               ? "Энэ засварын хуудас аль хэдийн дууссан тул хугацааг засах боломжгүй. Хуудсыг дахин ачаална уу."
               : "Энэ засварын хуудас цуцлагдсан тул хугацааг засах боломжгүй. Хуудсыг дахин ачаална уу.",
-          );
-        }
-        if (fresh.status === "POSTPONED") {
-          throw new OrderActionValidationError(
-            "Хойшлуулсан ажлын дуусах хугацааг засах боломжгүй — ажлыг үргэлжлүүлсний дараа л засварлана уу.",
           );
         }
         if (fresh.status !== "IN_PROGRESS") {
@@ -2245,6 +1928,9 @@ export async function changeOrderItemStatusAction(
   if (!canChangeServiceItemStatus(item.status as ServiceItemStatus)) {
     throw new Error("Цуцлагдсан мөрийн явцыг өөрчлөх боломжгүй.");
   }
+  if (item.kind === "PART") {
+    throw new Error("Сэлбэг мөрийн явц байхгүй.");
+  }
   // Оношилгоо бөглөгдсөнөөр (тайлантай холбогдсоноор) л дууссан гэж тооцно —
   // энэ мөрийн явцыг гараар шууд "дуусгах" боломжгүй, бусад төрөл чөлөөтэй.
   if (next === "COMPLETED" && item.kind === "DIAGNOSTIC" && !item.diagnosticReportId) {
@@ -2264,6 +1950,68 @@ export async function changeOrderItemStatusAction(
     summary: `${item.status} → ${next} (мөр ${item.id})`,
     before: { status: item.status },
     after: { status: next },
+  });
+
+  revalidatePath(`/dashboard/orders/${item.orderId}`);
+}
+
+/**
+ * Аль хэдийн нэмэгдсэн мөрийн нэгж үнийг (тоо хэвээр) өөрчилнө — шинэ мөр
+ * нэмэхэд ашиглагддаггүй (тэр addOrderItemAction, ердийн `orders.edit`-ээр
+ * хамгаалагдсан). Дүн (`total`) автоматаар дахин тооцогдоно.
+ */
+export async function changeOrderItemPriceAction(
+  formData: FormData,
+): Promise<void> {
+  const user = await authorizeItemPrice();
+  const itemId = s(formData, "itemId");
+  const unitPrice = parseDecimal(s(formData, "unitPrice"));
+  if (!itemId || !unitPrice || unitPrice.lte(0)) return;
+
+  const item = await prisma.serviceItem.findFirst({
+    where: { id: itemId, order: { tenantId: user.tenantId } },
+    select: {
+      id: true,
+      orderId: true,
+      quantity: true,
+      unitPrice: true,
+      total: true,
+      status: true,
+      order: { select: { status: true, branchId: true, assignedToId: true } },
+    },
+  });
+  if (!item) return;
+  if (!canChangeOrderItemPrice(user, item.order)) return;
+  assertOrderBranchScope(user, item.order.branchId);
+  if (isOrderLocked(item.order.status as OrderStatus)) {
+    throw new Error("Дууссан засварын хуудасны мөрийн үнийг өөрчлөх боломжгүй.");
+  }
+  if (item.status === "CANCELLED") {
+    throw new Error("Цуцлагдсан мөрийн үнийг өөрчлөх боломжгүй.");
+  }
+  if (unitPrice.equals(item.unitPrice)) return;
+
+  const total = item.quantity.times(unitPrice);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.serviceItem.update({
+      where: { id: item.id },
+      data: { unitPrice, total },
+    });
+    await logAudit(
+      {
+        tenantId: user.tenantId,
+        userId: user.id,
+        entity: "ServiceOrder",
+        entityId: item.orderId,
+        action: "ITEM_UPDATED",
+        summary: `Үнэ: ${item.unitPrice.toString()} → ${unitPrice.toString()} (мөр ${item.id})`,
+        before: { unitPrice: item.unitPrice.toString(), total: item.total.toString() },
+        after: { unitPrice: unitPrice.toString(), total: total.toString() },
+      },
+      tx,
+    );
+    await recomputeTotal(item.orderId, tx);
   });
 
   revalidatePath(`/dashboard/orders/${item.orderId}`);

@@ -30,9 +30,11 @@ import {
 export function OrderDetailPanel({
   orderId,
   canChangeItemStatus,
+  canChangeItemPrice,
 }: {
   orderId: string;
   canChangeItemStatus: boolean;
+  canChangeItemPrice: boolean;
 }) {
   const [state, setState] = useState<
     | { status: "loading" }
@@ -118,6 +120,7 @@ export function OrderDetailPanel({
           orderId={order.id}
           canEdit={false}
           canChangeStatus={canChangeItemStatus}
+          canChangePrice={canChangeItemPrice}
           orderStarted={canFillDiagnostics(order.status)}
         />
       )}

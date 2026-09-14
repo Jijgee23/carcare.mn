@@ -17,7 +17,11 @@ import {
   type ServiceItemStatus,
 } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
-import { canEditOrder, canChangeOrderItemStatus } from "@/lib/auth/order-access";
+import {
+  canEditOrder,
+  canChangeOrderItemStatus,
+  canChangeOrderItemPrice,
+} from "@/lib/auth/order-access";
 
 const MAX_QUANTITY = new Prisma.Decimal(1_000_000);
 const MAX_UNIT_PRICE = new Prisma.Decimal(1_000_000_000);
@@ -92,6 +96,12 @@ export async function PATCH(
   const b = (body ?? {}) as Record<string, unknown>;
   if (b.status !== undefined && !canChangeOrderItemStatus(auth.user, order)) {
     return jsonError(403, "Танд үйлчилгээний мөрийн явц өөрчлөх эрх байхгүй.");
+  }
+  // Мөрийн үнэ (unitPrice) өөрчлөх нь тусгай `orders.itemPrice` эрх шаарддаг —
+  // шинэ мөр нэмэхэд (POST /items) хамаарахгүй, зөвхөн АЛЬ ХЭДИЙН нэмэгдсэн
+  // мөрийг дараа засварлахад (энэ PATCH).
+  if (b.unitPrice !== undefined && !canChangeOrderItemPrice(auth.user, order)) {
+    return jsonError(403, "Танд үйлчилгээний мөрийн үнэ өөрчлөх эрх байхгүй.");
   }
 
   const kind =

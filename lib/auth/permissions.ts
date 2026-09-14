@@ -39,6 +39,10 @@ type CrudCode = `${ResourceKey}.${ActionKey}`;
 // (хүлээгдэж буй/эхэлсэн/дууссан) чөлөөтэй өөрчлөх эрх. `orders.edit`-ээс
 // тусдаа: мастер зөвхөн ЭНЭ эрхтэйгээр мөрийн явцаа шинэчилж болно (захиалгын
 // бусад мэдээлэл/мөр нэмэх-цуцлах зэрэг засварын эрхгүйгээр).
+// `orders.itemPrice` — засварын хуудсанд АЛЬ ХЭДИЙН нэмэгдсэн үйлчилгээний
+// мөрийн нэгж үнийг дараа нь засварлах эрх. Шинэ мөр гараар нэмэхэд (тэр
+// үеийн анхны үнийг тохируулахад) хамаарахгүй — тэр endpoint-ыг (addOrderItemAction)
+// ердийн `orders.edit` л зохицуулна, өөрчлөхгүй.
 type StandaloneCode =
   | "audit.view"
   | "orders.assignable"
@@ -46,7 +50,8 @@ type StandaloneCode =
   | "orders.viewOwn"
   | "orders.editOwn"
   | "services.duration"
-  | "orders.itemStatus";
+  | "orders.itemStatus"
+  | "orders.itemPrice";
 
 export type PermissionCode = CrudCode | StandaloneCode;
 
@@ -125,6 +130,13 @@ export const PERMISSIONS: readonly PermissionDef[] = [
       "Засварын хуудасны ажил/оношилгоо/сэлбэг мөр бүрийн явцыг (хүлээгдэж буй/эхэлсэн/дууссан) чөлөөтэй өөрчлөх. Захиалгын бусад мэдээлэл засах эрхээс тусдаа.",
     group: "Захиалга",
   },
+  {
+    code: "orders.itemPrice",
+    label: "Үйлчилгээний мөрийн үнэ өөрчлөх",
+    description:
+      "Засварын хуудсанд аль хэдийн нэмэгдсэн үйлчилгээний мөрийн нэгж үнийг дараа нь засварлах. Шинэ мөр гараар бүртгэхэд (анхны үнэ тохируулахад) хамаарахгүй.",
+    group: "Захиалга",
+  },
 ] as const;
 
 export const PERMISSION_CODES = PERMISSIONS.map((p) => p.code);
@@ -163,5 +175,6 @@ export const STANDALONE_PERMISSIONS: ReadonlyArray<PermissionDef> = PERMISSIONS.
     p.code === "orders.assignable" ||
     p.code === "orders.assign" ||
     p.code === "services.duration" ||
-    p.code === "orders.itemStatus",
+    p.code === "orders.itemStatus" ||
+    p.code === "orders.itemPrice",
 );

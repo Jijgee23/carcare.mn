@@ -8,7 +8,6 @@ import { reserveAppointment, ReservationError } from "@/lib/appointment-reservat
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { isFeatureEnabled } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
-import { ORDER_STATUS_HISTORY_CUSTOMER_SELECT } from "@/lib/orders";
 
 // GET /api/v1/app/appointments — миний цагууд (auth).
 export async function GET(req: Request) {
@@ -74,18 +73,6 @@ export async function GET(req: Request) {
               total: true,
             },
           },
-          statusChanges: {
-            orderBy: { createdAt: "desc" },
-            select: ORDER_STATUS_HISTORY_CUSTOMER_SELECT,
-          },
-          // D-078's postpone flow always requires a return time — the open
-          // SCHEDULED-kind row's startAt is that return time. Only relevant
-          // while POSTPONED (only one open SCHEDULED row can exist, D-076).
-          timeBookings: {
-            where: { kind: "SCHEDULED", closedAt: null },
-            select: { startAt: true },
-            take: 1,
-          },
         },
       },
       feeAmount: true,
@@ -142,15 +129,6 @@ export async function GET(req: Request) {
           total: true,
         },
       },
-      statusChanges: {
-        orderBy: { createdAt: "desc" },
-        select: ORDER_STATUS_HISTORY_CUSTOMER_SELECT,
-      },
-      timeBookings: {
-        where: { kind: "SCHEDULED", closedAt: null },
-        select: { startAt: true },
-        take: 1,
-      },
     },
   });
 
@@ -198,8 +176,6 @@ export async function GET(req: Request) {
             unitPrice: Number.parseFloat(it.unitPrice.toString()),
             total: Number.parseFloat(it.total.toString()),
           })),
-          statusHistory: a.serviceOrder.statusChanges,
-          scheduledReturnAt: a.serviceOrder.timeBookings[0]?.startAt ?? null,
         }
       : null,
     payment: serializeAppointmentFee(a),
@@ -231,8 +207,6 @@ export async function GET(req: Request) {
       unitPrice: Number.parseFloat(it.unitPrice.toString()),
       total: Number.parseFloat(it.total.toString()),
     })),
-    statusHistory: o.statusChanges,
-    scheduledReturnAt: o.timeBookings[0]?.startAt ?? null,
   }));
 
   return jsonOk({ appointments: shaped, walkInOrders: shapedWalkIns });

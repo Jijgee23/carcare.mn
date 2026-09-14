@@ -97,6 +97,7 @@ export default async function AppointmentsCalendarPage({
   const canRespondAppointments = canEdit(user, "appointments");
   const canEditOrders = canEdit(user, "orders");
   const canChangeItemStatus = hasPermission(user, "orders.itemStatus");
+  const canChangeItemPrice = hasPermission(user, "orders.itemPrice");
 
   const sp = await searchParams;
   const cal = resolveCalendar(sp);
@@ -141,17 +142,12 @@ export default async function AppointmentsCalendarPage({
             // interval-projected day schedule, which already reads the
             // order-derived time once linked) — without this it kept showing
             // only requestedAt even after the linked order progressed past
-            // SCHEDULED (e.g. a POSTPONED return time), diverging from the
-            // day view. Mirrors the dashboard list page's same fix.
+            // SCHEDULED, diverging from the day view. Mirrors the dashboard
+            // list page's same fix.
             serviceOrder: {
               select: {
                 status: true,
                 scheduledAt: true,
-                timeBookings: {
-                  where: { kind: "SCHEDULED", closedAt: null },
-                  select: { startAt: true },
-                  take: 1,
-                },
               },
             },
           },
@@ -468,6 +464,7 @@ export default async function AppointmentsCalendarPage({
               canRespondAppointments={canRespondAppointments}
               canEditOrders={canEditOrders}
               canChangeItemStatus={canChangeItemStatus}
+              canChangeItemPrice={canChangeItemPrice}
               returnTo={returnTo}
             />
           ))}
@@ -482,6 +479,7 @@ export default async function AppointmentsCalendarPage({
           canRespondAppointments={canRespondAppointments}
           canEditOrders={canEditOrders}
           canChangeItemStatus={canChangeItemStatus}
+          canChangeItemPrice={canChangeItemPrice}
           returnTo={returnTo}
         />
       ) : cal.interval === "day" && isMultiBranchDay ? (
@@ -495,6 +493,7 @@ export default async function AppointmentsCalendarPage({
               canRespondAppointments={canRespondAppointments}
               canEditOrders={canEditOrders}
               canChangeItemStatus={canChangeItemStatus}
+              canChangeItemPrice={canChangeItemPrice}
               returnTo={returnTo}
             />
           ))}
@@ -507,6 +506,7 @@ export default async function AppointmentsCalendarPage({
           canRespondAppointments={canRespondAppointments}
           canEditOrders={canEditOrders}
           canChangeItemStatus={canChangeItemStatus}
+          canChangeItemPrice={canChangeItemPrice}
           returnTo={returnTo}
         />
       ) : cal.interval === "week" ? (
@@ -560,12 +560,9 @@ export default async function AppointmentsCalendarPage({
                       </div>
                       {a.serviceOrder && a.serviceOrder.status !== "SCHEDULED" ? (
                         <div className="text-[10px] text-[var(--oc-muted4)] truncate">
-                          {a.serviceOrder.status === "POSTPONED" &&
-                          a.serviceOrder.timeBookings[0]?.startAt
-                            ? `Үргэлжлэх: ${fmtTime(a.serviceOrder.timeBookings[0].startAt)}`
-                            : a.serviceOrder.scheduledAt
-                              ? `Товлосон: ${fmtTime(a.serviceOrder.scheduledAt)}`
-                              : null}
+                          {a.serviceOrder.scheduledAt
+                            ? `Товлосон: ${fmtTime(a.serviceOrder.scheduledAt)}`
+                            : null}
                         </div>
                       ) : null}
                       {!branchId ? (
@@ -643,6 +640,7 @@ function DaySchedule({
   canRespondAppointments,
   canEditOrders,
   canChangeItemStatus,
+  canChangeItemPrice,
   returnTo,
 }: {
   schedule: DayScheduleData | null;
@@ -651,6 +649,7 @@ function DaySchedule({
   canRespondAppointments: boolean;
   canEditOrders: boolean;
   canChangeItemStatus: boolean;
+  canChangeItemPrice: boolean;
   returnTo: string;
 }) {
   if (!schedule) {
@@ -895,7 +894,6 @@ function DaySchedule({
                         <div className="w-64">
                           <StatusControls
                             orderId={order.id}
-                            branchId={order.branchId}
                             transitions={orderTransitions}
                             disabled={false}
                             currentStatus={order.status}
@@ -910,6 +908,7 @@ function DaySchedule({
                           key={order.id}
                           orderId={order.id}
                           canChangeItemStatus={canChangeItemStatus}
+                          canChangeItemPrice={canChangeItemPrice}
                         />
                       ) : null}
                     </RowExpand>
@@ -936,6 +935,7 @@ function DayScheduleGrid({
   canRespondAppointments,
   canEditOrders,
   canChangeItemStatus,
+  canChangeItemPrice,
   returnTo,
 }: {
   schedule: DayScheduleData | null;
@@ -974,6 +974,7 @@ function DayScheduleGrid({
   canRespondAppointments: boolean;
   canEditOrders: boolean;
   canChangeItemStatus: boolean;
+  canChangeItemPrice: boolean;
   returnTo: string;
 }) {
   if (!schedule) {
@@ -1036,6 +1037,7 @@ function DayScheduleGrid({
         axisEndMs={axisEndMs}
         closingAtMs={closingAtMs}
         canChangeItemStatus={canChangeItemStatus}
+        canChangeItemPrice={canChangeItemPrice}
         branchId={branchId}
         returnTo={returnTo}
       />

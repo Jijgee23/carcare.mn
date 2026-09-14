@@ -206,21 +206,8 @@ test("cancelled linked order still flags its appointment for attention", () => {
   assert.equal(result.intervals[0].source, "appointment");
   assert.ok(result.issues.some((issue) => issue.reason === "linked-order-not-occupying"));
 });
-test("explicitly released waiting-for-parts order clears its linked appointment quietly", () => {
-  // Freeing the bay while waiting on a part (setOrderCapacityAction) is a
-  // normal, everyday choice, not a broken link — the order stays fully
-  // visible on /dashboard/orders regardless.
-  const result = project([order({ status: "POSTPONED", occupiesCapacity: false })],
-    [appointment({ serviceOrderId: "order" })]);
-  assert.equal(result.intervals.length, 0);
-  assert.ok(!result.issues.some((issue) => issue.reason === "linked-order-not-occupying"));
-});
 test("completed car still in workspace continues to consume capacity", () => {
   assert.equal(project([order({ status: "COMPLETED" })]).intervals.length, 1);
-});
-test("waiting for parts consumes capacity only when it has not been released", () => {
-  assert.equal(project([order({ status: "POSTPONED", occupiesCapacity: false })]).intervals.length, 0);
-  assert.equal(project([order({ status: "POSTPONED" })]).intervals.length, 1);
 });
 test("overdue work keeps its saved finish boundary and requests a revised estimate", () => {
   const result = project([order({ expectedFinishAt: at("10:15") })]);
@@ -293,7 +280,7 @@ test("resolveOrderIntervals: a single open ACTIVE booking is current, no upcomin
   assert.equal(upcoming.length, 0);
 });
 test("resolveOrderIntervals: a single open SCHEDULED booking is current, no upcoming (D-068 return-time case)", () => {
-  const scalarOnly = order({ status: "POSTPONED", occupiesCapacity: false });
+  const scalarOnly = order({ status: "IN_PROGRESS", occupiesCapacity: false });
   const scheduled: OrderTimeBookingLike = { kind: "SCHEDULED", startAt: at("14:00"), endAt: at("15:00"), closedAt: null };
   const { current, upcoming } = resolveOrderIntervals(scalarOnly, [scheduled]);
   assert.equal(current.start?.getTime(), at("14:00").getTime());
@@ -322,14 +309,13 @@ test("resolveOrderIntervals: a terminal order's only (closed) booking is still c
   const viaWrapper = resolveOrderEffectiveInterval(scalarOnly, [closed]);
   assert.deepEqual(current, viaWrapper);
 });
-test("resolveOrderIntervals: closed history wins current over an open future follow-up (the real POSTPONED-return-time shape)", () => {
-  // This is the real shape of a released POSTPONED order with a return
-  // time booked: closed ACTIVE (the work session that led to the release)
-  // plus an open SCHEDULED (the return). "current" must resolve to the real
-  // past session, not the not-yet-happened return — an open row's startAt
-  // being later must never let it outrank actual closed history. The return
-  // booking correctly surfaces as `upcoming` instead.
-  const scalarOnly = order({ status: "POSTPONED", occupiesCapacity: false });
+test("resolveOrderIntervals: closed history wins current over an open future follow-up", () => {
+  // A closed ACTIVE (a past work session) plus an open SCHEDULED (a future
+  // follow-up). "current" must resolve to the real past session, not the
+  // not-yet-happened follow-up — an open row's startAt being later must
+  // never let it outrank actual closed history. The follow-up booking
+  // correctly surfaces as `upcoming` instead.
+  const scalarOnly = order({ status: "IN_PROGRESS", occupiesCapacity: false });
   const closedActive: OrderTimeBookingLike = { kind: "ACTIVE", startAt: at("08:00"), endAt: at("09:00"), closedAt: at("09:00") };
   const openScheduled: OrderTimeBookingLike = { kind: "SCHEDULED", startAt: at("14:00"), endAt: at("15:00"), closedAt: null };
   const { current, upcoming } = resolveOrderIntervals(scalarOnly, [closedActive, openScheduled]);
@@ -480,8 +466,8 @@ test("S11: resolveHistoricalOrderSessions ignores rows that don't intersect the 
   assert.equal(sessions.length, 0);
 });
 test("S11: loadBranchScheduleHistory queries OrderTimeBooking directly (not gated by ServiceOrder's current status) — fixes the terminal-order omission", () => {
-  // loadBranchSchedule's fetchOrderRows only fetches SCHEDULED/IN_PROGRESS/
-  // POSTPONED orders (plus specific linked/follow-up carve-outs) — a
+  // loadBranchSchedule's fetchOrderRows only fetches SCHEDULED/IN_PROGRESS
+  // orders (plus specific linked/follow-up carve-outs) — a
   // COMPLETED or CANCELLED order with no live appointment and no open
   // booking is invisible to it. loadBranchScheduleHistory must instead query
   // OrderTimeBooking by its own startAt/endAt overlap and join back to
@@ -597,12 +583,12 @@ test("D-076: a COMPLETED order's follow-up still projects even though the order 
   assert.equal(result.intervals[0].startMs, at("15:00").getTime());
   assert.equal(result.intervals[0].endMs, at("16:00").getTime());
 });
-test("D-076: retroactive fix — a released POSTPONED order's scheduled return time now actually appears on the calendar", () => {
-  // Before this fix, orderCanCountForCapacity's early `continue` (status
-  // POSTPONED + occupiesCapacity:false) skipped the order entirely,
-  // so a booked return time never rendered at all — the "book a return
-  // slot" feature (D-068 step 4) was visually broken since it shipped
-  // earlier this session, until this same D-076 carve-out fixed it.
+test("D-076: retroactive fix — a released order's scheduled follow-up time now actually appears on the calendar", () => {
+  // Before this fix, orderCanCountForCapacity's early `continue` (a
+  // non-terminal status + occupiesCapacity:false) skipped the order
+  // entirely, so a booked follow-up never rendered at all — the "book a
+  // follow-up slot" mechanism (D-068 step 4) was visually broken since it
+  // shipped earlier this session, until this same D-076 carve-out fixed it.
   const bookings = new Map([
     ["order", [
       { kind: "ACTIVE" as const, startAt: at("08:00"), endAt: at("09:00"), closedAt: at("09:00") },
@@ -611,7 +597,7 @@ test("D-076: retroactive fix — a released POSTPONED order's scheduled return t
   ]);
   const result = buildBranchSchedule({
     ...scope,
-    orders: [order({ status: "POSTPONED", occupiesCapacity: false })],
+    orders: [order({ status: "IN_PROGRESS", occupiesCapacity: false })],
     appointments: [],
     now: at("10:30"),
     rangeStart: at("09:00"),
@@ -908,53 +894,19 @@ test("changeOrderStatusAction (app/_actions/orders.ts) validates and writes thro
   );
   const fnStart = src.indexOf("export async function changeOrderStatusAction");
   assert.ok(fnStart >= 0, "changeOrderStatusAction not found");
-  const fnEnd = src.indexOf("\nexport async function postponeOrderAction", fnStart);
-  assert.ok(fnEnd > fnStart, "postponeOrderAction not found after changeOrderStatusAction");
+  const fnEnd = src.indexOf("\nexport async function reviseExpectedFinishAction", fnStart);
+  assert.ok(fnEnd > fnStart, "reviseExpectedFinishAction not found after changeOrderStatusAction");
   const body = src.slice(fnStart, fnEnd);
   assert.ok(body.includes("withOrderTransaction("), "expected withOrderTransaction call");
   assert.ok(!body.includes("prisma.$transaction("), "must not fall back to an unlocked prisma.$transaction");
 });
 
-test("scheduleOrderReturnAction's open-booking check and insert are both inside the withOrderTransaction lock (S06 worst-case race)", () => {
-  const src = fs.readFileSync(
-    path.join(__dirname, "..", "app", "_actions", "orders.ts"),
-    "utf8",
-  );
-  const fnStart = src.indexOf("export async function scheduleOrderReturnAction");
-  assert.ok(fnStart >= 0, "scheduleOrderReturnAction not found");
-  const fnEnd = src.indexOf("\nexport async function reviseExpectedFinishAction", fnStart);
-  assert.ok(fnEnd > fnStart, "reviseExpectedFinishAction not found after scheduleOrderReturnAction");
-  const body = src.slice(fnStart, fnEnd);
-
-  const lockCallIndex = body.indexOf("withOrderTransaction(");
-  assert.ok(lockCallIndex >= 0, "expected a withOrderTransaction call");
-  // The pre-lock portion of the function (before withOrderTransaction is
-  // even called) must not already read the open bookings — that read has to
-  // happen fresh, under the lock, or two concurrent callers can each pass
-  // the "no open SCHEDULED row" check before either one writes.
-  const preLock = body.slice(0, lockCallIndex);
-  assert.ok(
-    !preLock.includes("getOpenOrderTimeBookings("),
-    "getOpenOrderTimeBookings must not be called before the lock is taken",
-  );
-  // And the check + the insert-or-update branch it gates must both appear
-  // AFTER the lock call, inside the callback.
-  const postLock = body.slice(lockCallIndex);
-  assert.ok(postLock.includes("getOpenOrderTimeBookings("), "expected the open-booking check inside the lock");
-  assert.ok(postLock.includes("openOrderTimeBooking("), "expected the insert branch inside the lock");
-});
-
 // S10 fix (WEB_SCHEDULING_ASSESSMENT_2026-09-10.md): reviseExpectedFinishAction
 // used to validate the past-check and the closing-cap workday lookup against
-// the stale ServiceOrder.startedAt scalar, which resume (POSTPONED ->
-// IN_PROGRESS) deliberately leaves untouched while opening a fresh ACTIVE
-// OrderTimeBooking anchored to "now". After a Monday-start -> postpone ->
-// Wednesday-resume cycle this let a Monday-dated finish (after the stale
-// startedAt but before the real Wednesday ACTIVE start) pass, and could
-// reject a legitimate Wednesday-near-closing finish validated against
-// Monday's hours instead. These tests inspect the source directly (same
-// approach as the S06 tests above) rather than driving the action end-to-end
-// against a real database.
+// the stale ServiceOrder.startedAt scalar instead of the currently open
+// ACTIVE booking's real startAt. These tests inspect the source directly
+// (same approach as the S06 tests above) rather than driving the action
+// end-to-end against a real database.
 function reviseExpectedFinishActionBody(): string {
   const src = fs.readFileSync(
     path.join(__dirname, "..", "app", "_actions", "orders.ts"),
@@ -967,30 +919,6 @@ function reviseExpectedFinishActionBody(): string {
   assert.ok(fnEnd > fnStart, "rescheduleOrderAction not found after reviseExpectedFinishAction");
   return src.slice(fnStart, fnEnd);
 }
-
-test("reviseExpectedFinishAction rejects POSTPONED orders outright, before ever consulting startedAt/ACTIVE booking", () => {
-  const body = reviseExpectedFinishActionBody();
-  const rejectMsg = "Хойшлуулсан ажлын дуусах хугацааг засах боломжгүй";
-  assert.ok(
-    body.includes(rejectMsg),
-    "expected a dedicated POSTPONED rejection message",
-  );
-  assert.ok(
-    !body.includes('order.status !== "IN_PROGRESS" && order.status !== "POSTPONED"'),
-    "must no longer allow POSTPONED through the status gate",
-  );
-  assert.ok(
-    !body.includes('fresh.status !== "IN_PROGRESS" && fresh.status !== "POSTPONED"'),
-    "the locked re-check must no longer allow POSTPONED through either",
-  );
-  // The POSTPONED rejection must precede the "only IN_PROGRESS" check in both
-  // the pre-check and the locked re-check, so a postponed order is turned away
-  // with the specific message rather than the generic one.
-  const preCheckPostponedIdx = body.indexOf(rejectMsg);
-  const preCheckGenericIdx = body.indexOf("Дуусах хугацааг зөвхөн ажиллаж буй засварын хуудсанд тохируулна.");
-  assert.ok(preCheckPostponedIdx >= 0 && preCheckGenericIdx >= 0);
-  assert.ok(preCheckPostponedIdx < preCheckGenericIdx, "POSTPONED-specific rejection must come first");
-});
 
 test("reviseExpectedFinishAction validates the past-check against the open ACTIVE booking's startAt, not order.startedAt", () => {
   const body = reviseExpectedFinishActionBody();
@@ -1037,174 +965,9 @@ test("reviseExpectedFinishAction validates the past-check against the open ACTIV
   );
 });
 
-// --- S12 fix (WEB_SCHEDULING_ASSESSMENT_2026-09-10.md): structured status
-// history on every transition, POSTPONED routed exclusively through the
-// dedicated postpone flow (lib/order-postpone.ts's postponeOrderCore, shared
-// by app/_actions/orders.ts's postponeOrderAction and the new
-// POST /api/v1/orders/[id]/postpone endpoint). Source-inspection tests, same
-// approach as the S06/S10/S11 tests above — no live-DB fixture harness for
-// these multi-query actions/routes.
-
-function changeOrderStatusActionBody(): string {
-  const src = fs.readFileSync(
-    path.join(__dirname, "..", "app", "_actions", "orders.ts"),
-    "utf8",
-  );
-  const fnStart = src.indexOf("export async function changeOrderStatusAction");
-  assert.ok(fnStart >= 0, "changeOrderStatusAction not found");
-  const fnEnd = src.indexOf("\nexport async function postponeOrderAction", fnStart);
-  assert.ok(fnEnd > fnStart, "postponeOrderAction not found after changeOrderStatusAction");
-  return src.slice(fnStart, fnEnd);
-}
-
-function orderPatchRouteSource(): string {
-  return fs.readFileSync(
-    path.join(__dirname, "..", "app", "api", "v1", "orders", "[id]", "route.ts"),
-    "utf8",
-  );
-}
-
-test("S12: changeOrderStatusAction writes a structured OrderStatusChange row inside its withOrderTransaction callback", () => {
-  const body = changeOrderStatusActionBody();
-  const lockCallIndex = body.indexOf("withOrderTransaction(");
-  assert.ok(lockCallIndex >= 0, "expected a withOrderTransaction call");
-  const postLock = body.slice(lockCallIndex);
-  assert.ok(
-    postLock.includes("tx.orderStatusChange.create("),
-    "expected an orderStatusChange.create call inside the transaction callback",
-  );
-  // Must run in the SAME transaction client as the audit log, not a separate
-  // unlocked write after the fact.
-  const createIdx = postLock.indexOf("tx.orderStatusChange.create(");
-  const auditIdx = postLock.indexOf("await logAudit(");
-  assert.ok(createIdx >= 0 && auditIdx >= 0);
-  assert.ok(createIdx < auditIdx, "expected the status-change row written before the audit log call");
-});
-
-test("S12: changeOrderStatusAction rejects POSTPONED outright and no longer handles it in the capacity/booking branches", () => {
-  const body = changeOrderStatusActionBody();
-  const rejectIdx = body.indexOf('next === "POSTPONED"');
-  assert.ok(rejectIdx >= 0, "expected a dedicated POSTPONED check");
-  assert.ok(
-    body.includes("OrderActionValidationError"),
-    "expected the rejection to use OrderActionValidationError",
-  );
-  // The rejection must precede the transition-allowed / capacity-release logic
-  // so POSTPONED is turned away before it can reach any write branch.
-  const allowedCheckIdx = body.indexOf("allowed?.includes(next)");
-  assert.ok(allowedCheckIdx >= 0 && allowedCheckIdx < rejectIdx);
-  assert.ok(
-    !body.includes('next === "COMPLETED" || next === "CANCELLED" || next === "POSTPONED"'),
-    "must no longer group POSTPONED into the generic occupiesCapacity-release branch",
-  );
-  assert.ok(
-    !body.includes('else if (next === "POSTPONED") {'),
-    "must no longer have a POSTPONED booking-close branch — postponeOrderCore owns that dual-write now",
-  );
-});
-
-test("S12: the API PATCH route (app/api/v1/orders/[id]/route.ts) writes an OrderStatusChange row inside its withOrderTransaction callback", () => {
-  const src = orderPatchRouteSource();
-  const patchStart = src.indexOf("export async function PATCH(");
-  assert.ok(patchStart >= 0, "PATCH handler not found");
-  const body = src.slice(patchStart);
-  assert.ok(
-    body.includes("tx.orderStatusChange.create("),
-    "expected an orderStatusChange.create call in the PATCH transaction",
-  );
-  const lockCallIndex = body.indexOf("withOrderTransaction(");
-  assert.ok(lockCallIndex >= 0, "expected a withOrderTransaction call");
-  const postLock = body.slice(lockCallIndex);
-  assert.ok(
-    postLock.includes("tx.orderStatusChange.create("),
-    "the status-change write must be inside the locked transaction callback, not after it",
-  );
-});
-
-test("S12: the API PATCH route rejects POSTPONED outright and no longer handles it in the capacity/booking-sync branches", () => {
-  const src = orderPatchRouteSource();
-  const patchStart = src.indexOf("export async function PATCH(");
-  const body = src.slice(patchStart);
-  assert.ok(
-    body.includes('newStatus === "POSTPONED"'),
-    "expected a dedicated POSTPONED rejection check on the parsed newStatus",
-  );
-  assert.ok(body.includes("OrderPatchError"), "expected the rejection to use OrderPatchError");
-  const rejectIdx = body.indexOf('newStatus === "POSTPONED"');
-  const allowedCheckIdx = body.indexOf("allowed.includes(newStatus)");
-  assert.ok(rejectIdx >= 0 && allowedCheckIdx >= 0 && rejectIdx < allowedCheckIdx);
-  assert.ok(
-    !body.includes('newStatus === "COMPLETED" || newStatus === "CANCELLED" || newStatus === "POSTPONED"'),
-    "must no longer group POSTPONED into the generic occupiesCapacity-release branch",
-  );
-  assert.ok(
-    !body.includes('statusChangedTo === "POSTPONED"'),
-    "must no longer have a POSTPONED booking-sync branch — postponeOrderCore owns that dual-write now",
-  );
-});
-
-test("S12: postponeOrderCore requires reason/reasonTag and returnAt, and writes OrderTimeBooking + OrderStatusChange in one transaction", () => {
-  const src = fs.readFileSync(
-    path.join(__dirname, "..", "lib", "order-postpone.ts"),
-    "utf8",
-  );
-  assert.ok(
-    src.includes("!reasonTag && !reason"),
-    "expected a reason-or-reasonTag-required check",
-  );
-  assert.ok(
-    src.includes("Number.isFinite(returnAt.getTime())"),
-    "expected returnAt to be parsed and validated",
-  );
-  assert.ok(
-    src.includes("returnAt.getTime() < Date.now()"),
-    "expected a future-only check on returnAt",
-  );
-  const lockCallIndex = src.indexOf("withOrderTransaction(");
-  assert.ok(lockCallIndex >= 0, "expected a withOrderTransaction call");
-  const postLock = src.slice(lockCallIndex);
-  assert.ok(
-    postLock.includes('kind: "SCHEDULED"') && postLock.includes("openOrderTimeBooking(tx,"),
-    "expected a SCHEDULED OrderTimeBooking opened inside the transaction",
-  );
-  assert.ok(
-    postLock.includes("tx.orderStatusChange.create("),
-    "expected the OrderStatusChange row written inside the same transaction",
-  );
-  assert.ok(
-    postLock.includes('toStatus: "POSTPONED"') && postLock.includes("reasonTag,"),
-    "expected the status-change row to carry toStatus POSTPONED and the reasonTag",
-  );
-});
-
-test("S12: both postpone callers (dashboard action and API route) delegate to the same postponeOrderCore instead of duplicating validation", () => {
-  const actionSrc = fs.readFileSync(
-    path.join(__dirname, "..", "app", "_actions", "orders.ts"),
-    "utf8",
-  );
-  assert.ok(actionSrc.includes("postponeOrderCore("), "postponeOrderAction must call the shared core");
-  const apiSrc = fs.readFileSync(
-    path.join(
-      __dirname,
-      "..",
-      "app",
-      "api",
-      "v1",
-      "orders",
-      "[id]",
-      "postpone",
-      "route.ts",
-    ),
-    "utf8",
-  );
-  assert.ok(apiSrc.includes("postponeOrderCore("), "the new postpone API route must call the shared core");
-  assert.ok(apiSrc.includes('requirePermission(auth.user, "orders.edit")'), "expected the same permission gate as the other order-mutating API routes");
-});
-
 // S13 (WEB_SCHEDULING_ASSESSMENT_2026-09-10.md): inspectScheduleImpact used
 // to only look at Appointment rows. It must now also scan open SCHEDULED
-// OrderTimeBooking rows (plain scheduled sessions and postpone-created
-// return bookings both use kind: "SCHEDULED"), and must exclude an
+// OrderTimeBooking rows (kind: "SCHEDULED"), and must exclude an
 // expired-unpaid PENDING appointment hold from its computation.
 test("inspectScheduleImpact clips an affected SCHEDULED OrderTimeBooking row, not just appointments", async () => {
   const { inspectScheduleImpact } = await import("../lib/branch-schedule-impact");
@@ -1497,8 +1260,7 @@ test("Phase C/A final branching: rescheduleAppointmentAction routes a linked+SCH
   assert.ok(body.includes("moveLinkedAppointmentOrder("), "expected a call into the shared linked-move command");
   // The linked-but-not-SCHEDULED branch must still reject rather than fall
   // through to the plain single-entity write below (which would silently
-  // move only the appointment while an IN_PROGRESS/POSTPONED/etc. order stays
-  // put).
+  // move only the appointment while an IN_PROGRESS/etc. order stays put).
   const guardIdx = body.indexOf('appt.serviceOrder?.status !== "SCHEDULED"');
   assert.ok(guardIdx >= 0, "expected a guard on the linked order's status");
   const rejectIdx = body.indexOf("Захиалгын хуудаснаас цагийг нь шилжүүлнэ үү");
@@ -1588,10 +1350,6 @@ test("Phase B: the dashboard appointments list and the calendar week/month view 
     assert.ok(
       /serviceOrder\.status !== "SCHEDULED"/.test(src),
       `expected ${label} to conditionally show dual-time labeling only once the linked order has progressed past SCHEDULED`,
-    );
-    assert.ok(
-      /POSTPONED/.test(src) && /timeBookings/.test(src),
-      `expected ${label} to prefer the POSTPONED return-time booking over the order's scalar scheduledAt`,
     );
   }
 });

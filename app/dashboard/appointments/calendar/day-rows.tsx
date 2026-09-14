@@ -132,7 +132,7 @@ export function buildDayRows(
     repairCandidates: Array<{
       id: string;
       number: string;
-      status: "SCHEDULED" | "IN_PROGRESS" | "POSTPONED";
+      status: "SCHEDULED" | "IN_PROGRESS";
       customerId: string;
       vehicleId: string;
       customer: { fullName: string | null; phone: string | null } | null;
@@ -319,7 +319,6 @@ export function buildDayRows(
             <div className="w-64">
               <StatusControls
                 orderId={order.id}
-                branchId={order.branchId}
                 transitions={orderTransitions}
                 disabled={false}
                 currentStatus={order.status}

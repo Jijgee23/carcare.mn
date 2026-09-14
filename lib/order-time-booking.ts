@@ -8,9 +8,9 @@
  *
  * Invariant (D-076): an order may have at most one OPEN (closedAt: null)
  * ACTIVE booking (what it occupies right now) AND, independently, at most one
- * open SCHEDULED booking (a follow-up reserved for later — a POSTPONED
- * return time, or a next-visit booked while still IN_PROGRESS) — never two of
- * the same kind at once, but one of each MAY coexist. Every helper below that
+ * open SCHEDULED booking (a follow-up reserved for later, e.g. a next-visit
+ * booked while still IN_PROGRESS) — never two of the same kind at once, but
+ * one of each MAY coexist. Every helper below that
  * touches "the open booking" therefore takes an explicit `kind` argument
  * (or, for closeOpenOrderTimeBooking, an explicit "all") — there is no safe
  * kind-agnostic default once two rows can be open simultaneously.
@@ -24,9 +24,8 @@ import { prisma, withBookingTransaction, type PrismaTransactionClient } from "@/
  * separate lock-free `prisma.$transaction` — two concurrent operations on the
  * same order (two staff members, or staff + a cron job) could both pass
  * validation against the same stale snapshot and then both write (e.g. an
- * expiry job cancelling a row a human just moved, or two concurrent
- * "postpone" calls each seeing "no open SCHEDULED row" and both inserting
- * one).
+ * expiry job cancelling a row a human just moved, or two concurrent calls
+ * each seeing "no open SCHEDULED row" and both inserting one).
  *
  * This mirrors the proven lock pattern in lib/appointment-reservations.ts
  * (`reserveAppointmentInTransaction`/`moveAppointmentInTransaction`): take a
@@ -104,8 +103,7 @@ export async function withOrderTransaction<T>(
  *   any other open row (e.g. an unrelated follow-up) untouched. Use this for
  *   anything that ends ONE phase without implying the order's other booking
  *   is also resolved — completing/cancelling an order (closes ACTIVE, a
- *   pending follow-up survives — see D-076), or releasing a POSTPONED bay
- *   (closes ACTIVE only).
+ *   pending follow-up survives — see D-076).
  * - "all" closes every open row regardless of kind. Use this only where
  *   starting/resuming active work genuinely supersedes whatever was next in
  *   line for this order — entering IN_PROGRESS consumes both a prior
@@ -146,9 +144,9 @@ export async function updateOpenOrderTimeBookingForecast(
 /**
  * Updates the start (and optionally end) time of the currently open SCHEDULED
  * booking in place — always kind: "SCHEDULED", whether that row is a
- * not-yet-started order's own scheduledAt, a POSTPONED return time, or an
- * IN_PROGRESS order's follow-up; never touches an open ACTIVE row. A no-op
- * when no SCHEDULED row is open.
+ * not-yet-started order's own scheduledAt or an IN_PROGRESS order's
+ * follow-up; never touches an open ACTIVE row. A no-op when no SCHEDULED row
+ * is open.
  */
 export async function updateOpenOrderTimeBookingSchedule(
   tx: PrismaTransactionClient,

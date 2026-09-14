@@ -391,8 +391,8 @@ export async function updateBranchAction(
       // leave an invalid reservation on the books; staff must resolve it
       // first. Clipped-only impact is non-destructive (just shortened), so it
       // follows the same confirmed=true convention as
-      // app/_actions/orders.ts's postponeOrderCore/reschedule flows — the
-      // caller resubmits with confirmed=true once the preview is shown.
+      // app/_actions/orders.ts's reschedule flows — the caller resubmits
+      // with confirmed=true once the preview is shown.
       if (impact.erased.length > 0) {
         return { count: 0, clipped: 0, impact, blocked: true, needsConfirm: false };
       }

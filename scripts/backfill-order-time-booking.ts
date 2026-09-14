@@ -73,8 +73,8 @@ function planBooking(order: {
     };
   }
 
-  // IN_PROGRESS, POSTPONED, COMPLETED, CANCELLED — бүгд нэг л ACTIVE
-  // booking-оор төлөөлүүлнэ (эхэлсэн/эхлээгүй хугацаанаас хамааран).
+  // IN_PROGRESS, COMPLETED, CANCELLED — бүгд нэг л ACTIVE booking-оор
+  // төлөөлүүлнэ (эхэлсэн/эхлээгүй хугацаанаас хамааран).
   const startAt = order.startedAt ?? order.scheduledAt ?? order.createdAt;
   const endAt = order.completedAt ?? order.expectedFinishAt ?? null;
 

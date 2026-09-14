@@ -1,13 +1,11 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { BtnLink } from "@/app/_components/landing-ops-ui";
-import { OrderStatusHistorySection } from "@/app/_components/order-status-history";
 import { requireAccount } from "@/lib/auth/account";
 import {
   ITEM_KIND_BADGE,
   ITEM_KIND_LABEL,
   ORDER_STATUS_BADGE,
-  ORDER_STATUS_HISTORY_CUSTOMER_SELECT,
   ORDER_STATUS_LABEL,
   PAYMENT_STATUS_BADGE,
   PAYMENT_STATUS_LABEL,
@@ -116,10 +114,6 @@ export default async function AccountHistoryDetailPage({
           maxSeverity: true,
           template: { select: { name: true, type: true } },
         },
-      },
-      statusChanges: {
-        orderBy: { createdAt: "desc" },
-        select: ORDER_STATUS_HISTORY_CUSTOMER_SELECT,
       },
     },
   });
@@ -303,8 +297,6 @@ export default async function AccountHistoryDetailPage({
           </p>
         </div>
       ) : null}
-
-      <OrderStatusHistorySection entries={order.statusChanges} />
     </div>
   );
 }

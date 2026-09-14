@@ -1,7 +1,6 @@
-// Extracted from app/_actions/orders.ts (S12 follow-up) so the dedicated
-// postpone API endpoint (lib/order-postpone.ts) can share the exact same
-// business-hours and schedule-conflict checks used by the existing
-// create/update/postpone/resume flows in that file, instead of duplicating
+// Extracted from app/_actions/orders.ts (S12 follow-up) so other modules can
+// share the exact same business-hours and schedule-conflict checks used by
+// the create/update/reschedule flows in that file, instead of duplicating
 // them. Pure validation helpers — no writes, no "use server" boundary.
 
 import { customerLabel } from "@/lib/customers";
@@ -109,7 +108,7 @@ export async function findScheduleConflict(
       branchId,
       id: { not: excludeOrderId },
       OR: [
-        { status: { in: ["SCHEDULED", "IN_PROGRESS", "POSTPONED"] } },
+        { status: { in: ["SCHEDULED", "IN_PROGRESS"] } },
         ...(followUpOrderIds.length > 0 ? [{ id: { in: followUpOrderIds } }] : []),
       ],
     },

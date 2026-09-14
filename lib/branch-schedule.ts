@@ -21,7 +21,7 @@ export type ScheduleAppointment = Scope & {
 };
 export type ScheduleOrder = Scope & {
   id: string;
-  status: "SCHEDULED" | "IN_PROGRESS" | "POSTPONED" | "COMPLETED" | "CANCELLED";
+  status: "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
   scheduledAt: Date | null;
   startedAt: Date | null;
   estimatedDurationMinutes: number | null;
@@ -211,20 +211,15 @@ export function buildBranchSchedule(input: Scope & {
     if (a.serviceOrderId && orderIntervalIds.has(a.serviceOrderId)) continue;
     if (a.serviceOrderId) {
       const linkedOrder = orders.get(a.serviceOrderId);
-      // A COMPLETED order, or a POSTPONED order whose bay was explicitly
-      // released (setOrderCapacityAction), is an intentional, normal state —
-      // not an issue. Appointment status has no terminal "done" state of its
-      // own (see AppointmentStatus), so without this the ordinary same-day
-      // book → convert → finish path, or the everyday "free the bay while
-      // waiting on a part" action, would flag the appointment as if its link
-      // were broken. Neither order disappears from the app: both remain
-      // fully visible (and filterable) on /dashboard/orders. A CANCELLED
-      // (or missing) linked order still needs staff attention, so keep
-      // flagging those.
-      if (
-        linkedOrder?.status === "COMPLETED" ||
-        (linkedOrder?.status === "POSTPONED" && linkedOrder.occupiesCapacity === false)
-      ) {
+      // A COMPLETED order is an intentional, normal state — not an issue.
+      // Appointment status has no terminal "done" state of its own (see
+      // AppointmentStatus), so without this the ordinary same-day book →
+      // convert → finish path would flag the appointment as if its link were
+      // broken. The order doesn't disappear from the app: it remains fully
+      // visible (and filterable) on /dashboard/orders. A CANCELLED (or
+      // missing) linked order still needs staff attention, so keep flagging
+      // those.
+      if (linkedOrder?.status === "COMPLETED") {
         continue;
       }
       issue(

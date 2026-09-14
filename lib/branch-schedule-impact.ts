@@ -66,11 +66,10 @@ function bookingDurationMinutes(row: ScheduleOrderTimeBookingRow, fallbackDurati
 }
 
 /**
- * Inspect active appointments AND scheduled order-time bookings (plain
- * scheduled sessions and postpone-created return bookings — both are
- * `kind: "SCHEDULED"`, see lib/order-postpone.ts's postponeOrderCore) that
- * fall inside a changed schedule range. Expired-but-unpaid PENDING
- * appointment holds are excluded — see isPendingAppointmentPaymentExpired.
+ * Inspect active appointments AND scheduled order-time bookings
+ * (`kind: "SCHEDULED"`) that fall inside a changed schedule range.
+ * Expired-but-unpaid PENDING appointment holds are excluded — see
+ * isPendingAppointmentPaymentExpired.
  */
 export async function inspectScheduleImpact(
   tx: ScheduleImpactTx,

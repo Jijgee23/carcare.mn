@@ -73,3 +73,14 @@ export function canChangeOrderItemStatus(
 ): boolean {
   return has(user, "orders.itemStatus") && canEditOrder(user, order);
 }
+
+/** Repricing an already-added item is a mutation, so it requires the
+ * standalone permission plus the same assignment/broad edit boundary as any
+ * other order edit. Does NOT gate the initial price set when a new item is
+ * added (addOrderItemAction) — that stays under ordinary `orders.edit`. */
+export function canChangeOrderItemPrice(
+  user: OrderAccessUser,
+  order: { assignedToId: string | null },
+): boolean {
+  return has(user, "orders.itemPrice") && canEditOrder(user, order);
+}

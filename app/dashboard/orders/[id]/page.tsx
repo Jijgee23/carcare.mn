@@ -64,6 +64,7 @@ export default async function OrderDetailPage({
   const user = await requireUser();
   if (!canView(user, "orders")) redirect("/dashboard");
   const canChangeItemStatus = hasPermission(user, "orders.itemStatus");
+  const canChangeItemPrice = hasPermission(user, "orders.itemPrice");
   const canDeleteOrder = canDelete(user, "orders");
   const canEditPayments = canEdit(user, "payments");
   const canRecordPayments = canCreate(user, "payments");
@@ -231,12 +232,9 @@ export default async function OrderDetailPage({
   // "Дуусах хугацаа" DatePicker-ийг ажил эхэлсэн өдрийн салбарын ажлын
   // цагийн төгсгөлөөс цааш сунгахгүйгээр хязгаарлана (сервер талд ч мөн
   // адил шалгагдана, харах: reviseExpectedFinishAction). Зөвхөн тухайн талбар
-  // харагдах үед (IN_PROGRESS/POSTPONED, эхэлсэн цагтай) хэрэгтэй.
+  // харагдах үед (IN_PROGRESS, эхэлсэн цагтай) хэрэгтэй.
   let workDayCloseAt: Date | null = null;
-  if (
-    order.startedAt &&
-    (order.status === "IN_PROGRESS" || order.status === "POSTPONED")
-  ) {
+  if (order.startedAt && order.status === "IN_PROGRESS") {
     const workDayStr = bookingDateKey(order.startedAt);
     const branchSchedule = await prisma.branch.findUnique({
       where: { id: order.branchId },
@@ -271,9 +269,12 @@ export default async function OrderDetailPage({
   const serviceItemDurationMinutes = calculateServiceItemDurationMinutes(order.items);
 
   // Гүйцэтгэлийн прогресс: цуцлагдаагүй мөрүүдээс хэд нь дууссан вэ.
-  // Зөвхөн хуудас эхэлсэн (IN_PROGRESS/POSTPONED) үед харуулна.
+  // Сэлбэг (PART) мөрүүд явцгүй тул тооцоололд оролцохгүй.
+  // Зөвхөн хуудас эхэлсэн (IN_PROGRESS) үед харуулна.
   const orderStarted = diagnosticsFillable;
-  const activeItems = order.items.filter((it) => it.status !== "CANCELLED");
+  const activeItems = order.items.filter(
+    (it) => it.status !== "CANCELLED" && it.kind !== "PART",
+  );
   const completedItemsCount = activeItems.filter(
     (it) => it.status === "COMPLETED",
   ).length;
@@ -421,6 +422,7 @@ export default async function OrderDetailPage({
                 orderId={order.id}
                 canEdit={isEditable && canEditOrder}
                 canChangeStatus={isEditable && canChangeItemStatus}
+                canChangePrice={isEditable && canChangeItemPrice}
                 orderStarted={orderStarted}
               />
             )}
@@ -583,7 +585,6 @@ export default async function OrderDetailPage({
               <h2 className="font-semibold text-[var(--oc-ink)] mb-4 text-sm">Статус</h2>
               <StatusControls
                 orderId={order.id}
-                branchId={order.branchId}
                 transitions={allowedTransitions}
                 disabled={!canEditOrder}
                 currentStatus={order.status as OrderStatus}

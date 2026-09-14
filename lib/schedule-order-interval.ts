@@ -82,9 +82,9 @@ function resolveFromScalars(o: ScheduleOrderLike): ResolvedOrderInterval {
  * D-076 (COWORK.md): an order may have at most one open ACTIVE booking (what
  * it occupies right now) and, independently, at most one open SCHEDULED
  * booking (a follow-up reserved for later, e.g. booked while still
- * IN_PROGRESS, or a return time booked while released POSTPONED) — never
- * two of the same kind open at once. `current` is the row that answers "what
- * does this order occupy/reserve right now" — the open ACTIVE row if one
+ * IN_PROGRESS) — never two of the same kind open at once. `current` is the
+ * row that answers "what does this order occupy/reserve right now" — the
+ * open ACTIVE row if one
  * exists, else the same "latest by startAt" fallback used when there's only
  * ever been at most one booking (terminal orders, the plain single-SCHEDULED
  * case). `upcoming` is every other OPEN row — i.e. a follow-up that is not
@@ -156,26 +156,19 @@ export function resolveOrderEffectiveInterval(
  * WEB_SCHEDULING_ASSESSMENT_2026-09-10.md S11-S12): a row is "performed work"
  * (`wasWorked: true`) iff its `kind` is `"ACTIVE"` — meaning the order was
  * physically started at some point during that row's interval. A `kind:
- * "SCHEDULED"` row is treated as a reservation that was cancelled/postponed
- * away without work ever happening (`wasWorked: false`), regardless of
- * whether the *order* later had work done under a different (later) booking
- * row. This can't be fully certain from OrderTimeBooking alone — e.g. it
- * can't distinguish "cancelled outright" from "postponed and resumed later"
- * for a given SCHEDULED row.
+ * "SCHEDULED"` row is treated as a reservation that was cancelled away
+ * without work ever happening (`wasWorked: false`), regardless of whether
+ * the *order* later had work done under a different (later) booking row.
+ * This can't be fully certain from OrderTimeBooking alone.
  *
- * S12 follow-up (this pass): when the caller has the order's
- * `OrderStatusChange` timeline on hand (populated on every transition as of
- * S12 — start/resume/complete/cancel/postpone), pass it via
- * `statusChanges` and it is used as ground truth instead of the `kind`
- * proxy: a session is `wasWorked: true` iff the timeline records a
- * transition `toStatus: "IN_PROGRESS"` with `createdAt` inside
- * `[session.start, session.end]` (inclusive of both bounds — a transition
- * landing exactly on the row's own startAt/endAt edge still counts, since
- * that's precisely when a booking row is opened/closed by the same status
- * change in practice). If `statusChanges` is omitted or empty — the order
- * predates S12, or for any other reason has no recorded transitions — this
- * silently falls back to the `kind === "ACTIVE"` proxy above; it never
- * throws and never regresses pre-S12 accuracy.
+ * `statusChanges` (optional): when the caller has an independent, ordered
+ * record of this order's status transitions on hand, pass it and it is used
+ * as ground truth instead of the `kind` proxy: a session is `wasWorked: true`
+ * iff the timeline records a transition `toStatus: "IN_PROGRESS"` with
+ * `createdAt` inside `[session.start, session.end]` (inclusive of both
+ * bounds). No caller currently populates this — it silently falls back to
+ * the `kind === "ACTIVE"` proxy above when omitted or empty, and never
+ * throws.
  */
 export type HistoricalOrderSession = {
   kind: "SCHEDULED" | "ACTIVE";

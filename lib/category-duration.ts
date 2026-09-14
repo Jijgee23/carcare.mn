@@ -30,7 +30,7 @@ type PrismaTransactionClient = {
       branchId: string;
       OR: Array<
         | {
-            status: { in: ("SCHEDULED" | "IN_PROGRESS" | "POSTPONED")[] };
+            status: { in: ("SCHEDULED" | "IN_PROGRESS")[] };
             OR: Array<{ scheduledAt: { lt: Date } } | { scheduledAt: null }>;
           }
         // D-076: also matches orders otherwise out of scope (e.g. COMPLETED)
@@ -315,7 +315,7 @@ export async function resolveTakenCapacityIntervals(
           branchId,
           OR: [
             {
-              status: { in: ["SCHEDULED", "IN_PROGRESS", "POSTPONED"] },
+              status: { in: ["SCHEDULED", "IN_PROGRESS"] },
               OR: [{ scheduledAt: { lt: dayEnd } }, { scheduledAt: null }],
             },
             ...(followUpOrderIds.length > 0 ? [{ id: { in: followUpOrderIds } }] : []),

@@ -194,17 +194,6 @@ export async function PATCH(
 
         if (typeof b.status === "string") {
           const newStatus = b.status as OrderStatus;
-          // S12: POSTPONED needs a mandatory reason/return-time and a
-          // structured OrderStatusChange row — this generic PATCH used to
-          // also accept it with none of that validation
-          // (WEB_SCHEDULING_ASSESSMENT S11-S12). Use the dedicated
-          // POST /api/v1/orders/[id]/postpone endpoint instead.
-          if (newStatus === "POSTPONED") {
-            throw new OrderPatchError(
-              422,
-              'Хойшлуулахын тулд POST /api/v1/orders/[id]/postpone ашиглана уу.',
-            );
-          }
           const allowed = ORDER_STATUS_TRANSITIONS[order.status as OrderStatus];
           if (!allowed.includes(newStatus)) {
             throw new OrderPatchError(
@@ -221,9 +210,8 @@ export async function PATCH(
           const enteringInProgress = newStatus === "IN_PROGRESS";
           bookingSyncEnteringInProgress = enteringInProgress;
           const startingFresh = enteringInProgress && !order.startedAt;
-          const resuming = enteringInProgress && order.status === "POSTPONED";
 
-          // Ажил эхлэхэд (эсвэл сэлбэгээс сэргэхэд) үргэлжлэх хугацааны тооцоолол
+          // Ажил эхлэхэд үргэлжлэх хугацааны тооцоолол
           // байх ёстой — app/_actions/orders.ts-ийн changeOrderStatusAction-той
           // ижил зарчим (D-хугацааны шийдвэр): үгүй бол захиалга хугацаагүй, cap
           // бага салбарт бүх цаг захиалгыг хаадаг. Аль хэдийн байвал дахин
@@ -263,23 +251,16 @@ export async function PATCH(
           }
           // Хүчин чадлын эзэмшил — app/_actions/orders.ts-ийн
           // changeOrderStatusAction-той ижил зарчим: идэвхтэй ажил хүчин чадал
-          // эзэлнэ, дууссан/цуцлагдсан/хойшлогдсон бол шууд суллана. POSTPONED
-          // одоо үргэлж суллагдсан гэж тооцогдоно (D-076, COWORK.md) — дуудагчаас
-          // `occupiesCapacity` авахгүй.
+          // эзэлнэ, дууссан/цуцлагдсан бол шууд суллана.
           if (newStatus === "COMPLETED" || newStatus === "CANCELLED") {
             updates.occupiesCapacity = false;
           } else {
             updates.occupiesCapacity = true;
           }
-          if (enteringInProgress && effectiveDurationMinutes != null) {
-            // Сэргэхэд одоогоос тоолж дуусах хугацааг дахин тооцоолно — хуучин
-            // (хүлээлтийн өмнөх) утга хуучирсан хэвээр үлдэхгүй.
-            const anchor = resuming ? now : startedAt;
-            if (anchor) {
-              updates.expectedFinishAt = new Date(
-                anchor.getTime() + effectiveDurationMinutes * 60000,
-              );
-            }
+          if (enteringInProgress && effectiveDurationMinutes != null && startedAt) {
+            updates.expectedFinishAt = new Date(
+              startedAt.getTime() + effectiveDurationMinutes * 60000,
+            );
           }
         }
 
@@ -338,21 +319,6 @@ export async function PATCH(
           } else if (statusChangedTo === "CANCELLED") {
             await closeOpenOrderTimeBooking(tx, order.id, bookingSyncNow, "all");
           }
-        }
-        // S12: write a structured OrderStatusChange row in the same
-        // transaction as the scalar status write, for every transition made
-        // through this API — matching changeOrderStatusAction
-        // (app/_actions/orders.ts). No reason/reasonTag on this path.
-        if (statusChangedTo) {
-          await tx.orderStatusChange.create({
-            data: {
-              tenantId: auth.user.tenantId,
-              orderId: order.id,
-              fromStatus: order.status,
-              toStatus: statusChangedTo,
-              changedById: auth.user.id,
-            },
-          });
         }
         return u;
       },

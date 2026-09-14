@@ -10,8 +10,8 @@
  * This module holds the ONE command both entry points call whenever the
  * dangerous window applies — appointment still CONFIRMED, its linked order
  * still SCHEDULED (i.e. work has not started and the order hasn't been
- * postponed/cancelled/completed). Outside that window there is nothing to
- * keep in sync and each action keeps its own simple, single-entity path.
+ * cancelled/completed). Outside that window there is nothing to keep in
+ * sync and each action keeps its own simple, single-entity path.
  *
  * Lock strategy: this reuses `withOrderTransaction` (lib/order-time-booking.ts),
  * which takes a `FOR UPDATE` lock on the ServiceOrder row and rereads it fresh

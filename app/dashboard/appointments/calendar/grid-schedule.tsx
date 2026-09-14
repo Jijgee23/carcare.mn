@@ -40,6 +40,7 @@ export function GridSchedule({
   axisEndMs,
   closingAtMs,
   canChangeItemStatus,
+  canChangeItemPrice,
   branchId,
   returnTo,
 }: {
@@ -48,6 +49,7 @@ export function GridSchedule({
   axisEndMs: number;
   closingAtMs?: number | null;
   canChangeItemStatus: boolean;
+  canChangeItemPrice: boolean;
   branchId: string;
   returnTo: string;
 }) {
@@ -333,6 +335,7 @@ export function GridSchedule({
                 key={selected.id}
                 orderId={selected.id}
                 canChangeItemStatus={canChangeItemStatus}
+                canChangeItemPrice={canChangeItemPrice}
               />
             ) : null}
           </div>

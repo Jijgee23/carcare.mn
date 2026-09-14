@@ -604,7 +604,7 @@ export async function repairAppointmentOrderLinkAction(
         branchId: appointment.branchId,
         customerId: appointment.customerId,
         vehicleId: appointment.vehicleId,
-        status: { in: ["SCHEDULED", "IN_PROGRESS", "POSTPONED"] },
+        status: { in: ["SCHEDULED", "IN_PROGRESS"] },
         appointment: { is: null },
       },
       select: { id: true, number: true, assignedToId: true },
@@ -1005,7 +1005,7 @@ async function findAppointmentRescheduleConflict(
       where: {
         tenantId,
         branchId,
-        status: { in: ["SCHEDULED", "IN_PROGRESS", "POSTPONED"] },
+        status: { in: ["SCHEDULED", "IN_PROGRESS"] },
       },
       select: {
         number: true,
@@ -1116,10 +1116,10 @@ export async function rescheduleAppointmentAction(
   // `requestedAt` here would let the two drift apart (the bug this fix
   // targets). Route this specific, dangerous window through the shared
   // linked-move command instead of the simple single-entity write below.
-  // Once the order has moved past SCHEDULED (IN_PROGRESS/POSTPONED/
-  // COMPLETED/CANCELLED) it has its own separate time-changing mechanisms
-  // (postpone's return-time flow, etc.) — not touched here, so this action
-  // still refuses in that case rather than silently doing nothing useful.
+  // Once the order has moved past SCHEDULED (IN_PROGRESS/COMPLETED/
+  // CANCELLED) it has its own separate time-changing mechanisms — not
+  // touched here, so this action still refuses in that case rather than
+  // silently doing nothing useful.
   if (appt.serviceOrderId) {
     if (appt.serviceOrder?.status !== "SCHEDULED") {
       return {

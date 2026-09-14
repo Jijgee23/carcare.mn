@@ -59,8 +59,8 @@ export default async function AccountHistoryPage({
   // account-той холбоотой Customer-ийн захиалга (хуучин зан төлөвтэй нийцүүлэв).
   // Машин нэг байгууллагад өөр (холбогдоогүй) Customer дээр бүртгэгдсэн ч,
   // эзэмшил нь өөр газар баталгаажсан бол түүх энд нэгдэж харагдана.
-  // Түүх дууссан AND цуцлагдсан ажлыг харуулна (D-085) — SCHEDULED/IN_PROGRESS/
-  // POSTPONED хараахан идэвхтэй, /account (Миний захиалгууд) дээр харагдана.
+  // Түүх дууссан AND цуцлагдсан ажлыг харуулна (D-085) — SCHEDULED/IN_PROGRESS
+  // хараахан идэвхтэй, /account (Миний захиалгууд) дээр харагдана.
   // Төлбөрийн төлөв энд шүүлт биш: төлөгдөөгүй ч дууссан ажил энд харагдана.
   const where: Prisma.ServiceOrderWhereInput = {
     status: { in: ["COMPLETED", "CANCELLED"] },

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Fragment, useState } from "react";
 import {
   cancelOrderItemAction,
+  changeOrderItemPriceAction,
   changeOrderItemStatusAction,
 } from "@/app/_actions/orders";
 import { ConfirmForm } from "@/app/_components/confirm-form";
@@ -50,6 +51,19 @@ function pad2(n: number): string {
   return n < 10 ? `0${n}` : String(n);
 }
 
+// "100,000.00" хэлбэрээр (мянгатын таслал + 2 орон) форматлана — үнэ засах
+// input-д ашиглана. "en-US" locale санаатайгаар — "mn-MN" зарим орчинд
+// server/client өөр гарч hydration mismatch өгдөг асуудлаас чөлөөтэй, бүх
+// орчинд тогтмол ижил формат өгнө.
+function formatPriceInput(v: string): string {
+  const n = Number.parseFloat(v);
+  if (!Number.isFinite(n)) return v;
+  return n.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 // Intl.toLocaleString("mn-MN") ашиглахгүй — зарим орчинд (client дээр
 // mn-MN locale өгөгдөл байхгүй бол) server/client өөр форматтай гарч
 // hydration mismatch өгдөг. Гараар форматлавал аль ч орчинд ижил байна.
@@ -71,12 +85,14 @@ export function OrderItems({
   orderId,
   canEdit,
   canChangeStatus,
+  canChangePrice,
   orderStarted,
 }: {
   items: OrderItemLite[];
   orderId: string;
   canEdit: boolean;
   canChangeStatus: boolean;
+  canChangePrice: boolean;
   orderStarted: boolean;
 }) {
   const showActionColumn = canEdit || canChangeStatus;
@@ -177,11 +193,13 @@ export function OrderItems({
                         <span className={cancelled ? "line-through" : ""}>
                           {it.description}
                         </span>
-                        <span
-                          className={`shrink-0 font-plex-mono text-[9px] px-1.5 py-0.5 rounded-full ${SERVICE_ITEM_STATUS_BADGE[status]}`}
-                        >
-                          {SERVICE_ITEM_STATUS_LABEL[status]}
-                        </span>
+                        {g.kind !== "PART" ? (
+                          <span
+                            className={`shrink-0 font-plex-mono text-[9px] px-1.5 py-0.5 rounded-full ${SERVICE_ITEM_STATUS_BADGE[status]}`}
+                          >
+                            {SERVICE_ITEM_STATUS_LABEL[status]}
+                          </span>
+                        ) : null}
                       </div>
                       {cancelled && it.cancelledAt ? (
                         <div className="text-[11px] text-[var(--oc-muted3)] mt-0.5">
@@ -198,7 +216,12 @@ export function OrderItems({
                       {qtyText(it.quantity)}
                     </td>
                     <td className="hidden sm:table-cell px-2 py-2.5 text-right font-plex-mono text-[var(--oc-muted2)] tabular-nums whitespace-nowrap">
-                      {formatTugrik(it.unitPrice)}
+                      <PriceCell
+                        key={it.unitPrice}
+                        itemId={it.id}
+                        unitPrice={it.unitPrice}
+                        editable={canChangePrice && !cancelled}
+                      />
                     </td>
                     <td
                       className={`px-5 py-2.5 text-right font-plex-mono font-semibold tabular-nums whitespace-nowrap ${cancelled ? "opacity-50 line-through" : "text-[var(--oc-ink)]"}`}
@@ -208,7 +231,9 @@ export function OrderItems({
                     {showActionColumn ? (
                       <td className="pr-3 py-2.5">
                         <div className="flex items-center justify-start gap-1">
-                          {canChangeStatus && canChangeServiceItemStatus(status) ? (
+                          {canChangeStatus &&
+                          g.kind !== "PART" &&
+                          canChangeServiceItemStatus(status) ? (
                             <form action={changeOrderItemStatusAction}>
                               <input type="hidden" name="itemId" value={it.id} />
                               <select
@@ -304,6 +329,46 @@ export function OrderItems({
         </div>
       </div>
     </div>
+  );
+}
+
+// `orders.itemPrice` эрхтэй хэрэглэгчид мөрийн нэгж үнийг шууд энд засна —
+// "100,000.00" форматтай (formatPriceInput), фокус алдахад утга өөрчлөгдсөн
+// бол автоматаар submit хийнэ (статус <select>-тэй адил зарчим). `key={unitPrice}`-
+// аар parent дээр remount хийгддэг тул амжилттай хадгалсны дараа сервэрийн
+// шинэ утга руу local state дахин тохирно.
+function PriceCell({
+  itemId,
+  unitPrice,
+  editable,
+}: {
+  itemId: string;
+  unitPrice: string;
+  editable: boolean;
+}) {
+  const [value, setValue] = useState(() => formatPriceInput(unitPrice));
+
+  if (!editable) return <>{formatTugrik(unitPrice)}</>;
+
+  return (
+    <form action={changeOrderItemPriceAction}>
+      <input type="hidden" name="itemId" value={itemId} />
+      <input
+        name="unitPrice"
+        type="text"
+        inputMode="decimal"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={(e) => {
+          const formatted = formatPriceInput(e.target.value);
+          setValue(formatted);
+          if (formatted !== formatPriceInput(unitPrice)) {
+            e.currentTarget.form?.requestSubmit();
+          }
+        }}
+        className="compact-input !py-1 !px-1.5 !text-[11px] !rounded-lg w-full text-right"
+      />
+    </form>
   );
 }
 

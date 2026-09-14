@@ -11,7 +11,6 @@ import {
   resolveOrderEffectiveInterval,
   resolveHistoricalOrderSessions,
   type OrderTimeBookingLike,
-  type OrderStatusChangeLike,
 } from "@/lib/schedule-order-interval";
 import { isPendingAppointmentPaymentExpired } from "@/lib/appointment-payment-status";
 import { DEFAULT_SLOT_MINUTES } from "@/lib/appointment-slots";
@@ -25,7 +24,7 @@ import { DEFAULT_SLOT_MINUTES } from "@/lib/appointment-slots";
  * DATABASE_URL — importing @/lib/prisma at module scope there broke that.
  *
  * Only active-status rows are normally fetched: appointments still
- * PENDING/CONFIRMED and orders still SCHEDULED/IN_PROGRESS/POSTPONED.
+ * PENDING/CONFIRMED and orders still SCHEDULED/IN_PROGRESS.
  * Terminal orders (COMPLETED/CANCELLED) are additionally fetched when an
  * active appointment points at them, solely to resolve the relationship and
  * avoid a false "missing order" warning. Terminal rows still carry no
@@ -54,7 +53,7 @@ export type BranchScheduleOrderRow = Awaited<
 export type AppointmentOrderRepairCandidate = {
   id: string;
   number: string;
-  status: "SCHEDULED" | "IN_PROGRESS" | "POSTPONED";
+  status: "SCHEDULED" | "IN_PROGRESS";
   scheduledAt: Date | null;
   customerId: string;
   vehicleId: string;
@@ -187,7 +186,7 @@ function fetchOrderRows(
       ...scope,
       OR: [
         {
-          status: { in: ["SCHEDULED", "IN_PROGRESS", "POSTPONED"] },
+          status: { in: ["SCHEDULED", "IN_PROGRESS"] },
           OR: [{ scheduledAt: { lt: rangeEnd } }, { scheduledAt: null }],
         },
         ...(linkedOrderIds.length > 0 ? [{ id: { in: linkedOrderIds } }] : []),
@@ -229,7 +228,7 @@ function fetchAppointmentOrderRepairCandidates(
   return prisma.serviceOrder.findMany({
     where: {
       ...scope,
-      status: { in: ["SCHEDULED", "IN_PROGRESS", "POSTPONED"] },
+      status: { in: ["SCHEDULED", "IN_PROGRESS"] },
       appointment: null,
       OR: uniquePairs,
     },
@@ -375,43 +374,11 @@ function fetchHistoryOrders(scope: { tenantId: string; branchId: string }, order
 }
 
 /**
- * S12 follow-up: batched (one query, not N+1) fetch of every relevant
- * order's OrderStatusChange timeline, ordered oldest-first per order so it
- * can be passed straight through to resolveHistoricalOrderSessions as ground
- * truth for wasWorked. Orders with no rows (pre-S12 history, or any other
- * gap) simply have no entry in the returned map — callers fall back to
- * `?? []`, which resolveHistoricalOrderSessions treats as "use the kind
- * proxy" rather than an error.
- */
-async function fetchOrderStatusChanges(
-  orderIds: string[],
-): Promise<Map<string, OrderStatusChangeLike[]>> {
-  const map = new Map<string, OrderStatusChangeLike[]>();
-  if (orderIds.length === 0) return map;
-  const rows = await prisma.orderStatusChange.findMany({
-    where: { orderId: { in: orderIds } },
-    select: { orderId: true, fromStatus: true, toStatus: true, createdAt: true },
-    orderBy: { createdAt: "asc" },
-  });
-  for (const row of rows) {
-    const entry: OrderStatusChangeLike = {
-      fromStatus: row.fromStatus,
-      toStatus: row.toStatus,
-      createdAt: row.createdAt,
-    };
-    const existing = map.get(row.orderId);
-    if (existing) existing.push(entry);
-    else map.set(row.orderId, [entry]);
-  }
-  return map;
-}
-
-/**
  * S11: historical session loader — the additive sibling to loadBranchSchedule
  * that answers "what actually happened" for a past day/range instead of
  * "what does the branch currently occupy". Unlike fetchOrderRows (which gates
  * on the parent ServiceOrder's CURRENT status being
- * SCHEDULED/IN_PROGRESS/POSTPONED, or a still-active appointment/open
+ * SCHEDULED/IN_PROGRESS, or a still-active appointment/open
  * booking link), this queries OrderTimeBooking directly by its own
  * startAt/endAt overlap against the requested range — so a COMPLETED or
  * CANCELLED order with only closed booking rows for that day is still found.
@@ -453,7 +420,6 @@ export async function loadBranchScheduleHistory(input: {
   const orderIds = Array.from(byOrder.keys());
   const orders = await fetchHistoryOrders(scope, orderIds);
   const orderById = new Map(orders.map((o) => [o.id, o]));
-  const statusChangesByOrder = await fetchOrderStatusChanges(orderIds);
 
   const sessions: BranchScheduleHistorySession[] = [];
   for (const [orderId, bookings] of byOrder) {
@@ -462,7 +428,6 @@ export async function loadBranchScheduleHistory(input: {
       input.rangeStart,
       input.rangeEnd,
       now,
-      statusChangesByOrder.get(orderId) ?? [],
     );
     for (const session of resolved) {
       sessions.push({
