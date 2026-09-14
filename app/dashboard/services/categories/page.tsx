@@ -13,7 +13,7 @@ export default async function CategoriesPage() {
   // Ангиллыг зөвхөн админ удирдана (actions нь isOwner шаарддаг).
   if (!user.isOwner) redirect("/dashboard/services");
 
-  const [categories, branches] = await Promise.all([
+  const [categories, branches, serviceKeys] = await Promise.all([
     prisma.category.findMany({
       where: { tenantId: user.tenantId },
       orderBy: [{ isActive: "desc" }, { name: "asc" }],
@@ -23,12 +23,19 @@ export default async function CategoriesPage() {
         description: true,
         isActive: true,
         durationMinutes: true,
+        concurrentCapacity: true,
+        systemServiceKeyId: true,
         _count: { select: { services: true } },
         branches: { select: { id: true } },
       },
     }),
     prisma.branch.findMany({
       where: { tenantId: user.tenantId },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+    prisma.systemServiceKey.findMany({
+      where: { isActive: true },
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
@@ -42,6 +49,8 @@ export default async function CategoriesPage() {
     servicesCount: c._count.services,
     branchIds: c.branches.map((b) => b.id),
     durationMinutes: c.durationMinutes,
+    concurrentCapacity: c.concurrentCapacity,
+    systemServiceKeyId: c.systemServiceKeyId,
   }));
 
   return (
@@ -70,7 +79,11 @@ export default async function CategoriesPage() {
       </div>
 
       <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-4 sm:p-5">
-        <CategoriesSection categories={rows} branches={branches} />
+        <CategoriesSection
+          categories={rows}
+          branches={branches}
+          serviceKeys={serviceKeys}
+        />
       </div>
     </div>
   );

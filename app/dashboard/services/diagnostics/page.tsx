@@ -15,6 +15,7 @@ import { redirect } from "next/navigation";
 import {
   DIAGNOSTIC_TYPE_BADGE,
   DIAGNOSTIC_TYPE_LABEL,
+  tenantVisibleTemplateWhere,
   type DiagnosticType,
 } from "@/lib/diagnostics";
 import { formatTugrik } from "@/lib/orders";
@@ -35,7 +36,7 @@ export default async function DiagnosticsServicesPage({
   const canRemove = canDelete(user, "diagnostics");
 
   const { page: pageParam } = await searchParams;
-  const where = { tenantId: user.tenantId };
+  const where = tenantVisibleTemplateWhere(user.tenantId);
   const { page, pageSize, skip, take } = getPageInfo(pageParam);
   const [templates, total] = await Promise.all([
     prisma.diagnosticTemplate.findMany({
@@ -107,6 +108,7 @@ export default async function DiagnosticsServicesPage({
               <tbody className="divide-y divide-[var(--oc-line)]">
                 {templates.map((t) => {
                   const type = t.type as DiagnosticType;
+                  const readOnly = t.isSystemDefault || t.tenantId == null;
                   return (
                     <ClickableRow
                       key={t.id}
@@ -123,6 +125,14 @@ export default async function DiagnosticsServicesPage({
                               title="Системийн үндсэн загвар — засах/устгах боломжгүй"
                             >
                               Системийн
+                            </span>
+                          ) : null}
+                          {t.tenantId == null ? (
+                            <span
+                              className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/25 light:bg-violet-100 light:border-violet-300 light:text-violet-700"
+                              title="Системийн сан — платформын админ бүх байгууллагад ижил загвараар удирддаг, засах/устгах боломжгүй"
+                            >
+                              Системийн сан
                             </span>
                           ) : null}
                         </div>
@@ -170,7 +180,7 @@ export default async function DiagnosticsServicesPage({
                               href={`/dashboard/services/diagnostics/${t.id}`}
                               className="text-xs text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors px-2.5 py-1.5 rounded-lg hover:bg-[var(--oc-accent)]/10"
                             >
-                              {t.isSystemDefault ? "Харах" : "Засах"}
+                              {readOnly ? "Харах" : "Засах"}
                             </Link>
                             <form action={duplicateTemplateAction}>
                               <input type="hidden" name="id" value={t.id} />
@@ -181,7 +191,7 @@ export default async function DiagnosticsServicesPage({
                                 Хуулах
                               </button>
                             </form>
-                            {!t.isSystemDefault ? (
+                            {!readOnly ? (
                               <ConfirmForm
                                 action={deleteTemplateAction}
                                 message={

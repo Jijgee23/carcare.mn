@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { AppointmentReminderForm } from "./appointment-reminder-form";
 import { LogoForm } from "./logo-form";
 import { TenantForm } from "./tenant-form";
 
@@ -59,7 +60,7 @@ export default async function SettingsPage() {
       <div className="grid gap-6">
         <SectionPanel
           index={1}
-          total={3}
+          total={4}
           title="Лого"
           description="Платформ дотор болон нэхэмжлэхэд харагдана."
         >
@@ -68,7 +69,7 @@ export default async function SettingsPage() {
 
         <SectionPanel
           index={2}
-          total={3}
+          total={4}
           title="Үндсэн мэдээлэл"
           description="Нэр, регистр, харилцагч мэдээлэл."
         >
@@ -84,7 +85,18 @@ export default async function SettingsPage() {
           />
         </SectionPanel>
 
-        <SectionPanel index={3} total={3} title="Бусад">
+        <SectionPanel
+          index={3}
+          total={4}
+          title="Цаг захиалгын сануулга"
+          description="Товлосон цагаас хэдэн хугацааны өмнө үйлчлүүлэгчид сануулга илгээхийг тохируулна."
+        >
+          <AppointmentReminderForm
+            initialMinutes={tenant.appointmentReminderLeadMinutes}
+          />
+        </SectionPanel>
+
+        <SectionPanel index={4} total={4} title="Бусад">
           <dl className="grid gap-3 text-sm sm:grid-cols-3">
             <Row label="Slug">
               <span className="font-plex-mono text-[var(--oc-ink2)]">{tenant.slug}</span>

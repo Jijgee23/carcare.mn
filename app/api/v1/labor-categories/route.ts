@@ -38,12 +38,22 @@ export async function POST(req: Request) {
   });
   if (existing) return jsonError(400, "Тийм нэртэй ангилал аль хэдийн байна");
 
+  // Мобайл апп системийн ангилал сонгох UI-гүй тул анхдагчаар "Ерөнхий"
+  // түлхүүрт холбоно (харах: Category.systemServiceKeyId, вэб дээрх
+  // CategoriesSection-ийн адил анхны утга).
+  const generalKey = await prisma.systemServiceKey.findFirst({
+    where: { name: "Ерөнхий" },
+    select: { id: true },
+  });
+  if (!generalKey) return jsonError(500, "Системийн ерөнхий ангилал тохируулагдаагүй байна.");
+
   const category = await prisma.category.create({
     data: {
       name: (name as string).trim(),
       description: typeof description === "string" && description.trim() ? description.trim() : null,
       isActive: isActive !== false,
       tenantId: auth.user.tenantId,
+      systemServiceKeyId: generalKey.id,
     },
     select: SELECT,
   });

@@ -167,3 +167,29 @@ export function formatTugrik(amount: number | string | null | undefined): string
   if (!Number.isFinite(n)) return "—";
   return `${n.toLocaleString("mn-MN", { maximumFractionDigits: 2 })}₮`;
 }
+
+// "100,000" хэлбэрээр (мянгатын таслал, бутархайгүй бол цэг харуулахгүй)
+// форматлана — үнэ бичих/засах input-д ашиглана. "en-US" locale
+// санаатайгаар — "mn-MN" зарим орчинд server/client өөр гарч hydration
+// mismatch өгдөг асуудлаас чөлөөтэй, бүх орчинд тогтмол ижил формат өгнө.
+// Comma-той утга дамжвал (жиш. input-аас шууд) эхлээд цэвэрлэнэ.
+export function formatPriceInput(v: string): string {
+  const n = Number.parseFloat(v.replace(/,/g, ""));
+  if (!Number.isFinite(n)) return v;
+  return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
+// Бичиж байх үедээ шууд мянгатын таслалтай харагдуулна ("540,000") — 2-оос
+// олон бутархай орон, олон цэг зэргийг хориглоно, харин бичиж дуусаагүй
+// байгаа цэгийг (жиш. "540.") устгахгүй — onBlur дээр эцсийн байдлаар
+// цэвэрлэнэ.
+export function liveFormatPriceInput(raw: string): string {
+  const cleaned = raw.replace(/[^\d.]/g, "");
+  const dotIndex = cleaned.indexOf(".");
+  const groupInt = (digits: string) =>
+    digits.replace(/^0+(?=\d)/, "").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  if (dotIndex === -1) return groupInt(cleaned);
+  const intPart = cleaned.slice(0, dotIndex);
+  const decPart = cleaned.slice(dotIndex + 1).replace(/\./g, "").slice(0, 2);
+  return `${groupInt(intPart)}.${decPart}`;
+}

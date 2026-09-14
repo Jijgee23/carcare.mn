@@ -10,6 +10,7 @@ import { Prisma } from "@/app/generated/prisma/client";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canEdit, canView, workingBranchScopeId } from "@/lib/auth/roles";
 import { canViewOrder, canEditOrder } from "@/lib/auth/order-access";
+import { tenantVisibleTemplateWhere } from "@/lib/diagnostics";
 import { prisma } from "@/lib/prisma";
 import type { OrderItemLite } from "@/app/dashboard/orders/[id]/order-items";
 import type { OrderPaymentRow } from "@/app/dashboard/orders/[id]/order-payments-list";
@@ -135,7 +136,7 @@ export async function getScheduleOrderDetail(
           },
         }),
         prisma.diagnosticTemplate.findMany({
-          where: { tenantId: user.tenantId, isActive: true },
+          where: { ...tenantVisibleTemplateWhere(user.tenantId), isActive: true },
           orderBy: { name: "asc" },
           select: { id: true, name: true, price: true, durationMin: true },
         }),

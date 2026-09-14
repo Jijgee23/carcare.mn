@@ -5,6 +5,7 @@ import {
   type DiagnosticType,
   type TemplateSchema,
   emptySchema,
+  tenantVisibleTemplateWhere,
 } from "@/lib/diagnostics";
 import { prisma } from "@/lib/prisma";
 import { StandaloneDiagnosticForm } from "./standalone-form";
@@ -47,7 +48,7 @@ export default async function NewDiagnosticPage() {
         rows.map((r) => ({ ...r.vehicle, customerId: r.customerId })),
       ),
     prisma.diagnosticTemplate.findMany({
-      where: { tenantId: user.tenantId, isActive: true },
+      where: { ...tenantVisibleTemplateWhere(user.tenantId), isActive: true },
       orderBy: [{ type: "asc" }, { name: "asc" }],
       select: { id: true, name: true, type: true, schema: true },
     }),

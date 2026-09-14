@@ -2,6 +2,7 @@ import { Prisma } from "@/app/generated/prisma/client";
 import { jsonOk, requireApiUser } from "@/lib/api";
 import {
   DIAGNOSTIC_TYPES,
+  tenantVisibleTemplateWhere,
   type DiagnosticType,
 } from "@/lib/diagnostics";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
@@ -18,19 +19,24 @@ export async function GET(req: Request) {
     url.searchParams.get("includeInactive") === "true";
   const { page, pageSize, skip, take } = getApiPageInfo(url.searchParams);
 
-  const where: Prisma.DiagnosticTemplateWhereInput = {
-    tenantId: auth.user.tenantId,
-  };
-  if (!includeInactive) where.isActive = true;
+  // AND-ээр нэгтгэнэ — тухайн тенантад харагдах загварын OR нөхцөл (өөрийнх
+  // эсвэл систем admin-аас олгосон) хайлтын `q`-ийн OR-той мөргөлдөхгүй.
+  const and: Prisma.DiagnosticTemplateWhereInput[] = [
+    tenantVisibleTemplateWhere(auth.user.tenantId),
+  ];
+  if (!includeInactive) and.push({ isActive: true });
   if (type && DIAGNOSTIC_TYPES.includes(type as DiagnosticType)) {
-    where.type = type as DiagnosticType;
+    and.push({ type: type as DiagnosticType });
   }
   if (q) {
-    where.OR = [
-      { name: { contains: q, mode: "insensitive" } },
-      { description: { contains: q, mode: "insensitive" } },
-    ];
+    and.push({
+      OR: [
+        { name: { contains: q, mode: "insensitive" } },
+        { description: { contains: q, mode: "insensitive" } },
+      ],
+    });
   }
+  const where: Prisma.DiagnosticTemplateWhereInput = { AND: and };
 
   const [templates, total] = await Promise.all([
     prisma.diagnosticTemplate.findMany({

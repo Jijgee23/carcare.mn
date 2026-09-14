@@ -7,6 +7,7 @@ import {
   type DiagnosticType,
   type TemplateSchema,
   emptySchema,
+  tenantVisibleTemplateWhere,
 } from "@/lib/diagnostics";
 import { prisma } from "@/lib/prisma";
 import {
@@ -30,7 +31,7 @@ export default async function EditDiagnosticTemplatePage({
   const { id } = await params;
   const [template, categories] = await Promise.all([
     prisma.diagnosticTemplate.findFirst({
-      where: { id, tenantId: user.tenantId },
+      where: { id, ...tenantVisibleTemplateWhere(user.tenantId) },
     }),
     prisma.category.findMany({
       where: { tenantId: user.tenantId },
@@ -39,6 +40,7 @@ export default async function EditDiagnosticTemplatePage({
     }),
   ]);
   if (!template) notFound();
+  const readOnly = template.isSystemDefault || template.tenantId == null;
 
   let schema: TemplateSchema;
   try {
@@ -61,7 +63,7 @@ export default async function EditDiagnosticTemplatePage({
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">
-            {template.isSystemDefault ? "Оношилгоо харах" : "Оношилгоо засах"}
+            {readOnly ? "Оношилгоо харах" : "Оношилгоо засах"}
           </h1>
           <p className="text-sm text-[var(--oc-muted3)] mt-1">
             v{template.version} · {template.name}
@@ -71,7 +73,7 @@ export default async function EditDiagnosticTemplatePage({
           <BtnLink href="/dashboard/services/diagnostics" variant="ghost">
             ← Буцах
           </BtnLink>
-          {!template.isSystemDefault ? (
+          {!readOnly ? (
             <Btn type="submit" form={TEMPLATE_EDITOR_FORM_ID}>
               Хадгалах
             </Btn>
@@ -79,13 +81,12 @@ export default async function EditDiagnosticTemplatePage({
         </div>
       </div>
 
-      {template.isSystemDefault ? (
+      {readOnly ? (
         <div className="flex flex-col gap-6">
           <div className="rounded-[10px] border border-[var(--oc-accent)]/25 bg-[var(--oc-accent)]/[0.06] px-4 py-2.5 text-sm text-[var(--oc-ink2)]">
-            Энэ бол системийн үндсэн загвар — шинэ байгууллага бүрт автоматаар
-            үүсдэг тул засах, устгах боломжгүй. Өөрчлөх шаардлагатай бол
-            жагсаалтаас <span className="font-medium">Хуулах</span> дарж хувь
-            эх үүсгэн, тэрийг засаарай.
+            {template.tenantId == null
+              ? "Энэ бол системийн сан загвар — платформын админ удирддаг, засах, устгах боломжгүй. Өөрчлөх шаардлагатай бол жагсаалтаас Хуулах дарж хувь эх үүсгэн, тэрийг засаарай."
+              : "Энэ бол системийн үндсэн загвар — шинэ байгууллага бүрт автоматаар үүсдэг тул засах, устгах боломжгүй. Өөрчлөх шаардлагатай бол жагсаалтаас Хуулах дарж хувь эх үүсгэн, тэрийг засаарай."}
           </div>
           <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5 sm:p-6">
             <TemplatePreview schema={schema} />

@@ -24,6 +24,11 @@ export default async function DiscoverPage() {
   // Багц нь онлайн захиалга дэмждэг tenant-уудыг л харуулна.
   const allowedPlans = await plansWithFeature(PLAN_LIMIT_CODES.ONLINE_BOOKING);
   const now = new Date();
+  const serviceKeys = await prisma.systemServiceKey.findMany({
+    where: { isActive: true },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true },
+  });
   const tenants = await prisma.tenant.findMany({
     where: {
       acceptsOnlineBooking: true,
@@ -58,7 +63,11 @@ export default async function DiscoverPage() {
       categories: {
         where: { isActive: true },
         orderBy: { name: "asc" },
-        select: { name: true, branches: { select: { id: true } } },
+        select: {
+          name: true,
+          systemServiceKeyId: true,
+          branches: { select: { id: true } },
+        },
       },
     },
   });
@@ -95,11 +104,19 @@ export default async function DiscoverPage() {
       );
       // Энэ салбарт хамаарах ангилал: хамаарах салбаргүй (бүх салбарт) эсвэл
       // энэ салбарыг шууд сонгосон ангилал.
-      const services = t.categories
-        .filter(
-          (c) => c.branches.length === 0 || c.branches.some((x) => x.id === b.id),
-        )
-        .map((c) => c.name);
+      const matchingCategories = t.categories.filter(
+        (c) => c.branches.length === 0 || c.branches.some((x) => x.id === b.id),
+      );
+      const services = matchingCategories.map((c) => c.name);
+      // Тэдгээр ангиллын холбогдсон системийн ажлын түлхүүрүүд (байгууллага
+      // сонгохоос өмнөх "ямар ажил хийлгэх гэж байна?" хайлтад ашиглана).
+      const serviceKeyIds = [
+        ...new Set(
+          matchingCategories
+            .map((c) => c.systemServiceKeyId)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      ];
       return {
         id: b.id,
         name: b.name,
@@ -113,6 +130,7 @@ export default async function DiscoverPage() {
         hours: status.hours,
         weekend,
         services,
+        serviceKeyIds,
       };
     }),
   }));
@@ -129,6 +147,7 @@ export default async function DiscoverPage() {
 
       <DiscoverClient
         orgs={orgs}
+        serviceKeys={serviceKeys}
         apiKey={process.env.GOOGLE_MAP_API_KEY ?? ""}
         mapId={process.env.GOOGLE_MAP_ID ?? ""}
       />

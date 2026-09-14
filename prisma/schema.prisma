@@ -13,46 +13,52 @@ datasource db {
 // --- Tenant ---------------------------------------------------------------
 
 model Tenant {
-  id                   String   @id @default(cuid())
-  slug                 String   @unique
+  id                             String   @id @default(cuid())
+  slug                           String   @unique
   // Байгууллагын нэр — DB түвшинд unique биш (хоёр өөр компани адилхан нэртэй
   // байх нь бодит боломжтой). Давхцлыг зөвхөн бүртгэлийн UX түвшинд (signUpAction)
   // шалгаж, тодорхой мессеж өгдөг — бизнесийн шийдвэрээр constraint аваагүй.
-  name                 String
-  registerNumber       String   @unique // 7 оронтой улсын бүртгэлийн дугаар (string-р хадгална)
-  email                String   @unique
-  phone1               String
-  phone2               String?
-  logoUrl              String?
-  plan                 Plan     @default(FREE)
-  suspended            Boolean  @default(false) // super admin-аар түр зогсоосон эсэх
-  acceptsOnlineBooking Boolean  @default(false) // Онлайн цаг захиалгын каталогт харагдах эсэх
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  name                           String
+  registerNumber                 String   @unique // 7 оронтой улсын бүртгэлийн дугаар (string-р хадгална)
+  email                          String   @unique
+  phone1                         String
+  phone2                         String?
+  logoUrl                        String?
+  plan                           Plan     @default(FREE)
+  suspended                      Boolean  @default(false) // super admin-аар түр зогсоосон эсэх
+  acceptsOnlineBooking           Boolean  @default(false) // Онлайн цаг захиалгын каталогт харагдах эсэх
+  // Цаг захиалгын сануулга SMS/мэдэгдлийг товлосон цагаас хэдэн минутын
+  // өмнө илгээхийг тенант өөрөө тохируулна — 24 цагаас (1440) их байж болно
+  // (жиш. 1 хоног 6 цаг = 1800). Минутаар хадгалснаар 24ц-аас хязгаарлагдахгүй
+  // (харах: app/api/cron/appointment-reminders/route.ts).
+  appointmentReminderLeadMinutes Int      @default(1440)
+  createdAt                      DateTime @default(now())
+  updatedAt                      DateTime @updatedAt
 
-  users                  User[]
-  roles                  Role[]
-  branches               Branch[]
-  customers              Customer[]
-  tenantVehicles         TenantVehicle[]
-  services               Service[]
-  serviceOrders          ServiceOrder[]
-  serviceOrderCategories ServiceOrderCategory[]
-  orderTimeBookings      OrderTimeBooking[]
-  diagnosticTemplates    DiagnosticTemplate[]
-  diagnosticReports      DiagnosticReport[]
-  units                  Unit[]
-  categories             Category[]
-  subscriptions          Subscription[]
-  subscriptionPayments   SubscriptionPayment[]
-  auditLogs              AuditLog[]
-  qpaySettings           TenantQPaySettings?
-  orderPayments          OrderPayment[]
-  appointments           Appointment[]
-  appointmentPayments    AppointmentPayment[]
-  notifications          Notification[]
-  feedback               Feedback[]
-  feedbackMessages       FeedbackMessage[]
+  users                    User[]
+  roles                    Role[]
+  branches                 Branch[]
+  customers                Customer[]
+  tenantVehicles           TenantVehicle[]
+  services                 Service[]
+  serviceOrders            ServiceOrder[]
+  serviceOrderCategories   ServiceOrderCategory[]
+  orderTimeBookings        OrderTimeBooking[]
+  diagnosticTemplates      DiagnosticTemplate[]
+  diagnosticTemplateGrants DiagnosticTemplateGrant[]
+  diagnosticReports        DiagnosticReport[]
+  units                    Unit[]
+  categories               Category[]
+  subscriptions            Subscription[]
+  subscriptionPayments     SubscriptionPayment[]
+  auditLogs                AuditLog[]
+  qpaySettings             TenantQPaySettings?
+  orderPayments            OrderPayment[]
+  appointments             Appointment[]
+  appointmentPayments      AppointmentPayment[]
+  notifications            Notification[]
+  feedback                 Feedback[]
+  feedbackMessages         FeedbackMessage[]
 }
 
 enum Plan {
@@ -593,7 +599,8 @@ enum ServiceKind {
   GOODS
 }
 
-// --- DiagnosticTemplate (тенант өөрөө зохиосон оношилгооны хуудас) --------
+// --- DiagnosticTemplate (тенант өөрөө зохиосон, эсвэл систем admin-аас ------
+// байгууллагуудад олгосон оношилгооны хуудас) ------------------------------
 
 model DiagnosticTemplate {
   id              String         @id @default(cuid())
@@ -609,24 +616,51 @@ model DiagnosticTemplate {
   // өөрөө засах/устгах боломжгүй (харах: app/_actions/diagnostic-templates.ts).
   isSystemDefault Boolean        @default(false)
 
-  tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // NULL = систем admin-аас үүсгэсэн, олон байгууллагад хуваалцсан загвар
+  // (харах: DiagnosticTemplateGrant) — `isSystemDefault`-аас ялгаатай: энд
+  // тенант бүрт тусдаа хуулбар ҮҮСДЭГГҮЙ, нэг мөрийг хэд хэдэн тенант
+  // ХУВААЛЦДАГ. Заавал тенанттай бол ердийн тухайн тенантын өөрийн загвар.
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   // Ангилал — бүх үйлчилгээтэй нэгэн адил (app-level дээр заавал; DB nullable).
+  // Систем-үүдийн (tenantId=NULL) загварт хэрэглэгддэггүй (ангилал тенант тус
+  // бүрийн өөрийн ангилал тул).
   categoryId String?
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   createdById String?
   createdBy   User?   @relation("DiagnosticTemplateCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
+  // Систем admin-аас үүсгэсэн бол (tenantId=NULL үед л утгатай) — аль admin үүсгэснийг хадгална.
+  createdBySystemAdminId String?
+  createdBySystemAdmin   SuperAdmin? @relation(fields: [createdBySystemAdminId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   reports    DiagnosticReport[]
   orderItems ServiceItem[]
+  grants     DiagnosticTemplateGrant[]
 
   @@index([tenantId, type, isActive])
   @@index([categoryId])
+}
+
+// Систем admin-аас үүсгэсэн загварыг (tenantId=NULL) аль байгууллага
+// ашиглаж болохыг тохируулна — тухайн тенант зөвхөн уншиж, оношилгоо
+// бөглөхөд хэрэглэнэ (засах/устгах боломжгүй, харах: app/_actions/
+// system-diagnostic-templates.ts, app/_actions/diagnostic-templates.ts-ийн
+// tenantVisibleTemplateWhere).
+model DiagnosticTemplateGrant {
+  templateId String
+  template   DiagnosticTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  tenantId   String
+  tenant     Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt  DateTime           @default(now())
+
+  @@id([templateId, tenantId])
+  @@index([tenantId])
 }
 
 enum DiagnosticType {
@@ -714,8 +748,24 @@ model Category {
   // платформын 30 мин руу шатлан буурна (override ?? durationMinutes ?? 30).
   durationMinutes Int?
 
+  // Энэ ажлыг НЭГ зэрэг хэдэн захиалга зэрэг хийж болохыг заана (ж: 2 бол
+  // ижил цагт 2 үйлчлүүлэгчийн захиалгыг зэрэг авна). Формд шинэ ангилал
+  // үүсгэхэд 1-ээр урьдчилан бөглөгдөж, засах боломжтой.
+  concurrentCapacity Int @default(1)
+
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Системийн ангилал (system admin удирддаг, платформ даяарх нэгдсэн
+  // "ажлын" түлхүүр — ж: "Моторын тос солих") — ЗААВАЛ, ангилал бүр яг нэг
+  // түлхүүрт холбогдоно (тодорхой түлхүүр тохирохгүй бол "Ерөнхий" ашиглана).
+  // Олон тенантын өөр өөрийн Category мөр нэг ижил түлхүүрт холбогдож болно.
+  // /discover (нийтэд нээлттэй каталог) дээр байгууллага сонгохоос өмнө энэ
+  // түлхүүрээр хайж, аль салбар тухайн ажлыг хийдгийг олоход ашиглана.
+  // onDelete Restrict — ашиглагдаж буй түлхүүрийг устгаж болохгүй (харах:
+  // app/_actions/system-service-keys.ts-ийн archive-if-used).
+  systemServiceKeyId String
+  systemServiceKey   SystemServiceKey @relation(fields: [systemServiceKeyId], references: [id], onDelete: Restrict)
 
   // Олон-олон: ангилал санал болгогдох салбарууд (хоосон бол бүх салбарт).
   branches            Branch[]
@@ -731,6 +781,28 @@ model Category {
 
   @@unique([tenantId, name])
   @@index([tenantId, isActive])
+  @@index([systemServiceKeyId])
+}
+
+// --- SystemServiceKey (систем admin удирддаг, платформ даяарх ажлын ----------
+// каталог) — /discover дээр байгууллага сонгохоос өмнө "ямар ажил хийлгэх
+// гэж байгаагаа" сонгож, тухайн ажлыг хийдэг салбаруудыг олоход ашиглана.
+// Тенант бүр өөрийн Category-г энэ түлхүүрт заавал биш холбож болно.
+model SystemServiceKey {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  description String?
+  isActive    Boolean @default(true)
+
+  createdById String?
+  createdBy   SuperAdmin? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  categories Category[]
+
+  @@index([isActive])
 }
 
 // --- AppointmentCategory (Appointment ↔ Category M2M холбоос) -------------
@@ -795,12 +867,12 @@ model OrderTimeBooking {
   branchId String
   branch   Branch       @relation(fields: [branchId], references: [id], onDelete: Restrict)
 
-  kind    OrderBookingKind
-  startAt DateTime
+  kind                    OrderBookingKind
+  startAt                 DateTime
   // NULL = дуусах хугацаа тодорхойгүй (одоогийн "тооцоолол алга" төлөвтэй адил).
   // S13 `applyScheduleClips` may shorten this to fit a new closing time —
   // see `originalDurationMinutes` for the value as originally planned.
-  endAt   DateTime?
+  endAt                   DateTime?
   // S13: minutes between startAt and the originally planned endAt, set once
   // when this row is created (SCHEDULED) and never rewritten afterward — lets
   // a later clip of `endAt` be distinguished from what was first promised.
@@ -812,7 +884,7 @@ model OrderTimeBooking {
   // DB-д partial unique index-ээр (orderId, kind) WHERE closedAt IS NULL
   // хэлбэрээр хамгаалагдана (харах: migrations/20260911011720_order_time_booking_open_unique),
   // Prisma schema DSL нөхцөлт unique илэрхийлэх боломжгүй тул raw SQL-д байна.
-  closedAt DateTime?
+  closedAt                DateTime?
 
   createdById String?
   createdBy   User?    @relation("OrderTimeBookingCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
@@ -1228,21 +1300,21 @@ enum AppointmentStatus {
 }
 
 model Appointment {
-  id          String            @id @default(cuid())
-  status      AppointmentStatus @default(PENDING)
-  requestedAt DateTime // хэрэглэгчийн хүссэн цаг
+  id                               String            @id @default(cuid())
+  status                           AppointmentStatus @default(PENDING)
+  requestedAt                      DateTime // хэрэглэгчийн хүссэн цаг
   // Effective reserved duration — hours/exception/season changes (S13
   // `applyScheduleClips`) may shorten THIS value to fit a new closing time.
   // null preserves unknown historical estimates and supports older application writers.
-  estimatedDurationMinutes Int?
+  estimatedDurationMinutes         Int?
   // S13: the original booking-time duration snapshot, set once at creation and
   // NEVER rewritten by clipping — lets staff see what was originally promised
   // even after a later hours change shortened `estimatedDurationMinutes`.
   // null for rows created before this column existed.
   originalEstimatedDurationMinutes Int?
   // Actual customer arrival/check-in; does not mean work has started.
-  arrivedAt                DateTime?
-  note                     String?
+  arrivedAt                        DateTime?
+  note                             String?
 
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -1626,6 +1698,8 @@ model SuperAdmin {
   devices                     Device[]
   notifications               Notification[]
   refundedAppointmentPayments AppointmentPayment[]
+  createdDiagnosticTemplates  DiagnosticTemplate[]
+  createdServiceKeys          SystemServiceKey[]
 }
 
 // --- AuditLog (тенант доторх чухал үйлдлийн түүх) ------------------------

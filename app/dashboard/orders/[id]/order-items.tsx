@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   cancelOrderItemAction,
   changeOrderItemPriceAction,
@@ -14,8 +14,10 @@ import {
   SERVICE_ITEM_STATUS_BADGE,
   SERVICE_ITEM_STATUS_LABEL,
   canChangeServiceItemStatus,
+  formatPriceInput,
   formatTugrik,
   isServiceItemCancellable,
+  liveFormatPriceInput,
   type ItemKind,
   type ServiceItemStatus,
 } from "@/lib/orders";
@@ -49,19 +51,6 @@ function qtyText(q: string): string {
 
 function pad2(n: number): string {
   return n < 10 ? `0${n}` : String(n);
-}
-
-// "100,000.00" хэлбэрээр (мянгатын таслал + 2 орон) форматлана — үнэ засах
-// input-д ашиглана. "en-US" locale санаатайгаар — "mn-MN" зарим орчинд
-// server/client өөр гарч hydration mismatch өгдөг асуудлаас чөлөөтэй, бүх
-// орчинд тогтмол ижил формат өгнө.
-function formatPriceInput(v: string): string {
-  const n = Number.parseFloat(v);
-  if (!Number.isFinite(n)) return v;
-  return n.toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
 }
 
 // Intl.toLocaleString("mn-MN") ашиглахгүй — зарим орчинд (client дээр
@@ -152,13 +141,28 @@ export function OrderItems({
             {showActionColumn ? <th className="w-44" aria-label="Үйлдэл" /> : null}
           </tr>
         </thead>
-        <tbody className="divide-y divide-[var(--oc-line)]">
-          {visibleGroups.map((g) => (
+        <tbody>
+          {visibleGroups.map((g, groupIndex) => (
             <Fragment key={g.kind}>
+              {activeTab === "ALL" && groupIndex > 0 ? (
+                /* Бүлгүүдийн хоорондох цоо зай — эмх цэгцтэй харагдахын тулд
+                   мөр хоорондын нимгэн зураас (divide-y) биш, панелийн өнгөөр
+                   бодит завсар үлдээнэ. */
+                <tr aria-hidden="true">
+                  <td
+                    colSpan={showActionColumn ? 5 : 4}
+                    className="h-2.5 p-0 bg-[var(--oc-panel)]"
+                  />
+                </tr>
+              ) : null}
               {activeTab === "ALL" ? (
-                /* Бүлгийн гарчиг — хэсгийн толгой шиг уншигдана */
+                /* Бүлгийн гарчиг — хэсгийн толгой шиг уншигдана, бүлгийг
+                   хүрээлэх өнгөт хайрцасны дээд ирмэг эндээс эхэлнэ. */
                 <tr className="bg-[var(--oc-panel2)]">
-                  <td colSpan={showActionColumn ? 5 : 4} className="px-5 py-1.5">
+                  <td
+                    colSpan={showActionColumn ? 5 : 4}
+                    className={`px-5 py-1.5 border-t border-l border-r ${ITEM_KIND_BORDER[g.kind]}`}
+                  >
                     <div className="flex items-center gap-2">
                       <span
                         className={`w-1.5 h-1.5 rounded-full ${ITEM_KIND_DOT[g.kind]}`}
@@ -173,7 +177,7 @@ export function OrderItems({
                   </td>
                 </tr>
               ) : null}
-              {g.items.map((it) => {
+              {g.items.map((it, itemIndex) => {
                 const status = it.status as ServiceItemStatus;
                 const cancelled = status === "CANCELLED";
                 const needsReport =
@@ -181,13 +185,23 @@ export function OrderItems({
                 const rowStatuses = needsReport
                   ? CHANGEABLE_STATUSES.filter((s) => s !== "COMPLETED")
                   : CHANGEABLE_STATUSES;
+                // Бүлгийг хайрцаглаж буй үед л (Бүгд tab) талын хүрээг зурна —
+                // тухайн бүлгийн сүүлчийн мөр доод ирмэгээр хайрцсыг хаана.
+                const boxed = activeTab === "ALL";
+                const isLastItem = itemIndex === g.items.length - 1;
+                const groupBorder = ITEM_KIND_BORDER[g.kind];
+                const rightEdgeBorder = boxed
+                  ? `border-r ${groupBorder}`
+                  : "";
+                const bottomEdgeBorder =
+                  boxed && isLastItem ? `border-b ${groupBorder}` : "";
                 return (
                   <tr
                     key={it.id}
-                    className="hover:bg-white/[0.02] transition-colors"
+                    className={`hover:bg-white/[0.02] transition-colors ${itemIndex > 0 ? "border-t border-[var(--oc-line)]" : ""}`}
                   >
                     <td
-                      className={`px-5 py-2.5 border-l-[3px] ${ITEM_KIND_ROW_BORDER[g.kind]} ${cancelled ? "opacity-50" : "text-[var(--oc-ink)]"}`}
+                      className={`px-5 py-2.5 ${boxed ? `border-l ${groupBorder}` : ""} ${bottomEdgeBorder} ${cancelled ? "opacity-50" : "text-[var(--oc-ink)]"}`}
                     >
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className={cancelled ? "line-through" : ""}>
@@ -199,6 +213,21 @@ export function OrderItems({
                           >
                             {SERVICE_ITEM_STATUS_LABEL[status]}
                           </span>
+                        ) : null}
+                        {it.kind === "DIAGNOSTIC" && it.diagnosticReportId ? (
+                          <Link
+                            href={`/dashboard/diagnostics/reports/${it.diagnosticReportId}`}
+                            className="shrink-0 text-[11px] font-medium text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors"
+                          >
+                            Тайлан үзэх →
+                          </Link>
+                        ) : needsReport && !cancelled ? (
+                          <Link
+                            href={`/dashboard/orders/${orderId}/diagnostics/new?itemId=${it.id}`}
+                            className="shrink-0 text-[11px] font-medium text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors"
+                          >
+                            Бөглөх →
+                          </Link>
                         ) : null}
                       </div>
                       {cancelled && it.cancelledAt ? (
@@ -212,28 +241,31 @@ export function OrderItems({
                         {qtyText(it.quantity)} × {formatTugrik(it.unitPrice)}
                       </span>
                     </td>
-                    <td className="hidden sm:table-cell px-2 py-2.5 text-right font-plex-mono text-[var(--oc-muted2)] tabular-nums whitespace-nowrap">
+                    <td
+                      className={`hidden sm:table-cell px-2 py-2.5 text-right font-plex-mono text-[var(--oc-muted2)] tabular-nums whitespace-nowrap ${bottomEdgeBorder}`}
+                    >
                       {qtyText(it.quantity)}
                     </td>
-                    <td className="hidden sm:table-cell px-2 py-2.5 text-right font-plex-mono text-[var(--oc-muted2)] tabular-nums whitespace-nowrap">
+                    <td
+                      className={`hidden sm:table-cell px-2 py-2.5 text-right font-plex-mono text-[var(--oc-muted2)] tabular-nums whitespace-nowrap ${bottomEdgeBorder}`}
+                    >
                       <PriceCell
-                        key={it.unitPrice}
                         itemId={it.id}
                         unitPrice={it.unitPrice}
                         editable={canChangePrice && !cancelled}
                       />
                     </td>
                     <td
-                      className={`px-5 py-2.5 text-right font-plex-mono font-semibold tabular-nums whitespace-nowrap ${cancelled ? "opacity-50 line-through" : "text-[var(--oc-ink)]"}`}
+                      className={`px-5 py-2.5 text-right font-plex-mono font-semibold tabular-nums whitespace-nowrap ${showActionColumn ? "" : rightEdgeBorder} ${bottomEdgeBorder} ${cancelled ? "opacity-50 line-through" : "text-[var(--oc-ink)]"}`}
                     >
                       {formatTugrik(it.total)}
                     </td>
                     {showActionColumn ? (
-                      <td className="pr-3 py-2.5">
+                      <td className={`pr-3 py-2.5 ${rightEdgeBorder} ${bottomEdgeBorder}`}>
                         <div className="flex items-center justify-start gap-1">
                           {canChangeStatus &&
-                          g.kind !== "PART" &&
-                          canChangeServiceItemStatus(status) ? (
+                            g.kind !== "PART" &&
+                            canChangeServiceItemStatus(status) ? (
                             <form action={changeOrderItemStatusAction}>
                               <input type="hidden" name="itemId" value={it.id} />
                               <select
@@ -255,15 +287,6 @@ export function OrderItems({
                                 ))}
                               </select>
                             </form>
-                          ) : null}
-                          {needsReport && !cancelled ? (
-                            <Link
-                              href={`/dashboard/orders/${orderId}/diagnostics/new?itemId=${it.id}`}
-                              title="Оношилгоог эхлээд бөглөнө үү."
-                              className="whitespace-nowrap px-2 py-1 rounded-lg text-[11px] font-medium text-[var(--oc-accent)] hover:bg-[var(--oc-accent)]/10 transition-colors"
-                            >
-                              Бөглөх
-                            </Link>
                           ) : null}
                           {canEdit && isServiceItemCancellable(status) ? (
                             <ConfirmForm
@@ -304,28 +327,14 @@ export function OrderItems({
         </tbody>
       </table>
 
-      {/* Дүнгийн хураангуй */}
+      {/* Нийт дүн — бүлэг тус бүрийн дэд дүнг дээрх бүлгийн гарчигт аль
+          хэдийн харуулсан тул энд давхардуулахгүй. */}
       <div className="px-5 py-4 bg-[var(--oc-panel2)] border-t border-[var(--oc-line)]">
-        <div className="flex flex-col gap-1.5">
-          {groups.length > 1
-            ? groups.map((g) => (
-                <div
-                  key={g.kind}
-                  className="flex items-center justify-between text-sm"
-                >
-                  <span className="text-[var(--oc-muted3)]">{ITEM_KIND_LABEL[g.kind]}</span>
-                  <span className="font-plex-mono text-[var(--oc-muted2)] tabular-nums">
-                    {formatTugrik(g.subtotal)}
-                  </span>
-                </div>
-              ))
-            : null}
-          <div className="flex items-center justify-between pt-2 mt-1 border-t border-[var(--oc-line)]">
-            <span className="text-sm font-semibold text-[var(--oc-ink)]">Нийт дүн</span>
-            <span className="font-plex-mono text-lg font-bold text-[var(--oc-accent)] tabular-nums">
-              {formatTugrik(grandTotal)}
-            </span>
-          </div>
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-semibold text-[var(--oc-ink)]">Нийт дүн</span>
+          <span className="font-plex-mono text-lg font-bold text-[var(--oc-accent)] tabular-nums">
+            {formatTugrik(grandTotal)}
+          </span>
         </div>
       </div>
     </div>
@@ -334,9 +343,10 @@ export function OrderItems({
 
 // `orders.itemPrice` эрхтэй хэрэглэгчид мөрийн нэгж үнийг шууд энд засна —
 // "100,000.00" форматтай (formatPriceInput), фокус алдахад утга өөрчлөгдсөн
-// бол автоматаар submit хийнэ (статус <select>-тэй адил зарчим). `key={unitPrice}`-
-// аар parent дээр remount хийгддэг тул амжилттай хадгалсны дараа сервэрийн
-// шинэ утга руу local state дахин тохирно.
+// бол автоматаар submit хийнэ (статус <select>-тэй адил зарчим). Амжилттай
+// хадгалсны дараа сервэрээс шинэ `unitPrice` ирэхэд (анхны mount-ыг тооцохгүй)
+// local state-ийг дахин тохируулаад, дараагийн мөрийг шууд засаж болохоор
+// input-ыг дахин focus/select хийнэ — олон мөр дараалан засахад тав тухтай.
 function PriceCell({
   itemId,
   unitPrice,
@@ -347,27 +357,52 @@ function PriceCell({
   editable: boolean;
 }) {
   const [value, setValue] = useState(() => formatPriceInput(unitPrice));
+  const inputRef = useRef<HTMLInputElement>(null);
+  const mountedRef = useRef(false);
+
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    setValue(formatPriceInput(unitPrice));
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, [unitPrice]);
+
+  // Бичиж байх үед курсорыг үргэлж утгын төгсгөлд байлгана — таслал
+  // нэмэгдэх/хасагдахад курсор дундуур үсэрч эвдрэхээс сэргийлнэ.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (el && document.activeElement === el) {
+      el.setSelectionRange(el.value.length, el.value.length);
+    }
+  }, [value]);
 
   if (!editable) return <>{formatTugrik(unitPrice)}</>;
 
   return (
     <form action={changeOrderItemPriceAction}>
       <input type="hidden" name="itemId" value={itemId} />
-      <input
-        name="unitPrice"
-        type="text"
-        inputMode="decimal"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={(e) => {
-          const formatted = formatPriceInput(e.target.value);
-          setValue(formatted);
-          if (formatted !== formatPriceInput(unitPrice)) {
-            e.currentTarget.form?.requestSubmit();
-          }
-        }}
-        className="compact-input !py-1 !px-1.5 !text-[11px] !rounded-lg w-full text-right"
-      />
+      <div className="flex items-center justify-end">
+        <input
+          ref={inputRef}
+          name="unitPrice"
+          type="text"
+          inputMode="decimal"
+          value={value}
+          onChange={(e) => setValue(liveFormatPriceInput(e.target.value))}
+          onBlur={(e) => {
+            const formatted = formatPriceInput(e.target.value);
+            setValue(formatted);
+            if (formatted !== formatPriceInput(unitPrice)) {
+              e.currentTarget.form?.requestSubmit();
+            }
+          }}
+          className="compact-input !py-1 !pl-1.5 !pr-1 !text-[11px] !rounded-lg w-full min-w-0 text-right"
+        />
+        <span className="shrink-0 text-[11px] text-[var(--oc-muted3)] pr-1.5">₮</span>
+      </div>
     </form>
   );
 }
@@ -389,11 +424,10 @@ function TabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-        active
-          ? "bg-[var(--oc-accent)] text-[var(--oc-on-accent)]"
-          : "text-[var(--oc-muted2)] hover:text-[var(--oc-ink2)] hover:bg-white/[0.05]"
-      }`}
+      className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${active
+        ? "bg-[var(--oc-accent)] text-[var(--oc-on-accent)]"
+        : "text-[var(--oc-muted2)] hover:text-[var(--oc-ink2)] hover:bg-white/[0.05]"
+        }`}
     >
       {kind && !active ? (
         <span className={`w-1.5 h-1.5 rounded-full ${ITEM_KIND_DOT[kind]}`} />
@@ -416,11 +450,11 @@ const ITEM_KIND_DOT: Record<ItemKind, string> = {
   FEE: "bg-zinc-400",
 };
 
-// Мөр бүрийн зүүн талын өнгөт хүрээ — "Бүгд" tab дээр ажил/оношилгоо/сэлбэг
-// мөрүүдийг нэг харцаар ялгаж харуулна (badge-ийн өнгөтэй адил).
-const ITEM_KIND_ROW_BORDER: Record<ItemKind, string> = {
-  LABOR: "border-l-blue-500/60",
-  DIAGNOSTIC: "border-l-violet-500/60",
-  PART: "border-l-amber-500/60",
-  FEE: "border-l-zinc-500/60",
+// Бүлэг тус бүрийг бүтнээр нь хүрээлэх өнгө (badge-ийн өнгөтэй адил) —
+// "Бүгд" tab дээр ажил/оношилгоо/сэлбэг/хураамжийг тод хайрцаглаж ялгана.
+const ITEM_KIND_BORDER: Record<ItemKind, string> = {
+  LABOR: "border-blue-500/40",
+  DIAGNOSTIC: "border-violet-500/40",
+  PART: "border-amber-500/40",
+  FEE: "border-zinc-500/40",
 };

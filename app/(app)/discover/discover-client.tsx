@@ -19,7 +19,12 @@ export type DiscoverBranch = {
   // Бямба/Ням аль нэгэнд ажилладаг эсэх ("Амралтын өдөр ажилладаг" шүүлт).
   weekend: boolean;
   services: string[];
+  // Энэ салбарт хамаарах ангиллуудын системийн ажлын түлхүүрүүд (байгууллага
+  // сонгохоос өмнө "ямар ажил хийлгэх гэж байгаагаа" сонгож хайхад ашиглана).
+  serviceKeyIds: string[];
 };
+
+export type DiscoverServiceKey = { id: string; name: string };
 
 const DEFAULT_CITY = "Улаанбаатар";
 
@@ -250,10 +255,12 @@ function ServiceTags({ services }: { services: string[] }) {
 
 export function DiscoverClient({
   orgs,
+  serviceKeys,
   apiKey,
   mapId,
 }: {
   orgs: DiscoverOrg[];
+  serviceKeys: DiscoverServiceKey[];
   apiKey: string;
   mapId: string;
 }) {
@@ -275,6 +282,9 @@ export function DiscoverClient({
   );
   const [citySelectedByUser, setCitySelectedByUser] = useState(false);
   const [district, setDistrict] = useState("");
+  // Ямар ажил хийлгэх гэж байгаагаа (системийн ажлын түлхүүр) байгууллага
+  // сонгохоос өмнө сонгоно — тухайн ажлыг хийдэг салбаруудыг л үлдээнэ.
+  const [serviceKey, setServiceKey] = useState("");
   // Засварын (үйлчилгээ) нэр эсвэл салбарын нэрээр хайх — жагсаалт/газрын
   // зураг хоёуланд хамаарна.
   const [query, setQuery] = useState("");
@@ -340,7 +350,7 @@ export function DiscoverClient({
   const q = query.trim().toLowerCase();
 
   const visibleOrgs = useMemo(() => {
-    if (!city && !district && !q && !weekendOnly) return catalogOrgs;
+    if (!city && !district && !q && !weekendOnly && !serviceKey) return catalogOrgs;
     return catalogOrgs
       .map((o) => ({
         ...o,
@@ -348,6 +358,7 @@ export function DiscoverClient({
           (b) =>
             (!city || (b.city ?? "").trim() === city) &&
             (!district || (b.district ?? "").trim() === district) &&
+            (!serviceKey || b.serviceKeyIds.includes(serviceKey)) &&
             (!q ||
               b.name.toLowerCase().includes(q) ||
               b.services.some((s) => s.toLowerCase().includes(q))),
@@ -358,7 +369,7 @@ export function DiscoverClient({
       // ажилладаг бол ЭНЭ org-ийн БҮХ салбарыг харуулна (зөвхөн weekend
       // салбарыг нь биш) — city/district-ээс ялгаатай зарчим.
       .filter((o) => !weekendOnly || o.branches.some((b) => b.weekend));
-  }, [catalogOrgs, city, district, q, weekendOnly]);
+  }, [catalogOrgs, city, district, q, weekendOnly, serviceKey]);
 
   const markers = useMemo<Marker[]>(
     () =>
@@ -619,6 +630,21 @@ export function DiscoverClient({
             Жагсаалт
           </button>
         </div>
+
+        {serviceKeys.length > 0 ? (
+          <div className="discover-filter-select w-full sm:w-56 shrink-0">
+            <Select
+              name="discover-service-key"
+              value={serviceKey}
+              placeholder="Ямар ажил хийлгэх гэж байна?"
+              onChange={(v) => {
+                setServiceKey(v);
+                setSelected(null);
+              }}
+              options={serviceKeys.map((k) => ({ value: k.id, label: k.name }))}
+            />
+          </div>
+        ) : null}
 
         <div className="relative flex-1 min-w-[10rem] sm:flex-none sm:w-64">
           <svg

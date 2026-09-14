@@ -131,6 +131,7 @@ export function OrderDetailPanel({
             orderId={order.id}
             services={order.services}
             diagnosticTemplates={order.diagnosticTemplates}
+            canChangePrice={canChangeItemPrice}
             onAdded={() => setRefreshKey((k) => k + 1)}
           />
         </div>

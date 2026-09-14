@@ -152,6 +152,62 @@ export async function updateTenantAction(
   return { ok: true, message: "Хадгалагдлаа." };
 }
 
+// Цаг захиалгын сануулгыг товлосон цагаас хэдэн минутын өмнө илгээхийг
+// (app/api/cron/appointment-reminders) тохируулна. Хоног+цаг хэлбэрээр
+// оруулж минутад хөрвүүлнэ — 24 цагаас (1440) их байж болно.
+const REMINDER_LEAD_MIN_MINUTES = 60; // 1 цаг
+const REMINDER_LEAD_MAX_MINUTES = 7 * 24 * 60; // 7 хоног
+
+export async function updateAppointmentReminderLeadAction(
+  _prev: TenantActionState,
+  formData: FormData,
+): Promise<TenantActionState> {
+  let user;
+  try {
+    user = await authorizeOwner();
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
+
+  const days = Number.parseInt(s(formData, "leadDays") || "0", 10);
+  const hours = Number.parseInt(s(formData, "leadHours") || "0", 10);
+  if (!Number.isFinite(days) || days < 0 || !Number.isFinite(hours) || hours < 0) {
+    return { ok: false, message: "Хугацаа буруу." };
+  }
+  const minutes = days * 24 * 60 + hours * 60;
+
+  if (minutes < REMINDER_LEAD_MIN_MINUTES) {
+    return {
+      ok: false,
+      message: "Хугацаа хамгийн багадаа 1 цаг байх ёстой.",
+    };
+  }
+  if (minutes > REMINDER_LEAD_MAX_MINUTES) {
+    return {
+      ok: false,
+      message: "Хугацаа хамгийн ихдээ 7 хоног байх ёстой.",
+    };
+  }
+
+  await prisma.tenant.update({
+    where: { id: user.tenantId },
+    data: { appointmentReminderLeadMinutes: minutes },
+  });
+
+  await logAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    entity: "Tenant",
+    entityId: user.tenantId,
+    action: "UPDATE",
+    summary: `Цаг захиалгын сануулгын хугацаа шинэчлэв: ${days} хоног ${hours} цаг`,
+    after: { appointmentReminderLeadMinutes: minutes },
+  });
+
+  revalidatePath("/dashboard/settings");
+  return { ok: true, message: "Хадгалагдлаа." };
+}
+
 export async function uploadTenantLogoAction(
   _prev: TenantActionState,
   formData: FormData,

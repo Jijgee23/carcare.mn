@@ -90,17 +90,39 @@ function defaultSchema(): TemplateSchema {
   };
 }
 
+type CreateAction = (
+  prev: TemplateActionState,
+  formData: FormData,
+) => Promise<TemplateActionState>;
+type UpdateAction = (
+  id: string,
+  prev: TemplateActionState,
+  formData: FormData,
+) => Promise<TemplateActionState>;
+
 export function TemplateEditor({
   initial,
   categories = [],
+  showCategoryField = true,
+  createAction = createTemplateAction,
+  updateAction = updateTemplateAction,
 }: {
   initial?: Initial;
   categories?: CategoryOption[];
+  // Ангилал зөвхөн тенантын өөрийн зохион байгуулалт тул систем admin-аас
+  // үүсгэдэг (тенантгүй, хуваалцсан) загварт харуулахгүй.
+  showCategoryField?: boolean;
+  // Тенантын дашбоардаас (`app/dashboard/services/diagnostics/*`) болон
+  // систем admin-аас (`app/system/(authed)/diagnostic-templates/*`) аль
+  // алинаас нь ашиглагддаг тул үйлдлийг props-оор дамжуулна — анхны утга нь
+  // одоогийн тенантын action, дуудагч талд өөрчлөх шаардлагагүй.
+  createAction?: CreateAction;
+  updateAction?: UpdateAction;
 }) {
   const isEdit = Boolean(initial?.id);
   const action = isEdit
-    ? updateTemplateAction.bind(null, initial!.id!)
-    : createTemplateAction;
+    ? updateAction.bind(null, initial!.id!)
+    : createAction;
   const [state, formAction, pending] = useActionState<
     TemplateActionState,
     FormData
@@ -266,36 +288,38 @@ export function TemplateEditor({
               placeholder="Жишээ: Машин хүлээж авах ерөнхий үзлэг"
             />
           </Field>
-          <Field
-            label="Ангилал"
-            htmlFor="categoryId"
-            error={fe.categoryId}
-            hint={
-              visibleCategories.length > 0
-                ? undefined
-                : "Үйлчилгээ → Ангилалд эхлээд бүртгээрэй."
-            }
-            className="max-w-xs"
-          >
-            <select
-              id="categoryId"
-              name="categoryId"
-              required
-              value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value)}
-              className={`auth-input ${fe.categoryId ? "border-red-500/50" : ""}`}
+          {showCategoryField ? (
+            <Field
+              label="Ангилал"
+              htmlFor="categoryId"
+              error={fe.categoryId}
+              hint={
+                visibleCategories.length > 0
+                  ? undefined
+                  : "Үйлчилгээ → Ангилалд эхлээд бүртгээрэй."
+              }
+              className="max-w-xs"
             >
-              <option value="" className="bg-[var(--surface)]">
-                — Ангилал —
-              </option>
-              {visibleCategories.map((c) => (
-                <option key={c.id} value={c.id} className="bg-[var(--surface)]">
-                  {c.name}
-                  {c.isActive ? "" : " (идэвхгүй)"}
+              <select
+                id="categoryId"
+                name="categoryId"
+                required
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+                className={`auth-input ${fe.categoryId ? "border-red-500/50" : ""}`}
+              >
+                <option value="" className="bg-[var(--surface)]">
+                  — Ангилал —
                 </option>
-              ))}
-            </select>
-          </Field>
+                {visibleCategories.map((c) => (
+                  <option key={c.id} value={c.id} className="bg-[var(--surface)]">
+                    {c.name}
+                    {c.isActive ? "" : " (идэвхгүй)"}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ) : null}
           <Field
             label="Үнэ (₮)"
             htmlFor="price"

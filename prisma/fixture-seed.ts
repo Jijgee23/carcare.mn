@@ -321,6 +321,14 @@ export async function seedFixtureData(db: SeedDb) {
     create: { id: "seed-super-admin", email: "superadmin@carservice.mn", firstName: "Супер", lastName: "Админ", passwordHash },
   });
 
+  // Category.systemServiceKeyId заавал тул фикстур ангилал бүрд хэрэгтэй —
+  // прод дэх backfill migration-той адил "Ерөнхий" анхдагч түлхүүр.
+  const generalServiceKey = await db.systemServiceKey.upsert({
+    where: { name: "Ерөнхий" },
+    update: {},
+    create: { id: "seed-servicekey-general", name: "Ерөнхий", description: "Тодорхой систем ангилалд ороогүй үйлчилгээнд зориулсан ерөнхий түлхүүр.", createdById: "seed-super-admin" },
+  });
+
   const allBranches: Array<{ tenantId: string; id: string; name: string; city: string; district: string; khoroo: string; address: string; latitude: number; longitude: number }> = [];
   const tenantUsers = new Map<string, string[]>();
   const tenantCategories = new Map<string, string[]>();
@@ -422,7 +430,7 @@ export async function seedFixtureData(db: SeedDb) {
       await db.category.upsert({
         where: { tenantId_name: { tenantId: tenant.id, name } },
         update: { description, durationMinutes, isActive: categoryIndex !== 7, branches: { connect: branches.map((branchId) => ({ id: branchId })) } },
-        create: { id, tenantId: tenant.id, name, description, durationMinutes, isActive: categoryIndex !== 7, branches: { connect: branches.map((branchId) => ({ id: branchId })) } },
+        create: { id, tenantId: tenant.id, name, description, durationMinutes, isActive: categoryIndex !== 7, systemServiceKeyId: generalServiceKey.id, branches: { connect: branches.map((branchId) => ({ id: branchId })) } },
       });
       for (const branchId of branches) {
         if (categoryIndex < 6) await db.branchCategoryDuration.upsert({ where: { branchId_categoryId: { branchId, categoryId: id } }, update: { durationMinutes: durationMinutes + (branchId.endsWith("2") ? 15 : 0) }, create: { branchId, categoryId: id, durationMinutes: durationMinutes + (branchId.endsWith("2") ? 15 : 0) } });

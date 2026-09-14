@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import {
   type OrderActionState,
   addOrderItemAction,
@@ -8,6 +8,7 @@ import {
 import { FormError } from "@/app/_components/auth-shell";
 import { Btn, TabButton } from "@/app/_components/landing-ops-ui";
 import { Select } from "@/app/_components/select";
+import { formatPriceInput, liveFormatPriceInput } from "@/lib/orders";
 import type { ServiceKind } from "@/lib/services";
 
 export type ServiceOption = {
@@ -42,11 +43,17 @@ export function AddItemForm({
   orderId,
   services,
   diagnosticTemplates,
+  canChangePrice,
   onAdded,
 }: {
   orderId: string;
   services: ServiceOption[];
   diagnosticTemplates: DiagnosticTemplateOption[];
+  // "orders.itemPrice" эрхгүй хэрэглэгч энд ч мөн нэгж үнийг санаатайгаар
+  // өөрчилж чадахгүй — сонгосон үйлчилгээ/загварын каталогийн үнэ л
+  // хэрэглэгдэнэ (readOnly), "Гараар оруулах" tab (эрхгүй бол каталогийн
+  // үнэгүй, дур мэдэн үнэ оруулдаг тул) бүхэлдээ хаагдана.
+  canChangePrice: boolean;
   // Захиалгын дэлгэрэнгүйг тусад нь (жишээ нь хуваарийн харагдацад) нэг удаа
   // client дээр татсан үед автоматаар шинэчлэгддэггүй тул нэмсний дараа
   // дуудагч талд мэдэгдэж дахин татуулах боломж — order/[id]/page.tsx шиг
@@ -74,6 +81,7 @@ export function AddItemForm({
       state={state}
       services={services}
       diagnosticTemplates={diagnosticTemplates}
+      canChangePrice={canChangePrice}
     />
   );
 }
@@ -84,12 +92,14 @@ function FormContent({
   state,
   services,
   diagnosticTemplates,
+  canChangePrice,
 }: {
   formAction: (formData: FormData) => void;
   pending: boolean;
   state: OrderActionState;
   services: ServiceOption[];
   diagnosticTemplates: DiagnosticTemplateOption[];
+  canChangePrice: boolean;
 }) {
   const laborServices = useMemo(
     () => services.filter((s) => s.type === "LABOR"),
@@ -110,7 +120,9 @@ function FormContent({
       ? "diagnostic"
       : hasPart
         ? "part"
-        : "custom";
+        : canChangePrice
+          ? "custom"
+          : "labor";
 
   const [tab, setTab] = useState<Tab>(initialTab);
   const [serviceId, setServiceId] = useState("");
@@ -120,6 +132,16 @@ function FormContent({
   const [unitPrice, setUnitPrice] = useState("");
   const [kind, setKind] = useState("LABOR");
   const [laborCat, setLaborCat] = useState("");
+  const unitPriceRef = useRef<HTMLInputElement>(null);
+
+  // Бичиж байх үед курсорыг үргэлж утгын төгсгөлд байлгана — таслал
+  // нэмэгдэх/хасагдахад курсор дундуур үсэрч эвдрэхээс сэргийлнэ.
+  useEffect(() => {
+    const el = unitPriceRef.current;
+    if (el && document.activeElement === el) {
+      el.setSelectionRange(el.value.length, el.value.length);
+    }
+  }, [unitPrice]);
 
   function switchTab(next: Tab) {
     setTab(next);
@@ -135,7 +157,7 @@ function FormContent({
     const svc = services.find((s) => s.id === id);
     if (svc) {
       setDescription(svc.code ? `${svc.name} (${svc.code})` : svc.name);
-      setUnitPrice(svc.price);
+      setUnitPrice(formatPriceInput(svc.price));
     }
   }
 
@@ -145,7 +167,7 @@ function FormContent({
     const tpl = diagnosticTemplates.find((t) => t.id === id);
     if (tpl) {
       setDescription(tpl.name);
-      setUnitPrice(tpl.price);
+      setUnitPrice(formatPriceInput(tpl.price));
     }
   }
 
@@ -180,7 +202,9 @@ function FormContent({
     labor: hasLabor,
     diagnostic: hasDiag,
     part: hasPart,
-    custom: true,
+    // Каталогийн үнэгүй, дур мэдэн үнэ оруулах боломжтой tab тул
+    // "orders.itemPrice" эрхгүй бол бүхэлдээ хаана.
+    custom: canChangePrice,
   };
 
   return (
@@ -343,16 +367,29 @@ function FormContent({
         </div>
 
         <div className="sm:col-span-3">
-          <input
-            name="unitPrice"
-            type="text"
-            inputMode="decimal"
-            required
-            value={unitPrice}
-            onChange={(e) => setUnitPrice(e.target.value)}
-            placeholder="Нэгж үнэ (₮)"
-            className={`auth-input ${fe.unitPrice ? "border-red-500/50" : ""}`}
-          />
+          <div className="relative">
+            <input
+              ref={unitPriceRef}
+              name="unitPrice"
+              type="text"
+              inputMode="decimal"
+              required
+              readOnly={!canChangePrice}
+              title={
+                canChangePrice
+                  ? undefined
+                  : "Каталогийн үнэ — өөрчлөх эрхгүй"
+              }
+              value={unitPrice}
+              onChange={(e) => setUnitPrice(liveFormatPriceInput(e.target.value))}
+              onBlur={(e) => setUnitPrice(formatPriceInput(e.target.value))}
+              placeholder="Нэгж үнэ"
+              className={`auth-input pr-7 ${canChangePrice ? "" : "opacity-70 cursor-not-allowed"} ${fe.unitPrice ? "border-red-500/50" : ""}`}
+            />
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-[var(--oc-muted3)]">
+              ₮
+            </span>
+          </div>
           {fe.unitPrice ? (
             <p className="mt-1 text-xs text-red-400 light:text-red-600">{fe.unitPrice}</p>
           ) : null}

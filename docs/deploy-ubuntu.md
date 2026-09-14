@@ -185,8 +185,9 @@ sudo certbot --nginx -d carservice.mn -d www.carservice.mn
 
 `crontab -e` (`ubuntu` хэрэглэгчээр, sudo хэрэггүй):
 ```cron
-# Захиалгын сануулга — цаг тутам
-0 * * * * curl -fsS -H "Authorization: Bearer ШИНИЙ_CRON_SECRET" https://carservice.mn/api/cron/appointment-reminders > /dev/null 2>&1
+# Захиалгын сануулга — 30 минут тутам (тенант бүр өөрийн lead хугацаатай,
+# 24 цагаас их байж болдог тул цаг тутмаас нягт шалгах шаардлагатай)
+*/30 * * * * curl -fsS -H "Authorization: Bearer ШИНИЙ_CRON_SECRET" https://carservice.mn/api/cron/appointment-reminders > /dev/null 2>&1
 # Хугацаа хэтэрсэн (хариу өгөөгүй) цаг захиалгыг цуцлах — цаг тутам
 15 * * * * curl -fsS -H "Authorization: Bearer ШИНИЙ_CRON_SECRET" https://carservice.mn/api/cron/expire-appointments > /dev/null 2>&1
 # Subscription хугацаа дуусгах — өдөр бүр 00:05

@@ -1,4 +1,19 @@
 import { randomBytes } from "node:crypto";
+import type { Prisma } from "@/app/generated/prisma/client";
+
+// Тухайн тенант ашиглаж болох загварууд: өөрийнх (tenantId таарна) эсвэл
+// систем admin-аас DiagnosticTemplateGrant-аар олгосон хуваалцсан загвар
+// (tenantId=NULL). Тенант-талын бүх `diagnosticTemplate.findMany`/`findFirst`
+// (жагсаалт, дэлгэрэнгүй, шинэ тайлан сонголт, захиалгад нэмэх) энэ нэг
+// where-г ашиглана — RLS бодлого ч яг ижил дүрмийг давхар хэрэгжүүлдэг
+// (харах: prisma/migrations/20260914033812_diagnostic_template_grants).
+export function tenantVisibleTemplateWhere(
+  tenantId: string,
+): Prisma.DiagnosticTemplateWhereInput {
+  return {
+    OR: [{ tenantId }, { tenantId: null, grants: { some: { tenantId } } }],
+  };
+}
 
 export type DiagnosticType =
   | "INTAKE"

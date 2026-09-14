@@ -26,6 +26,8 @@ async function authorizeOwner() {
   return user;
 }
 
+const MAX_CONCURRENT_CAPACITY = 50;
+
 function validate(fd: FormData): {
   data: {
     name: string;
@@ -33,6 +35,8 @@ function validate(fd: FormData): {
     isActive: boolean;
     branchIds: string[];
     durationMinutes: number | null;
+    systemServiceKeyId: string | null;
+    concurrentCapacity: number;
   } | null;
   errors: Record<string, string>;
 } {
@@ -42,7 +46,11 @@ function validate(fd: FormData): {
   const branchIds = fd
     .getAll("branchIds")
     .filter((v): v is string => typeof v === "string" && v.length > 0);
+  const systemServiceKeyId = s(fd, "systemServiceKeyId") || null;
   const errors: Record<string, string> = {};
+
+  if (!systemServiceKeyId)
+    errors.systemServiceKeyId = "Системийн ангилал сонгоно уу.";
 
   if (!name) errors.name = "Ангилалын нэрээ оруулна уу.";
   else if (name.length > 60) errors.name = "Нэр 60 тэмдэгтээс хэтрэхгүй.";
@@ -60,6 +68,19 @@ function validate(fd: FormData): {
   if (durationParse.ok) durationMinutes = durationParse.minutes;
   else errors.durationMinutes = durationParse.error;
 
+  // Ажил дээр нэг зэрэг хэдэн захиалга авч болохыг заана. Хоосон бол 1
+  // (форм дээр анхны утга 1-ээр урьдчилан бөглөгддөг тул бодит практикт
+  // үргэлж утгатай ирнэ — энд зөвхөн шууд API дуудлагаас хамгаална).
+  const capacityRaw = s(fd, "concurrentCapacity");
+  const concurrentCapacity = capacityRaw ? Number.parseInt(capacityRaw, 10) : 1;
+  if (
+    !Number.isFinite(concurrentCapacity) ||
+    concurrentCapacity < 1 ||
+    concurrentCapacity > MAX_CONCURRENT_CAPACITY
+  ) {
+    errors.concurrentCapacity = `1-${MAX_CONCURRENT_CAPACITY} хооронд байх ёстой.`;
+  }
+
   if (Object.keys(errors).length > 0) return { data: null, errors };
 
   return {
@@ -69,9 +90,22 @@ function validate(fd: FormData): {
       isActive,
       branchIds,
       durationMinutes,
+      systemServiceKeyId,
+      concurrentCapacity,
     },
     errors,
   };
+}
+
+// Систем admin-аас үүсгэсэн, идэвхтэй ажлын түлхүүр мөн эсэхийг шалгана
+// (тенант-хамааралгүй, глобал тул tenantId-аар шүүхгүй).
+async function validServiceKeyId(id: string | null): Promise<string | null> {
+  if (!id) return null;
+  const key = await prisma.systemServiceKey.findFirst({
+    where: { id, isActive: true },
+    select: { id: true },
+  });
+  return key ? key.id : null;
 }
 
 // Өгөгдсөн branchId-ууд дотроос ЭНЭ тенантынхыг л шүүж буцаана (хууль бус
@@ -103,6 +137,13 @@ export async function createCategoryAction(
   if (!data) return { ok: false, fieldErrors: errors };
 
   const branchIds = await validBranchIds(user.tenantId, data.branchIds);
+  const systemServiceKeyId = await validServiceKeyId(data.systemServiceKeyId);
+  if (!systemServiceKeyId) {
+    return {
+      ok: false,
+      fieldErrors: { systemServiceKeyId: "Сонгосон системийн ангилал олдсонгүй." },
+    };
+  }
 
   let created;
   try {
@@ -113,6 +154,8 @@ export async function createCategoryAction(
         description: data.description,
         isActive: data.isActive,
         durationMinutes: data.durationMinutes,
+        concurrentCapacity: data.concurrentCapacity,
+        systemServiceKeyId,
         branches: { connect: branchIds.map((id) => ({ id })) },
       },
       select: { id: true },
@@ -161,6 +204,13 @@ export async function updateCategoryAction(
   if (!data) return { ok: false, fieldErrors: errors };
 
   const branchIds = await validBranchIds(user.tenantId, data.branchIds);
+  const systemServiceKeyId = await validServiceKeyId(data.systemServiceKeyId);
+  if (!systemServiceKeyId) {
+    return {
+      ok: false,
+      fieldErrors: { systemServiceKeyId: "Сонгосон системийн ангилал олдсонгүй." },
+    };
+  }
 
   // Тенантынх мөн эсэхийг шалгана (set-д хэрэгтэй).
   const existing = await prisma.category.findFirst({
@@ -177,6 +227,8 @@ export async function updateCategoryAction(
         description: data.description,
         isActive: data.isActive,
         durationMinutes: data.durationMinutes,
+        concurrentCapacity: data.concurrentCapacity,
+        systemServiceKeyId,
         branches: { set: branchIds.map((bid) => ({ id: bid })) },
       },
     });

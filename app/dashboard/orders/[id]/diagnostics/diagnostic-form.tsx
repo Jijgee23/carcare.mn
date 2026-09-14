@@ -47,6 +47,12 @@ export function DiagnosticForm({
   // Check item-уудын одоогийн утгуудыг хадгалаад showWhen-ийг үнэлэхэд хэрэглэнэ.
   const [answers, setAnswers] = useState<Record<string, string>>({});
 
+  // Асуултын үгээр хайх — олон бүлэгтэй урт загварт хурдан олоход. Тохирохгүй
+  // мөр/бүлгийг DOM-оос устгахгүй, зөвхөн CSS-ээр (`hidden`) нуудаг — учир нь
+  // аль хэдийн бичсэн хариулт (input) DOM-оос уствал алдагдана.
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+
   function setAnswer(id: string, value: string) {
     setAnswers((prev) => ({ ...prev, [id]: value }));
   }
@@ -106,11 +112,46 @@ export function DiagnosticForm({
         <div className="text-sm font-medium text-white/90">{templateName}</div>
       </div>
 
+      <div className="relative">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.preventDefault();
+          }}
+          placeholder="Асуултаар хайх..."
+          className="auth-input pr-9"
+        />
+        {query ? (
+          <button
+            type="button"
+            onClick={() => setQuery("")}
+            aria-label="Хайлт цэвэрлэх"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/70 transition-colors text-xs"
+          >
+            ✕
+          </button>
+        ) : null}
+      </div>
+
+      {q && !schema.sections.some((section) =>
+        section.items
+          .filter((it) => isItemVisible(it, answers))
+          .some((it) => it.label.toLowerCase().includes(q)),
+      ) ? (
+        <div className="text-sm text-white/40 text-center py-4">
+          «{query}» гэсэн асуулт олдсонгүй.
+        </div>
+      ) : null}
+
       {schema.sections.map((section) => {
         const visibleItems = section.items.filter((it) =>
           isItemVisible(it, answers),
         );
         if (visibleItems.length === 0) return null;
+        const sectionMatches =
+          !q || visibleItems.some((it) => it.label.toLowerCase().includes(q));
         // Бүлэгт байгаа "check" мөрүүдийн options-оос давхцалгүй цуглуулж,
         // зөвхөн бодитоор ашиглагдаж буй сонголтуудад (ихэвчлэн Хэвийн/
         // Анхаарах) л "бүгдийг тэмдэглэх" товч харуулна.
@@ -126,7 +167,7 @@ export function DiagnosticForm({
         return (
           <section
             key={section.id}
-            className="glass rounded-2xl p-5 sm:p-6 border border-white/[0.08] flex flex-col gap-4"
+            className={`glass rounded-2xl p-5 sm:p-6 border border-white/[0.08] flex flex-col gap-4 ${sectionMatches ? "" : "hidden"}`}
           >
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <h2 className="font-semibold">{section.title}</h2>
@@ -154,10 +195,12 @@ export function DiagnosticForm({
             >
               {visibleItems.map((item) => {
                 const positioned = Boolean(itemPositions(item));
+                const itemMatches =
+                  !q || item.label.toLowerCase().includes(q);
                 return (
                   <div
                     key={item.id}
-                    className={positioned ? "md:col-span-2 2xl:col-span-3" : ""}
+                    className={`${positioned ? "md:col-span-2 2xl:col-span-3" : ""} ${itemMatches ? "" : "hidden"}`}
                   >
                     <ItemControl
                       item={item}

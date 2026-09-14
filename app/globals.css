@@ -643,6 +643,16 @@ select.compact-input option:disabled {
 /* ── Хэвлэх / PDF ──────────────────────────────────────────────
    #print-root доторх агуулгыг л хэвлэнэ. Хар "glass" загварыг цагаан
    дэвсгэр + хар текст рүү хөрвүүлж, sidebar/banner/товчнуудыг нууна. */
+/* Экран дээр нуугдмал, зөвхөн хэвлэхэд харагдана — .no-print-ийн эсрэг тал
+   (ж: засварлах формын оронд харуулах цэвэр хэвлэх хувилбар). */
+.print-only {
+  display: none;
+}
+@media print {
+  .print-only {
+    display: block;
+  }
+}
 @media print {
   @page {
     margin: 14mm;

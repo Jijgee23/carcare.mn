@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { Prisma } from "@/app/generated/prisma/client";
 import { deleteOrderAction } from "@/app/_actions/orders";
 import { ConfirmForm } from "@/app/_components/confirm-form";
-import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
+import { Btn } from "@/app/_components/landing-ops-ui";
 import { requireUser } from "@/lib/auth";
 import {
   ORDER_ASSIGNABLE_WHERE,
@@ -16,11 +16,7 @@ import {
 } from "@/lib/auth/roles";
 import { canEditOrder as canEditAssignedOrder, canViewOrder } from "@/lib/auth/order-access";
 import { redirect } from "next/navigation";
-import {
-  DIAGNOSTIC_TYPE_BADGE,
-  DIAGNOSTIC_TYPE_LABEL,
-  type DiagnosticType,
-} from "@/lib/diagnostics";
+import { tenantVisibleTemplateWhere } from "@/lib/diagnostics";
 import { customerLabel } from "@/lib/customers";
 import type { ServiceKind } from "@/lib/services";
 import {
@@ -31,8 +27,6 @@ import {
   PAYMENT_STATUS_LABEL,
   POSTPAID_BADGE,
   POSTPAID_LABEL,
-  SERVICE_ITEM_STATUS_BADGE,
-  SERVICE_ITEM_STATUS_LABEL,
   type OrderStatus,
   type PaymentStatus,
   canFillDiagnostics,
@@ -72,7 +66,7 @@ export default async function OrderDetailPage({
   const scopeBranchId = workingBranchScopeId(user);
   const { id } = await params;
 
-  const [order, branches, customers, vehicles, technicians, services, reports, diagnosticTemplates] = await Promise.all([
+  const [order, branches, customers, vehicles, technicians, services, diagnosticTemplates] = await Promise.all([
     prisma.serviceOrder.findFirst({
       where: {
         id,
@@ -178,16 +172,8 @@ export default async function OrderDetailPage({
         category: { select: { name: true } },
       },
     }),
-    prisma.diagnosticReport.findMany({
-      where: { orderId: id, tenantId: user.tenantId },
-      orderBy: { createdAt: "desc" },
-      include: {
-        template: { select: { name: true, type: true } },
-        filledBy: { select: { firstName: true, lastName: true } },
-      },
-    }),
     prisma.diagnosticTemplate.findMany({
-      where: { tenantId: user.tenantId, isActive: true },
+      where: { ...tenantVisibleTemplateWhere(user.tenantId), isActive: true },
       orderBy: { name: "asc" },
       select: {
         id: true,
@@ -283,9 +269,8 @@ export default async function OrderDetailPage({
       ? Math.round((completedItemsCount / activeItems.length) * 100)
       : 0;
 
-  // Оношилгоо (kind=DIAGNOSTIC) мөрүүд: тайлан хараахан бөглөгдөөгүй нь
-  // "Оношилгооны хуудас" жагсаалтад "Бөглөх" хэлбэрээр гарна; бөглөгдсөн нь
-  // (diagnosticReportId бий) доор жагсаасан `reports`-тэй давхацна.
+  // Оношилгоо (kind=DIAGNOSTIC) мөрүүд: тайлан бөглөгдсөн эсэхийг "Гүйцэтгэл"
+  // тоймд ашиглана — бөглөх/үзэх нь тухайн мөрөөс өөрөөс нь (OrderItems).
   const diagnosticItems = activeItems.filter((it) => it.kind === "DIAGNOSTIC");
   const unfilledDiagnosticItems = diagnosticItems.filter(
     (it) => !it.diagnosticReportId,
@@ -297,15 +282,6 @@ export default async function OrderDetailPage({
     diagnosticItems
       .map((it) => it.diagnosticTemplateId)
       .filter((id): id is string => Boolean(id)),
-  );
-
-  // Захиалга цуцлагдахад холбогдох мөр (тэр дундаа оношилгооны хуудас) мөн
-  // цуцлагддаг (харах: changeOrderStatusAction) — доор "Оношилгооны хуудас"
-  // хэсэгт бөглөгдсөн тайланг идэвхгүй (цуцлагдсан) гэж тэмдэглэхэд ашиглана.
-  const itemByReportId = new Map(
-    order.items
-      .filter((it) => it.diagnosticReportId)
-      .map((it) => [it.diagnosticReportId as string, it]),
   );
 
   return (
@@ -427,105 +403,6 @@ export default async function OrderDetailPage({
               />
             )}
 
-            {/* Оношилгооны хуудас — цуцлагдаагүй ч бөглөгдөөгүй DIAGNOSTIC мөр (Бөглөх) ба бөглөгдсөн тайлан */}
-            {unfilledDiagnosticItems.length > 0 || reports.length > 0 ? (
-              <div className="border-t border-[var(--oc-line)]">
-                <div className="px-5 py-2 font-plex-mono text-[10.5px] font-medium uppercase tracking-[0.08em] text-[var(--oc-muted3)] bg-[var(--oc-panel2)]">
-                  Оношилгооны хуудас
-                </div>
-                <div className="divide-y divide-[var(--oc-line)]">
-                  {unfilledDiagnosticItems.map((it) => {
-                    const tp = it.diagnosticTemplate?.type as
-                      | DiagnosticType
-                      | undefined;
-                    return (
-                      <div
-                        key={it.id}
-                        className="flex items-center justify-between gap-3 px-5 py-3"
-                      >
-                        <div className="flex items-center gap-3">
-                          {tp ? (
-                            <span
-                              className={`text-[10px] px-2 py-0.5 rounded-full ${DIAGNOSTIC_TYPE_BADGE[tp]}`}
-                            >
-                              {DIAGNOSTIC_TYPE_LABEL[tp]}
-                            </span>
-                          ) : null}
-                          <div>
-                            <div className="text-sm text-[var(--oc-ink)]">
-                              {it.description}
-                            </div>
-                            <div className="text-xs text-[var(--oc-warn)]/80">
-                              Бөглөгдөөгүй
-                            </div>
-                          </div>
-                        </div>
-                        {diagnosticsFillable ? (
-                          <BtnLink
-                            href={`/dashboard/orders/${order.id}/diagnostics/new?itemId=${it.id}`}
-                            size="sm"
-                            className="shrink-0"
-                          >
-                            Бөглөх
-                          </BtnLink>
-                        ) : (
-                          <span className="shrink-0 text-[11px] text-[var(--oc-muted4)]">
-                            {status === "SCHEDULED"
-                              ? "Засварын хуудас эхэлсний дараа"
-                              : "—"}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                  {reports.map((r) => {
-                    const tp = r.template.type as DiagnosticType;
-                    const linkedItem = itemByReportId.get(r.id);
-                    const isCancelled = linkedItem?.status === "CANCELLED";
-                    return (
-                      <Link
-                        key={r.id}
-                        href={`/dashboard/diagnostics/reports/${r.id}`}
-                        className={`flex items-center justify-between gap-3 px-5 py-3 hover:bg-white/[0.02] transition-colors ${isCancelled ? "opacity-50" : ""}`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <span
-                            className={`text-[10px] px-2 py-0.5 rounded-full ${DIAGNOSTIC_TYPE_BADGE[tp]}`}
-                          >
-                            {DIAGNOSTIC_TYPE_LABEL[tp]}
-                          </span>
-                          <div>
-                            <div
-                              className={`text-sm text-[var(--oc-ink)] ${isCancelled ? "line-through" : ""}`}
-                            >
-                              {r.template.name}
-                            </div>
-                            <div className="text-xs text-[var(--oc-muted3)]">
-                              {r.filledBy
-                                ? `${r.filledBy.lastName} ${r.filledBy.firstName}`
-                                : "—"}{" "}
-                              · {r.createdAt.toLocaleString("mn-MN", { hour12: false })}
-                            </div>
-                          </div>
-                        </div>
-                        {isCancelled ? (
-                          <span
-                            className={`shrink-0 font-plex-mono text-[9px] px-1.5 py-0.5 rounded-full ${SERVICE_ITEM_STATUS_BADGE.CANCELLED}`}
-                          >
-                            {SERVICE_ITEM_STATUS_LABEL.CANCELLED}
-                          </span>
-                        ) : (
-                          <span className="shrink-0 text-xs text-[var(--oc-accent)]">
-                            Үзэх →
-                          </span>
-                        )}
-                      </Link>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
-
             {isEditable && canEditOrder ? (
               <div className="px-5 py-4 border-t border-[var(--oc-line)] bg-[var(--oc-panel2)]">
                 <AddItemForm
@@ -549,6 +426,7 @@ export default async function OrderDetailPage({
                       price: t.price?.toString() ?? "0",
                       durationMin: t.durationMin,
                     }))}
+                  canChangePrice={canChangeItemPrice}
                 />
               </div>
             ) : null}

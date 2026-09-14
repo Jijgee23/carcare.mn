@@ -14,6 +14,7 @@ import {
   type DiagnosticType,
   type TemplateSchema,
   emptySchema,
+  tenantVisibleTemplateWhere,
   validateSchema,
 } from "@/lib/diagnostics";
 import { prisma } from "@/lib/prisma";
@@ -335,8 +336,11 @@ export async function duplicateTemplateAction(formData: FormData): Promise<void>
   const id = s(formData, "id");
   if (!id) return;
 
+  // Өөрийн загвар эсвэл систем admin-аас олгосон хуваалцсан загвар (tenantId
+  // NULL) аль алиныг нь хуулж болно — сүүлийнхийг тохируулахыг хүсвэл эхлээд
+  // хуулбарлаж, дараа нь тухайн хуулбарыг чөлөөтэй засна.
   const src = await prisma.diagnosticTemplate.findFirst({
-    where: { id, tenantId: user.tenantId },
+    where: { id, ...tenantVisibleTemplateWhere(user.tenantId) },
   });
   if (!src) return;
 
