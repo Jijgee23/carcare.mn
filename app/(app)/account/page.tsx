@@ -72,6 +72,7 @@ export default async function AccountPage() {
       branch: { select: { name: true } },
       category: { select: { name: true } },
       payment: { select: { id: true, amount: true } },
+      serviceOrder: { select: { status: true } },
     },
   });
 
@@ -188,9 +189,15 @@ export default async function AccountPage() {
                         {a.tenant.name}
                       </span>
                       <span
-                        className={`font-plex-mono text-[11px] px-2.5 py-1 rounded-full ${APPOINTMENT_STATUS_BADGE[a.status]}`}
+                        className={`font-plex-mono text-[11px] px-2.5 py-1 rounded-full ${
+                          a.serviceOrder
+                            ? ORDER_STATUS_BADGE[a.serviceOrder.status as OrderStatus]
+                            : APPOINTMENT_STATUS_BADGE[a.status]
+                        }`}
                       >
-                        {APPOINTMENT_STATUS_LABEL[a.status]}
+                        {a.serviceOrder
+                          ? ORDER_STATUS_LABEL[a.serviceOrder.status as OrderStatus]
+                          : APPOINTMENT_STATUS_LABEL[a.status]}
                       </span>
                     </div>
                     <div className="text-xs text-[var(--oc-muted)] mt-0.5">

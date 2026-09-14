@@ -927,7 +927,13 @@ export async function markAppointmentNoShow(
 
   const appt = await prisma.appointment.findUnique({
     where: { id },
-    select: { id: true, tenantId: true, branchId: true, status: true },
+    select: {
+      id: true,
+      tenantId: true,
+      branchId: true,
+      status: true,
+      accountId: true,
+    },
   });
   if (!appt) return { ok: false, message: "Цаг захиалга олдсонгүй." };
 
@@ -963,6 +969,19 @@ export async function markAppointmentNoShow(
       ok: false,
       message: e instanceof Error ? e.message : "Тэмдэглэхэд алдаа гарлаа.",
     };
+  }
+
+  // Онлайн захиалга (Account-той) бол хэрэглэгчид мэдэгдэнэ.
+  if (appt.accountId) {
+    try {
+      await createNotification({
+        type: "appointment_no_show",
+        recipient: { accountId: appt.accountId },
+        input: { appointmentId: appt.id },
+      });
+    } catch (e) {
+      console.warn("[notify] markAppointmentNoShow:", e);
+    }
   }
 
   revalidatePath("/dashboard/appointments");

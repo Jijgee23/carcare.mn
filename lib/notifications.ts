@@ -15,8 +15,13 @@ export const NOTIFICATION_TYPES = [
   "appointment_created",
   "appointment_cancelled",
   "appointment_expired",
+  "appointment_no_show",
   "appointment_fee_paid",
   "expected_finish_revised",
+  "order_completed",
+  "order_cancelled",
+  "order_in_progress",
+  "order_payment_received",
   "order_rescheduled",
   "appointment_rescheduled",
   "appointment_rescheduled_by_account",
@@ -40,8 +45,13 @@ export const NOTIFICATION_TYPE_LABEL: Record<NotificationType, string> = {
   appointment_created: "Шинэ цаг захиалга",
   appointment_cancelled: "Цаг цуцлагдсан",
   appointment_expired: "Цаг хугацаа хэтэрсэн",
+  appointment_no_show: "Цагт ирээгүй",
   appointment_fee_paid: "Цаг захиалгын хураамж төлөгдсөн",
   expected_finish_revised: "Дуусах хугацаа шинэчлэгдсэн",
+  order_completed: "Захиалга дууссан",
+  order_cancelled: "Захиалга цуцлагдсан",
+  order_in_progress: "Ажил эхэллээ",
+  order_payment_received: "Төлбөр хүлээн авсан",
   order_rescheduled: "Товлосон огноо шилжсэн",
   appointment_rescheduled: "Цаг шилжсэн",
   appointment_rescheduled_by_account: "Хэрэглэгч цагаа шилжүүлсэн",
@@ -156,6 +166,15 @@ export const NOTIFICATION_REGISTRY: Record<NotificationType, NotificationDef> = 
     }),
     href: (d) => appointmentHref(d),
   },
+  appointment_no_show: {
+    realm: "account",
+    build: (i) => ({
+      title: "Цагтаа ирээгүй тэмдэглэгдлээ",
+      body: "Та товлосон цагтаа ирээгүй тул байгууллага тэмдэглэлээ.",
+      data: { type: "appointment_no_show", appointmentId: i.appointmentId ?? "" },
+    }),
+    href: (d) => appointmentHref(d),
+  },
   expected_finish_revised: {
     realm: "account",
     build: (i) => ({
@@ -164,6 +183,60 @@ export const NOTIFICATION_REGISTRY: Record<NotificationType, NotificationDef> = 
       data: { type: "expected_finish_revised", appointmentId: i.appointmentId ?? "" },
     }),
     href: (d) => appointmentHref(d),
+  },
+  order_completed: {
+    realm: "account",
+    build: (i) => ({
+      title: "Захиалга дууслаа",
+      body: "Таны засварын хуудас дууслаа.",
+      data: {
+        type: "order_completed",
+        orderId: i.orderId ?? "",
+        appointmentId: i.appointmentId ?? "",
+      },
+    }),
+    href: (d) => orderHref(d),
+  },
+  order_cancelled: {
+    realm: "account",
+    build: (i) => ({
+      title: "Захиалга цуцлагдлаа",
+      body: "Таны засварын хуудас цуцлагдлаа.",
+      data: {
+        type: "order_cancelled",
+        orderId: i.orderId ?? "",
+        appointmentId: i.appointmentId ?? "",
+      },
+    }),
+    href: (d) => orderHref(d),
+  },
+  order_in_progress: {
+    realm: "account",
+    build: (i) => ({
+      title: "Ажил эхэллээ",
+      body: "Таны засварын хуудасны ажил эхэллээ.",
+      data: {
+        type: "order_in_progress",
+        orderId: i.orderId ?? "",
+        appointmentId: i.appointmentId ?? "",
+      },
+    }),
+    href: (d) => orderHref(d),
+  },
+  order_payment_received: {
+    realm: "account",
+    build: (i) => ({
+      title: "Төлбөр хүлээн авлаа",
+      body: i.amount
+        ? `Таны ${i.amount}₮ төлбөр амжилттай бүртгэгдлээ.`
+        : "Таны төлбөр амжилттай бүртгэгдлээ.",
+      data: {
+        type: "order_payment_received",
+        orderId: i.orderId ?? "",
+        appointmentId: i.appointmentId ?? "",
+      },
+    }),
+    href: (d) => orderHref(d),
   },
   order_rescheduled: {
     realm: "account",
@@ -261,6 +334,11 @@ function appointmentHref(data: Record<string, string>): string {
   return data.appointmentId
     ? `/account/appointments/${data.appointmentId}`
     : "/account";
+}
+
+/** `orderId` байвал дууссан захиалгын дэлгэрэнгүй хуудас руу, байхгүй бол "Миний захиалгууд" руу. */
+function orderHref(data: Record<string, string>): string {
+  return data.orderId ? `/account/orders/${data.orderId}` : "/account";
 }
 
 // Клиент рүү дамжуулах хялбаршуулсан хэлбэр (server action-ууд буцаана).

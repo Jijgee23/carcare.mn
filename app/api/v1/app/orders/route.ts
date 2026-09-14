@@ -4,6 +4,7 @@ import { getApiAccountFromRequest } from "@/lib/auth/account-api-token";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 import { ownedVehicleIdsForAccount } from "@/lib/vehicles";
+import { bookingDateKey, bookingDayBounds } from "@/lib/booking-time";
 
 // GET /api/v1/app/orders — миний үйлчилгээний түүх (auth, бүх байгууллага
 // дамнасан). Засварын хуудас бүрт хавсаргасан оношилгооны тайлангийн товч жагсаалт
@@ -15,6 +16,19 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const vehicleIdFilter = url.searchParams.get("vehicleId")?.trim() || undefined;
   const { page, pageSize, skip, take } = getApiPageInfo(url.searchParams);
+  const q = url.searchParams.get("q")?.trim() || undefined;
+  const yearRaw = url.searchParams.get("year")?.trim();
+  const year = yearRaw ? Number(yearRaw) : undefined;
+  if (
+    yearRaw &&
+    (!/^\d{4}$/.test(yearRaw) ||
+      year == null ||
+      !Number.isInteger(year) ||
+      year < 2000 ||
+      year > 2100)
+  ) {
+    return jsonError(400, "Он буруу байна.");
+  }
 
   // Эзэмшлийн машинууд (баталгаажсан холбоос) — account/history веб хуудастай
   // ижил зарчим (харах: lib/vehicles.ts ownedVehicleIdsForAccount).
@@ -34,8 +48,82 @@ export async function GET(req: Request) {
     ],
   };
   if (vehicleIdFilter) where.vehicleId = vehicleIdFilter;
+  if (year) {
+    const bounds = bookingDayBounds(`${year}-01-01`);
+    const nextBounds = bookingDayBounds(`${year + 1}-01-01`);
+    where.completedAt = {
+      gte: bounds.start,
+      lt: nextBounds.start,
+    };
+  }
+  if (q) {
+    where.AND = [
+      {
+        OR: [
+          { tenant: { name: { contains: q, mode: "insensitive" } } },
+          { tenant: { slug: { contains: q, mode: "insensitive" } } },
+          { branch: { name: { contains: q, mode: "insensitive" } } },
+          { vehicle: { plate: { contains: q, mode: "insensitive" } } },
+          { vehicle: { make: { contains: q, mode: "insensitive" } } },
+          { vehicle: { model: { contains: q, mode: "insensitive" } } },
+          { number: { contains: q } },
+        ],
+      },
+    ];
+  }
 
-  const [orders, total] = await Promise.all([
+  const cancelledWhere: Prisma.AppointmentWhereInput = {
+    accountId: account.id,
+    status: { in: ["CANCELLED", "NO_SHOW", "REJECTED"] },
+    serviceOrderId: null,
+  };
+  if (year) {
+    const bounds = bookingDayBounds(`${year}-01-01`);
+    const nextBounds = bookingDayBounds(`${year + 1}-01-01`);
+    cancelledWhere.requestedAt = {
+      gte: bounds.start,
+      lt: nextBounds.start,
+    };
+  }
+  if (q) {
+    cancelledWhere.AND = [
+      {
+        OR: [
+          { tenant: { name: { contains: q, mode: "insensitive" } } },
+          { tenant: { slug: { contains: q, mode: "insensitive" } } },
+          { branch: { name: { contains: q, mode: "insensitive" } } },
+          { category: { name: { contains: q, mode: "insensitive" } } },
+        ],
+      },
+    ];
+  }
+
+  const facetOrders = await prisma.serviceOrder.findMany({
+    where: {
+      status: { in: ["COMPLETED", "CANCELLED"] },
+      OR: [
+        { customer: { accountId: account.id } },
+        ...(ownedVehicleIds.length ? [{ vehicleId: { in: ownedVehicleIds } }] : []),
+      ],
+    },
+    select: { completedAt: true },
+  });
+  const facetCancelled = await prisma.appointment.findMany({
+    where: {
+      accountId: account.id,
+      status: { in: ["CANCELLED", "NO_SHOW", "REJECTED"] },
+      serviceOrderId: null,
+    },
+    select: { requestedAt: true },
+  });
+  const availableYears = [
+    ...new Set([
+      ...facetOrders.flatMap((row) => (row.completedAt ? [Number(bookingDateKey(row.completedAt).slice(0, 4))] : [])),
+      ...facetCancelled.map((row) => Number(bookingDateKey(row.requestedAt).slice(0, 4))),
+    ]),
+  ].sort((a, b) => b - a);
+
+  const [orders, total, cancelledAppointments, cancelledTotal] = await Promise.all([
     prisma.serviceOrder.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -69,29 +157,25 @@ export async function GET(req: Request) {
       },
     }),
     prisma.serviceOrder.count({ where }),
-  ]);
 
-  // D-085: цуцлагдсан/ирээгүй/татгалзсан цаг (ServiceOrder огт үүсээгүй тул
-  // дээрх query-д тусахгүй) — идэвхтэй жагсаалтад (D-083/D-084) байхгүй
-  // болсон тул, мөнхөд алга болохгүйн тулд энд харагдана. Тусдаа, хуудаслаагүй
-  // жагсаалт (цөөн тооны бичлэг) — orders-ийн pagination-той холилдохгүй.
-  const cancelledAppointments = await prisma.appointment.findMany({
-    where: {
-      accountId: account.id,
-      status: { in: ["CANCELLED", "NO_SHOW", "REJECTED"] },
-      serviceOrderId: null,
-    },
-    orderBy: { requestedAt: "desc" },
-    take: 50,
-    select: {
-      id: true,
-      status: true,
-      requestedAt: true,
-      tenant: { select: { name: true, slug: true } },
-      branch: { select: { name: true } },
-      category: { select: { name: true } },
-    },
-  });
+    // D-085: keep terminal appointments separate from service orders, but
+    // apply the same filters and page window so neither list has a hidden cap.
+    prisma.appointment.findMany({
+      where: cancelledWhere,
+      orderBy: { requestedAt: "desc" },
+      skip,
+      take,
+      select: {
+        id: true,
+        status: true,
+        requestedAt: true,
+        tenant: { select: { name: true, slug: true } },
+        branch: { select: { name: true } },
+        category: { select: { name: true } },
+      },
+    }),
+    prisma.appointment.count({ where: cancelledWhere }),
+  ]);
 
   const shaped = orders.map((o) => {
     const { _count, reports, ...rest } = o;
@@ -112,5 +196,7 @@ export async function GET(req: Request) {
     orders: shaped,
     pagination: buildMeta(total, page, pageSize),
     cancelledAppointments,
+    cancelledPagination: buildMeta(cancelledTotal, page, pageSize),
+    availableYears,
   });
 }

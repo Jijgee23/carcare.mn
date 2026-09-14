@@ -1049,10 +1049,42 @@ export async function changeOrderStatusAction(
     return orderActionErrorResult(e);
   }
 
+  if (next === "COMPLETED") {
+    await notifyOrderStatusChange(id, "order_completed");
+  } else if (next === "CANCELLED") {
+    await notifyOrderStatusChange(id, "order_cancelled");
+  } else if (next === "IN_PROGRESS") {
+    await notifyOrderStatusChange(id, "order_in_progress");
+  }
+
   revalidatePath("/dashboard/orders");
   revalidatePath(`/dashboard/orders/${id}`);
   revalidatePath("/dashboard");
   return { ok: true, message: "Статус шинэчлэгдлээ." };
+}
+
+// Захиалгын статус өөрчлөгдөхөд холбогдох цаг захиалгын account-д мэдэгдэнэ
+// (харах: notifyOrderRescheduled-тэй адил зарчим) — гуравдагч (walk-in,
+// appointment холбоогүй) захиалганд алгасна. `withOrderTransaction`-ий цөөн
+// select-д appointment ороогүй тул амжилттай бичсэний ДАРАА тусад нь уншина.
+async function notifyOrderStatusChange(
+  orderId: string,
+  type: "order_completed" | "order_cancelled" | "order_in_progress",
+): Promise<void> {
+  try {
+    const order = await prisma.serviceOrder.findUnique({
+      where: { id: orderId },
+      select: { appointment: { select: { id: true, accountId: true } } },
+    });
+    if (!order?.appointment?.accountId) return;
+    await createNotification({
+      type,
+      recipient: { accountId: order.appointment.accountId },
+      input: { orderId, appointmentId: order.appointment.id },
+    });
+  } catch (e) {
+    console.warn(`[notify] ${type}:`, e);
+  }
 }
 
 // --- EXPECTED FINISH TIME (manual revision) --------------------------------

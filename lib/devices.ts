@@ -108,12 +108,24 @@ export async function getFirebaseTokensForUser(
   return rows.map((r) => r.firebaseToken).filter((t): t is string => Boolean(t));
 }
 
-/** Push илгээхэд — Account-тай холбоотой FCM token-ууд. */
+/**
+ * Push илгээхэд — Account-тай холбоотой FCM token-ууд.
+ *
+ * `account.isActive: true` шүүлт нь backstop: client логоут дээр device
+ * устгах дуудлага (`DELETE /devices/:id`) амжилтгүй болсон ч (жишээ нь
+ * token-г эхлээд цэвэрлээд дараа нь 401-той тулгарсан тохиолдол), эсвэл
+ * account хаагдсаны дараа device мөр устаагүй үлдсэн ч, идэвхгүй болсон
+ * account руу push цаашид очихгүй.
+ */
 export async function getFirebaseTokensForAccount(
   accountId: string,
 ): Promise<string[]> {
   const rows = await prisma.device.findMany({
-    where: { accountId, firebaseToken: { not: null } },
+    where: {
+      accountId,
+      firebaseToken: { not: null },
+      account: { isActive: true },
+    },
     select: { firebaseToken: true },
   });
   return rows.map((r) => r.firebaseToken).filter((t): t is string => Boolean(t));

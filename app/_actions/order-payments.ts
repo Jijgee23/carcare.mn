@@ -7,6 +7,7 @@ import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canEdit } from "@/lib/auth/roles";
 import { canEditOrder } from "@/lib/auth/order-access";
 import { workingBranchScopeId } from "@/lib/auth/roles";
+import { createNotification } from "@/lib/notifications";
 import {
   ORDER_PAYMENT_METHODS,
   ORDER_PAYMENT_METHOD_LABEL,
@@ -14,6 +15,29 @@ import {
 } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
 import { TenantQPayService } from "@/lib/qpay-tenant";
+
+// Төлбөр (бүтэн эсвэл хэсэгчилсэн) амжилттай бүртгэгдэхэд холбогдох цаг
+// захиалгын account-д мэдэгдэнэ — `orders.ts`-ийн notifyOrderStatusChange-тэй
+// адил зарчим (гуравдагч, appointment холбоогүй захиалганд алгасна).
+async function notifyOrderPaymentReceived(
+  orderId: string,
+  amount: string,
+): Promise<void> {
+  try {
+    const order = await prisma.serviceOrder.findUnique({
+      where: { id: orderId },
+      select: { appointment: { select: { id: true, accountId: true } } },
+    });
+    if (!order?.appointment?.accountId) return;
+    await createNotification({
+      type: "order_payment_received",
+      recipient: { accountId: order.appointment.accountId },
+      input: { orderId, appointmentId: order.appointment.id, amount },
+    });
+  } catch (e) {
+    console.warn("[notify] order_payment_received:", e);
+  }
+}
 
 export type OrderPaymentActionState = {
   ok: boolean;
@@ -264,6 +288,8 @@ export async function checkOrderQPayPaymentAction(
     };
   }
 
+  await notifyOrderPaymentReceived(payment.orderId, payment.amount.toString());
+
   revalidatePath(`/dashboard/orders/${payment.orderId}`);
   return { ok: true, paid: true };
 }
@@ -416,6 +442,8 @@ export async function recordOrderPaymentAction(
       message: e instanceof Error ? e.message : "Хадгалахад алдаа.",
     };
   }
+
+  await notifyOrderPaymentReceived(orderId, amount.toString());
 
   revalidatePath(`/dashboard/orders/${orderId}`);
   revalidatePath("/dashboard/orders");

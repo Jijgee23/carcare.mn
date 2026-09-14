@@ -4,6 +4,7 @@ import { getApiAccountFromRequest } from "@/lib/auth/account-api-token";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 import { ownedVehicleIdsForAccount } from "@/lib/vehicles";
+import { bookingDateKey, bookingDayBounds } from "@/lib/booking-time";
 
 // GET /api/v1/app/diagnostics — миний оношилгооны тайлангуудын жагсаалт (auth,
 // бүх байгууллага дамнасан) — тухайн засварын хуудасны дотор нуугдаад байсныг
@@ -16,6 +17,24 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const vehicleIdFilter = url.searchParams.get("vehicleId")?.trim() || undefined;
   const { page, pageSize, skip, take } = getApiPageInfo(url.searchParams);
+  const q = url.searchParams.get("q")?.trim() || undefined;
+  const severityRaw = url.searchParams.get("severity")?.trim().toUpperCase();
+  const severity = severityRaw || undefined;
+  if (severity && !["GOOD", "WARN", "BAD"].includes(severity)) {
+    return jsonError(400, "Оношилгооны төлөв буруу байна.");
+  }
+  const yearRaw = url.searchParams.get("year")?.trim();
+  const year = yearRaw ? Number(yearRaw) : undefined;
+  if (
+    yearRaw &&
+    (!/^\d{4}$/.test(yearRaw) ||
+      year == null ||
+      !Number.isInteger(year) ||
+      year < 2000 ||
+      year > 2100)
+  ) {
+    return jsonError(400, "Он буруу байна.");
+  }
 
   const ownedVehicleIds = await ownedVehicleIdsForAccount(account.id, account.phone);
 
@@ -28,6 +47,42 @@ export async function GET(req: Request) {
     ],
   };
   if (vehicleIdFilter) where.vehicleId = vehicleIdFilter;
+  if (severity) where.maxSeverity = severity as "GOOD" | "WARN" | "BAD";
+  if (year) {
+    const bounds = bookingDayBounds(`${year}-01-01`);
+    const nextBounds = bookingDayBounds(`${year + 1}-01-01`);
+    where.createdAt = {
+      gte: bounds.start,
+      lt: nextBounds.start,
+    };
+  }
+  if (q) {
+    where.AND = [
+      {
+        OR: [
+          { template: { name: { contains: q, mode: "insensitive" } } },
+          { vehicle: { plate: { contains: q, mode: "insensitive" } } },
+          { vehicle: { make: { contains: q, mode: "insensitive" } } },
+          { vehicle: { model: { contains: q, mode: "insensitive" } } },
+          { branch: { name: { contains: q, mode: "insensitive" } } },
+          { order: { number: { contains: q } } },
+        ],
+      },
+    ];
+  }
+
+  const facetRows = await prisma.diagnosticReport.findMany({
+    where: {
+      OR: [
+        { customer: { accountId: account.id } },
+        ...(ownedVehicleIds.length ? [{ vehicleId: { in: ownedVehicleIds } }] : []),
+      ],
+    },
+    select: { createdAt: true },
+  });
+  const availableYears = [...new Set(facetRows.map((r) => Number(bookingDateKey(r.createdAt).slice(0, 4))))].sort(
+    (a, b) => b - a,
+  );
 
   const [reports, total] = await Promise.all([
     prisma.diagnosticReport.findMany({
@@ -61,5 +116,9 @@ export async function GET(req: Request) {
     order: r.order,
   }));
 
-  return jsonOk({ reports: shaped, pagination: buildMeta(total, page, pageSize) });
+  return jsonOk({
+    reports: shaped,
+    pagination: buildMeta(total, page, pageSize),
+    availableYears,
+  });
 }

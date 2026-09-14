@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { MarkerClusterer } from "@googlemaps/markerclusterer";
 import { Select } from "@/app/_components/select";
 
 export type DiscoverBranch = {
@@ -37,6 +38,7 @@ export type DiscoverOrg = {
 };
 
 type Marker = { org: DiscoverOrg; branch: DiscoverBranch };
+type MapViewport = { north: number; south: number; east: number; west: number };
 
 type GeoPoint = { lat: number; lng: number };
 
@@ -116,13 +118,83 @@ async function fetchFilteredOrgs({
   }
   if (openNow) params.set("openNow", "1");
   const query = params.toString();
-  const response = await fetch(`/api/v1/app/orgs${query ? `?${query}` : ""}`, {
+  const response = await fetch(`/api/web/discovery${query ? `?${query}` : ""}`, {
     signal,
     cache: "no-store",
   });
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) throw new Error("Шүүлтүүрийн үр дүнг ачаалж чадсангүй.");
   return mergeFilteredOrgs(initialOrgs, payload, { openNow });
+}
+
+async function fetchMapMarkers({
+  initialOrgs,
+  viewport,
+  query,
+  city,
+  district,
+  nearMeLocation,
+  openNow,
+  weekend,
+  signal,
+}: {
+  initialOrgs: DiscoverOrg[];
+  viewport: MapViewport;
+  query: string;
+  city: string;
+  district: string;
+  nearMeLocation: GeoPoint | null;
+  openNow: boolean;
+  weekend: boolean;
+  signal: AbortSignal;
+}): Promise<{ markers: Marker[]; truncated: boolean }> {
+  const params = new URLSearchParams({
+    north: String(viewport.north),
+    south: String(viewport.south),
+    east: String(viewport.east),
+    west: String(viewport.west),
+  });
+  if (query.trim()) params.set("q", query.trim());
+  if (city) params.set("city", city);
+  if (district) params.set("district", district);
+  if (nearMeLocation) {
+    params.set("lat", String(nearMeLocation.lat));
+    params.set("lng", String(nearMeLocation.lng));
+  }
+  if (openNow) params.set("openNow", "1");
+  if (weekend) params.set("weekend", "1");
+  const response = await fetch(`/api/web/discovery/map?${params}`, {
+    signal,
+    cache: "no-store",
+  });
+  const body = asRecord(await response.json().catch(() => null));
+  if (!response.ok || !Array.isArray(body?.markers)) {
+    throw new Error("Газрын зургийн цэгүүдийг ачаалж чадсангүй.");
+  }
+  const bySlug = new Map(initialOrgs.map((org) => [org.slug, org]));
+  const markers: Marker[] = [];
+  for (const raw of body.markers) {
+    const item = asRecord(raw);
+    const slug = item?.orgSlug;
+    const branchId = item?.id;
+    if (typeof slug !== "string" || typeof branchId !== "string") continue;
+    const org = bySlug.get(slug);
+    const branch = org?.branches.find((candidate) => candidate.id === branchId);
+    if (org && branch) {
+      const distanceKm = item?.distanceKm;
+      markers.push({
+        org,
+        branch: {
+          ...branch,
+          ...(openNow ? { open: true } : {}),
+          ...(typeof distanceKm === "number" && Number.isFinite(distanceKm)
+            ? { distanceKm }
+            : {}),
+        },
+      });
+    }
+  }
+  return { markers, truncated: body.truncated === true };
 }
 
 function requestBrowserLocation(): Promise<GeoPoint> {
@@ -302,6 +374,8 @@ export function DiscoverClient({
   useEffect(() => {
     const controller = new AbortController();
     if (!nearMeOnly && !openNowOnly) {
+      // This effect mirrors the server-filtered catalog when toggles clear.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCatalogOrgs(orgs);
       setFilterError(null);
       setFilterLoading(false);
@@ -386,11 +460,82 @@ export function DiscoverClient({
   // илэрцтэй болоход алга болохгүй (үр дүнгүй үед доорхи "Энэ хайлтаар газар
   // олдсонгүй" мессеж харагдана, товч биш алга болно).
   const mapConfigured = Boolean(apiKey);
-  const hasMap = mapConfigured && markers.length > 0;
+  // The map endpoint is viewport-scoped, so its first response is not known
+  // from the SSR/list page. Keep the map available whenever configured.
+  const hasMap = mapConfigured;
   const [view, setView] = useState<"map" | "list">(hasMap ? "map" : "list");
   const [selected, setSelected] = useState<Marker | null>(null);
   const [mapError, setMapError] = useState(false);
   const [light, setLight] = useState(false);
+  const [mapMarkers, setMapMarkers] = useState<Marker[] | null>(null);
+  const [mapTruncated, setMapTruncated] = useState(false);
+  const mapRequestKeyRef = useRef<string | null>(null);
+  const mapRequestGenerationRef = useRef(0);
+  const mapRequestAbortRef = useRef<AbortController | null>(null);
+  const mapRequestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleMapFetchRef = useRef<(viewport: MapViewport) => void>(() => {});
+
+  const scheduleMapFetch = (viewport: MapViewport) => {
+    const generation = mapRequestGenerationRef.current;
+    const key = JSON.stringify({
+      viewport,
+      query: query.trim(),
+      city,
+      district,
+      nearMeLocation,
+      openNowOnly,
+      weekendOnly,
+    });
+    if (mapRequestKeyRef.current === key) return;
+    if (mapRequestTimerRef.current) clearTimeout(mapRequestTimerRef.current);
+    mapRequestTimerRef.current = setTimeout(() => {
+      mapRequestAbortRef.current?.abort();
+      const controller = new AbortController();
+      mapRequestAbortRef.current = controller;
+      fetchMapMarkers({
+        initialOrgs: orgs,
+        viewport,
+        query,
+        city,
+        district,
+        nearMeLocation,
+        openNow: openNowOnly,
+        weekend: weekendOnly,
+        signal: controller.signal,
+      })
+        .then((result) => {
+          if (controller.signal.aborted || generation !== mapRequestGenerationRef.current) return;
+          mapRequestKeyRef.current = key;
+          setMapError(false);
+          setMapMarkers(result.markers);
+          setMapTruncated(result.truncated);
+        })
+        .catch(() => {
+          if (controller.signal.aborted || generation !== mapRequestGenerationRef.current) return;
+          setMapError(true);
+        });
+    }, 250);
+  };
+  // The map lifecycle intentionally does not depend on filter state. Keep the
+  // one idle listener pointed at the latest filter-aware callback instead.
+  useEffect(() => {
+    scheduleMapFetchRef.current = scheduleMapFetch;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, city, district, nearMeLocation, openNowOnly, weekendOnly, orgs]);
+
+  useEffect(() => {
+    mapRequestGenerationRef.current += 1;
+    mapRequestAbortRef.current?.abort();
+    mapRequestKeyRef.current = null;
+    if (mapRequestTimerRef.current) clearTimeout(mapRequestTimerRef.current);
+    // Clear marker data immediately so a new filter never renders an old
+    // viewport response while its debounced request is pending.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMapMarkers(null);
+    setMapTruncated(false);
+  }, [query, city, district, nearMeLocation, openNowOnly, weekendOnly]);
+
+  const markersForMap = mapMarkers ?? markers;
 
   const toggleNearMe = async () => {
     setSelected(null);
@@ -429,10 +574,18 @@ export function DiscoverClient({
   const markersRef = useRef<{ marker: any; m: Marker }[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const userMarkerRef = useRef<any>(null);
+  const mapClustererRef = useRef<MarkerClusterer | null>(null);
+  // Google Maps listener handles are intentionally opaque to TypeScript.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapIdleListenerRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapClickListenerRef = useRef<any>(null);
+  const [mapReady, setMapReady] = useState(false);
 
   // Аппын theme-г ажиглаж state-д тусгана — өөрчлөгдөхөд газрын зургийг
   // тохирох colorScheme-тэйгээр дахин үүсгэнэ.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLight(isLightTheme());
     const observer = new MutationObserver(() => setLight(isLightTheme()));
     observer.observe(document.documentElement, {
@@ -442,9 +595,13 @@ export function DiscoverClient({
     return () => observer.disconnect();
   }, []);
 
+  // Map lifecycle depends only on stable view/configuration. Marker updates
+  // are handled by the following effect so viewport responses never recenter
+  // or add another idle listener.
   useEffect(() => {
     if (view !== "map" || !hasMap) return;
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMapError(false);
     loadGoogleMaps(apiKey)
       .then(() => {
@@ -452,9 +609,12 @@ export function DiscoverClient({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const g = (window as any).google;
         if (!g?.maps) return;
+        const userPosition = nearMeLocation
+          ? { lat: nearMeLocation.lat, lng: nearMeLocation.lng }
+          : null;
         const map = new g.maps.Map(mapRef.current, {
-          center: UB_CENTER,
-          zoom: 12,
+          center: userPosition ?? UB_CENTER,
+          zoom: userPosition ? 13 : 12,
           mapId: mapId || DEFAULT_MAP_ID,
           colorScheme: light ? "LIGHT" : "DARK",
           mapTypeControl: false,
@@ -462,25 +622,13 @@ export function DiscoverClient({
           zoomControl: false,
           fullscreenControl: true,
           clickableIcons: false,
-          // Ctrl дарахгүйгээр шууд scroll-оор томруулна (cooperative биш greedy).
           gestureHandling: "greedy",
-          // 3D барилга/налуу хардаггүй — flat 2D (Flutter-ийн buildingsEnabled
-          // false-д хамгийн ойр JS хувилбар). Footprint-г бүрэн нуухын тулд
-          // Map ID-ийн cloud style-аас Landmarks/Buildings унтраана.
           tilt: 0,
           rotateControl: false,
           tiltInteractionEnabled: false,
           headingInteractionEnabled: false,
         });
         mapInstanceRef.current = map;
-        markersRef.current = [];
-        userMarkerRef.current = null;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const Advanced = g.maps.marker?.AdvancedMarkerElement;
-        const bounds = new g.maps.LatLngBounds();
-        const userPosition = nearMeLocation
-          ? { lat: nearMeLocation.lat, lng: nearMeLocation.lng }
-          : null;
         if (userPosition) {
           userMarkerRef.current = new g.maps.Marker({
             map,
@@ -496,72 +644,108 @@ export function DiscoverClient({
               strokeWeight: 3,
             },
           });
-          bounds.extend(userPosition);
         }
-        markers.forEach((m) => {
-          const pos = { lat: m.branch.lat as number, lng: m.branch.lng as number };
-          const active = selected?.branch.id === m.branch.id;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          let marker: any;
-          if (Advanced) {
-            const content = buildPinElement(m, active);
-            marker = new Advanced({
-              map,
-              position: pos,
-              content,
-              title: `${m.org.name} — ${m.branch.name}`,
-              zIndex: active ? 999 : 1,
-              gmpClickable: true,
-            });
-            // gmp-click — content-ийн DOM-оос үл хамаарч найдвартай ажиллана
-            // (логотой/логогүй аль ч маркерт). Content click-г нөөцөөр давхар.
-            marker.addListener("gmp-click", () => setSelected(m));
-            marker.addListener("click", () => setSelected(m));
-            content.style.pointerEvents = "auto";
-            content.addEventListener("click", () => setSelected(m));
-          } else {
-            // Fallback (AdvancedMarker байхгүй) — энгийн өнгөт цэг.
-            marker = new g.maps.Marker({
-              position: pos,
-              map,
-              title: `${m.org.name} — ${m.branch.name}`,
-              icon: {
-                path: g.maps.SymbolPath.CIRCLE,
-                scale: active ? 12 : 9,
-                fillColor: ringColor(m.branch.open, active),
-                fillOpacity: 1,
-                strokeColor: "#ffffff",
-                strokeWeight: 2,
-              },
-            });
-            marker.addListener("click", () => setSelected(m));
-          }
-          markersRef.current.push({ marker, m });
-          bounds.extend(pos);
+        mapClickListenerRef.current = map.addListener("click", () =>
+          setSelected(null),
+        );
+        mapIdleListenerRef.current = map.addListener("idle", () => {
+          const bounds = map.getBounds();
+          if (!bounds) return;
+          scheduleMapFetchRef.current({
+            north: bounds.getNorthEast().lat(),
+            south: bounds.getSouthWest().lat(),
+            east: bounds.getNorthEast().lng(),
+            west: bounds.getSouthWest().lng(),
+          });
         });
-        if (userPosition) {
-          map.setCenter(userPosition);
-          map.setZoom(markers.length > 0 ? 13 : 15);
-        } else if (markers.length === 1) {
-          map.setCenter(bounds.getCenter());
-          map.setZoom(15);
-        } else {
-          map.fitBounds(bounds, 64);
-        }
-        map.addListener("click", () => setSelected(null));
+        setMapReady(true);
       })
       .catch(() => {
         if (!cancelled) setMapError(true);
       });
     return () => {
       cancelled = true;
-      if (userMarkerRef.current?.setMap) {
-        userMarkerRef.current.setMap(null);
+      mapIdleListenerRef.current?.remove?.();
+      mapClickListenerRef.current?.remove?.();
+      mapIdleListenerRef.current = null;
+      mapClickListenerRef.current = null;
+      mapClustererRef.current?.clearMarkers();
+      mapClustererRef.current = null;
+      for (const entry of markersRef.current) {
+        entry.marker.setMap?.(null);
+        entry.marker.map = null;
       }
+      markersRef.current = [];
+      if (userMarkerRef.current?.setMap) userMarkerRef.current.setMap(null);
       userMarkerRef.current = null;
+      mapInstanceRef.current = null;
+      setMapReady(false);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, hasMap, apiKey, markers, mapId, light, nearMeLocation]);
+  }, [view, hasMap, apiKey, mapId, light, nearMeLocation]);
+
+  const selectedBranchId = selected?.branch.id;
+  const selectedLatitude = selected?.branch.lat;
+  const selectedLongitude = selected?.branch.lng;
+  /* eslint-disable react-hooks/exhaustive-deps -- selection styling is updated below. */
+  useEffect(() => {
+    if (!mapReady || !mapInstanceRef.current) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const g = (window as any).google;
+    if (!g?.maps) return;
+    mapClustererRef.current?.clearMarkers();
+    for (const entry of markersRef.current) {
+      entry.marker.setMap?.(null);
+      // eslint-disable-next-line react-hooks/immutability
+      entry.marker.map = null;
+    }
+    markersRef.current = [];
+    const Advanced = g.maps.marker?.AdvancedMarkerElement;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const createdMarkers: any[] = [];
+    for (const m of markersForMap) {
+      const position = { lat: m.branch.lat as number, lng: m.branch.lng as number };
+      const active = selectedBranchId === m.branch.id;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let marker: any;
+      if (Advanced) {
+        const content = buildPinElement(m, active);
+        marker = new Advanced({
+          map: mapInstanceRef.current,
+          position,
+          content,
+          title: `${m.org.name} — ${m.branch.name}`,
+          zIndex: active ? 999 : 1,
+          gmpClickable: true,
+        });
+        marker.addListener("gmp-click", () => setSelected(m));
+        marker.addListener("click", () => setSelected(m));
+        content.style.pointerEvents = "auto";
+        content.addEventListener("click", () => setSelected(m));
+      } else {
+        marker = new g.maps.Marker({
+          position,
+          map: mapInstanceRef.current,
+          title: `${m.org.name} — ${m.branch.name}`,
+          icon: {
+            path: g.maps.SymbolPath.CIRCLE,
+            scale: active ? 12 : 9,
+            fillColor: ringColor(m.branch.open, active),
+            fillOpacity: 1,
+            strokeColor: "#ffffff",
+            strokeWeight: 2,
+          },
+        });
+        marker.addListener("click", () => setSelected(m));
+      }
+      markersRef.current.push({ marker, m });
+      createdMarkers.push(marker);
+    }
+    mapClustererRef.current = new MarkerClusterer({
+      map: mapInstanceRef.current,
+      markers: createdMarkers,
+    });
+  }, [mapReady, markersForMap]);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   // Сонгосон маркерыг тодруулж (ягаан + том), түүн рүү зөөлөн төвлөрнө.
   useEffect(() => {
@@ -569,11 +753,12 @@ export function DiscoverClient({
     const g = (window as any).google;
     if (!g?.maps || markersRef.current.length === 0) return;
     for (const entry of markersRef.current) {
-      const active = selected?.branch.id === entry.m.branch.id;
+      const active = selectedBranchId === entry.m.branch.id;
       if ("content" in entry.marker) {
         // AdvancedMarkerElement — контентыг дахин зурна.
         const el = buildPinElement(entry.m, active);
         el.addEventListener("click", () => setSelected(entry.m));
+        // eslint-disable-next-line react-hooks/immutability
         entry.marker.content = el;
         entry.marker.zIndex = active ? 999 : 1;
       } else if (entry.marker.setIcon) {
@@ -589,18 +774,16 @@ export function DiscoverClient({
       }
     }
     if (
-      selected &&
       mapInstanceRef.current &&
-      selected.branch.lat != null &&
-      selected.branch.lng != null
+      selectedLatitude != null &&
+      selectedLongitude != null
     ) {
       mapInstanceRef.current.panTo({
-        lat: selected.branch.lat,
-        lng: selected.branch.lng,
+        lat: selectedLatitude,
+        lng: selectedLongitude,
       });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected]);
+  }, [selectedBranchId, selectedLatitude, selectedLongitude]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -840,6 +1023,11 @@ export function DiscoverClient({
           {mapError ? (
             <div className="absolute inset-0 flex items-center justify-center text-sm text-white/50 bg-[var(--surface)] rounded-2xl">
               Газрын зураг ачаалж чадсангүй.
+            </div>
+          ) : null}
+          {mapTruncated ? (
+            <div className="absolute bottom-3 left-3 rounded-lg bg-zinc-900/85 px-3 py-2 text-xs text-white/75 shadow-lg light:bg-white/90 light:text-zinc-700">
+              Зарим цэгийг нуусан. Газрын зургийг томруулж үзнэ үү.
             </div>
           ) : null}
 
