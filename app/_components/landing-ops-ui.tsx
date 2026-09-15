@@ -379,12 +379,13 @@ export function TabButton({
 // Hairline-grid stat карт мөр (branches/employees/roles жагсаалтын
 // header-ийн доор) — 3 хуудсанд ЯГ ижил бүтэцтэй "StatCell" функц тус
 // тусдаа давхардуулж бичигдсэн байсныг эндээс нэгтгэсэн.
-const STAT_COLS: Record<3 | 4, string> = {
+const STAT_COLS: Record<3 | 4 | 5, string> = {
   3: "sm:grid-cols-3",
   4: "sm:grid-cols-4",
+  5: "sm:grid-cols-3 lg:grid-cols-5",
 };
 
-export function StatGrid({ cols = 4, children }: { cols?: 3 | 4; children: ReactNode }) {
+export function StatGrid({ cols = 4, children }: { cols?: 3 | 4 | 5; children: ReactNode }) {
   return (
     <div
       className={`grid grid-cols-2 gap-px overflow-hidden rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-line)] ${STAT_COLS[cols]} mb-6`}

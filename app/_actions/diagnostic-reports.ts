@@ -222,7 +222,10 @@ export async function createReportAction(
   if (itemId) {
     await prisma.serviceItem.update({
       where: { id: itemId },
-      data: { diagnosticReportId: reportId, status: "COMPLETED" },
+      // Оношилгооны мөр IN_PROGRESS-ыг алгасаад шууд PENDING→COMPLETED
+      // болдог тул `startedAt` хоосон үлдэнэ — "хугацаа хэмжигдээгүй" гэж
+      // дундаж тооцооноос автоматаар хасагдана (харах: serviceItemTimingPatch).
+      data: { diagnosticReportId: reportId, status: "COMPLETED", completedAt: new Date() },
     });
   }
 
@@ -275,7 +278,7 @@ export async function deleteReportAction(formData: FormData): Promise<void> {
     if (linkedItem) {
       await tx.serviceItem.update({
         where: { id: linkedItem.id },
-        data: { status: "PENDING" },
+        data: { status: "PENDING", startedAt: null, completedAt: null },
       });
     }
   });

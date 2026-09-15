@@ -161,6 +161,28 @@ export function canChangeServiceItemStatus(status: ServiceItemStatus): boolean {
   return status !== "CANCELLED";
 }
 
+/**
+ * Мөрийн `startedAt`/`completedAt`-д (нэг ажил гүйцэтгэх дундаж хугацаа
+ * тооцоход ашиглагдана, харах: app/dashboard/reports/data.ts) шинэ статустай
+ * нийцүүлж бичих утгыг гаргана. Статус чөлөөтэй, дурын дарааллаар (буцаж ч)
+ * солигддог тул "анх удаа" биш "одоогийн төлөвт нийцсэн" гэж үзнэ:
+ * PENDING руу буцвал хоёуланг нь цэвэрлэнэ; IN_PROGRESS анх удаа ороход л
+ * `startedAt` тавигдана (дараа дахин орвол ХЭВЭЭР — анхны эхэлсэн цагаа
+ * хадгална); COMPLETED болгонд `completedAt` ШИНЭЧЛЭГДЭНЭ. CANCELLED-д
+ * хүрэхгүй (өөр action-аар зохицуулагдана).
+ */
+export function serviceItemTimingPatch(
+  nextStatus: ServiceItemStatus,
+  currentStartedAt: Date | null,
+): { startedAt?: Date | null; completedAt?: Date | null } {
+  if (nextStatus === "PENDING") return { startedAt: null, completedAt: null };
+  if (nextStatus === "IN_PROGRESS") {
+    return { startedAt: currentStartedAt ?? new Date(), completedAt: null };
+  }
+  if (nextStatus === "COMPLETED") return { completedAt: new Date() };
+  return {};
+}
+
 export function formatTugrik(amount: number | string | null | undefined): string {
   if (amount == null) return "—";
   const n = typeof amount === "string" ? Number.parseFloat(amount) : amount;

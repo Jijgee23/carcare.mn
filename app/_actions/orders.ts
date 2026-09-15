@@ -37,6 +37,7 @@ import {
   canChangeServiceItemStatus,
   isOrderLocked,
   isServiceItemCancellable,
+  serviceItemTimingPatch,
   type ItemKind,
   type OrderStatus,
   type ServiceItemStatus,
@@ -1947,6 +1948,7 @@ export async function changeOrderItemStatusAction(
       orderId: true,
       kind: true,
       status: true,
+      startedAt: true,
       diagnosticReportId: true,
       order: { select: { status: true, branchId: true, assignedToId: true } },
     },
@@ -1971,7 +1973,7 @@ export async function changeOrderItemStatusAction(
 
   await prisma.serviceItem.update({
     where: { id: item.id },
-    data: { status: next },
+    data: { status: next, ...serviceItemTimingPatch(next, item.startedAt) },
   });
   await logAudit({
     tenantId: user.tenantId,

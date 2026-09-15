@@ -201,3 +201,105 @@ export async function resetEmployeeShiftAction(formData: FormData): Promise<void
 
   revalidatePath("/dashboard/employees/schedule");
 }
+
+type BulkTarget = { userId: string; date: string; weekday: string };
+
+/**
+ * Олон (ажилтан × өдөр) нүдэнд НЭГ зэрэг ижил хувиар (салбар(ууд)/цаг/
+ * амарна эсэх) тохируулна — grid дээр хэд хэдэн нүд сонгоод "Тохируулах"
+ * дарахад дуудагдана (харах: schedule-grid.tsx BulkShiftEditor). `scope=date`
+ * бол сонгосон ХАРГАЛЗАХ өдөр бүрт (`EmployeeScheduleException`), `scope=
+ * weekday` бол сонгосон нүдний (ажилтан, гараг) хосол бүрт байнга давтагдах
+ * дүрэм (`EmployeeWorkSchedule`) болгож бичнэ — сүүлийнх нь нэг ажилтны хэд
+ * хэдэн сонгосон огноо ижил гарагт унавал нэг л удаа бичигдэнэ (dedupe).
+ */
+export async function bulkUpsertEmployeeShiftAction(
+  _prev: EmployeeScheduleActionState,
+  formData: FormData,
+): Promise<EmployeeScheduleActionState> {
+  const actor = await requireUser();
+  if (!hasPermission(actor, "employees.schedule")) {
+    return { ok: false, message: "Танд ажлын хувиар засах эрх байхгүй." };
+  }
+
+  const scope = s(formData, "scope");
+  const isWorking = formData.get("isWorking") === "on";
+  const errors: Record<string, string> = {};
+  const segments = isWorking
+    ? await parseSegments(actor.tenantId, s(formData, "segmentsJson"), errors)
+    : [];
+  if (Object.keys(errors).length > 0) return { ok: false, fieldErrors: errors };
+
+  let targets: BulkTarget[];
+  try {
+    const parsed: unknown = JSON.parse(s(formData, "targetsJson") || "[]");
+    if (!Array.isArray(parsed)) throw new Error("not array");
+    targets = parsed.filter(
+      (t): t is BulkTarget =>
+        Boolean(t) &&
+        typeof t === "object" &&
+        typeof (t as BulkTarget).userId === "string" &&
+        typeof (t as BulkTarget).date === "string" &&
+        typeof (t as BulkTarget).weekday === "string",
+    );
+  } catch {
+    return { ok: false, message: "Сонголт уншигдсангүй." };
+  }
+  if (targets.length === 0) return { ok: false, message: "Дор хаяж нэг нүд сонгоно уу." };
+
+  const userIds = [...new Set(targets.map((t) => t.userId))];
+  const validUsers = await prisma.user.findMany({
+    where: { id: { in: userIds }, tenantId: actor.tenantId },
+    select: { id: true },
+  });
+  const validUserIds = new Set(validUsers.map((u) => u.id));
+
+  const segmentCreate = segments.map((seg, i) => ({
+    order: i,
+    branchId: seg.branchId,
+    startTime: seg.startTime,
+    endTime: seg.endTime,
+  }));
+
+  let applied = 0;
+  if (scope === "date") {
+    for (const t of targets) {
+      if (!validUserIds.has(t.userId) || !/^\d{4}-\d{2}-\d{2}$/.test(t.date)) continue;
+      const date = new Date(`${t.date}T00:00:00.000Z`);
+      await prisma.employeeScheduleException.upsert({
+        where: { userId_date: { userId: t.userId, date } },
+        create: { userId: t.userId, date, isWorking, segments: { create: segmentCreate } },
+        update: { isWorking, segments: { deleteMany: {}, create: segmentCreate } },
+      });
+      applied++;
+    }
+  } else {
+    const seen = new Set<string>();
+    for (const t of targets) {
+      if (!validUserIds.has(t.userId) || !isWeekday(t.weekday)) continue;
+      const key = `${t.userId}:${t.weekday}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      await prisma.employeeWorkSchedule.upsert({
+        where: { userId_weekday: { userId: t.userId, weekday: t.weekday } },
+        create: { userId: t.userId, weekday: t.weekday, isWorking, segments: { create: segmentCreate } },
+        update: { isWorking, segments: { deleteMany: {}, create: segmentCreate } },
+      });
+      applied++;
+    }
+  }
+
+  if (applied > 0) {
+    await logAudit({
+      tenantId: actor.tenantId,
+      userId: actor.id,
+      entity: "User",
+      entityId: actor.id,
+      action: "UPDATE",
+      summary: `Ажлын хувиар багцаар тохируулав (${applied} ${scope === "date" ? "өдөр/ажилтан" : "гараг/ажилтан"})`,
+    });
+  }
+
+  revalidatePath("/dashboard/employees/schedule");
+  return { ok: true, message: `${applied} байршил шинэчлэгдлээ.` };
+}

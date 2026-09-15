@@ -588,6 +588,17 @@ model ServiceItem {
   // totalAmount) CANCELLED мөрийн total-ыг ХАСЧ тооцно.
   status      ServiceItemStatus @default(PENDING)
 
+  // Мөрийн гүйцэтгэх хугацаа хэмжихэд (жишээ: "нэг ажил дунджаар хэдэн минут
+  // авдаг" тайлан) ашиглана — статус чөлөөтэй, дурын дарааллаар (тэр дундаа
+  // буцаж) солигддог тул "анх удаа" биш "одоогийн төлөвт нийцсэн" утга гэж
+  // үзнэ: PENDING руу буцвал хоёуланг нь цэвэрлэнэ, IN_PROGRESS анх ороход
+  // л startedAt тавигдана (дараа дахин орвол хэвээр), COMPLETED болгонд
+  // completedAt шинэчлэгдэнэ. `startedAt` хоосон (ж: оношилгоо шууд
+  // PENDING→COMPLETED болсон) мөрийг "хугацаа хэмжигдээгүй" гэж үзэж дундаж
+  // тооцооноос хасна. Харах: lib/orders.ts-ийн serviceItemTimingPatch.
+  startedAt   DateTime?
+  completedAt DateTime?
+
   orderId String
   order   ServiceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
 

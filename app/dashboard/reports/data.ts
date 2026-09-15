@@ -72,6 +72,13 @@ export type ReportData = {
   kindRows: { kind: ItemKind; label: string; total: number; pct: number }[];
   branchRows: { id: string; name: string; revenue: number; count: number }[];
   techRows: { id: string; name: string; revenue: number; count: number }[];
+  // Нэг ажлын мөр (Ажил/Оношилгоо) дунджаар хэдэн минутад гүйцэтгэгддэгийг —
+  // харах: lib/orders.ts-ийн serviceItemTimingPatch (ServiceItem.startedAt/
+  // completedAt). `startedAt` тэмдэглэгдээгүй (ж: оношилгоо шууд
+  // PENDING→COMPLETED болсон) мөрүүд "хугацаа хэмжигдээгүй" гэж тооцооноос
+  // хасагдсан байна.
+  avgJobDurationMinutes: number;
+  jobDurationRows: { id: string; name: string; count: number; avgMinutes: number }[];
   customerRows: {
     id: string;
     name: string;
@@ -124,6 +131,7 @@ export async function loadReportData(
     topCustomers,
     topPartsRaw,
     trendOrders,
+    itemDurationRows,
   ] = await Promise.all([
     prisma.serviceOrder.aggregate({
       where: completedWhere,
@@ -178,7 +186,43 @@ export async function loadReportData(
       where: completedWhere,
       select: { completedAt: true, totalAmount: true },
     }),
+    // `_avg`/`groupBy`-аар шууд хийж болохгүй (Prisma хоёр багана хоорондын
+    // зөрүүг aggregate хийж чадахгүй) тул түүхий мөрүүдийг татаж доор JS
+    // талд боловсруулна.
+    prisma.serviceItem.findMany({
+      where: {
+        order: { tenantId: user.tenantId, ...branchFilter },
+        status: "COMPLETED",
+        kind: { in: ["LABOR", "DIAGNOSTIC"] },
+        startedAt: { not: null },
+        completedAt: { gte: range.from, lte: range.to },
+      },
+      select: { serviceId: true, kind: true, startedAt: true, completedAt: true },
+    }),
   ]);
+
+  // Мөрийн гүйцэтгэх хугацаа (минут) — нийт дундаж (LABOR+DIAGNOSTIC) болон
+  // зөвхөн LABOR-ийг ажлын төрлөөр (serviceId) бүлэглэсэн эрэмбэ.
+  const jobDurationsMinutes = itemDurationRows
+    .map((r) => (r.completedAt!.getTime() - r.startedAt!.getTime()) / 60000)
+    .filter((mins) => mins > 0);
+  const avgJobDurationMinutes =
+    jobDurationsMinutes.length > 0
+      ? Math.round(
+          jobDurationsMinutes.reduce((a, b) => a + b, 0) / jobDurationsMinutes.length,
+        )
+      : 0;
+
+  const laborMinutesByService = new Map<string, number[]>();
+  for (const r of itemDurationRows) {
+    if (r.kind !== "LABOR" || !r.serviceId) continue;
+    const mins = (r.completedAt!.getTime() - r.startedAt!.getTime()) / 60000;
+    if (mins <= 0) continue;
+    const arr = laborMinutesByService.get(r.serviceId) ?? [];
+    arr.push(mins);
+    laborMinutesByService.set(r.serviceId, arr);
+  }
+  const jobServiceIds = [...laborMinutesByService.keys()];
 
   // 2-р давалгаа — зөвхөн дээрх нэгтгэлд гарч ирсэн ID-уудыг л нэрлэхийн тулд
   // татна. Өмнө нь бүх салбар/ажилтан/үйлчлүүлэгч/сэлбэгийг татдаг байсан нь
@@ -192,9 +236,14 @@ export async function loadReportData(
   const customerIds = topCustomers
     .map((r) => r.customerId)
     .filter((id): id is string => Boolean(id));
-  const partIds = topPartsRaw
-    .map((r) => r.serviceId)
-    .filter((id): id is string => Boolean(id));
+  // "Топ сэлбэг" (GOODS) болон "ажлын дундаж хугацаа" (LABOR) хоёулаа
+  // Service.name/code хэрэгтэй тул нэг lookup batch-д нэгтгэнэ.
+  const partIds = [
+    ...new Set([
+      ...topPartsRaw.map((r) => r.serviceId).filter((id): id is string => Boolean(id)),
+      ...jobServiceIds,
+    ]),
+  ];
 
   const [branchesMap, techsMap, customersMap, partsMap] = await Promise.all([
     branchIds.length
@@ -321,6 +370,19 @@ export async function loadReportData(
       };
     });
 
+  // Ажлын дундаж хугацаа (зөвхөн LABOR, тоогоор эрэмбэлж эхний 5)
+  const jobDurationRows = [...laborMinutesByService.entries()]
+    .map(([serviceId, minutesList]) => ({
+      id: serviceId,
+      name: partById.get(serviceId)?.name ?? "—",
+      count: minutesList.length,
+      avgMinutes: Math.round(
+        minutesList.reduce((a, b) => a + b, 0) / minutesList.length,
+      ),
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
   const incomeRange: ResolvedIncomeRange = {
     key: "custom",
     from: range.from,
@@ -342,6 +404,8 @@ export async function loadReportData(
     techRows,
     customerRows,
     partRows,
+    avgJobDurationMinutes,
+    jobDurationRows,
     income: { points: incomeSeries.points, changePct: incomeSeries.changePct },
   };
 }

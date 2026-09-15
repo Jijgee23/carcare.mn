@@ -2,6 +2,7 @@ import Link from "next/link";
 import { DatePicker } from "@/app/_components/date-picker";
 import { Btn, StatCell, StatGrid, TabLink, btnClass } from "@/app/_components/landing-ops-ui";
 import { requireUser } from "@/lib/auth";
+import { formatDuration } from "@/lib/category-duration";
 import { ITEM_KIND_BADGE, ORDER_STATUS_BADGE, formatTugrik } from "@/lib/orders";
 import { IncomeChart } from "../income-chart";
 import { fmt, loadReportData, parseRange, type Range } from "./data";
@@ -79,6 +80,8 @@ export default async function ReportsPage({
     techRows,
     customerRows,
     partRows,
+    avgJobDurationMinutes,
+    jobDurationRows,
     income,
   } = data;
 
@@ -123,11 +126,12 @@ export default async function ReportsPage({
         </form>
       </div>
 
-      <StatGrid cols={4}>
+      <StatGrid cols={5}>
         <BigStat label="Нийт орлого" value={formatTugrik(totalRevenue)} tone="accent" />
         <StatCell label="Дууссан засварын хуудас" value={completedCount} />
         <BigStat label="Дундаж дүн" value={formatTugrik(avgTicket)} />
         <StatCell label="Идэвхтэй" value={activeCount} />
+        <BigStat label="Дундаж гүйцэтгэх хугацаа" value={formatDuration(avgJobDurationMinutes)} />
       </StatGrid>
 
       <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-6 mb-6">
@@ -332,6 +336,40 @@ export default async function ReportsPage({
                         {p.unit}
                       </div>
                     </div>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-6">
+          <h2 className="font-semibold text-[var(--oc-ink)] mb-1">Ажлын гүйцэтгэх дундаж хугацаа</h2>
+          <p className="text-xs text-[var(--oc-muted3)] mb-5">
+            Эхэлсэн-дуусах цаг тэмдэглэгдсэн ажлуудаар (сэлбэгийн төрлөөр).
+          </p>
+          {jobDurationRows.length === 0 ? (
+            <p className="text-sm text-[var(--oc-muted3)] py-4 text-center">Өгөгдөл алга.</p>
+          ) : (
+            <ul className="divide-y divide-[var(--oc-line)]">
+              {jobDurationRows.map((j, i) => (
+                <li key={j.id}>
+                  <Link
+                    href={`/dashboard/services/${j.id}`}
+                    className="flex items-center gap-3 py-3 hover:bg-white/[0.02] -mx-2 px-2 rounded-lg transition-colors"
+                  >
+                    <span className="font-plex-mono text-xs text-[var(--oc-muted4)] w-5 shrink-0">
+                      #{i + 1}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-[var(--oc-ink)] truncate">
+                        {j.name}
+                      </div>
+                      <div className="text-xs text-[var(--oc-muted4)]">{j.count} удаа</div>
+                    </div>
+                    <span className="font-plex-mono text-sm text-[var(--oc-ink2)] shrink-0">
+                      {formatDuration(j.avgMinutes)}
+                    </span>
                   </Link>
                 </li>
               ))}
