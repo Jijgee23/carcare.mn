@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@/app/generated/prisma/client";
 import { requireAccount } from "@/lib/auth/account";
+import { HurService, normalizeWheelPosition } from "@/lib/hur_service";
 import { prisma } from "@/lib/prisma";
 import { resolveVehicle } from "@/lib/vehicles";
 
@@ -109,6 +110,85 @@ export async function quickCreateAccountVehicle(input: {
       message: e instanceof Error ? e.message : "Алдаа гарлаа.",
     };
   }
+}
+
+export type RefreshVehicleFromHurResult =
+  | { ok: true }
+  | { ok: false; message: string };
+
+/**
+ * Машины дэлгэрэнгүй хуудаснаас (`/account/vehicles/[id]`) гар аргаар
+ * HUR-аас дахин татаж, глобал Vehicle-ийн бие даасан шинжийг (марк, загвар,
+ * он, VIN, шатахуун, жолооны хүрд, өнгө, багтаамж, зориулалт) шинэчилнэ —
+ * `dashboard/vehicles/vehicle-form.tsx`-ийн HUR refresh-тэй ижил өгөгдлийн
+ * эх сурвалж, гэхдээ энд ЭЦСИЙН хадгалалт нэг товчинд шууд ордог (тусад нь
+ * "Хадгалах" алхамгүй) — хуудсанд өөр редакторлох форм байхгүй тул.
+ * Дугаар (plate)-ыг ЗОРИУДЛАН өөрчлөхгүй: энэ бол "мэдээлэл шинэчлэх", "дугаар
+ * солих" биш үйлдэл — резолвлогдох машин (== одоогийн дугаараар HUR лүүс
+ * татна) яг энэ мөн адил байх ёстой.
+ */
+export async function refreshVehicleFromHur(
+  vehicleId: string,
+): Promise<RefreshVehicleFromHurResult> {
+  const account = await requireAccount();
+
+  const vehicle = await prisma.vehicle.findFirst({
+    where: {
+      id: vehicleId,
+      OR: [
+        { accountLinks: { some: { accountId: account.id } } },
+        { tenantLinks: { some: { customer: { accountId: account.id } } } },
+        {
+          tenantLinks: {
+            some: { customer: { phone: { endsWith: account.phone } } },
+          },
+        },
+      ],
+    },
+    select: { id: true, plate: true },
+  });
+  if (!vehicle) return { ok: false, message: "Машин олдсонгүй." };
+
+  let hur;
+  try {
+    hur = await HurService.getVehicle(vehicle.plate);
+  } catch (e) {
+    return {
+      ok: false,
+      message: e instanceof Error ? e.message : "HUR-аас мэдээлэл татаж чадсангүй.",
+    };
+  }
+
+  try {
+    await prisma.vehicle.update({
+      where: { id: vehicle.id },
+      data: {
+        make: hur.make ?? undefined,
+        model: hur.model ?? undefined,
+        year: hur.year ?? undefined,
+        vin: hur.vin ?? undefined,
+        fuelType: hur.fuelType ?? undefined,
+        wheelPosition: normalizeWheelPosition(hur.wheelPosition) ?? undefined,
+        colorName: hur.color ?? undefined,
+        capacity: hur.capacity ?? undefined,
+        purpose: hur.purpose ?? undefined,
+      },
+    });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      return {
+        ok: false,
+        message: "HUR-аас ирсэн VIN өөр машинд аль хэдийн бүртгэгдсэн байна.",
+      };
+    }
+    return {
+      ok: false,
+      message: e instanceof Error ? e.message : "Шинэчлэх явцад алдаа гарлаа.",
+    };
+  }
+
+  revalidatePath(`/account/vehicles/${vehicleId}`);
+  return { ok: true };
 }
 
 /** Хэрэглэгч өөрийн машинаа устгах. */

@@ -34,7 +34,6 @@ export type ScheduleIssue = {
   reason:
     | "missing-estimate"
     | "unknown-occupancy"
-    | "overdue"
     | "missing-order"
     | "linked-order-not-occupying"
     | "missing-start"
@@ -155,11 +154,7 @@ export function buildBranchSchedule(input: Scope & {
           if (end == null && scheduled && date) {
             end = start + fallbackDurationMinutes * 60000;
           }
-          const overdue = end != null && end <= now && !scheduled;
-          if (overdue) issue("order", order.id, "overdue");
-          const uncertain = !date || unknownOccupancy || missingEstimate || overdue;
-          // Preserve a known finish even after it has passed. Overdue rows stay
-          // striped/flagged but must not grow through the end of the day.
+          const uncertain = !date || unknownOccupancy || missingEstimate;
           if (uncertain && (end == null || unknownOccupancy)) end = upper;
           const intervalCount = intervals.length;
           add("order", order.id, start, end!, uncertain, "primary");

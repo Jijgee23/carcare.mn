@@ -4,20 +4,18 @@ import {
   APPOINTMENT_STATUS_LABEL,
 } from "@/lib/appointments";
 import { customerLabel } from "@/lib/customers";
-import type { OrderAccessScope } from "@/lib/auth/order-access";
-import type { ScheduleInterval, ScheduleIssue } from "@/lib/branch-schedule";
+import type { ScheduleIssue } from "@/lib/branch-schedule";
 import {
   type BranchScheduleAppointmentRow,
   type BranchScheduleOrderRow,
 } from "@/lib/branch-schedule-loader";
-import { ORDER_STATUS_BADGE, ORDER_STATUS_LABEL, ORDER_STATUS_TRANSITIONS } from "@/lib/orders";
+import { ORDER_STATUS_BADGE, ORDER_STATUS_LABEL } from "@/lib/orders";
 import {
   AppointmentArrivedButton,
   AppointmentConfirmReject,
   AppointmentNoShowButton,
   AppointmentRescheduleButton,
 } from "@/app/dashboard/appointments/appointment-row-actions";
-import { StatusControls } from "@/app/dashboard/orders/[id]/status-controls";
 import {
   AppointmentOrderLinkRepair,
   type AppointmentOrderRepairCandidateView,
@@ -31,7 +29,6 @@ import {
 export const SCHEDULE_ISSUE_LABEL: Record<ScheduleIssue["reason"], string> = {
   "missing-estimate": "Тооцоолсон хугацаа дутуу",
   "unknown-occupancy": "Ажлын байрны эзэмшил тодорхойгүй",
-  overdue: "Тооцоолсон хугацаанаас хэтэрсэн",
   "missing-order": "Холбогдсон захиалга олдсонгүй",
   "linked-order-not-occupying": "Холбогдсон захиалга ажлын байр эзлэхгүй байна",
   "missing-start": "Эхэлсэн цаг тэмдэглэгдээгүй",
@@ -46,6 +43,9 @@ export function appointmentDisplayName(a: BranchScheduleAppointmentRow): string 
   });
 }
 
+// Still used by app/_actions/schedule-preview.ts (the booking-form preview
+// grid, unrelated to the staff calendar's own day view) which continues to
+// show order occupancy — only the calendar's day view dropped orders.
 export function orderDisplayName(o: BranchScheduleOrderRow): string {
   const vehicle = o.vehicle
     ? `${o.vehicle.plate} · ${o.vehicle.make} ${o.vehicle.model}`
@@ -55,30 +55,6 @@ export function orderDisplayName(o: BranchScheduleOrderRow): string {
     phone: o.customer?.phone,
   });
   return vehicle ? `${customer} — ${vehicle}` : customer;
-}
-
-/**
- * Counts only hidden carry-over orders that the schedule projection actually
- * marked uncertain. The loader may include terminal linked orders for
- * relationship resolution, and orders released from capacity can still be in
- * `schedule.orders`; neither should produce an attention warning.
- */
-export function countHiddenUncertainCarryOverOrders(schedule: {
-  intervals: Pick<ScheduleInterval, "id" | "source" | "uncertain">[];
-  orders: Pick<BranchScheduleOrderRow, "id" | "carriedOver" | "continuesIntoDay">[];
-}): number {
-  const uncertainOrderIds = new Set(
-    schedule.intervals
-      .filter((row) => row.source === "order" && row.uncertain)
-      .map((row) => row.id),
-  );
-
-  return schedule.orders.filter(
-    (order) =>
-      order.carriedOver &&
-      !order.continuesIntoDay &&
-      uncertainOrderIds.has(order.id),
-  ).length;
 }
 
 export function repairCandidateDisplayName(candidate: {
@@ -97,11 +73,10 @@ export function repairCandidateDisplayName(candidate: {
 
 export type DayRow = {
   key: string;
-  source: "appointment" | "order";
+  source: "appointment";
   id: string;
   startMs: number;
   endMs: number;
-  continuesFromPreviousDay: boolean;
   endsAtDayBoundary: boolean;
   uncertain: boolean;
   name: string;
@@ -116,6 +91,8 @@ export type DayRow = {
 // `DaySchedule` (жагсаалт) болон `GridSchedule` (визуал grid) хоёулаа ижил
 // мөрийн тодорхойлолт ашиглана — үйлдлийн товчнуудыг (server action bindings)
 // нэг л газар (энд) угсарч, харагдацын код зөвхөн байршуулалтад анхаарна.
+// Only appointments (bookings) become rows here — orders/walk-ins are not
+// part of this view at all, regardless of who's looking.
 export function buildDayRows(
   schedule: {
     intervals: Array<{
@@ -146,85 +123,21 @@ export function buildDayRows(
   // "Засварын хуудас үүсгэх" линкэд `next`-ээр дамжуулж, захиалга
   // үүсгэсний дараа яг энэ хуудас руу буцаах боломж олгоно.
   returnTo?: string,
-  orderVisibility: OrderAccessScope = "branch",
-  viewerId?: string,
-): { rows: DayRow[]; issues: ScheduleIssue[]; carriedOverCount: number } {
+): { rows: DayRow[]; issues: ScheduleIssue[] } {
   const appointmentById = new Map(schedule.appointments.map((a) => [a.id, a]));
-  const orderById = new Map(schedule.orders.map((o) => [o.id, o]));
-  const canSeeOrder = (order: BranchScheduleOrderRow | undefined) =>
-    orderVisibility === "branch" || (orderVisibility === "own" && order?.assignedToId === viewerId);
-  const isHiddenCarryOverOrder = (id: string) => {
-    const order = orderById.get(id);
-    return order?.carriedOver === true && order.continuesIntoDay !== true;
-  };
 
-  // D-076: carriedOver/continuesIntoDay describe the order's PRIMARY
-  // interval's own history — never hide an "upcoming" follow-up row through
-  // this mechanism, since a follow-up booked on an otherwise stale/carried-
-  // over order (e.g. one fetched only because it has an open follow-up
-  // booking, see fetchOrderIdsWithOpenBooking) is a legitimate reservation
-  // on today's date regardless of the order's unrelated past.
-  const filteredIntervals = schedule.intervals.filter(
-    (row) => row.source !== "order" || row.role === "upcoming" || !isHiddenCarryOverOrder(row.id),
-  );
-  const issues = schedule.issues.filter((issue) =>
-    issue.source !== "order" || (canSeeOrder(orderById.get(issue.id)) && !isHiddenCarryOverOrder(issue.id)),
-  );
+  const appointmentIntervals = schedule.intervals.filter((row) => row.source === "appointment");
+  const issues = schedule.issues.filter((issue) => issue.source === "appointment");
   const issueBySourceId = new Map(issues.map((issue) => [`${issue.source}:${issue.id}`, issue]));
-  const carriedOverCount = orderVisibility === "branch"
-    ? countHiddenUncertainCarryOverOrders(schedule)
-    : 0;
 
-  // D-076: an order's primary and upcoming interval only ever land in the
-  // same day's view when the follow-up is booked for later the SAME day —
-  // the common case (a different future day) never has both rows present,
-  // so controls should not be suppressed there. Only actually duplicate
-  // when both roles for the same order id are present in this render.
-  const orderIdsWithPrimaryRow = new Set(
-    filteredIntervals.filter((r) => r.source === "order" && r.role === "primary").map((r) => r.id),
-  );
-
-  const rows: DayRow[] = filteredIntervals
+  const rows: DayRow[] = appointmentIntervals
     .sort((a, b) => a.startMs - b.startMs)
-    .map((row, rowIndex) => {
+    .map((row) => {
       const issue = issueBySourceId.get(`${row.source}:${row.id}`);
-      const appt = row.source === "appointment" ? appointmentById.get(row.id) : null;
-      const order = row.source === "order" ? orderById.get(row.id) : null;
-      const visibleOrder = row.source !== "order" || canSeeOrder(order ?? undefined);
-      if (!visibleOrder) {
-        return {
-          key: `busy-${rowIndex}`,
-          source: "order" as const,
-          id: `busy-${rowIndex}`,
-          startMs: row.startMs,
-          endMs: row.endMs,
-          continuesFromPreviousDay: false,
-          endsAtDayBoundary: row.endMs === schedule.rangeEnd.getTime(),
-          uncertain: row.uncertain,
-          name: "Завгүй",
-          statusLabel: "Завгүй",
-          statusClass: "text-[var(--oc-muted3)] bg-[var(--oc-panel2)]",
-          paymentStatusLabel: null,
-          paymentStatusClass: null,
-          issueLabel: null,
-          actions: null,
-        };
-      }
-      const name = appt
-        ? appointmentDisplayName(appt)
-        : order
-          ? orderDisplayName(order)
-          : "—";
-      const statusLabel = appt
-        ? APPOINTMENT_STATUS_LABEL[appt.status]
-        : order
-          ? ORDER_STATUS_LABEL[order.status]
-          : "";
-      const statusClass = appt
-        ? APPOINTMENT_STATUS_BADGE[appt.status]
-        : order
-          ? ORDER_STATUS_BADGE[order.status]
-          : "";
+      const appt = appointmentById.get(row.id);
+      const name = appt ? appointmentDisplayName(appt) : "—";
+      const statusLabel = appt ? APPOINTMENT_STATUS_LABEL[appt.status] : "";
+      const statusClass = appt ? APPOINTMENT_STATUS_BADGE[appt.status] : "";
       const paymentStatus = appt ? appointmentBookingPaymentStatus(appt) : null;
 
       const showConfirmReject = appt?.status === "PENDING" && canRespondAppointments;
@@ -253,24 +166,8 @@ export function buildDayRows(
         issue?.reason === "missing-order" &&
         canRespondAppointments &&
         canEditOrders;
-      const orderTransitions = order ? ORDER_STATUS_TRANSITIONS[order.status] : [];
-      // D-076: only suppress controls on an "upcoming" row when this same
-      // order's primary row is ALSO present in this day's view (the
-      // follow-up is booked for later the same day) — that's the only case
-      // where showing controls on both would duplicate them. The common
-      // case (a follow-up on a different future day) has no primary row in
-      // that day's view at all, so it keeps full controls (start, etc).
-      const showOrderControls =
-        Boolean(order) &&
-        canEditOrders &&
-        orderTransitions.length > 0 &&
-        (row.role === "primary" || !orderIdsWithPrimaryRow.has(row.id));
       const hasActions =
-        showConfirmReject ||
-        showArrivalActions ||
-        showCreateOrderLink ||
-        showOrderControls ||
-        showRepairAction;
+        showConfirmReject || showArrivalActions || showCreateOrderLink || showRepairAction;
       const orderHref = appt
         ? `/dashboard/orders/new?${new URLSearchParams({
             customerId: appt.customerId ?? "",
@@ -315,29 +212,15 @@ export function buildDayRows(
               candidates={repairCandidates}
             />
           ) : null}
-          {showOrderControls && order ? (
-            <div className="w-64">
-              <StatusControls
-                orderId={order.id}
-                transitions={orderTransitions}
-                disabled={false}
-                currentStatus={order.status}
-                expectedFinishAt={order.expectedFinishAt}
-                estimatedDurationMinutes={order.estimatedDurationMinutes}
-                attentionHref={`/dashboard/appointments/calendar?view=attention&branchId=${encodeURIComponent(order.branchId)}`}
-              />
-            </div>
-          ) : null}
         </>
       ) : null;
 
       return {
         key: `${row.source}-${row.id}`,
-        source: row.source,
+        source: "appointment" as const,
         id: row.id,
         startMs: row.startMs,
         endMs: row.endMs,
-        continuesFromPreviousDay: order?.continuesIntoDay === true,
         endsAtDayBoundary: row.endMs === schedule.rangeEnd.getTime(),
         uncertain: row.uncertain,
         name,
@@ -356,5 +239,5 @@ export function buildDayRows(
       };
     });
 
-  return { rows, issues, carriedOverCount };
+  return { rows, issues };
 }
