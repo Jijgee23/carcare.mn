@@ -46,9 +46,12 @@ export function CalendarDateJump({
       value: String(i),
       label: `${i + 1}-р сар`,
     }));
-    const currentYear = new Date().getFullYear();
+    // `new Date().getFullYear()`-ийн оронд харагдаж буй `year`-ийг төв болгоно —
+    // wall-clock "одоо" ашиглавал server render/client hydrate хоёрын хооронд
+    // жилийн хилээр давхцвал (ж: 12-р сарын 31-ний шөнө дунд) hydration
+    // mismatch өгдөг байсан; anchor-аас гаргаж авсан тул детерминистик.
     const yearOptions = Array.from({ length: 11 }, (_, i) => {
-      const y = currentYear - 5 + i;
+      const y = year - 5 + i;
       return { value: String(y), label: String(y) };
     });
 

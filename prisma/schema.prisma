@@ -120,18 +120,20 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  assignedOrders           ServiceOrder[]       @relation("AssignedTo")
-  diagnosticTemplates      DiagnosticTemplate[] @relation("DiagnosticTemplateCreatedBy")
-  diagnosticReports        DiagnosticReport[]   @relation("DiagnosticReportFilledBy")
-  cancelledServiceItems    ServiceItem[]        @relation("ServiceItemCancelledBy")
+  assignedOrders           ServiceOrder[]              @relation("AssignedTo")
+  diagnosticTemplates      DiagnosticTemplate[]        @relation("DiagnosticTemplateCreatedBy")
+  diagnosticReports        DiagnosticReport[]          @relation("DiagnosticReportFilledBy")
+  cancelledServiceItems    ServiceItem[]               @relation("ServiceItemCancelledBy")
   refreshTokens            RefreshToken[]
   sessions                 UserSession[]
   devices                  Device[]
   notifications            Notification[]
-  auditLogs                AuditLog[]           @relation("AuditLogActor")
-  appointmentsResponded    Appointment[]        @relation("AppointmentRespondedBy")
+  auditLogs                AuditLog[]                  @relation("AuditLogActor")
+  appointmentsResponded    Appointment[]               @relation("AppointmentRespondedBy")
   feedback                 Feedback[]
-  createdOrderTimeBookings OrderTimeBooking[]   @relation("OrderTimeBookingCreatedBy")
+  createdOrderTimeBookings OrderTimeBooking[]          @relation("OrderTimeBookingCreatedBy")
+  workSchedule             EmployeeWorkSchedule[]
+  scheduleExceptions       EmployeeScheduleException[]
 
   @@index([tenantId])
   @@index([tenantId, isActive])
@@ -203,16 +205,18 @@ model Branch {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users              User[]
-  serviceOrders      ServiceOrder[]
-  diagnosticReports  DiagnosticReport[]
-  schedules          BranchSchedule[]
-  scheduleExceptions BranchScheduleException[]
-  scheduleSeasons    BranchScheduleSeason[]
-  auditLogs          AuditLog[]
-  appointments       Appointment[]
-  categories         Category[] // олон-олон: энэ салбарт санал болгох ангилалууд
-  orderTimeBookings  OrderTimeBooking[]
+  users                             User[]
+  serviceOrders                     ServiceOrder[]
+  diagnosticReports                 DiagnosticReport[]
+  schedules                         BranchSchedule[]
+  scheduleExceptions                BranchScheduleException[]
+  scheduleSeasons                   BranchScheduleSeason[]
+  auditLogs                         AuditLog[]
+  appointments                      Appointment[]
+  categories                        Category[] // олон-олон: энэ салбарт санал болгох ангилалууд
+  orderTimeBookings                 OrderTimeBooking[]
+  employeeWorkScheduleSegments      EmployeeWorkScheduleSegment[]
+  employeeScheduleExceptionSegments EmployeeScheduleExceptionSegment[]
 
   @@index([tenantId])
 }
@@ -300,6 +304,85 @@ model BranchScheduleSeasonDay {
 
   @@id([seasonId, weekday])
   @@index([weekday, isOpen])
+}
+
+// --- EmployeeWorkSchedule (ажилтны долоо хоногийн ажлын хувиар) ----------
+// Ажилтан бүрийн гараг тус бүрд "аль салбар(уудад) ажилладаг" override — мөр
+// байхгүй гараг бол ажилтны өөрийн (`User.branchId`) салбарт байнга ажилладаг
+// гэж үзнэ. Нэг өдөр хэд хэдэн салбарт (өөр өөр цагаар) ажиллаж болдог тул
+// цаг/салбарыг `segments`-д (child хүснэгт) хадгална — энэ мөр зөвхөн
+// `isWorking`-г эзэмшинэ (false = бүх өдөр амарна, segments хоосон байна).
+// Шатлал (өндрөөс нам руу): EmployeeScheduleException (тухайн өдөр) → энэ мөр
+// (гараг) → User.branchId (platform default). Харах: lib/employee-schedule.ts.
+model EmployeeWorkSchedule {
+  id        String  @id @default(cuid())
+  weekday   Weekday
+  isWorking Boolean @default(true) // false = энэ гарагт ажилладаггүй (амарна)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  segments EmployeeWorkScheduleSegment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, weekday])
+  @@index([userId])
+}
+
+// Нэг өдрийн дотор ажилтан хэд хэдэн салбарт дамжиж ажиллаж болох тул
+// (ж: өглөө 1-р салбар, өдөр 2-р салбар) EmployeeWorkSchedule/
+// EmployeeScheduleException мөр тус бүр олон segment-тэй байж болно.
+// `startTime`/`endTime` хоосон бол тухайн segment-ийн салбарын өөрийнх нь
+// тухайн өдрийн цагаар (BranchSchedule-ээс тооцоологдоно) автоматаар дүүрнэ.
+model EmployeeWorkScheduleSegment {
+  id         String               @id @default(cuid())
+  order      Int                  @default(0) // харагдах дараалал (1-р, 2-р ээлж)
+  startTime  String? // "HH:MM"
+  endTime    String?
+  scheduleId String
+  schedule   EmployeeWorkSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  branchId   String
+  branch     Branch               @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([scheduleId])
+  @@index([branchId])
+}
+
+// Нэг удаагийн онцгой өдөр (`BranchScheduleException`-той адил санаа) —
+// ажилтны тухайн гарагийн ердийн (`EmployeeWorkSchedule`) дүрмийг ганц
+// өдрөөр дарж бичнэ (ж: ээлж түр солих, чөлөө).
+model EmployeeScheduleException {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  isWorking Boolean  @default(true)
+  label     String?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  segments EmployeeScheduleExceptionSegment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId, date])
+}
+
+model EmployeeScheduleExceptionSegment {
+  id          String                    @id @default(cuid())
+  order       Int                       @default(0)
+  startTime   String?
+  endTime     String?
+  exceptionId String
+  exception   EmployeeScheduleException @relation(fields: [exceptionId], references: [id], onDelete: Cascade)
+  branchId    String
+  branch      Branch                    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([exceptionId])
+  @@index([branchId])
 }
 
 // --- Customer -------------------------------------------------------------
@@ -571,11 +654,6 @@ model Service {
   durationValue  Decimal? @db.Decimal(12, 3)
   durationUnitId String?
   durationUnit   Unit?    @relation("ServiceDurationUnit", fields: [durationUnitId], references: [id], onDelete: SetNull)
-
-  // Энэ ажлыг (LABOR/DIAGNOSTIC) НЭГ зэрэг хэдэн захиалга дээр зэрэг хийж
-  // болохыг заана (Category.concurrentCapacity-тай ижил санаа). GOODS-д
-  // хамаарахгүй тул null.
-  concurrentCapacity Int?
 
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)

@@ -37,6 +37,11 @@ type CrudCode = `${ResourceKey}.${ActionKey}`;
 // мөрийн нэгж үнийг дараа нь засварлах эрх. Шинэ мөр гараар нэмэхэд (тэр
 // үеийн анхны үнийг тохируулахад) хамаарахгүй — тэр endpoint-ыг (addOrderItemAction)
 // ердийн `orders.edit` л зохицуулна, өөрчлөхгүй.
+// `employees.schedule` — ажилтны "Ажлын хувиар" (аль салбарт, ямар цагаар
+// ажилладаг)-ыг засах эрх. `employees.view`-той хэн ч хувиарыг ХАРНА;
+// зөвхөн ЗАСАХ (өөрчлөх/дарж бичих) энэ эрх шаардана — `employees.edit`-ээс
+// тусдаа, учир нь мастер/манагер ажилтны бусад мэдээлэл (нэр/утас/цалин г.м.)
+// засах эрхгүйгээр ч зөвхөн хувиар зохицуулах шаардлагатай байж болно.
 type StandaloneCode =
   | "audit.view"
   | "orders.assignable"
@@ -44,7 +49,8 @@ type StandaloneCode =
   | "orders.viewOwn"
   | "orders.editOwn"
   | "orders.itemStatus"
-  | "orders.itemPrice";
+  | "orders.itemPrice"
+  | "employees.schedule";
 
 export type PermissionCode = CrudCode | StandaloneCode;
 
@@ -123,6 +129,13 @@ export const PERMISSIONS: readonly PermissionDef[] = [
       "Засварын хуудсанд аль хэдийн нэмэгдсэн үйлчилгээний мөрийн нэгж үнийг дараа нь засварлах. Шинэ мөр гараар бүртгэхэд (анхны үнэ тохируулахад) хамаарахгүй.",
     group: "Захиалга",
   },
+  {
+    code: "employees.schedule",
+    label: "Ажлын хувиар засах",
+    description:
+      "Ажилтны 'Ажлын хувиар' (аль салбарт, ямар цагаар ажилладаг)-ыг өөрчлөх. Харах эрх employees.view-тэй хамт олгогдоно.",
+    group: "Удирдлага",
+  },
 ] as const;
 
 export const PERMISSION_CODES = PERMISSIONS.map((p) => p.code);
@@ -161,5 +174,6 @@ export const STANDALONE_PERMISSIONS: ReadonlyArray<PermissionDef> = PERMISSIONS.
     p.code === "orders.assignable" ||
     p.code === "orders.assign" ||
     p.code === "orders.itemStatus" ||
-    p.code === "orders.itemPrice",
+    p.code === "orders.itemPrice" ||
+    p.code === "employees.schedule",
 );

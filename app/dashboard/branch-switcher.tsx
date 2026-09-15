@@ -20,12 +20,17 @@ export function BranchSwitcher({
   currentIsAll,
   branches,
   allowAllBranches,
+  locked = false,
 }: {
   firstName: string;
   currentBranch: { id: string; name: string } | null;
   currentIsAll: boolean;
   branches: BranchSwitchOption[];
   allowAllBranches: boolean;
+  // Өнөөдрийн ажлын хувиараар тодорхой салбар түгжигдсэн бол (харах:
+  // lib/employee-branch-lock.ts) сонголтоор өөр салбар руу шилжих боломжгүй
+  // болгож, зөвхөн мэдээллийн баннер хэлбэрээр харуулна.
+  locked?: boolean;
 }) {
   const pathname = usePathname();
   // Захиалга/машин/үйлчлүүлэгч гэх мэт цор ганц бичлэгийн дэлгэрэнгүй хуудас
@@ -83,7 +88,7 @@ export function BranchSwitcher({
       ? [{ kind: "all", isCurrent: currentIsAll } as Option]
       : []),
   ];
-  const canSwitch = options.length > 1;
+  const canSwitch = options.length > 1 && !locked;
 
   const label = (
     <>
@@ -92,11 +97,20 @@ export function BranchSwitcher({
         {currentIsAll ? "БҮХ САЛБАРЫГ" : (currentBranch?.name ?? "—")}
       </span>{" "}
       {currentIsAll ? "хараад байна." : "салбарт ажиллаж байна."}
+      {locked ? (
+        <span
+          className="ml-1.5 text-[var(--oc-muted3)]"
+          title="Өнөөдрийн ажлын хувиараар тогтоосон тул өөрчлөх боломжгүй."
+        >
+          🔒
+        </span>
+      ) : null}
     </>
   );
 
-  // Солих боломжгүй (ганцхан eligible салбартай ажилтан) бол интерактив
-  // харагдацгүй, зөвхөн мэдээллийн баннер хэвээр.
+  // Солих боломжгүй (ганцхан eligible салбартай ажилтан, эсвэл өнөөдрийн
+  // ажлын хувиараар түгжигдсэн) бол интерактив харагдацгүй, зөвхөн
+  // мэдээллийн баннер хэвээр.
   if (!canSwitch) {
     return (
       <div className="shrink-0 flex items-center gap-1 rounded-[10px] border border-[var(--oc-accent)]/25 bg-[var(--oc-accent)]/[0.06] px-4 py-2.5 text-sm text-[var(--oc-ink2)]">

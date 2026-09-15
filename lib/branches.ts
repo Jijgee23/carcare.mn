@@ -22,6 +22,14 @@ export const ALL_WEEKDAYS: Weekday[] = WEEK_DAYS.map((d) => d.value);
 
 export const DEFAULT_OPEN_DAYS: Weekday[] = ["MON", "TUE", "WED", "THU", "FRI"];
 
+const WEEKDAY_BY_INDEX: Weekday[] = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+
+/** "YYYY-MM-DD" огнооны гараг (UTC 12:00 цагаар тооцоолж, DST-ийн нөлөөллөөс зайлсхийнэ). */
+export function weekdayOfDateStr(dateStr: string): Weekday {
+  const day = new Date(`${dateStr}T12:00:00Z`).getUTCDay();
+  return WEEKDAY_BY_INDEX[day] ?? "MON";
+}
+
 export function isWeekday(v: unknown): v is Weekday {
   return (
     typeof v === "string" &&

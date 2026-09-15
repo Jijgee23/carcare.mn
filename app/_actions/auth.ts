@@ -19,6 +19,7 @@ import { getSession } from "@/lib/auth";
 import { issueOtp, revokeAllOtps, verifyOtp } from "@/lib/auth/otp";
 import { revokeAllForUser } from "@/lib/auth/refresh-token";
 import { ALL_BRANCHES, signSession } from "@/lib/auth/session";
+import { resolveTodayLockedBranch } from "@/lib/employee-branch-lock";
 import { notifySuperAdmins } from "@/lib/notifications";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
 import {
@@ -627,17 +628,21 @@ export async function signInAction(
     null;
   const session = await createUserSession({ userId: user.id, userAgent: ua, ip });
 
-  // Яг НЭГ сонголттой (branchId + assignableBranchIds) ажилтан шууд тэр
-  // салбартаа ажилладаг гэж тооцно (сонгуулах шаардлагагүй). Owner/2+
-  // салбарт ажилладаг ажилтныг undefined-ээр үлдээж, дараагийн /dashboard
-  // хүсэлт дээр proxy.ts /page/choose-branch руу чиглүүлнэ (харах:
-  // lib/auth/roles.ts seedWorkingBranchId).
+  // Өнөөдрийн ажлын хувиараар тодорхой салбар "түгжигдсэн" бол (харах:
+  // lib/employee-branch-lock.ts) сонголт хийлгэхгүйгээр шууд тэр рүү нь
+  // оруулна — олон салбарт ажилладаг ч гэсэн өнөөдрийн хувиар
+  // ойлгомжтой байвал choose-branch алгасна. Үгүй бол хуучин дүрэм: яг НЭГ
+  // сонголттой (branchId + assignableBranchIds) ажилтан шууд тэр салбартаа
+  // ажилладаг гэж тооцно; Owner/2+ салбарт ажилладаг ажилтныг undefined-ээр
+  // үлдээж, дараагийн /dashboard хүсэлт дээр proxy.ts /page/choose-branch
+  // руу чиглүүлнэ (харах: lib/auth/roles.ts seedWorkingBranchId).
+  const locked = await resolveTodayLockedBranch(user);
   const token = await signSession({
     userId: user.id,
     tenantId: user.tenantId,
     isOwner: user.isOwner,
     sid: session.id,
-    workingBranchId: seedWorkingBranchId(user),
+    workingBranchId: locked?.branchId ?? seedWorkingBranchId(user),
   });
   await setSessionCookie(token);
 
@@ -1019,12 +1024,13 @@ export async function activateAccountAction(
     h.get("x-real-ip") ||
     null;
   const session = await createUserSession({ userId: user.id, userAgent: ua, ip });
+  const locked = await resolveTodayLockedBranch(user);
   const token = await signSession({
     userId: user.id,
     tenantId: user.tenantId,
     isOwner: user.isOwner,
     sid: session.id,
-    workingBranchId: seedWorkingBranchId(user),
+    workingBranchId: locked?.branchId ?? seedWorkingBranchId(user),
   });
   await setSessionCookie(token);
 
@@ -1078,6 +1084,22 @@ export async function chooseBranchAction(
   if (!user) redirect("/page/login");
   setTenantContext(user.tenantId);
 
+  // Өнөөдрийн ажлын хувиараар тодорхой салбар түгжигдсэн бол (харах:
+  // lib/employee-branch-lock.ts) гараар өөр салбар сонгохыг хориглоно —
+  // UI талд switcher/choose-branch аль хэдийн нуугдсан ч defense-in-depth-
+  // ийн үүднээс server дээр давхар шалгана.
+  const locked = await resolveTodayLockedBranch({
+    id: session.userId,
+    tenantId: user.tenantId,
+    branchId: user.branchId,
+  });
+  if (locked && branchId !== locked.branchId) {
+    return {
+      ok: false,
+      message: `Өнөөдрийн ажлын хувиараар «${locked.branchName}» салбарт ажиллахаар тогтоогдсон тул өөр салбар сонгох боломжгүй.`,
+    };
+  }
+
   let workingBranchId: string;
   if (branchId === ALL_BRANCHES) {
     if (!canChooseAllBranches(user)) {
@@ -1112,4 +1134,50 @@ export async function chooseBranchAction(
   await setSessionCookie(token);
 
   redirect(next);
+}
+
+// ---- SYNC WORKING BRANCH TO ROSTER ----------------------------------------
+// Ажлын хувиараар өнөөдөр өөр салбар түгжигдсэн (харах:
+// lib/employee-branch-lock.ts) боловч session-ий workingBranchId хуучирсан
+// (өчигдрийн, эсвэл гараар сонгосон өөр) бол автоматаар шинэчилнэ.
+// app/dashboard/layout.tsx энэ мисматчийг илрүүлж client component
+// (branch-roster-sync.tsx)-аар дамжуулан mount дээр дуудна — Server
+// Component render-ийн үед cookie бичих боломжгүй тул action хэлбэрээр.
+
+export type SyncWorkingBranchResult = {
+  swapped: boolean;
+  branchName?: string;
+};
+
+export async function syncWorkingBranchToRosterAction(): Promise<SyncWorkingBranchResult> {
+  setBypassContext();
+  const session = await getSession();
+  if (!session) return { swapped: false };
+
+  const user = await prisma.user.findUnique({
+    where: { id: session.userId },
+    select: { tenantId: true, branchId: true },
+  });
+  if (!user) return { swapped: false };
+  setTenantContext(user.tenantId);
+
+  const locked = await resolveTodayLockedBranch({
+    id: session.userId,
+    tenantId: user.tenantId,
+    branchId: user.branchId,
+  });
+  if (!locked || session.workingBranchId === locked.branchId) {
+    return { swapped: false };
+  }
+
+  const token = await signSession({
+    userId: session.userId,
+    tenantId: session.tenantId,
+    isOwner: session.isOwner,
+    sid: session.sid,
+    workingBranchId: locked.branchId,
+  });
+  await setSessionCookie(token);
+
+  return { swapped: true, branchName: locked.branchName };
 }

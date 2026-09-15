@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import type { DayRow } from "./day-rows";
@@ -70,10 +70,23 @@ export function GridSchedule({
   // handleBodyClick-д `ms < now` бол алгасна). Ирээдүйн өдөр бол now нь
   // axisStartMs-ээс өмнө тул дүүргэлт харагдахгүй; бүтэн өнгөрсөн өдөр бол
   // (жишээ нь өчигдрийг харж байгаа) бүхэлдээ дүүрнэ.
-  const now = nowMs();
-  const pastFillEndMs = Math.min(now, axisEndMs);
-  const showPastFill = pastFillEndMs > axisStartMs;
-  const showNowMarker = now > axisStartMs && now < axisEndMs;
+  //
+  // `now`-ыг render биед шууд `Date.now()`-оор биш, mount-ийн дараах effect-ээр
+  // тохируулна: SSR ба client-ийн эхний render хоёр өөр агшинд явагдах тул
+  // (`nowMs()`-г шууд дуудвал) hydration mismatch өгдөг байсан (server-ийн
+  // HTML дэх "Одоо" тэмдэглэгээний байрлал/цаг client дээр өөр гарна). Эхний
+  // render (server ба client аль алинд) `null` — тэмдэглэгээ mount хүртэл
+  // харагдахгүй, дараа нь бодит утгаараа шинэчлэгдэнэ.
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    const tick = () => setNow(Date.now());
+    tick();
+    const id = setInterval(tick, 30_000);
+    return () => clearInterval(id);
+  }, []);
+  const pastFillEndMs = now != null ? Math.min(now, axisEndMs) : axisStartMs;
+  const showPastFill = now != null && pastFillEndMs > axisStartMs;
+  const showNowMarker = now != null && now > axisStartMs && now < axisEndMs;
 
   // Хаалтын цагийн шугам — ажил хаалтаас цааш үргэлжилж болно (staff-side
   // confirm-able warning, D-087 superseded), тул хаалтын цагийг тэнхлэг дээр
@@ -163,7 +176,7 @@ export function GridSchedule({
             className="relative"
             style={{
               height: `${Math.max(1, laneCount) * ROW_HEIGHT + 8}px`,
-              cursor: hoverMs != null && hoverMs < now ? "not-allowed" : "pointer",
+              cursor: now != null && hoverMs != null && hoverMs < now ? "not-allowed" : "pointer",
             }}
             onClick={handleBodyClick}
             onMouseMove={(e) => setHoverMs(msFromClientX(e.clientX))}
@@ -180,10 +193,10 @@ export function GridSchedule({
             {showNowMarker ? (
               <div
                 className="absolute top-0 bottom-0 w-0.5 bg-[var(--oc-muted)]/80 pointer-events-none"
-                style={{ left: `${pct(now)}%` }}
+                style={{ left: `${pct(now!)}%` }}
               >
                 <span className="absolute -top-0.5 left-1.5 whitespace-nowrap rounded-full bg-[var(--oc-muted2)] px-1.5 py-0.5 font-plex-mono text-[9px] text-[var(--oc-carbon)]">
-                  Одоо · {fmtUbTime(now)}
+                  Одоо · {fmtUbTime(now!)}
                 </span>
               </div>
             ) : null}
@@ -215,7 +228,7 @@ export function GridSchedule({
               />
             ))}
 
-            {hoverMs != null && hoverMs >= now ? (
+            {hoverMs != null && now != null && hoverMs >= now ? (
               <div
                 className="absolute top-0 bottom-0 w-px bg-[var(--oc-accent)]/70 pointer-events-none"
                 style={{ left: `${pct(hoverMs)}%` }}

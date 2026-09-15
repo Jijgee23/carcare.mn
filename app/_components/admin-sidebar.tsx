@@ -93,6 +93,7 @@ const navItems: NavItem[] = [
     ),
     children: [
       { href: "/dashboard/employees", label: "Ажилтнууд", exact: true },
+      { href: "/dashboard/employees/schedule", label: "Ажлын хувиар" },
       { href: "/dashboard/employees/roles", label: "Үүргүүд", view: "owner" },
     ],
   },

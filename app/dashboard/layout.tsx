@@ -7,10 +7,12 @@ import { SubscriptionBanner } from "@/app/_components/subscription-banner";
 import { SubscriptionGuard } from "@/app/_components/subscription-guard";
 import { ToastProvider } from "@/app/_components/toast";
 import { WebPushToggle } from "@/app/_components/web-push";
+import { BranchRosterSync } from "./branch-roster-sync";
 import { BranchSwitcher } from "./branch-switcher";
 import { requireUser } from "@/lib/auth";
 import { canChooseAllBranches, eligibleBranchIds } from "@/lib/auth/roles";
 import { ALL_BRANCHES } from "@/lib/auth/session";
+import { resolveTodayLockedBranch } from "@/lib/employee-branch-lock";
 import { prisma } from "@/lib/prisma";
 import { getSubscriptionState } from "@/lib/subscription-server";
 
@@ -43,7 +45,7 @@ export default async function DashboardLayout({
   const eligible = eligibleBranchIds(user);
   const restrictToEligible = !user.isOwner && eligible.length > 0;
 
-  const [subState, unreadNotifications, switchableBranches] = await Promise.all([
+  const [subState, unreadNotifications, switchableBranches, lockedBranch] = await Promise.all([
     getSubscriptionState(user.tenantId),
     prisma.notification.count({
       where: { userId: user.id, readAt: null },
@@ -57,6 +59,10 @@ export default async function DashboardLayout({
       orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
       select: { id: true, name: true },
     }),
+    // Өнөөдрийн ажлын хувиараар тодорхой салбар "түгжигдсэн" эсэх — байвал
+    // switcher-ийг унтраагаад, session хуучирсан бол автоматаар шинэчилнэ
+    // (харах: ./branch-roster-sync.tsx, lib/employee-branch-lock.ts).
+    resolveTodayLockedBranch(user),
   ]);
 
   return (
@@ -95,8 +101,17 @@ export default async function DashboardLayout({
                   currentIsAll={user.workingBranchId === ALL_BRANCHES}
                   branches={switchableBranches}
                   allowAllBranches={allowAllBranches}
+                  locked={Boolean(lockedBranch)}
                 />
               ) : null}
+              <BranchRosterSync
+                lockedBranchId={lockedBranch?.branchId ?? null}
+                currentBranchId={
+                  user.workingBranchId && user.workingBranchId !== ALL_BRANCHES
+                    ? user.workingBranchId
+                    : null
+                }
+              />
               <SubscriptionBanner
                 locked={subState.locked}
                 isTrial={subState.active?.isTrial ?? false}

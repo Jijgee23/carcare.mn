@@ -29,7 +29,6 @@ type Initial = {
   stock: string | null;
   durationValue: string | null;
   durationUnitId: string | null;
-  concurrentCapacity: number | null;
   description: string | null;
   isActive: boolean;
   categoryId: string | null;
@@ -57,16 +56,11 @@ export function ServiceForm({
   fixedType,
   categories,
   units,
-  defaultConcurrentCapacity,
 }: {
   initial?: Initial;
   fixedType?: ServiceKind;
   categories: CategoryOption[];
   units: UnitOption[];
-  // Зөвхөн шинэ бичлэг үүсгэхэд (`!isEdit`) урьдчилан бөглөх санал болгосон
-  // утга — ажилтны одоогийн ажиллах салбарын slotCapacity-аас тооцоологдоно
-  // (харах: app/dashboard/services/new/page.tsx).
-  defaultConcurrentCapacity?: number;
 }) {
   const isEdit = Boolean(initial?.id);
   const action = isEdit
@@ -104,13 +98,6 @@ export function ServiceForm({
   const [stock, setStock] = useState(initial?.stock ?? "0");
   const [durationValue, setDurationValue] = useState(
     initial?.durationValue ?? "",
-  );
-  const [concurrentCapacity, setConcurrentCapacity] = useState(
-    initial?.concurrentCapacity != null
-      ? String(initial.concurrentCapacity)
-      : isEdit
-        ? ""
-        : String(defaultConcurrentCapacity ?? 1),
   );
   const [description, setDescription] = useState(initial?.description ?? "");
   const [isActive, setIsActive] = useState(initial?.isActive ?? true);
@@ -366,26 +353,6 @@ export function ServiceForm({
                   value: u.id,
                   label: `${u.name}${u.code ? ` (${u.code})` : ""}${u.isActive ? "" : " — идэвхгүй"}`,
                 }))}
-              />
-            </Field>
-            <Field
-              label="Багтаамж"
-              htmlFor="concurrentCapacity"
-              hint="нэг зэрэг хэдэн захиалга дээр зэрэг хийж болохыг заана"
-              error={fe.concurrentCapacity}
-              className={FIELD_MW}
-            >
-              <input
-                id="concurrentCapacity"
-                name="concurrentCapacity"
-                type="number"
-                inputMode="numeric"
-                min={1}
-                max={50}
-                required
-                value={concurrentCapacity}
-                onChange={(e) => setConcurrentCapacity(e.target.value)}
-                className={`auth-input ${fe.concurrentCapacity ? "border-red-500/50" : ""}`}
               />
             </Field>
           </>

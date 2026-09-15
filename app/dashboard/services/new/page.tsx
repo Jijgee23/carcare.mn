@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
-import { DEFAULT_SLOT_CAPACITY } from "@/lib/appointment-slots";
 import { requireUser } from "@/lib/auth";
-import { canCreate, workingBranchScopeId } from "@/lib/auth/roles";
+import { canCreate } from "@/lib/auth/roles";
 import { prisma } from "@/lib/prisma";
 import {
   SERVICE_KIND_BY_SLUG,
@@ -42,19 +41,6 @@ export default async function NewServicePage({
     }),
   ]);
 
-  // "Багтаамж"-ийн санал болгох анхны утга: ажилтны одоогийн ажиллах салбар
-  // (тодорхойгүй бол tenant-ийн үндсэн салбар)-ын slotCapacity тохиргоо.
-  const scopeBranchId = workingBranchScopeId(user);
-  const branchForDefault = await prisma.branch.findFirst({
-    where: scopeBranchId
-      ? { id: scopeBranchId, tenantId: user.tenantId }
-      : { tenantId: user.tenantId, isActive: true },
-    orderBy: scopeBranchId ? undefined : [{ isPrimary: "desc" }, { name: "asc" }],
-    select: { slotCapacity: true },
-  });
-  const defaultConcurrentCapacity =
-    branchForDefault?.slotCapacity ?? DEFAULT_SLOT_CAPACITY;
-
   const backHref = fixedType
     ? `/dashboard/services/${SERVICE_KIND_SLUG[fixedType]}`
     : "/dashboard/services";
@@ -90,7 +76,6 @@ export default async function NewServicePage({
           fixedType={fixedType}
           categories={categories}
           units={units}
-          defaultConcurrentCapacity={defaultConcurrentCapacity}
         />
       </div>
     </div>

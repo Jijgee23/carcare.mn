@@ -23,8 +23,6 @@ function s(fd: FormData, key: string): string {
   return typeof v === "string" ? v.trim() : "";
 }
 
-const MAX_CONCURRENT_CAPACITY = 50;
-
 function parseDecimal(v: string): Prisma.Decimal | null {
   if (!v) return null;
   const cleaned = v.replace(/[,\s]/g, "");
@@ -58,7 +56,6 @@ type Parsed = {
   stock: Prisma.Decimal | null;
   durationValue: Prisma.Decimal | null;
   durationUnitId: string | null;
-  concurrentCapacity: number | null;
   description: string | null;
   isActive: boolean;
   categoryId: string | null;
@@ -80,7 +77,6 @@ async function validate(
   const stockRaw = s(fd, "stock");
   const durationValueRaw = s(fd, "durationValue");
   const durationUnitIdRaw = s(fd, "durationUnitId");
-  const concurrentCapacityRaw = s(fd, "concurrentCapacity");
   const description = s(fd, "description");
   const categoryIdRaw = s(fd, "categoryId");
   const isActive = fd.get("isActive") === "on";
@@ -100,7 +96,6 @@ async function validate(
   let stock: Prisma.Decimal | null = null;
   let durationValue: Prisma.Decimal | null = null;
   let durationUnitId: string | null = null;
-  let concurrentCapacity: number | null = null;
   let categoryId: string | null = null;
   let unitId: string | null = null;
 
@@ -153,21 +148,6 @@ async function validate(
     }
   }
 
-  // Багтаамж (LABOR/DIAGNOSTIC) — заавал: нэг зэрэг хэдэн захиалга дээр зэрэг
-  // хийж болохыг заана. GOODS-д хамаарахгүй (null).
-  if (type !== "GOODS") {
-    const n = Number.parseInt(concurrentCapacityRaw, 10);
-    if (
-      !Number.isFinite(n) ||
-      n < 1 ||
-      n > MAX_CONCURRENT_CAPACITY
-    ) {
-      errors.concurrentCapacity = `1-${MAX_CONCURRENT_CAPACITY} хооронд байх ёстой.`;
-    } else {
-      concurrentCapacity = n;
-    }
-  }
-
   // Бүх төрөлд ангилал заавал
   if (!categoryIdRaw) {
     errors.categoryId = "Ангилал сонгоно уу.";
@@ -196,7 +176,6 @@ async function validate(
       stock,
       durationValue,
       durationUnitId,
-      concurrentCapacity,
       description: description || null,
       isActive,
       categoryId,
@@ -247,7 +226,6 @@ export async function createServiceAction(
         stock: data.stock,
         durationValue: data.durationValue,
         durationUnitId: data.durationUnitId,
-        concurrentCapacity: data.concurrentCapacity,
         description: data.description,
         isActive: data.isActive,
         categoryId: data.categoryId,
@@ -315,7 +293,6 @@ export async function updateServiceAction(
     isActive: data.isActive,
     unitId: data.unitId,
     durationUnitId: data.durationUnitId,
-    concurrentCapacity: data.concurrentCapacity,
     categoryId: data.categoryId,
   };
 
