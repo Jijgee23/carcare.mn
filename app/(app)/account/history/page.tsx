@@ -16,6 +16,8 @@ import {
   type PaymentStatus,
 } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
+import { ResetFilters, SearchBox } from "@/app/_components/list-filters";
+import { YearChips } from "@/app/_components/segmented-filter";
 
 export const metadata = {
   title: "Үйлчилгээний түүх",
@@ -31,13 +33,21 @@ function formatDate(d: Date): string {
   });
 }
 
+/** Тухайн оны [эхлэл, дараа оны эхлэл) муж (локал цагаар). */
+function yearRange(year: number): { gte: Date; lt: Date } {
+  return { gte: new Date(year, 0, 1), lt: new Date(year + 1, 0, 1) };
+}
+
 export default async function AccountHistoryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ plate?: string }>;
+  searchParams: Promise<{ plate?: string; q?: string; year?: string }>;
 }) {
   const account = await requireAccount();
-  const { plate } = await searchParams;
+  const { plate, q: rawQuery, year: rawYear } = await searchParams;
+  const query = (rawQuery ?? "").trim();
+  const parsedYear = Number.parseInt(rawYear ?? "", 10);
+  const year = Number.isInteger(parsedYear) ? parsedYear : null;
 
   // Энэ account-ийн БАТАЛГААЖСАН эзэмшлийн машинууд: аль нэг байгууллагад
   // account-той холбоотой Customer-т бүртгэлтэй TenantVehicle (утсаар
@@ -62,7 +72,8 @@ export default async function AccountHistoryPage({
   // Түүх дууссан AND цуцлагдсан ажлыг харуулна (D-085) — SCHEDULED/IN_PROGRESS
   // хараахан идэвхтэй, /account (Миний захиалгууд) дээр харагдана.
   // Төлбөрийн төлөв энд шүүлт биш: төлөгдөөгүй ч дууссан ажил энд харагдана.
-  const where: Prisma.ServiceOrderWhereInput = {
+  // Эзэмшлийн нөхцөл — дор дахин ашиглагдана (боломжит онуудыг тооцоход).
+  const ownershipWhere: Prisma.ServiceOrderWhereInput = {
     status: { in: ["COMPLETED", "CANCELLED"] },
     OR: [
       { customer: { accountId: account.id } },
@@ -71,7 +82,36 @@ export default async function AccountHistoryPage({
         : []),
     ],
   };
-  if (plate) where.vehicle = { plate: normalizePlate(plate) };
+
+  // Текст хайлт (mobile-ийн Түүх табтай ижил талбарууд: байгууллага, салбар,
+  // улсын дугаар) + захиалгын дугаар. Он нь ЖАГСААЛТАД ХАРАГДАХ огноотой
+  // (completedAt ?? scheduledAt ?? createdAt) яг ижил урьтамжаар шүүгдэнэ.
+  const filters: Prisma.ServiceOrderWhereInput[] = [];
+  if (plate) filters.push({ vehicle: { plate: normalizePlate(plate) } });
+  if (query) {
+    filters.push({
+      OR: [
+        { tenant: { name: { contains: query, mode: "insensitive" } } },
+        { branch: { name: { contains: query, mode: "insensitive" } } },
+        { vehicle: { plate: { contains: query, mode: "insensitive" } } },
+        { number: { contains: query, mode: "insensitive" } },
+      ],
+    });
+  }
+  if (year !== null) {
+    const range = yearRange(year);
+    filters.push({
+      OR: [
+        { completedAt: range },
+        { completedAt: null, scheduledAt: range },
+        { completedAt: null, scheduledAt: null, createdAt: range },
+      ],
+    });
+  }
+
+  const where: Prisma.ServiceOrderWhereInput = filters.length
+    ? { ...ownershipWhere, AND: filters }
+    : ownershipWhere;
 
   const orders = await prisma.serviceOrder.findMany({
     where,
@@ -98,12 +138,27 @@ export default async function AccountHistoryPage({
   // байхгүй болсон тул, мөнхөд алга болохгүйн тулд энд харагдана. `plate`-ээр
   // шүүхгүй — цаг захиалахдаа машин сонгоогүй байж болно, мөн энэ бол цөөн
   // тооны бичлэг тул шүүлт хийх шаардлагагүй.
+  const cancelledWhere: Prisma.AppointmentWhereInput = {
+    accountId: account.id,
+    status: { in: ["CANCELLED", "NO_SHOW", "REJECTED"] },
+    serviceOrderId: null,
+  };
+  const cancelledFilters: Prisma.AppointmentWhereInput[] = [];
+  if (query) {
+    cancelledFilters.push({
+      OR: [
+        { tenant: { name: { contains: query, mode: "insensitive" } } },
+        { branch: { name: { contains: query, mode: "insensitive" } } },
+        { category: { name: { contains: query, mode: "insensitive" } } },
+      ],
+    });
+  }
+  if (year !== null) cancelledFilters.push({ requestedAt: yearRange(year) });
+
   const cancelledAppointments = await prisma.appointment.findMany({
-    where: {
-      accountId: account.id,
-      status: { in: ["CANCELLED", "NO_SHOW", "REJECTED"] },
-      serviceOrderId: null,
-    },
+    where: cancelledFilters.length
+      ? { ...cancelledWhere, AND: cancelledFilters }
+      : cancelledWhere,
     orderBy: { requestedAt: "desc" },
     take: 50,
     select: {
@@ -115,6 +170,30 @@ export default async function AccountHistoryPage({
       category: { select: { name: true } },
     },
   });
+
+  // Боломжит онууд — ЗӨВХӨН өгөгдөлд бодитоор байгаа онууд (mobile-тай ижил
+  // зарчим: хоосон он санал болгохгүй). Шүүлтээс хамаарахгүй тул шүүлт
+  // хийсний дараа ч сонголт бүтнээрээ үлдэнэ.
+  const [orderDates, cancelledDates] = await Promise.all([
+    prisma.serviceOrder.findMany({
+      where: ownershipWhere,
+      select: { completedAt: true, scheduledAt: true, createdAt: true },
+    }),
+    prisma.appointment.findMany({
+      where: cancelledWhere,
+      select: { requestedAt: true },
+    }),
+  ]);
+  const availableYears = [
+    ...new Set([
+      ...orderDates.map((o) =>
+        (o.completedAt ?? o.scheduledAt ?? o.createdAt).getFullYear(),
+      ),
+      ...cancelledDates.map((a) => a.requestedAt.getFullYear()),
+    ]),
+  ].sort((a, b) => b - a);
+
+  const hasFilter = Boolean(query) || year !== null;
 
   return (
     <div className="w-full flex flex-col gap-6">
@@ -146,10 +225,21 @@ export default async function AccountHistoryPage({
         </div>
       ) : null}
 
+      {/* Хайлт + он — mobile-ийн Түүх табтай ижил (текст + он). */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <SearchBox
+          placeholder="Байгууллага, салбар, дугаараар хайх"
+          paramName="q"
+        />
+        <YearChips years={availableYears} />
+        <ResetFilters paramNames={["q", "year"]} />
+      </div>
+
       {orders.length === 0 && cancelledAppointments.length === 0 ? (
         <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-10 text-center text-sm text-[var(--oc-muted3)]">
-          Одоогоор хийгдсэн үйлчилгээ алга. Цаг захиалга баталгаажиж, үйлчилгээ
-          хийгдсэний дараа энд харагдана.
+          {hasFilter
+            ? "Илэрц олдсонгүй."
+            : "Одоогоор хийгдсэн үйлчилгээ алга. Цаг захиалга баталгаажиж, үйлчилгээ хийгдсэний дараа энд харагдана."}
         </div>
       ) : orders.length > 0 ? (
         <div className="flex flex-col gap-3">

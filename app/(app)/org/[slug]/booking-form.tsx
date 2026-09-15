@@ -38,10 +38,19 @@ export function BookingForm({
   branches,
   vehicles: initialVehicles,
   initialBranchId = "",
+  initialCategoryIds,
+  lockCategories = false,
 }: {
   branches: Branch[];
   vehicles: Vehicle[];
   initialBranchId?: string;
+  /** Урьдчилан сонгосон ангилалууд (жишээ нь `/book`-ийн олон-tenant
+   * category-first урсгалаас ирсэн). `lockCategories` үнэн үед л энэ хэрэг
+   * болно — эс бөгөөс хэрэглэгч эндээс дахин чөлөөтэй сонгоно. */
+  initialCategoryIds?: string[];
+  /** Ангилалыг `/book`-д аль хэдийн сонгосон тул энд дахин харуулж,
+   * өөрчлүүлэхгүй — `initialCategoryIds`-ийг тогтмол ашиглана. */
+  lockCategories?: boolean;
 }) {
   const [state, formAction, pending] = useActionState<
     AppointmentActionState,
@@ -57,7 +66,9 @@ export function BookingForm({
   const [branchId, setBranchId] = useState(
     initialBranchId || (branches.length === 1 ? branches[0].id : ""),
   );
-  const [categoryIds, setCategoryIds] = useState<string[]>([]);
+  const [categoryIds, setCategoryIds] = useState<string[]>(
+    initialCategoryIds ?? [],
+  );
   const [vehicles, setVehicles] = useState<Vehicle[]>(initialVehicles);
   const [vehicleId, setVehicleId] = useState(
     initialVehicles.length === 1 ? initialVehicles[0].id : "",
@@ -131,7 +142,29 @@ export function BookingForm({
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 items-start">
         {/* Зүүн багана: ангилал, салбар, машин, тэмдэглэл */}
         <div className="flex flex-col gap-4">
-          {allCategories.length > 0 ? (
+          {lockCategories ? (
+            allCategories.length > 0 ? (
+              <Field label="Үйлчилгээ">
+                <div className="flex flex-wrap gap-2">
+                  {allCategories
+                    .filter((c) => categoryIds.includes(c.id))
+                    .map((c) => (
+                      <span
+                        key={c.id}
+                        className="px-3 py-1.5 rounded-lg border border-violet-500 bg-violet-600 text-white text-sm font-medium"
+                      >
+                        {c.name}
+                      </span>
+                    ))}
+                </div>
+                {categoryIds.length > 0 ? (
+                  <p className="text-xs text-white/40 mt-2">
+                    Нийт ойролцоогоор {formatDuration(selectedDurationMinutes)}
+                  </p>
+                ) : null}
+              </Field>
+            ) : null
+          ) : allCategories.length > 0 ? (
             <Field label="Үйлчилгээ" htmlFor="category-0" hint="заавал биш">
               <div className="flex flex-col gap-2">
                 {categoryIds.length > 0 ? (

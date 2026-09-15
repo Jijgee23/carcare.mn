@@ -330,11 +330,14 @@ export function DiscoverClient({
   serviceKeys,
   apiKey,
   mapId,
+  initialServiceKey = "",
 }: {
   orgs: DiscoverOrg[];
   serviceKeys: DiscoverServiceKey[];
   apiKey: string;
   mapId: string;
+  /** `/book`-оос ирсэн системийн ажлын түлхүүр (аль хэдийн шалгагдсан). */
+  initialServiceKey?: string;
 }) {
   // Аймаг/хотын жагсаалт (branch-ийн баазын утгаас).
   const cities = useMemo(() => {
@@ -356,7 +359,7 @@ export function DiscoverClient({
   const [district, setDistrict] = useState("");
   // Ямар ажил хийлгэх гэж байгаагаа (системийн ажлын түлхүүр) байгууллага
   // сонгохоос өмнө сонгоно — тухайн ажлыг хийдэг салбаруудыг л үлдээнэ.
-  const [serviceKey, setServiceKey] = useState("");
+  const [serviceKey, setServiceKey] = useState(initialServiceKey);
   // Засварын (үйлчилгээ) нэр эсвэл салбарын нэрээр хайх — жагсаалт/газрын
   // зураг хоёуланд хамаарна.
   const [query, setQuery] = useState("");

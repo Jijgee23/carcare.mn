@@ -169,6 +169,15 @@ export const DEFAULT_CHECK_OPTIONS = ["Хэвийн", "Анхаарах", "Со�
 
 export type CheckTone = "good" | "warn" | "bad";
 
+export const CHECK_TONES: CheckTone[] = ["good", "warn", "bad"];
+
+/** Өнгөний богино нэр — шүүлтүүрийн сегментэд (mobile-тай ижил). */
+export const CHECK_TONE_LABEL: Record<CheckTone, string> = {
+  good: "Хэвийн",
+  warn: "Анхаарах",
+  bad: "Солих",
+};
+
 export function checkOptionTone(option: string): CheckTone {
   const v = option.toLowerCase();
   if (/анхаар|дунд|элэгд|сэжиг|шалгуулах|бага/.test(v)) return "warn";
@@ -203,6 +212,17 @@ export const CHECK_TONE_ACTIVE: Record<CheckTone, string> = {
 
 export type ReportSeverity = "GOOD" | "WARN" | "BAD";
 
+export const REPORT_SEVERITIES: ReportSeverity[] = ["GOOD", "WARN", "BAD"];
+
+/** Query-string-ээс ирсэн утгыг зөвшөөрөгдсөн severity болгож шалгана. */
+export function parseReportSeverity(
+  value: string | undefined | null,
+): ReportSeverity | null {
+  return value && (REPORT_SEVERITIES as string[]).includes(value)
+    ? (value as ReportSeverity)
+    : null;
+}
+
 const TONE_TO_SEVERITY: Record<CheckTone, ReportSeverity> = {
   good: "GOOD",
   warn: "WARN",
@@ -219,6 +239,14 @@ export const SEVERITY_LABEL: Record<ReportSeverity, string> = {
   GOOD: "Хэвийн",
   WARN: "Анхаарах",
   BAD: "Солих шаардлагатай",
+};
+
+// Шүүлтүүрийн сегментэд багтах богино нэр (mobile-ийн segmented control-той
+// ижил: "Солих шаардлагатай" → "Солих").
+export const SEVERITY_SHORT_LABEL: Record<ReportSeverity, string> = {
+  GOOD: "Хэвийн",
+  WARN: "Анхаарах",
+  BAD: "Солих",
 };
 
 export const SEVERITY_BADGE: Record<ReportSeverity, string> = {

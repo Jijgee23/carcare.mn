@@ -140,7 +140,9 @@ export default async function AccountDiagnosticDetailPage({
         </div>
       ) : null}
 
-      <ReportAnswers schema={schema} data={data} />
+      {/* Customer тал дээр нэмэлт өнгө (хэвийн/анхаарах/солих) шүүлт —
+          mobile аппын тайлангийн дэлгэрэнгүйтэй ижил дүрэмтэй. */}
+      <ReportAnswers schema={schema} data={data} toneFilter />
     </div>
   );
 }

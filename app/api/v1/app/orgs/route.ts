@@ -22,6 +22,7 @@ export async function GET(request: Request) {
       district: branch.district,
       latitude: branch.lat,
       longitude: branch.lng,
+      serviceKeyIds: branch.serviceKeyIds,
       ...(branch.distanceKm == null ? {} : { distanceKm: branch.distanceKm }),
     })),
   }));

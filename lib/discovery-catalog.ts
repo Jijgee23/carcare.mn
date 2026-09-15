@@ -35,6 +35,9 @@ export type DiscoveryFilters = {
   radius: number | null;
   openNow: boolean;
   weekend: boolean;
+  // "Ямар ажил хийлгэх гэж байна?" — SystemServiceKey.id-аар шүүнэ (аль ч
+  // байгууллагад хамаарахгүй, платформ даяарх түлхүүр).
+  serviceKey: string;
   viewport?: DiscoveryViewport;
 };
 
@@ -92,6 +95,7 @@ export function parseDiscoveryFilters(sp: URLSearchParams):
           : null,
       openNow: sp.get("openNow") === "1" || sp.get("openNow") === "true",
       weekend: sp.get("weekend") === "1" || sp.get("weekend") === "true",
+      serviceKey: sp.get("serviceKey")?.trim() ?? "",
       ...(parsedViewport.viewport ? { viewport: parsedViewport.viewport } : {}),
     },
   };
@@ -120,7 +124,11 @@ type DiscoveryTenant = {
   logoUrl: string | null;
   phone1: string;
   branches: DiscoveryBranch[];
-  categories: Array<{ name: string; branches: Array<{ id: string }> }>;
+  categories: Array<{
+    name: string;
+    systemServiceKeyId: string | null;
+    branches: Array<{ id: string }>;
+  }>;
 };
 
 export type DiscoveryOrganization = {
@@ -141,6 +149,7 @@ export type DiscoveryOrganization = {
     hours: string | null;
     weekend: boolean;
     services: string[];
+    serviceKeyIds: string[];
     distanceKm?: number;
   }>;
 };
@@ -155,6 +164,7 @@ export type DiscoveryMarker = {
   district: string | null;
   latitude: number;
   longitude: number;
+  serviceKeyIds: string[];
   distanceKm?: number;
 };
 
@@ -236,7 +246,7 @@ export async function getDiscoveryCatalog(filters: DiscoveryFilters) {
       categories: {
         where: { isActive: true },
         orderBy: { name: "asc" },
-        select: { name: true, branches: { select: { id: true } } },
+        select: { name: true, systemServiceKeyId: true, branches: { select: { id: true } } },
       },
     },
   })) as unknown as DiscoveryTenant[];
@@ -252,16 +262,26 @@ export async function getDiscoveryCatalog(filters: DiscoveryFilters) {
   for (const tenant of tenants) {
     const tenantNameMatch =
       normalizedQuery.length > 0 && tenant.name.toLocaleLowerCase().includes(normalizedQuery);
-    const servicesFor = (branchId: string) =>
-      tenant.categories
-        .filter((category) => category.branches.length === 0 || category.branches.some((b) => b.id === branchId))
-        .map((category) => category.name);
+    const categoriesFor = (branchId: string) =>
+      tenant.categories.filter(
+        (category) => category.branches.length === 0 || category.branches.some((b) => b.id === branchId),
+      );
+    const servicesFor = (branchId: string) => categoriesFor(branchId).map((category) => category.name);
+    const serviceKeyIdsFor = (branchId: string) => [
+      ...new Set(
+        categoriesFor(branchId)
+          .map((category) => category.systemServiceKeyId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
     const visible: DiscoveryOrganization["branches"] = [];
     let nearest = Number.POSITIVE_INFINITY;
     let weekendMatch = false;
 
     for (const branch of tenant.branches) {
       const services = servicesFor(branch.id);
+      const serviceKeyIds = serviceKeyIdsFor(branch.id);
+      if (filters.serviceKey && !serviceKeyIds.includes(filters.serviceKey)) continue;
       if (
         filters.query &&
         !tenantNameMatch &&
@@ -305,6 +325,7 @@ export async function getDiscoveryCatalog(filters: DiscoveryFilters) {
         hours: status.hours,
         weekend: worksWeekend,
         services,
+        serviceKeyIds,
         ...(distance == null ? {} : { distanceKm: Math.round(distance * 10) / 10 }),
       });
     }
@@ -324,6 +345,7 @@ export async function getDiscoveryCatalog(filters: DiscoveryFilters) {
         district: branch.district,
         latitude: branch.lat,
         longitude: branch.lng,
+        serviceKeyIds: branch.serviceKeyIds,
         ...(branch.distanceKm == null ? {} : { distanceKm: branch.distanceKm }),
       });
     }

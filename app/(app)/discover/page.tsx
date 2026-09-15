@@ -18,7 +18,14 @@ export const metadata = {
 // Каталог нь нийтэд нээлттэй (нэвтрэхгүйгээр үзнэ).
 export const dynamic = "force-dynamic";
 
-export default async function DiscoverPage() {
+export default async function DiscoverPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ serviceKey?: string }>;
+}) {
+  // `/book` дээр сонгосон системийн ажлын түлхүүр (mobile-ийн Захиалах таб →
+  // Хайх таб шилжилттэй ижил) — байхгүй/танигдаагүй бол шүүлтгүй.
+  const { serviceKey: requestedServiceKey } = await searchParams;
   // Олон tenant-ийн нийтэд нээлттэй каталог — цор ганц tenant гэж байхгүй.
   setBypassContext();
   // Багц нь онлайн захиалга дэмждэг tenant-уудыг л харуулна.
@@ -148,6 +155,11 @@ export default async function DiscoverPage() {
       <DiscoverClient
         orgs={orgs}
         serviceKeys={serviceKeys}
+        initialServiceKey={
+          serviceKeys.some((k) => k.id === requestedServiceKey)
+            ? (requestedServiceKey as string)
+            : ""
+        }
         apiKey={process.env.GOOGLE_MAP_API_KEY ?? ""}
         mapId={process.env.GOOGLE_MAP_ID ?? ""}
       />

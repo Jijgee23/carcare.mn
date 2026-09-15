@@ -52,6 +52,7 @@ export async function GET(
           id: true,
           name: true,
           durationMinutes: true,
+          systemServiceKeyId: true,
           branches: { select: { id: true } },
         },
       },
@@ -87,6 +88,7 @@ export async function GET(
       categories: offered.map((c) => ({
         id: c.id,
         name: c.name,
+        systemServiceKeyId: c.systemServiceKeyId,
         durationMinutes: resolveCategoryDurationMinutes({
           branchOverride: overrideByKey.get(overrideKey(b.id, c.id)) ?? null,
           categoryDefault: c.durationMinutes,

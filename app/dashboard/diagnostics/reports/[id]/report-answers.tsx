@@ -3,9 +3,12 @@
 import { useMemo, useState } from "react";
 import {
   CHECK_TONE_ACTIVE,
+  CHECK_TONES,
+  CHECK_TONE_LABEL,
   checkOptionTone,
   itemPositions,
   positionedKey,
+  type CheckTone,
   type PositionDef,
   type ReportData,
   type ReportEntry,
@@ -13,19 +16,53 @@ import {
   type TemplateSchema,
 } from "@/lib/diagnostics";
 
+/** Нэг талбар шүүлтийг давсан эсэх. */
+type Matcher = (
+  value: string | number | boolean | undefined,
+  itemType: string,
+) => boolean;
+
 /**
  * Тайлангийн хариултуудыг хэсэг хэсгээр нь харуулна. Check хариултын
  * утгуудаас filter chip үүсгэж, сонгоход зөвхөн тухайн хариултай асуултуудыг
  * (байрлалтай бол зөвхөн таарсан байрлалыг) үлдээнэ.
+ *
+ * `toneFilter` асаалттай үед нэмэлтээр өнгө (хэвийн/анхаарах/солих) сегмент
+ * гарч ирнэ — customer апп (mobile)-ийн тайлангийн дэлгэрэнгүйтэй ижил
+ * дүрэмтэй: check БУС item үргэлж харагдана, байрлалтай item-ээс зөвхөн
+ * таарсан байрлал үлдэнэ, шүүлтэд юу ч таараагүй хэсэг «алга» тэмдэглэлтэй
+ * хэвээр харагдана.
  */
 export function ReportAnswers({
   schema,
   data,
+  toneFilter: toneFilterEnabled = false,
 }: {
   schema: TemplateSchema;
   data: ReportData;
+  toneFilter?: boolean;
 }) {
   const [filter, setFilter] = useState<string | null>(null);
+  const [tone, setTone] = useState<CheckTone | null>(null);
+
+  // Утгын шүүлт (chip): check БУС item-ийг нуудаг — хуучин зан төлөв хэвээр.
+  // Өнгөний шүүлт (сегмент): check БУС item-ийг үргэлж үлдээнэ (mobile).
+  const matches = useMemo<Matcher>(() => {
+    return (value, itemType) => {
+      if (filter !== null) {
+        if (itemType !== "check") return false;
+        if (value !== filter) return false;
+      }
+      if (tone !== null && itemType === "check") {
+        if (typeof value === "string" && value !== "") {
+          if (checkOptionTone(value) !== tone) return false;
+        }
+      }
+      return true;
+    };
+  }, [filter, tone]);
+
+  const filtering = filter !== null || tone !== null;
 
   // Тайлан дахь check хариултуудын давтагдашгүй утгууд + тоо
   // (template-ийн options дарааллаар).
@@ -64,6 +101,26 @@ export function ReportAnswers({
 
   return (
     <div className="flex flex-col gap-5">
+      {toneFilterEnabled ? (
+        <div className="no-print flex items-center gap-1.5 flex-wrap">
+          <span className="text-xs text-[var(--oc-muted3)] mr-1">Төлвөөр:</span>
+          <FilterChip
+            label="Бүгд"
+            active={tone === null}
+            onClick={() => setTone(null)}
+          />
+          {CHECK_TONES.map((t) => (
+            <FilterChip
+              key={t}
+              label={CHECK_TONE_LABEL[t]}
+              tone={CHECK_TONE_ACTIVE[t]}
+              active={tone === t}
+              onClick={() => setTone(tone === t ? null : t)}
+            />
+          ))}
+        </div>
+      ) : null}
+
       {filterOptions.length > 1 ? (
         <div className="no-print flex items-center gap-1.5 flex-wrap">
           <span className="text-xs text-[var(--oc-muted3)] mr-1">Хариултаар:</span>
@@ -86,9 +143,33 @@ export function ReportAnswers({
 
       {schema.sections.map((section) => {
         const items = section.items
-          .map((item) => visibleFields(item, data, filter))
+          .map((item) => visibleFields(item, data, matches))
           .filter((v): v is VisibleItem => v !== null);
-        if (items.length === 0) return null;
+        // Check item-тэй хэсэг шүүлтээр хоосорвол (mobile-тай ижил) тайлбар
+        // тэмдэглэлтэйгээр харагдана — зөвхөн өнгөний шүүлт асаалттай үед.
+        const showEmptyNote =
+          toneFilterEnabled &&
+          filtering &&
+          items.length === 0 &&
+          section.items.some((it) => it.type === "check");
+        if (items.length === 0 && !showEmptyNote) return null;
+        if (showEmptyNote) {
+          return (
+            <section
+              key={section.id}
+              className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden"
+            >
+              <div className="px-5 py-3 border-b border-[var(--oc-line)]">
+                <h2 className="font-semibold text-[var(--oc-ink)] text-sm">
+                  {section.title}
+                </h2>
+              </div>
+              <div className="px-5 py-4 text-sm text-[var(--oc-muted3)]">
+                Тохирох зүйл олдсонгүй.
+              </div>
+            </section>
+          );
+        }
         return (
           <section
             key={section.id}
@@ -133,12 +214,14 @@ export function ReportAnswers({
         );
       })}
 
-      {filter !== null &&
+      {filtering &&
       schema.sections.every((s) =>
-        s.items.every((it) => visibleFields(it, data, filter) === null),
+        s.items.every((it) => visibleFields(it, data, matches) === null),
       ) ? (
         <div className="rounded-[10px] bg-[var(--oc-panel)] p-8 border border-[var(--oc-line)] text-center text-sm text-[var(--oc-muted3)]">
-          &laquo;{filter}&raquo; хариултай асуулт алга.
+          {filter !== null
+            ? `«${filter}» хариултай асуулт алга.`
+            : "Тохирох зүйл олдсонгүй."}
         </div>
       ) : null}
     </div>
@@ -162,18 +245,18 @@ function entryKeys(item: TemplateItem): string[] {
 function visibleFields(
   item: TemplateItem,
   data: ReportData,
-  filter: string | null,
+  matches: Matcher,
 ): VisibleItem | null {
   const positions = itemPositions(item);
-  if (filter === null) return { item, positions };
-  if (item.type !== "check") return null;
   if (positions) {
-    const matched = positions.filter(
-      (p) => data[positionedKey(item.id, p.code)]?.value === filter,
+    const matched = positions.filter((p) =>
+      matches(data[positionedKey(item.id, p.code)]?.value, item.type),
     );
     return matched.length > 0 ? { item, positions: matched } : null;
   }
-  return data[item.id]?.value === filter ? { item, positions: null } : null;
+  return matches(data[item.id]?.value, item.type)
+    ? { item, positions: null }
+    : null;
 }
 
 function FilterChip({

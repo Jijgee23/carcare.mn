@@ -5,12 +5,17 @@ import { requireAccount } from "@/lib/auth/account";
 import {
   DIAGNOSTIC_TYPE_BADGE,
   DIAGNOSTIC_TYPE_LABEL,
+  REPORT_SEVERITIES,
   SEVERITY_BADGE,
   SEVERITY_LABEL,
+  SEVERITY_SHORT_LABEL,
+  parseReportSeverity,
   type DiagnosticType,
   type ReportSeverity,
 } from "@/lib/diagnostics";
 import { prisma } from "@/lib/prisma";
+import { ResetFilters, SearchBox } from "@/app/_components/list-filters";
+import { SegmentedFilter, YearChips } from "@/app/_components/segmented-filter";
 
 export const metadata = {
   title: "Оношилгооны түүх",
@@ -29,8 +34,17 @@ function formatDate(d: Date): string {
 // Миний бүх машины оношилгооны тайлангийн түүх (cross-tenant) — эзэмшлийн
 // машины БАТАЛГААЖСАН холбоос эсвэл account-той шууд холбоотой Customer-ийн
 // тайлангууд. Зарчим `account/history`-тэй ижил (харах: тэнд байгаа тайлбар).
-export default async function AccountDiagnosticsPage() {
+export default async function AccountDiagnosticsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; severity?: string; year?: string }>;
+}) {
   const account = await requireAccount();
+  const { q: rawQuery, severity: rawSeverity, year: rawYear } = await searchParams;
+  const query = (rawQuery ?? "").trim();
+  const severity = parseReportSeverity(rawSeverity);
+  const parsedYear = Number.parseInt(rawYear ?? "", 10);
+  const year = Number.isInteger(parsedYear) ? parsedYear : null;
 
   const ownedLinks = await prisma.tenantVehicle.findMany({
     where: {
@@ -44,7 +58,7 @@ export default async function AccountDiagnosticsPage() {
   });
   const ownedVehicleIds = ownedLinks.map((l) => l.vehicleId);
 
-  const where: Prisma.DiagnosticReportWhereInput = {
+  const ownershipWhere: Prisma.DiagnosticReportWhereInput = {
     OR: [
       { customer: { accountId: account.id } },
       ...(ownedVehicleIds.length
@@ -52,6 +66,31 @@ export default async function AccountDiagnosticsPage() {
         : []),
     ],
   };
+
+  // Шүүлтүүр — mobile-ийн Оношилгоо табтай ижил: текст хайлт (загвар, машин,
+  // салбар), ноцтой байдал (maxSeverity), он (createdAt).
+  const filters: Prisma.DiagnosticReportWhereInput[] = [];
+  if (query) {
+    filters.push({
+      OR: [
+        { template: { name: { contains: query, mode: "insensitive" } } },
+        { branch: { name: { contains: query, mode: "insensitive" } } },
+        { vehicle: { plate: { contains: query, mode: "insensitive" } } },
+        { vehicle: { make: { contains: query, mode: "insensitive" } } },
+        { vehicle: { model: { contains: query, mode: "insensitive" } } },
+      ],
+    });
+  }
+  if (severity) filters.push({ maxSeverity: severity });
+  if (year !== null) {
+    filters.push({
+      createdAt: { gte: new Date(year, 0, 1), lt: new Date(year + 1, 0, 1) },
+    });
+  }
+
+  const where: Prisma.DiagnosticReportWhereInput = filters.length
+    ? { ...ownershipWhere, AND: filters }
+    : ownershipWhere;
 
   const reports = await prisma.diagnosticReport.findMany({
     where,
@@ -68,6 +107,17 @@ export default async function AccountDiagnosticsPage() {
     },
   });
 
+  // Зөвхөн бодитоор тайлантай онууд (mobile-тай ижил).
+  const reportDates = await prisma.diagnosticReport.findMany({
+    where: ownershipWhere,
+    select: { createdAt: true },
+  });
+  const availableYears = [
+    ...new Set(reportDates.map((r) => r.createdAt.getFullYear())),
+  ].sort((a, b) => b - a);
+
+  const hasFilter = Boolean(query) || severity !== null || year !== null;
+
   return (
     <div className="w-full flex flex-col gap-6">
       <div className="flex items-center justify-between gap-4">
@@ -82,10 +132,28 @@ export default async function AccountDiagnosticsPage() {
         </BtnLink>
       </div>
 
+      {/* Шүүлтүүр — mobile-ийн Оношилгоо табтай ижил дараалал: хайлт,
+          ноцтой байдал (segmented), он. */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <SearchBox placeholder="Тайлан, машин, салбараар хайх" paramName="q" />
+        <SegmentedFilter
+          paramName="severity"
+          ariaLabel="Ноцтой байдал"
+          options={REPORT_SEVERITIES.map((s) => ({
+            value: s,
+            label: SEVERITY_SHORT_LABEL[s],
+            activeClassName: SEVERITY_BADGE[s],
+          }))}
+        />
+        <YearChips years={availableYears} />
+        <ResetFilters paramNames={["q", "severity", "year"]} />
+      </div>
+
       {reports.length === 0 ? (
         <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-10 text-center text-sm text-[var(--oc-muted3)]">
-          Одоогоор оношилгооны тайлан алга. Үйлчилгээ хийгдэж, тайлан
-          бөглөгдсөний дараа энд харагдана.
+          {hasFilter
+            ? "Сонгосон нөхцөлд тохирох тайлан алга."
+            : "Одоогоор оношилгооны тайлан алга. Үйлчилгээ хийгдэж, тайлан бөглөгдсөний дараа энд харагдана."}
         </div>
       ) : (
         <div className="flex flex-col gap-3">

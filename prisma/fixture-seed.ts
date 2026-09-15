@@ -174,6 +174,24 @@ const categorySeed = [
   ["Угаалга", "Гадна, дотор угаалга болон өнгөлгөө", 60],
 ] as const;
 
+// Систем даяарх ажлын каталог (SystemServiceKey) — /discover болон мобайл
+// "Захиалах" таб дээрх category-first picker-т ашиглагдана. Тенант бүрийн
+// адил нэртэй Category мөрүүд бүгд яг нэг систем түлхүүрт заавал холбогдох
+// тул `categorySeed`-тэй индексээрээ 1:1 тааруулав — прод дээрх жинхэнэ
+// хэрэглээг илүү оновчтой дуурайхын тулд (өмнө нь бүгд ганц "Ерөнхий" рүү
+// холбогддог байсан бөгөөд энэ нь service-key шүүлтийг ялгаагүй болгодог
+// байсан).
+const systemServiceKeySeed = [
+  ["Тос солих", "Хөдөлгүүрийн тос, шүүлтүүр, шингэн солих ажил"],
+  ["Тоормосны засвар", "Наклад, диск, суппорт болон тоормосны систем засвар"],
+  ["Хөдөлгүүрийн засвар", "Хөдөлгүүрийн оношилгоо, засвар үйлчилгээ"],
+  ["Явах эд ангийн засвар", "Амортизатор, шарнир, рулын системийн засвар"],
+  ["Цахилгаан систем", "Аккумулятор, стартер, генератор, компьютер оношилгоо"],
+  ["Дугуйн үйлчилгээ", "Дугуй солих, баланс, тэнхлэг тохиргоо"],
+  ["Агааржуулалтын засвар", "Кондишн цэнэглэх, халаалт, агаарын систем"],
+  ["Угаалга, өнгөлгөө", "Гадна, дотор угаалга болон өнгөлгөөний үйлчилгээ"],
+] as const;
+
 const serviceSeed = [
   ["LABOR", "Хөдөлгүүрийн тос солих", "OIL-CHANGE", 85000, "Тос, шингэн", 45],
   ["LABOR", "Тоормосны наклад солих", "BRAKE-PAD", 180000, "Тоормос", 90],
@@ -329,6 +347,19 @@ export async function seedFixtureData(db: SeedDb) {
     create: { id: "seed-servicekey-general", name: "Ерөнхий", description: "Тодорхой систем ангилалд ороогүй үйлчилгээнд зориулсан ерөнхий түлхүүр.", createdById: "seed-super-admin" },
   });
 
+  // categorySeed-тэй индексээрээ 1:1 тохирох тодорхой түлхүүрүүд (доор харах).
+  const categoryServiceKeys: string[] = [];
+  for (let keyIndex = 0; keyIndex < systemServiceKeySeed.length; keyIndex++) {
+    const [name, description] = systemServiceKeySeed[keyIndex];
+    const id = `seed-servicekey-${keyIndex + 1}`;
+    categoryServiceKeys.push(id);
+    await db.systemServiceKey.upsert({
+      where: { name },
+      update: { description, isActive: true },
+      create: { id, name, description, createdById: "seed-super-admin" },
+    });
+  }
+
   const allBranches: Array<{ tenantId: string; id: string; name: string; city: string; district: string; khoroo: string; address: string; latitude: number; longitude: number }> = [];
   const tenantUsers = new Map<string, string[]>();
   const tenantCategories = new Map<string, string[]>();
@@ -427,10 +458,11 @@ export async function seedFixtureData(db: SeedDb) {
       const [name, description, durationMinutes] = categorySeed[categoryIndex];
       const id = `seed-category-${tenantIndex + 1}-${categoryIndex + 1}`;
       categoryIds.push(id);
+      const systemServiceKeyId = categoryServiceKeys[categoryIndex] ?? generalServiceKey.id;
       await db.category.upsert({
         where: { tenantId_name: { tenantId: tenant.id, name } },
-        update: { description, durationMinutes, isActive: categoryIndex !== 7, branches: { connect: branches.map((branchId) => ({ id: branchId })) } },
-        create: { id, tenantId: tenant.id, name, description, durationMinutes, isActive: categoryIndex !== 7, systemServiceKeyId: generalServiceKey.id, branches: { connect: branches.map((branchId) => ({ id: branchId })) } },
+        update: { description, durationMinutes, isActive: categoryIndex !== 7, systemServiceKeyId, branches: { connect: branches.map((branchId) => ({ id: branchId })) } },
+        create: { id, tenantId: tenant.id, name, description, durationMinutes, isActive: categoryIndex !== 7, systemServiceKeyId, branches: { connect: branches.map((branchId) => ({ id: branchId })) } },
       });
       for (const branchId of branches) {
         if (categoryIndex < 6) await db.branchCategoryDuration.upsert({ where: { branchId_categoryId: { branchId, categoryId: id } }, update: { durationMinutes: durationMinutes + (branchId.endsWith("2") ? 15 : 0) }, create: { branchId, categoryId: id, durationMinutes: durationMinutes + (branchId.endsWith("2") ? 15 : 0) } });
