@@ -2,14 +2,11 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import Link from "next/link";
 import {
   type OrderActionState,
   changeOrderStatusAction,
-  reviseExpectedFinishAction,
 } from "@/app/_actions/orders";
 import { ConfirmForm } from "@/app/_components/confirm-form";
-import { DatePicker } from "@/app/_components/date-picker";
 import { useToast } from "@/app/_components/toast";
 import { ORDER_STATUS_LABEL, type OrderStatus } from "@/lib/orders";
 
@@ -36,34 +33,21 @@ export function StatusControls({
   transitions,
   disabled,
   currentStatus,
-  expectedFinishAt,
   estimatedDurationMinutes,
   serviceItemDurationMinutes = null,
-  attentionHref,
-  workDayCloseAt = null,
 }: {
   orderId: string;
   transitions: OrderStatus[];
   disabled: boolean;
   currentStatus: OrderStatus;
-  expectedFinishAt: Date | null;
   estimatedDurationMinutes: number | null;
   serviceItemDurationMinutes?: number | null;
-  attentionHref?: string;
-  // Ажил эхэлсэн өдрийн салбарын ажлын цагийн төгсгөл — "Дуусах хугацаа"-г
-  // үүнээс цааш сунгахгүй байхаар DatePicker-т дамжина (сервер талд ч мөн
-  // адил хязгаарлана, харах: reviseExpectedFinishAction).
-  workDayCloseAt?: Date | null;
 }) {
   const toast = useToast();
   const [state, formAction, pending] = useActionState<
     OrderActionState,
     FormData
   >(changeOrderStatusAction, null);
-  const [finishState, finishAction, finishPending] = useActionState<
-    OrderActionState,
-    FormData
-  >(reviseExpectedFinishAction, null);
   // Бүх статус шилжилтийн товчийг нэг л "Үйлдэл" товчийн ард нуух —
   // дарахад доор нь гулсаж гарна (grid-template-rows 0fr→1fr trick, өндрийг
   // JS-ээр хэмжихгүйгээр гөлгөр анимацилна).
@@ -72,18 +56,6 @@ export function StatusControls({
   const [confirmStart, setConfirmStart] = useState(false);
   const [startHours, setStartHours] = useState("");
   const [startMinutes, setStartMinutes] = useState("");
-  const [editingFinish, setEditingFinish] = useState(false);
-  // Controlled оруулга — React 19 form action дуусахад uncontrolled
-  // (defaultValue) талбарыг анхны утга руу автоматаар "reset" хийдэг тул
-  // (native form submit-ийн ердийн зан), давхцлын анхааруулга гарахад
-  // ажилтны бичсэн шинэ утга алга болдог байсан. Controlled болгосноор React
-  // өөрөө утгыг удирдана — reset-д алдагдахгүй.
-  const [finishValue, setFinishValue] = useState("");
-  // Бай/лифтийн загваргүй тул давхцал зөвхөн анхааруулга — хатуу хориглолгүй
-  // (харах: reviseExpectedFinishAction). Давхцал илэрвэл энд мессежийг
-  // хадгалж, дараагийн "Хадгалах" дарахад confirmed=true явуулна.
-  const [finishConflict, setFinishConflict] = useState<string | null>(null);
-  const [finishConflictIsPossible, setFinishConflictIsPossible] = useState(false);
 
   // Үр дүнг toast-аар харуулна (нэг үр дүнг давхар харуулахгүй).
   const handled = useRef<OrderActionState>(null);
@@ -102,52 +74,6 @@ export function StatusControls({
   if (state !== prevState) {
     setPrevState(state);
     if (state?.ok) setShowActions(false);
-  }
-
-  const handledFinish = useRef<OrderActionState>(null);
-  useEffect(() => {
-    if (!finishState || finishState === handledFinish.current) return;
-    handledFinish.current = finishState;
-    if (finishState.ok) toast.success(finishState.message ?? "Амжилттай.");
-    else if (!finishState.fieldErrors?.confirmNeeded) {
-      // Давхцлын анхааруулгыг toast биш, тасралтгүй харагдах текстээр
-      // (доор) харуулна — тул энд түүнийг toast-оор давхар үзүүлэхгүй.
-      toast.error(finishState.message ?? "Алдаа гарлаа.");
-    }
-  }, [finishState, toast]);
-
-  // React-ийн зөвлөдөг "render-ийн үед нөхцөлт setState" загвар (useEffect
-  // биш) — сервэрийн шинэ хариу ирэхэд диалог хаах/анхааруулга харуулах
-  // байдлыг синхрончилно. Гар аргаар дараагийн санал асуулгад confirmed=true
-  // явуулахын тулд (харах: reviseExpectedFinishAction) анхааруулгыг энд
-  // тогтвортой хадгална, харин цаг өөрчлөгдмөгц (input onChange) арилна.
-  const [prevFinishState, setPrevFinishState] = useState<OrderActionState>(null);
-  if (finishState !== prevFinishState) {
-    setPrevFinishState(finishState);
-    if (finishState?.ok) {
-      setEditingFinish(false);
-      setFinishConflict(null);
-      setFinishConflictIsPossible(false);
-    } else if (finishState?.fieldErrors?.confirmNeeded) {
-      setFinishConflict(finishState.message ?? "Хугацаа өөр ажилтай давхцаж байна.");
-      setFinishConflictIsPossible(finishState.fieldErrors.conflictKind === "possible");
-    } else if (finishState) {
-      setFinishConflict(null);
-      setFinishConflictIsPossible(false);
-    }
-  }
-
-  // datetime-local input-д зориулж локал цагийн бүсээр (offset-гүй) хөрвүүлнэ.
-  function toDatetimeLocalValue(d: Date): string {
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  }
-
-  // Server/client ICU locale-ийн ялгаанаас hydration mismatch гарахаас
-  // сэргийлж toLocaleString ашиглахгүй — гараар, тогтмол форматална.
-  function formatDateTime(d: Date): string {
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   }
 
   return (
@@ -241,103 +167,6 @@ export function StatusControls({
           </div>
         </div>
       </div>
-
-      {currentStatus === "IN_PROGRESS" ? (
-        <div className="rounded-xl border border-[var(--oc-line)] bg-white/[0.02] p-3">
-          <div className="flex items-center justify-between gap-2 mb-1.5">
-            <span className="text-xs text-[var(--oc-muted3)]">Дуусах хугацаа</span>
-            {!editingFinish ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setFinishValue(
-                    expectedFinishAt ? toDatetimeLocalValue(expectedFinishAt) : "",
-                  );
-                  setFinishConflict(null);
-                  setFinishConflictIsPossible(false);
-                  setEditingFinish(true);
-                }}
-                disabled={disabled}
-                className="font-plex-mono text-[11px] font-medium px-2.5 py-1 rounded-full border border-[var(--oc-accent)]/40 bg-[var(--oc-accent)]/10 text-[var(--oc-accent)] hover:bg-[var(--oc-accent)]/20 hover:border-[var(--oc-accent)]/60 transition-colors disabled:opacity-50"
-              >
-                Засах
-              </button>
-            ) : null}
-          </div>
-          {!editingFinish ? (
-            <div className="text-sm text-[var(--oc-ink2)]">
-              {expectedFinishAt ? formatDateTime(expectedFinishAt) : "—"}
-            </div>
-          ) : (
-            <form action={finishAction} className="flex flex-col gap-2">
-              <input type="hidden" name="id" value={orderId} />
-              <input
-                type="hidden"
-                name="confirmed"
-                value={finishConflict ? "true" : ""}
-              />
-              <DatePicker
-                name="expectedFinishAt"
-                withTime
-                value={finishValue}
-                max={workDayCloseAt ? toDatetimeLocalValue(workDayCloseAt).slice(0, 10) : undefined}
-                maxTime={workDayCloseAt ? toDatetimeLocalValue(workDayCloseAt).slice(11) : undefined}
-                onChange={(v) => {
-                  setFinishValue(v);
-                  setFinishConflict(null);
-                  setFinishConflictIsPossible(false);
-                }}
-              />
-              {workDayCloseAt ? (
-                <p className="text-[11px] text-[var(--oc-muted3)]">
-                  Тухайн өдрийн ажлын цагийн төгсгөлөөс ({formatDateTime(workDayCloseAt).slice(-8, -3)}) хэтрэхгүй байх ёстой.
-                </p>
-              ) : null}
-              {finishConflict ? (
-                <div className="space-y-1">
-                  <p className="text-xs text-[var(--oc-warn)]">
-                    {finishConflict}
-                  </p>
-                  {finishConflictIsPossible && attentionHref ? (
-                    <Link
-                      href={attentionHref}
-                      className="inline-block text-xs text-[var(--oc-warn)] underline underline-offset-2 hover:opacity-80"
-                    >
-                      Хоцорсон ажлуудыг шалгах →
-                    </Link>
-                  ) : null}
-                </div>
-              ) : null}
-              <div className="flex items-center gap-2">
-                <button
-                  type="submit"
-                  disabled={finishPending}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-colors hover:opacity-90 disabled:opacity-60 ${
-                    finishConflict ? "bg-[var(--oc-warn)]" : "bg-[var(--oc-accent)]"
-                  }`}
-                >
-                  {finishPending
-                    ? "Хадгалж байна..."
-                    : finishConflict
-                      ? "Тийм, хадгалах"
-                      : "Хадгалах"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingFinish(false);
-                    setFinishConflict(null);
-                    setFinishConflictIsPossible(false);
-                  }}
-                  className="rounded-lg border border-[var(--oc-line)] bg-white/[0.04] px-3 py-1.5 text-xs text-[var(--oc-ink2)] hover:bg-white/[0.08]"
-                >
-                  Болих
-                </button>
-              </div>
-            </form>
-          )}
-        </div>
-      ) : null}
 
       {confirmCancel && typeof document !== "undefined"
         ? createPortal(

@@ -1,10 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import type { DayRow } from "./day-rows";
-import { OrderDetailPanel } from "./order-detail-panel";
 import { assignLanes, pctOf, hourMarksBetween } from "@/lib/schedule-grid-layout";
 
 const SLOT_MINUTES = 15; // хоосон зайг дарахад цаг энэ нарийвчлалаар бүхэлдэнэ
@@ -39,30 +37,27 @@ export function GridSchedule({
   axisStartMs,
   axisEndMs,
   closingAtMs,
-  canChangeItemStatus,
-  canChangeItemPrice,
   branchId,
   returnTo,
+  slotCapacity,
 }: {
   rows: DayRow[];
   axisStartMs: number;
   axisEndMs: number;
   closingAtMs?: number | null;
-  canChangeItemStatus: boolean;
-  canChangeItemPrice: boolean;
   branchId: string;
   returnTo: string;
+  // Branch's configured concurrent-slot count — the grid always reserves
+  // this many rows, even empty, so staff see the branch's real capacity
+  // rather than only as many rows as happen to be booked right now.
+  slotCapacity: number;
 }) {
   const router = useRouter();
   const bodyRef = useRef<HTMLDivElement>(null);
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [hoverMs, setHoverMs] = useState<number | null>(null);
-  // Хоосон зай дээр дарахад шууд нэг рүү явахын оронд аль хэлбэрээр
-  // (цаг захиалга уу, эсвэл walk-in захиалга уу) үүсгэхийг эхлээд асууна.
-  const [createAtMs, setCreateAtMs] = useState<number | null>(null);
 
   const positioned = useMemo(() => assignLanes(rows), [rows]);
-  const laneCount = Math.max(1, ...positioned.map((r) => r.lane + 1));
+  const laneCount = Math.max(slotCapacity, 1, ...positioned.map((r) => r.lane + 1));
   const axisSpan = Math.max(1, axisEndMs - axisStartMs);
 
   // Өнгөрсөн цагийг (өнөөдрийн харагдац дээр) саарлаар "дүүргэж" тэмдэглэнэ —
@@ -105,10 +100,8 @@ export function GridSchedule({
 
   const pct = (ms: number) => pctOf(ms, axisStartMs, axisSpan);
 
-  const selected = rows.find((r) => r.key === selectedKey) ?? null;
-
   // Хулганы x-координатыг тэнхлэг дээрх цаг (ms) руу хөрвүүлнэ, 15 минутад
-  // бүхэлдэнэ — хоосон зай дээр дарахад шинэ (walk-in) захиалга нээхэд ашиглана.
+  // бүхэлдэнэ — хоосон зай дээр дарахад шинэ цаг захиалга нээхэд ашиглана.
   function msFromClientX(clientX: number): number | null {
     const el = bodyRef.current;
     if (!el) return null;
@@ -118,23 +111,6 @@ export function GridSchedule({
     return roundToSlot(axisStartMs + ratio * axisSpan);
   }
 
-  function handleBodyClick(e: React.MouseEvent<HTMLDivElement>) {
-    if (e.target !== e.currentTarget) return; // блок дээр дарсан бол үл хайхрана
-    const ms = msFromClientX(e.clientX);
-    if (ms == null) return;
-    if (ms < nowMs()) return; // өнгөрсөн цаг дээр шинэ зүйл үүсгэхгүй
-    setCreateAtMs(ms);
-  }
-
-  function goCreateOrder(ms: number) {
-    const params = new URLSearchParams({
-      branchId,
-      scheduledAt: new Date(ms).toISOString(),
-      next: returnTo,
-    });
-    router.push(`/dashboard/orders/new?${params.toString()}`);
-  }
-
   function goCreateAppointment(ms: number) {
     const params = new URLSearchParams({
       branchId,
@@ -142,6 +118,21 @@ export function GridSchedule({
       next: returnTo,
     });
     router.push(`/dashboard/appointments/new?${params.toString()}`);
+  }
+
+  // Захиалгын жагсаалт хуудсанд ганцхан тухайн мөрийг шүүж харуулна — тусдаа
+  // дэлгэрэнгүй хуудас байхгүй тул одоо байгаа "highlight" загварыг ашиглана
+  // (харах: app/dashboard/appointments/page.tsx-ийн highlightId).
+  function goToBookingDetail(appointmentId: string) {
+    router.push(`/dashboard/appointments?highlight=${encodeURIComponent(appointmentId)}`);
+  }
+
+  function handleBodyClick(e: React.MouseEvent<HTMLDivElement>) {
+    if (e.target !== e.currentTarget) return; // блок дээр дарсан бол үл хайхрана
+    const ms = msFromClientX(e.clientX);
+    if (ms == null) return;
+    if (ms < nowMs()) return; // өнгөрсөн цаг дээр шинэ зүйл үүсгэхгүй
+    goCreateAppointment(ms);
   }
 
   return (
@@ -168,243 +159,142 @@ export function GridSchedule({
             ))}
           </div>
 
-          {/* Grid бие — саарал босоо шугамууд + байршуулсан блокууд. Хоосон
-              зай дээр дарахад тухайн цагаар шинэ (walk-in) захиалга нээнэ —
-              блок дээр дарсныг e.target !== e.currentTarget-ээр ялгана. */}
-          <div
-            ref={bodyRef}
-            className="relative"
-            style={{
-              height: `${Math.max(1, laneCount) * ROW_HEIGHT + 8}px`,
-              cursor: now != null && hoverMs != null && hoverMs < now ? "not-allowed" : "pointer",
-            }}
-            onClick={handleBodyClick}
-            onMouseMove={(e) => setHoverMs(msFromClientX(e.clientX))}
-            onMouseLeave={() => setHoverMs(null)}
-          >
-            {showPastFill ? (
-              <div
-                className="absolute top-0 bottom-0 left-0 bg-[var(--oc-muted2)]/[0.16] pointer-events-none"
-                style={{ width: `${pct(pastFillEndMs)}%` }}
-                title="Өнгөрсөн цаг"
-              />
-            ) : null}
-
-            {showNowMarker ? (
-              <div
-                className="absolute top-0 bottom-0 w-0.5 bg-[var(--oc-muted)]/80 pointer-events-none"
-                style={{ left: `${pct(now!)}%` }}
-              >
-                <span className="absolute -top-0.5 left-1.5 whitespace-nowrap rounded-full bg-[var(--oc-muted2)] px-1.5 py-0.5 font-plex-mono text-[9px] text-[var(--oc-carbon)]">
-                  Одоо · {fmtUbTime(now!)}
-                </span>
-              </div>
-            ) : null}
-
-            {showClosingTint ? (
-              <div
-                className="absolute top-0 bottom-0 right-0 bg-[var(--oc-warn)]/[0.06] pointer-events-none"
-                style={{ width: `${100 - pct(closingTintStartMs)}%` }}
-                title="Хаалтын цагаас хойш"
-              />
-            ) : null}
-
-            {showClosingMarker ? (
-              <div
-                className="absolute top-0 bottom-0 w-0.5 bg-[var(--oc-warn)]/70 pointer-events-none"
-                style={{ left: `${pct(closingAtMs!)}%` }}
-              >
-                <span className="absolute -top-0.5 left-1.5 whitespace-nowrap rounded-full bg-[var(--oc-warn)]/80 px-1.5 py-0.5 font-plex-mono text-[9px] text-[var(--oc-carbon)]">
-                  Хаалт · {fmtUbTime(closingAtMs!)}
-                </span>
-              </div>
-            ) : null}
-
-            {hourMarks.map((t) => (
-              <div
-                key={t}
-                className="absolute top-0 bottom-0 w-px bg-[var(--oc-line)]/60 pointer-events-none"
-                style={{ left: `${pct(t)}%` }}
-              />
-            ))}
-
-            {hoverMs != null && now != null && hoverMs >= now ? (
-              <div
-                className="absolute top-0 bottom-0 w-px bg-[var(--oc-accent)]/70 pointer-events-none"
-                style={{ left: `${pct(hoverMs)}%` }}
-              >
-                <span className="absolute -top-0.5 left-1.5 whitespace-nowrap rounded-full bg-[var(--oc-accent)] px-1.5 py-0.5 font-plex-mono text-[9px] text-[var(--oc-on-accent)]">
-                  + {fmtUbTime(hoverMs)}
-                </span>
-              </div>
-            ) : null}
-
+          {/* Грид бие — салбарын багтаамжийн мөр тус бүрийг тусдаа, зааглагдсан
+              жижиг грид болгож харуулна (нэг цул талбар дундуур зураас татаад
+              харуулахын оронд). Хоосон зай дээр дарахад тухайн цагаар шинэ
+              (walk-in) захиалга нээнэ — блок дээр дарсныг
+              e.target !== e.currentTarget-ээр ялгана. */}
+          <div ref={bodyRef} className="relative flex flex-col gap-2 pt-3">
             {rows.length === 0 ? (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-sm text-[var(--oc-muted4)]">
+              <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none text-sm text-[var(--oc-muted4)]">
                 Энэ өдөр хуваарь хоосон байна.
               </div>
             ) : null}
 
-            {positioned.map((row) => {
-              const left = pct(row.startMs);
-              // Uncertainty controls the striped treatment, not the width.
-              // The projection already supplies a bounded fallback for a
-              // scheduled unknown-duration row and preserves a saved finish
-              // for overdue work.
-              const right = pct(row.endMs);
-              const width = Math.max(MIN_BLOCK_WIDTH_PCT, right - left);
-              const isSelected = row.key === selectedKey;
-              return (
-                <button
-                  key={row.key}
-                  type="button"
-                  onClick={() => setSelectedKey(isSelected ? null : row.key)}
-                  title={row.name}
-                  className={`absolute flex items-center gap-1.5 overflow-hidden rounded-lg border px-2 text-left text-xs transition-colors ${
-                    isSelected
-                      ? "border-[var(--oc-accent)] bg-[var(--oc-accent)]/20 z-10"
-                      : "border-[var(--oc-line2)] bg-[var(--oc-panel2)] hover:bg-white/[0.06]"
-                  } ${row.issueLabel ? "outline outline-1 outline-red-500/40" : ""}`}
-                  style={{
-                    left: `${left}%`,
-                    width: `${width}%`,
-                    top: `${row.lane * ROW_HEIGHT + 4}px`,
-                    height: `${ROW_HEIGHT - 6}px`,
-                    backgroundImage: row.uncertain
-                      ? "repeating-linear-gradient(135deg, transparent, transparent 6px, rgba(245,158,11,0.15) 6px, rgba(245,158,11,0.15) 12px)"
-                      : undefined,
-                  }}
-                >
-                  <span className="font-plex-mono text-[10px] text-[var(--oc-muted3)] shrink-0">
-                    {row.continuesFromPreviousDay ? "Өмнөх өдөр → " : null}
-                    {fmtUbTime(row.startMs)}
-                  </span>
-                  <span className="truncate text-[var(--oc-ink2)]">{row.name}</span>
-                  {row.paymentStatusLabel ? (
-                    <span
-                      className={`shrink-0 rounded-full border px-1.5 py-0.5 font-plex-mono text-[9px] ${row.paymentStatusClass}`}
-                    >
-                      {row.paymentStatusLabel}
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
+            {Array.from({ length: laneCount }).map((_, lane) => (
+              <div
+                key={`lane-${lane}`}
+                className="relative rounded-lg border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden"
+                style={{
+                  height: `${ROW_HEIGHT}px`,
+                  cursor: now != null && hoverMs != null && hoverMs < now ? "not-allowed" : "pointer",
+                }}
+                onClick={handleBodyClick}
+                onMouseMove={(e) => setHoverMs(msFromClientX(e.clientX))}
+                onMouseLeave={() => setHoverMs(null)}
+              >
+                {positioned
+                  .filter((row) => row.lane === lane)
+                  .map((row) => {
+                    const left = pct(row.startMs);
+                    const right = pct(row.endMs);
+                    const width = Math.max(MIN_BLOCK_WIDTH_PCT, right - left);
+                    return (
+                      <button
+                        key={row.key}
+                        type="button"
+                        title={row.name}
+                        onClick={() => goToBookingDetail(row.id)}
+                        className="absolute top-0.5 bottom-0.5 flex items-center gap-1.5 overflow-hidden rounded-lg border px-2 text-left text-xs border-[var(--oc-line2)] bg-[var(--oc-panel2)] hover:bg-white/[0.06] transition-colors"
+                        style={{ left: `${left}%`, width: `${width}%` }}
+                      >
+                        <span className="font-plex-mono text-[10px] text-[var(--oc-muted3)] shrink-0">
+                          {fmtUbTime(row.startMs)}
+                        </span>
+                        <span className="truncate text-[var(--oc-ink2)]">{row.name}</span>
+                        {row.paymentStatusLabel ? (
+                          <span
+                            className={`shrink-0 rounded-full border px-1.5 py-0.5 font-plex-mono text-[9px] ${row.paymentStatusClass}`}
+                          >
+                            {row.paymentStatusLabel}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+              </div>
+            ))}
+
+            {/* Одоо/өнгөрсөн цаг, хаалт зэрэг цагийн шугамууд — мөр бүрт
+                тусад нь давтахын оронд бүх мөрийг дамнасан НЭГ тасралтгүй
+                давхарга болгож зурна (хоосон зайнуудыг ч дамжуулан), эс
+                бөгөөс мөр хооронд тасарч харагдана. */}
+            <div className="absolute inset-0 pointer-events-none">
+              {showPastFill ? (
+                <div
+                  className="absolute top-0 bottom-0 left-0 bg-[var(--oc-muted2)]/[0.16]"
+                  style={{ width: `${pct(pastFillEndMs)}%` }}
+                  title="Өнгөрсөн цаг"
+                />
+              ) : null}
+
+              {showNowMarker ? (
+                <div
+                  className="absolute top-0 bottom-0 w-0.5 bg-[var(--oc-muted)]/80"
+                  style={{ left: `${pct(now!)}%` }}
+                />
+              ) : null}
+
+              {showClosingTint ? (
+                <div
+                  className="absolute top-0 bottom-0 right-0 bg-[var(--oc-warn)]/[0.06]"
+                  style={{ width: `${100 - pct(closingTintStartMs)}%` }}
+                  title="Хаалтын цагаас хойш"
+                />
+              ) : null}
+
+              {showClosingMarker ? (
+                <div
+                  className="absolute top-0 bottom-0 w-0.5 bg-[var(--oc-warn)]/70"
+                  style={{ left: `${pct(closingAtMs!)}%` }}
+                />
+              ) : null}
+
+              {hourMarks.map((t) => (
+                <div
+                  key={t}
+                  className="absolute top-0 bottom-0 w-px bg-[var(--oc-line)]/60"
+                  style={{ left: `${pct(t)}%` }}
+                />
+              ))}
+
+              {now != null && hoverMs != null && hoverMs >= now ? (
+                <div
+                  className="absolute top-0 bottom-0 w-px bg-[var(--oc-accent)]/70"
+                  style={{ left: `${pct(hoverMs)}%` }}
+                />
+              ) : null}
+            </div>
+
+            {showNowMarker ? (
+              <span
+                className="absolute -top-1 -translate-x-1/2 whitespace-nowrap rounded-full bg-[var(--oc-muted2)] px-1.5 py-0.5 font-plex-mono text-[9px] text-[var(--oc-carbon)] pointer-events-none"
+                style={{ left: `${pct(now!)}%` }}
+              >
+                Одоо · {fmtUbTime(now!)}
+              </span>
+            ) : null}
+
+            {showClosingMarker ? (
+              <span
+                className="absolute -top-1 -translate-x-1/2 whitespace-nowrap rounded-full bg-[var(--oc-warn)]/80 px-1.5 py-0.5 font-plex-mono text-[9px] text-[var(--oc-carbon)] pointer-events-none"
+                style={{ left: `${pct(closingAtMs!)}%` }}
+              >
+                Хаалт · {fmtUbTime(closingAtMs!)}
+              </span>
+            ) : null}
+
+            {now != null && hoverMs != null && hoverMs >= now ? (
+              <span
+                className="absolute -top-1 -translate-x-1/2 whitespace-nowrap rounded-full bg-[var(--oc-accent)] px-1.5 py-0.5 font-plex-mono text-[9px] text-[var(--oc-on-accent)] pointer-events-none"
+                style={{ left: `${pct(hoverMs)}%` }}
+              >
+                + {fmtUbTime(hoverMs)}
+              </span>
+            ) : null}
           </div>
         </div>
       </div>
-
-      {/* Сонгосон блокийн дэлгэрэнгүй/үйлдэл — grid дотор шууд дэлгэвэл
-          байршуулалт эвдэрдэг тул доор тусад нь харуулна. */}
-      {selected ? (
-        <div className="relative rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-4">
-          <div className="flex flex-wrap items-center gap-2 mb-2">
-            <span className="font-plex-mono text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--oc-panel2)] border border-[var(--oc-line)] text-[var(--oc-muted3)]">
-              {selected.source === "appointment" ? "Цаг захиалга" : "Захиалга"}
-            </span>
-            {selected.statusLabel ? (
-              <span
-                className={`font-plex-mono text-[10px] px-1.5 py-0.5 rounded-full ${selected.statusClass}`}
-              >
-                {selected.statusLabel}
-              </span>
-            ) : null}
-            <span className="font-plex-mono text-xs text-[var(--oc-muted3)]">
-              {selected.uncertain
-                ? `${fmtUbTime(selected.startMs)} → тодорхойгүй`
-                : `${fmtUbTime(selected.startMs)}–${selected.endsAtDayBoundary ? "24:00" : fmtUbTime(selected.endMs)}`}
-            </span>
-            {selected.continuesFromPreviousDay ? (
-              <span className="font-plex-mono text-[10px] px-1.5 py-0.5 rounded-full bg-sky-500/10 text-sky-300 border border-sky-500/20">
-                Өмнөх өдрөөс үргэлжилсэн
-              </span>
-            ) : null}
-            {selected.paymentStatusLabel ? (
-              <span
-                className={`font-plex-mono text-[10px] px-1.5 py-0.5 rounded-full border ${selected.paymentStatusClass}`}
-              >
-                {selected.paymentStatusLabel}
-              </span>
-            ) : null}
-            {selected.issueLabel ? (
-              <span className="font-plex-mono text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
-                {selected.issueLabel}
-              </span>
-            ) : null}
-          </div>
-          <div className="text-sm text-[var(--oc-ink)] font-medium mb-3">{selected.name}</div>
-          <div className="flex flex-col sm:flex-row gap-3 items-start">
-            {selected.actions ? (
-              <div className="w-full sm:w-64 shrink-0 flex flex-wrap items-center gap-2">
-                {selected.actions}
-              </div>
-            ) : selected.source !== "order" ? (
-              <p className="text-xs text-[var(--oc-muted4)]">
-                Одоогоор хийх боломжтой үйлдэл алга.
-              </p>
-            ) : null}
-            {selected.source === "order" ? (
-              <OrderDetailPanel
-                key={selected.id}
-                orderId={selected.id}
-                canChangeItemStatus={canChangeItemStatus}
-                canChangeItemPrice={canChangeItemPrice}
-              />
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-
-      {createAtMs != null && typeof document !== "undefined"
-        ? createPortal(
-            <>
-              <button
-                type="button"
-                tabIndex={-1}
-                aria-label="Хаах"
-                onClick={() => setCreateAtMs(null)}
-                className="fixed inset-0 z-[100] cursor-default bg-black/60"
-              />
-              <div
-                role="dialog"
-                aria-modal="true"
-                className="fixed left-1/2 top-1/2 z-[110] w-[min(92vw,22rem)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-white/10 bg-[var(--surface)] p-5 shadow-2xl backdrop-blur-xl"
-              >
-                <h3 className="font-semibold text-white mb-1">
-                  {fmtUbTime(createAtMs)} цагт юу үүсгэх вэ?
-                </h3>
-                <p className="text-sm text-white/50 mb-4">
-                  Машин яг одоо ирсэн бол захиалга, ирээдүйн цаг захиалах бол
-                  цаг захиалгыг сонго.
-                </p>
-                <div className="flex flex-col gap-2">
-                  <button
-                    type="button"
-                    onClick={() => goCreateOrder(createAtMs)}
-                    className="w-full rounded-lg bg-violet-600 px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500"
-                  >
-                    Засварын хуудас үүсгэх
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => goCreateAppointment(createAtMs)}
-                    className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3.5 py-2 text-sm font-medium text-white/80 transition-colors hover:bg-white/[0.08]"
-                  >
-                    Цаг захиалга үүсгэх
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCreateAtMs(null)}
-                    className="w-full rounded-lg px-3.5 py-2 text-sm text-white/50 transition-colors hover:text-white/80"
-                  >
-                    Болих
-                  </button>
-                </div>
-              </div>
-            </>,
-            document.body,
-          )
-        : null}
     </div>
   );
 }

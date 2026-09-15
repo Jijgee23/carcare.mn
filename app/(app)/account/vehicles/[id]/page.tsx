@@ -16,6 +16,7 @@ import {
   type PaymentStatus,
 } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
+import { RefreshHurButton } from "./refresh-hur-button";
 
 export const metadata = { title: "Машины дэлгэрэнгүй" };
 export const dynamic = "force-dynamic";
@@ -130,9 +131,12 @@ export default async function AccountVehiclePage({
 
   return (
     <div className="w-full flex flex-col gap-6">
-      <BtnLink href="/account/vehicles" variant="ghost" size="sm" className="self-start">
-        ← Миний машинууд
-      </BtnLink>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <BtnLink href="/account/vehicles" variant="ghost" size="sm" className="self-start">
+          ← Миний машинууд
+        </BtnLink>
+        <RefreshHurButton vehicleId={vehicle.id} />
+      </div>
 
       {/* Машины бүх мэдээлэл */}
       <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5">

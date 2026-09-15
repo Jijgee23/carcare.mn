@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import {
   type BranchActionState,
   createBranchAction,
@@ -10,6 +10,7 @@ import {
 import { Field, FormError } from "@/app/_components/auth-shell";
 import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
 import { Select } from "@/app/_components/select";
+import { useToast } from "@/app/_components/toast";
 import { DEFAULT_OPEN_DAYS, WEEK_DAYS, type Weekday } from "@/lib/branches";
 import {
   type AddressData,
@@ -105,6 +106,21 @@ export function BranchForm({
     BranchActionState,
     FormData
   >(action, null);
+
+  const toast = useToast();
+  // Хуваарь хадгалахад blocked (erased impact) эсвэл бусад алдаа гарвал
+  // toast-аар тодруулна — `FormError`-ийн статик текст анзаарагдахгүй өнгөрч
+  // болзошгүй тул (харах: schedule-manager-ийн адил зарчим одоохоор энд
+  // байгаагүй). `needsConfirm` үед inline ScheduleImpactPreview + чекбокс аль
+  // хэдийн харагдаж байгаа тул давхар toast үзүүлэхгүй.
+  const handledState = useRef<BranchActionState>(null);
+  useEffect(() => {
+    if (!state || state === handledState.current) return;
+    handledState.current = state;
+    if (!state.ok && !state.needsConfirm) {
+      toast.error(state.message ?? "Хуваарь хадгалахад алдаа гарлаа.");
+    }
+  }, [state, toast]);
 
   const fe = state?.fieldErrors ?? {};
   const initialDays = initial?.openDays?.length

@@ -33,10 +33,6 @@ import {
   formatTugrik,
 } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
-import { bookingDateKey, bookingSlotTime } from "@/lib/booking-time";
-import { resolveEffectiveSchedule } from "@/lib/branch-effective-schedule";
-import { branchScheduleForDateSelect } from "@/lib/branch-effective-schedule-server";
-import { timeToMinutes } from "@/lib/branches";
 import { calculateServiceItemDurationMinutes } from "@/lib/service-duration";
 import type { QPayBankUrl } from "@/lib/qpay-tenant";
 import { AddItemForm } from "./add-item-form";
@@ -214,35 +210,6 @@ export default async function OrderDetailPage({
   if (!order) notFound();
   if (!canViewOrder(user, order)) redirect("/dashboard/orders");
   const canEditOrder = canEditAssignedOrder(user, order);
-
-  // "Дуусах хугацаа" DatePicker-ийг ажил эхэлсэн өдрийн салбарын ажлын
-  // цагийн төгсгөлөөс цааш сунгахгүйгээр хязгаарлана (сервер талд ч мөн
-  // адил шалгагдана, харах: reviseExpectedFinishAction). Зөвхөн тухайн талбар
-  // харагдах үед (IN_PROGRESS, эхэлсэн цагтай) хэрэгтэй.
-  let workDayCloseAt: Date | null = null;
-  if (order.startedAt && order.status === "IN_PROGRESS") {
-    const workDayStr = bookingDateKey(order.startedAt);
-    const branchSchedule = await prisma.branch.findUnique({
-      where: { id: order.branchId },
-      select: branchScheduleForDateSelect(workDayStr),
-    });
-    if (branchSchedule) {
-      const effective = resolveEffectiveSchedule({
-        dateStr: workDayStr,
-        branch: {
-          openTime: branchSchedule.openTime,
-          closeTime: branchSchedule.closeTime,
-          schedules: branchSchedule.schedules,
-          scheduleExceptions: branchSchedule.scheduleExceptions,
-          scheduleSeasons: branchSchedule.scheduleSeasons,
-        },
-      });
-      const closeMinutes = timeToMinutes(effective.closeTime);
-      if (effective.open && closeMinutes != null) {
-        workDayCloseAt = bookingSlotTime(workDayStr, closeMinutes);
-      }
-    }
-  }
 
   const status = order.status as OrderStatus;
   const paymentStatus = order.paymentStatus as PaymentStatus;
@@ -466,11 +433,8 @@ export default async function OrderDetailPage({
                 transitions={allowedTransitions}
                 disabled={!canEditOrder}
                 currentStatus={order.status as OrderStatus}
-                expectedFinishAt={order.expectedFinishAt}
                 estimatedDurationMinutes={order.estimatedDurationMinutes}
                 serviceItemDurationMinutes={serviceItemDurationMinutes}
-                attentionHref={`/dashboard/appointments/calendar?view=attention&branchId=${encodeURIComponent(order.branchId)}`}
-                workDayCloseAt={workDayCloseAt}
               />
             </div>
           ) : null}

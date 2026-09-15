@@ -207,11 +207,11 @@ test("cancelled linked order still flags its appointment for attention", () => {
 test("completed car still in workspace continues to consume capacity", () => {
   assert.equal(project([order({ status: "COMPLETED" })]).intervals.length, 1);
 });
-test("overdue work keeps its saved finish boundary and requests a revised estimate", () => {
+test("work past its saved finish boundary is never flagged as late", () => {
   const result = project([order({ expectedFinishAt: at("10:15") })]);
   assert.equal(result.intervals[0].endMs, at("10:15").getTime());
-  assert.equal(result.intervals[0].uncertain, true);
-  assert.ok(result.issues.some((issue) => issue.reason === "overdue"));
+  assert.equal(result.intervals[0].uncertain, false);
+  assert.equal(result.issues.length, 0);
 });
 test("unknown active occupancy is not treated as free", () => {
   const result = project([order({ occupiesCapacity: null })]);

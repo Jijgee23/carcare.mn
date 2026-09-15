@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { Weekday } from "@/lib/branches";
-import { resolveEffectiveSchedule, type ScheduleException, type ScheduleSeason, type ScheduleRule } from "@/lib/branch-effective-schedule";
+import { resolveEffectiveSchedule, scheduleDisplayLabel, type ScheduleException, type ScheduleSeason, type ScheduleRule } from "@/lib/branch-effective-schedule";
 
 // Inline (popover биш) сарын календарь — салбар сонгомогц шууд харагдана.
 const WEEKDAYS = ["Да", "Мя", "Лх", "Пү", "Ба", "Бя", "Ня"];
@@ -123,6 +123,10 @@ export function BookingCalendar({
             ? !scheduleForDate.open
             : openWeekdays != null &&
               !openWeekdays.includes(JS_DAY_TO_WEEKDAY[d.getDay()]);
+          const closedReason =
+            closed && scheduleForDate
+              ? (scheduleDisplayLabel(scheduleForDate) ?? "Амарна")
+              : "Амарна";
           const disabled = ds < today || closed;
           const selected = ds === value;
           const isToday = ds === today;
@@ -131,7 +135,7 @@ export function BookingCalendar({
               key={ds}
               type="button"
               disabled={disabled}
-              title={closed ? "Амарна" : undefined}
+              title={closed ? closedReason : undefined}
               onClick={() => onChange(ds)}
               className={`relative grid h-11 place-items-center rounded-lg text-sm transition-colors ${
                 disabled
