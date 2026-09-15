@@ -65,7 +65,7 @@ export function BookingFlow({
         <h1 className="text-2xl font-bold">Цаг захиалах</h1>
         <p className="text-[var(--oc-muted3)] text-sm mt-1">
           Ямар ажил хийлгэхээ сонгоход тэдгээрийг БҮГДийг нь гүйцэтгэдэг
-          салбарууд доор харагдана. Сонголтгүй бол бүх автосервис жагсаана.
+          салбарууд доор харагдана.
         </p>
       </div>
 
@@ -85,11 +85,14 @@ export function BookingFlow({
       />
 
       <div className={`transition-opacity ${isPending ? "opacity-50" : ""}`}>
-        {results.length === 0 ? (
+        {selectedIds.length === 0 ? (
+          <div className="rounded-[10px] border border-dashed border-[var(--oc-line)] p-10 text-center text-sm text-[var(--oc-muted3)]">
+            Ажлын төрлөө сонгоход тохирох салбарууд эндээс харагдана.
+          </div>
+        ) : results.length === 0 ? (
           <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-10 text-center text-sm text-[var(--oc-muted3)]">
-            {selectedIds.length > 0
-              ? "Сонгосон ажлуудыг зэрэг гүйцэтгэдэг салбар олдсонгүй. Ажлын төрлөөсөө хасаад дахин үзнэ үү."
-              : "Одоогоор идэвхтэй салбар алга байна."}
+            Сонгосон ажлуудыг зэрэг гүйцэтгэдэг салбар олдсонгүй. Ажлын
+            төрлөөсөө хасаад дахин үзнэ үү.
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

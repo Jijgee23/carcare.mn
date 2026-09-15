@@ -24,9 +24,10 @@ export type BookingBranchResult = {
 /**
  * Booking v2 нэгтгэсэн хуудас (`app/(app)/book`) — сонгосон ажлын
  * түлхүүрүүдийг (`selectedIds`) БҮГДийг нь гүйцэтгэдэг салбаруудыг олно.
- * `selectedIds` хоосон бол шүүлтгүй, идэвхтэй бүх салбарыг буцаана
- * (`/discover`-ийн шүүлтгүй тохиолдолтой ижил) — категори сонгоогүй үед
- * хуудас хоосон харагдахгүй байхын тулд.
+ * `selectedIds` хоосон бол ХООСОН массив буцаана (шүүлтгүй бүх салбарыг
+ * ЖАГСААХГҮЙ) — ажлын төрөл сонгуулахыг урамшуулах зорилготой,
+ * `booking-flow.tsx` үүнийг "ажлын төрлөө сонгоно уу" гэсэн зөвлөмж болгож
+ * харуулна (`/discover`-т очих замтай хамт).
  *
  * `app/(app)/book/page.tsx`-ийн анхны SSR-ээс, мөн клиент талаас сонголт
  * өөрчлөгдөх бүрт (`booking-flow.tsx`) дуудагдана.
@@ -34,6 +35,7 @@ export type BookingBranchResult = {
 export async function getBookingBranchResults(
   selectedIds: string[],
 ): Promise<BookingBranchResult[]> {
+  if (selectedIds.length === 0) return [];
   setBypassContext();
 
   const allowedPlans = await plansWithFeature(PLAN_LIMIT_CODES.ONLINE_BOOKING);
@@ -74,15 +76,13 @@ export async function getBookingBranchResults(
   const results: BookingBranchResult[] = [];
   for (const t of tenants) {
     for (const b of t.branches) {
-      if (selectedIds.length > 0) {
-        const branchServiceKeyIds = new Set(
-          t.categories
-            .filter((c) => c.branches.length === 0 || c.branches.some((x) => x.id === b.id))
-            .map((c) => c.systemServiceKeyId),
-        );
-        const coversAll = selectedIds.every((id) => branchServiceKeyIds.has(id));
-        if (!coversAll) continue;
-      }
+      const branchServiceKeyIds = new Set(
+        t.categories
+          .filter((c) => c.branches.length === 0 || c.branches.some((x) => x.id === b.id))
+          .map((c) => c.systemServiceKeyId),
+      );
+      const coversAll = selectedIds.every((id) => branchServiceKeyIds.has(id));
+      if (!coversAll) continue;
       const status = branchStatusNow(
         {
           openTime: b.openTime,

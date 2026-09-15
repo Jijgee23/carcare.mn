@@ -192,6 +192,25 @@ const systemServiceKeySeed = [
   ["Угаалга, өнгөлгөө", "Гадна, дотор угаалга болон өнгөлгөөний үйлчилгээ"],
 ] as const;
 
+// Тенант бүр `categorySeed`-ийн ЯГ ИЖИЛ 8 ангиллыг өөр өөр идэвхтэй дэд
+// олонлог, үргэлжлэх хугацаа, багтаамжаар авдаг — өмнө нь бүх тенант яг ижил
+// (Угаалгаас бусад бүгд идэвхтэй, багтаамж 1, стандарт хугацаа) байсан тул
+// /discover, /book-ийн service-key шүүлтүүр ямар ч ялгаа гаргадаггүй байв.
+// `categoryIds`-ийн индекс тогтмол хэвээр (categorySeed-тэй 1:1) — зөвхөн
+// `isActive`/`durationMinutes`/`concurrentCapacity`-г тенант тус бүрээр
+// өөрчилнө, categorySeed индексээс хамаарсан бусад бүх код (serviceSeed,
+// diagnostic template, appointment/order category сонголт) хэвээр ажиллана.
+const tenantCategoryProfiles = [
+  // 0: УБ Авто Сервис — том, ерөнхий газар: Угаалгаас бусад бүгдийг хийдэг.
+  { inactive: new Set<number>([7]), durationFactor: 1, capacityBoost: new Set<number>() },
+  // 1: Степп Моторс — тоормос/явах эд анги/дугуйны мэргэшсэн, түргэн газар.
+  { inactive: new Set<number>([2, 4, 6, 7]), durationFactor: 0.85, capacityBoost: new Set<number>([1, 5]) },
+  // 2: Дархан Моторс — хөдөлгүүр/цахилгааны мэргэжилтэн, нарийвчилсан (удаан).
+  { inactive: new Set<number>([1, 3, 5, 6]), durationFactor: 1.15, capacityBoost: new Set<number>([2]) },
+  // 3: Эрдэнэт Гараж — жижиг, түргэн үйлчилгээ: тос, дугуй, угаалга.
+  { inactive: new Set<number>([1, 2, 3, 4, 6]), durationFactor: 0.75, capacityBoost: new Set<number>([0, 5, 7]) },
+] as const;
+
 const serviceSeed = [
   ["LABOR", "Хөдөлгүүрийн тос солих", "OIL-CHANGE", 85000, "Тос, шингэн", 45],
   ["LABOR", "Тоормосны наклад солих", "BRAKE-PAD", 180000, "Тоормос", 90],
@@ -453,16 +472,20 @@ export async function seedFixtureData(db: SeedDb) {
       await db.unit.upsert({ where: { tenantId_name: { tenantId: tenant.id, name } }, update: { code, isActive: true }, create: { id, tenantId: tenant.id, name, code } });
     }
 
+    const categoryProfile = tenantCategoryProfiles[tenantIndex] ?? tenantCategoryProfiles[0];
     const categoryIds: string[] = [];
     for (let categoryIndex = 0; categoryIndex < categorySeed.length; categoryIndex++) {
-      const [name, description, durationMinutes] = categorySeed[categoryIndex];
+      const [name, description, baseDurationMinutes] = categorySeed[categoryIndex];
       const id = `seed-category-${tenantIndex + 1}-${categoryIndex + 1}`;
       categoryIds.push(id);
       const systemServiceKeyId = categoryServiceKeys[categoryIndex] ?? generalServiceKey.id;
+      const isActive = !categoryProfile.inactive.has(categoryIndex);
+      const durationMinutes = Math.round((baseDurationMinutes * categoryProfile.durationFactor) / 5) * 5;
+      const concurrentCapacity = categoryProfile.capacityBoost.has(categoryIndex) ? 2 : 1;
       await db.category.upsert({
         where: { tenantId_name: { tenantId: tenant.id, name } },
-        update: { description, durationMinutes, isActive: categoryIndex !== 7, systemServiceKeyId, branches: { connect: branches.map((branchId) => ({ id: branchId })) } },
-        create: { id, tenantId: tenant.id, name, description, durationMinutes, isActive: categoryIndex !== 7, systemServiceKeyId, branches: { connect: branches.map((branchId) => ({ id: branchId })) } },
+        update: { description, durationMinutes, concurrentCapacity, isActive, systemServiceKeyId, branches: { connect: branches.map((branchId) => ({ id: branchId })) } },
+        create: { id, tenantId: tenant.id, name, description, durationMinutes, concurrentCapacity, isActive, systemServiceKeyId, branches: { connect: branches.map((branchId) => ({ id: branchId })) } },
       });
     }
     tenantCategories.set(tenant.id, categoryIds);

@@ -25,8 +25,11 @@ export default async function BookStartPage({
 }) {
   setBypassContext();
   const { keys: keysParam } = await searchParams;
+  // Ямар ч ангилалд холбогдоогүй түлхүүрийг ШҮҮНЭ ГАРГАНА — сонговол
+  // баталгаатай хоосон салбарын жагсаалт буцаах сонголтыг цэсэнд харуулахгүй
+  // (харах: app/(app)/discover/page.tsx-ийн ижил шийдвэр).
   const serviceKeys = await prisma.systemServiceKey.findMany({
-    where: { isActive: true },
+    where: { isActive: true, categories: { some: { isActive: true } } },
     orderBy: { name: "asc" },
     select: { id: true, name: true },
   });

@@ -9,8 +9,11 @@ import { setBypassContext } from "@/lib/tenant-context";
  */
 export async function GET() {
   setBypassContext();
+  // Ямар ч ангилалд холбогдоогүй түлхүүрийг ШҮҮНЭ ГАРГАНА — сонговол
+  // баталгаатай хоосон салбарын жагсаалт буцаах сонголтыг харуулахгүй (харах:
+  // web-ийн app/(app)/discover/page.tsx-ийн ижил шийдвэр).
   const serviceKeys = await prisma.systemServiceKey.findMany({
-    where: { isActive: true },
+    where: { isActive: true, categories: { some: { isActive: true } } },
     orderBy: { name: "asc" },
     select: { id: true, name: true },
   });

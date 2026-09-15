@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@/app/generated/prisma/client";
 import { requireAccount } from "@/lib/auth/account";
-import { HurService, normalizeWheelPosition } from "@/lib/hur_service";
 import { prisma } from "@/lib/prisma";
+import { refreshVehicleFieldsFromHur } from "@/lib/vehicle-hur-refresh";
 import { resolveVehicle } from "@/lib/vehicles";
 
 export type CreatedAccountVehicle = {
@@ -149,43 +149,8 @@ export async function refreshVehicleFromHur(
   });
   if (!vehicle) return { ok: false, message: "Машин олдсонгүй." };
 
-  let hur;
-  try {
-    hur = await HurService.getVehicle(vehicle.plate);
-  } catch (e) {
-    return {
-      ok: false,
-      message: e instanceof Error ? e.message : "HUR-аас мэдээлэл татаж чадсангүй.",
-    };
-  }
-
-  try {
-    await prisma.vehicle.update({
-      where: { id: vehicle.id },
-      data: {
-        make: hur.make ?? undefined,
-        model: hur.model ?? undefined,
-        year: hur.year ?? undefined,
-        vin: hur.vin ?? undefined,
-        fuelType: hur.fuelType ?? undefined,
-        wheelPosition: normalizeWheelPosition(hur.wheelPosition) ?? undefined,
-        colorName: hur.color ?? undefined,
-        capacity: hur.capacity ?? undefined,
-        purpose: hur.purpose ?? undefined,
-      },
-    });
-  } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      return {
-        ok: false,
-        message: "HUR-аас ирсэн VIN өөр машинд аль хэдийн бүртгэгдсэн байна.",
-      };
-    }
-    return {
-      ok: false,
-      message: e instanceof Error ? e.message : "Шинэчлэх явцад алдаа гарлаа.",
-    };
-  }
+  const result = await refreshVehicleFieldsFromHur(vehicle.id, vehicle.plate);
+  if (!result.ok) return result;
 
   revalidatePath(`/account/vehicles/${vehicleId}`);
   return { ok: true };

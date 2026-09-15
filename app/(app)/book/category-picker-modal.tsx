@@ -52,7 +52,7 @@ export function CategoryPickerModal({
       </div>
       <div className="sticky bottom-0 -mx-5 mt-4 flex items-center justify-between gap-3 border-t border-[var(--oc-line)] bg-[var(--oc-panel)] px-5 pt-3">
         <span className="text-xs text-[var(--oc-muted3)]">
-          {draft.length > 0 ? `${draft.length} сонгосон` : "Сонголтгүй бол бүх салбар харагдана"}
+          {draft.length > 0 ? `${draft.length} сонгосон` : "Сонголтгүй бол салбар харагдахгүй"}
         </span>
         <div className="flex gap-2">
           <button

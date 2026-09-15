@@ -133,6 +133,7 @@ async function fetchMapMarkers({
   query,
   city,
   district,
+  serviceKey,
   nearMeLocation,
   openNow,
   weekend,
@@ -143,6 +144,7 @@ async function fetchMapMarkers({
   query: string;
   city: string;
   district: string;
+  serviceKey: string;
   nearMeLocation: GeoPoint | null;
   openNow: boolean;
   weekend: boolean;
@@ -157,6 +159,7 @@ async function fetchMapMarkers({
   if (query.trim()) params.set("q", query.trim());
   if (city) params.set("city", city);
   if (district) params.set("district", district);
+  if (serviceKey) params.set("serviceKey", serviceKey);
   if (nearMeLocation) {
     params.set("lat", String(nearMeLocation.lat));
     params.set("lng", String(nearMeLocation.lng));
@@ -350,11 +353,10 @@ export function DiscoverClient({
     return [...s].sort((a, b) => a.localeCompare(b, "mn"));
   }, [orgs]);
 
-  // Анх ороход Улаанбаатар сонгогдсон байна (жагсаалтад байгаа бол),
-  // үгүй бол бүх аймаг/хот.
-  const [city, setCity] = useState(() =>
-    cities.includes(DEFAULT_CITY) ? DEFAULT_CITY : "",
-  );
+  // Хотын шүүлтүүр анх ороход ХООСОН (бүх аймаг/хот) — газрын зургийн
+  // ЭХНИЙ ХАРАГДАЦ Улаанбаатар руу төвлөрдөг ч (доор `UB_CENTER`) энэ зөвхөн
+  // камерын байрлал, "хот" шүүлтүүрийг далд идэвхжүүлдэггүй.
+  const [city, setCity] = useState("");
   const [citySelectedByUser, setCitySelectedByUser] = useState(false);
   const [district, setDistrict] = useState("");
   // Ямар ажил хийлгэх гэж байгаагаа (системийн ажлын түлхүүр) байгууллага
@@ -458,6 +460,17 @@ export function DiscoverClient({
     [visibleOrgs],
   );
 
+  // Ажлын төрлийн шүүлтүүр идэвхтэй бол тухайн салбар аль хэдийн энэ ажлыг
+  // санал болгодгийг `visibleOrgs`-ийн шүүлт баталгаажуулсан тул шууд
+  // `/book/branch/[id]`-рүү (ангилал урьдчилан сонгогдож, түгжигдсэн) чиглүүлнэ
+  // — `/org/[slug]`-ийн ерөнхий (ангилалгүй) урсгалыг биш.
+  function bookingHref(orgSlug: string, branchId: string): string {
+    if (serviceKey) {
+      return `/book/branch/${encodeURIComponent(branchId)}?keys=${encodeURIComponent(serviceKey)}`;
+    }
+    return `/org/${orgSlug}?branch=${encodeURIComponent(branchId)}`;
+  }
+
   // Газрын зураг ТОХИРУУЛАГДСАН эсэх (apiKey байгаа эсэх) — тогтмол, шүүлтийн
   // үр дүнгээс хамаардаггүй тул "Газрын зураг" tab/товч шүүлтийн улмаас 0
   // илэрцтэй болоход алга болохгүй (үр дүнгүй үед доорхи "Энэ хайлтаар газар
@@ -485,6 +498,7 @@ export function DiscoverClient({
       query: query.trim(),
       city,
       district,
+      serviceKey,
       nearMeLocation,
       openNowOnly,
       weekendOnly,
@@ -501,6 +515,7 @@ export function DiscoverClient({
         query,
         city,
         district,
+        serviceKey,
         nearMeLocation,
         openNow: openNowOnly,
         weekend: weekendOnly,
@@ -524,7 +539,7 @@ export function DiscoverClient({
   useEffect(() => {
     scheduleMapFetchRef.current = scheduleMapFetch;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, city, district, nearMeLocation, openNowOnly, weekendOnly, orgs]);
+  }, [query, city, district, serviceKey, nearMeLocation, openNowOnly, weekendOnly, orgs]);
 
   useEffect(() => {
     mapRequestGenerationRef.current += 1;
@@ -536,7 +551,7 @@ export function DiscoverClient({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMapMarkers(null);
     setMapTruncated(false);
-  }, [query, city, district, nearMeLocation, openNowOnly, weekendOnly]);
+  }, [query, city, district, serviceKey, nearMeLocation, openNowOnly, weekendOnly]);
 
   const markersForMap = mapMarkers ?? markers;
 
@@ -584,6 +599,12 @@ export function DiscoverClient({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapClickListenerRef = useRef<any>(null);
   const [mapReady, setMapReady] = useState(false);
+  // Хамгийн эхний `mapReady`-д fitBounds-г алгасахад ашиглана — доорх
+  // fitBounds effect-ийг харах. Компонентын БҮХ насны туршид нэг л удаа
+  // true болно (map/list харагдац сэлгэж дахин mount хийгдвэл дахин fit хийж
+  // болно — зөвхөн ХАМГИЙН АНХНЫ ачаалалтыг статик Улаанбаатар харагдацтай
+  // үлдээхийг л зорьсон).
+  const hasCenteredInitiallyRef = useRef(false);
 
   // Аппын theme-г ажиглаж state-д тусгана — өөрчлөгдөхөд газрын зургийг
   // тохирох colorScheme-тэйгээр дахин үүсгэнэ.
@@ -750,6 +771,45 @@ export function DiscoverClient({
   }, [mapReady, markersForMap]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
+  // Шүүлтүүр (хот/дүүрэг/ажлын түрхлэг/хайлт/амралтын өдөр/одоо нээлттэй/
+  // "надад ойр") өөрчлөгдөхөд шинэ үр дүн одоогийн харагдац (viewport)-аас
+  // гадна байвал хэрэглэгч хоосон газрын зураг л хараад үлдэнэ (харах:
+  // өмнөх "map goes blank" алдаатай төөрөгдөж болзошгүй). Тиймээс шинэ
+  // ЛОКАЛ (viewport-аас үл хамаарсан) `markers`-т fitBounds хийнэ — гар
+  // аргаар pan/zoom хийсэн (idle listener-ийн `mapMarkers` refresh) үед биш,
+  // зөвхөн шүүлт өөрчлөгдсөн үед. Ганц цэг бол zoom хэт томроход (fitBounds
+  // цэг дээр extreme нарийвчлал руу очдог) panTo+тогтмол zoom ашиглана.
+  //
+  // ХАМГИЙН ЭХНИЙ `mapReady`-д (шүүлтгүй, шинэ хуудас ачаалагдах мөч) ЗОРИУДЛАН
+  // fitBounds хийхгүй — газрын зургийн анхны харагдац `UB_CENTER`-ээр статик
+  // Улаанбаатар руу төвлөрсөн хэвээр үлдэнэ (доорх map init effect-ийг
+  // харах). Үүний дараа ямар ч шүүлт өөрчлөгдвөл, эсвэл харагдац (map/list)
+  // сэлгэж дахин mount хийгдвэл идэвхтэй шүүлтэд тохирсон fitBounds ажиллана.
+  useEffect(() => {
+    if (!mapReady || !mapInstanceRef.current) return;
+    if (!hasCenteredInitiallyRef.current) {
+      hasCenteredInitiallyRef.current = true;
+      return;
+    }
+    if (markers.length === 0) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const g = (window as any).google;
+    if (!g?.maps) return;
+    const map = mapInstanceRef.current;
+    if (markers.length === 1) {
+      const only = markers[0].branch;
+      map.panTo({ lat: only.lat, lng: only.lng });
+      map.setZoom(14);
+      return;
+    }
+    const bounds = new g.maps.LatLngBounds();
+    for (const m of markers) {
+      bounds.extend({ lat: m.branch.lat, lng: m.branch.lng });
+    }
+    map.fitBounds(bounds, 48);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady, city, district, serviceKey, query, weekendOnly, openNowOnly, nearMeOnly]);
+
   // Сонгосон маркерыг тодруулж (ягаан + том), түүн рүү зөөлөн төвлөрнө.
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -818,17 +878,27 @@ export function DiscoverClient({
         </div>
 
         {serviceKeys.length > 0 ? (
-          <div className="discover-filter-select w-full sm:w-56 shrink-0">
-            <Select
-              name="discover-service-key"
-              value={serviceKey}
-              placeholder="Ямар ажил хийлгэх гэж байна?"
-              onChange={(v) => {
-                setServiceKey(v);
-                setSelected(null);
-              }}
-              options={serviceKeys.map((k) => ({ value: k.id, label: k.name }))}
-            />
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="discover-filter-select w-full sm:w-56 shrink-0">
+              <Select
+                name="discover-service-key"
+                value={serviceKey}
+                placeholder="Ямар ажил хийлгэх гэж байна?"
+                onChange={(v) => {
+                  setServiceKey(v);
+                  setSelected(null);
+                }}
+                options={serviceKeys.map((k) => ({ value: k.id, label: k.name }))}
+              />
+            </div>
+            {serviceKey ? (
+              <Link
+                href={`/book?keys=${encodeURIComponent(serviceKey)}`}
+                className="shrink-0 text-sm text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-600 whitespace-nowrap transition-colors"
+              >
+                Шууд цаг захиалах →
+              </Link>
+            ) : null}
           </div>
         ) : null}
 
@@ -958,11 +1028,17 @@ export function DiscoverClient({
         <div className="glass rounded-2xl p-10 border border-white/[0.08] text-center text-sm text-white/40">
           Одоогоор онлайн цаг захиалга нээсэн газар алга.
         </div>
-      ) : visibleOrgs.length === 0 ? (
-        <div className="glass rounded-2xl p-10 border border-white/[0.08] text-center text-sm text-white/40">
-          Энэ хайлтаар газар олдсонгүй.
-        </div>
       ) : view === "map" && hasMap ? (
+        // Шүүлтийн үр дүн хоосон болсон ч (`visibleOrgs.length === 0`) энэ
+        // `<div ref={mapRef}>`-г ЗААВАЛ mount хэвээр үлдээнэ (доор overlay-аар
+        // мессеж харуулна, бүтэн салгахгүй) — өмнө нь визгэл шүүлтийг сонгоод
+        // буцаж ирэхэд газрын зураг ЯГ ЭНЭ div дээр биш, шинэ (хоосон) div дээр
+        // дахин mount хийгддэг байсан бол Google Map instance хуучин, DOM-оос
+        // тасарсан node-той холбоотой хэвээр үлдэж, шинэ div дээр юу ч
+        // зурагдахгүй ("газрын зураг хоосон харагдах") алдаа гарч байсан —
+        // учир нь газрын зураг үүсгэх useEffect-ийн dependency array
+        // (`[view, hasMap, apiKey, mapId, light, nearMeLocation]`) энэ
+        // unmount/remount мөчид ДАХИН ажиллахгүй.
         <div className="relative">
           <div
             ref={mapRef}
@@ -1031,6 +1107,14 @@ export function DiscoverClient({
           {mapTruncated ? (
             <div className="absolute bottom-3 left-3 rounded-lg bg-zinc-900/85 px-3 py-2 text-xs text-white/75 shadow-lg light:bg-white/90 light:text-zinc-700">
               Зарим цэгийг нуусан. Газрын зургийг томруулж үзнэ үү.
+            </div>
+          ) : null}
+
+          {visibleOrgs.length === 0 ? (
+            <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-[var(--surface)]/90 backdrop-blur-sm">
+              <div className="glass rounded-2xl px-8 py-6 border border-white/[0.08] text-center text-sm text-white/40">
+                Энэ хайлтаар газар олдсонгүй.
+              </div>
             </div>
           ) : null}
 
@@ -1111,7 +1195,7 @@ export function DiscoverClient({
                   <ServiceTags services={selected.branch.services} />
 
                   <Link
-                    href={`/org/${selected.org.slug}?branch=${selected.branch.id}`}
+                    href={bookingHref(selected.org.slug, selected.branch.id)}
                     className="mt-1 inline-flex w-full items-center justify-center gap-2 bg-violet-600 hover:bg-violet-500 transition-colors px-4 py-3 rounded-2xl text-sm font-semibold"
                   >
                     Цаг захиалах
@@ -1122,6 +1206,10 @@ export function DiscoverClient({
             </div>
           ) : null}
         </div>
+      ) : visibleOrgs.length === 0 ? (
+        <div className="glass rounded-2xl p-10 border border-white/[0.08] text-center text-sm text-white/40">
+          Энэ хайлтаар газар олдсонгүй.
+        </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 items-start">
           {visibleOrgs.map((org) => (
@@ -1130,7 +1218,7 @@ export function DiscoverClient({
               className="glass rounded-2xl border border-white/[0.08] overflow-hidden"
             >
               <Link
-                href={`/org/${org.slug}?branch=${encodeURIComponent(org.branches[0].id)}`}
+                href={bookingHref(org.slug, org.branches[0].id)}
                 className="flex items-center gap-3 px-4 py-3 hover:bg-white/[0.03] transition-colors"
               >
                 {org.logoUrl ? (

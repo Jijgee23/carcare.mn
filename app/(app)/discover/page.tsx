@@ -31,8 +31,11 @@ export default async function DiscoverPage({
   // Багц нь онлайн захиалга дэмждэг tenant-уудыг л харуулна.
   const allowedPlans = await plansWithFeature(PLAN_LIMIT_CODES.ONLINE_BOOKING);
   const now = new Date();
+  // Ямар ч ангилалд холбогдоогүй түлхүүрийг ШҮҮНЭ ГАРГАНА — сонговол баталгаатай
+  // хоосон үр дүн буцаах (map/list бүхэлдээ "олдсонгүй" болж хоосорно) сонголтыг
+  // цэсэнд огт харуулахгүй.
   const serviceKeys = await prisma.systemServiceKey.findMany({
-    where: { isActive: true },
+    where: { isActive: true, categories: { some: { isActive: true } } },
     orderBy: { name: "asc" },
     select: { id: true, name: true },
   });

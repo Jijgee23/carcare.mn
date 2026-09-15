@@ -26,7 +26,7 @@ export function CategoryTagsBar({
     <div className="flex flex-wrap items-center gap-2">
       {selected.length === 0 ? (
         <span className="text-sm text-[var(--oc-muted3)]">
-          Ажлын төрөл сонгоогүй байна — бүх салбар харагдаж байна.
+          Ажлын төрөл сонгоогүй байна.
         </span>
       ) : (
         selected.map((k) => (
