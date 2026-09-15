@@ -114,7 +114,6 @@ const client = (rows: object[] = [], orderRows: object[] = [], capacity = 2) => 
   appointment: { findMany: async () => rows },
   serviceOrder: { findMany: async () => orderRows },
   category: { findMany: async () => [{ id: "category", durationMinutes: 120 }] },
-  branchCategoryDuration: { findMany: async () => [] },
 }) as unknown as PrismaTransactionClient;
 test("submission capacity agrees with slot picker for consecutive appointments", async () => {
   const rows = [10, 10.5].map((hour) => ({ requestedAt: new Date(2030, 0, 7, Math.floor(hour), hour % 1 * 60), categoryId: null, categories: [] }));
@@ -146,7 +145,6 @@ const clientWithBookings = (orderRows: object[], bookingRows: object[], capacity
     return bookingRows; // followUpOrderIds lookup — test data has no extra out-of-scope orders
   } },
   category: { findMany: async () => [{ id: "category", durationMinutes: 120 }] },
-  branchCategoryDuration: { findMany: async () => [] },
 }) as unknown as PrismaTransactionClient;
 test("D-076: a live customer cannot double-book a slot an IN_PROGRESS order's follow-up already claims", async () => {
   const activeOrder = {
@@ -170,13 +168,13 @@ test("D-076: a live customer cannot double-book a slot an IN_PROGRESS order's fo
   );
 });
 test("saved estimate takes precedence over a subsequently changed category", async () => {
-  const [interval] = await resolveTakenAppointmentIntervals(client(), "branch", [{
+  const [interval] = await resolveTakenAppointmentIntervals(client(), [{
     requestedAt: at("10:00"), estimatedDurationMinutes: 45, categoryId: "category", categories: [],
   }], 30);
   assert.equal(interval.durationMinutes, 45);
 });
 test("legacy duration fallback remains compatible until migration wiring", async () => {
-  const [interval] = await resolveTakenAppointmentIntervals(client(), "branch", [{
+  const [interval] = await resolveTakenAppointmentIntervals(client(), [{
     requestedAt: at("10:00"), categoryId: "category", categories: [],
   }], 30);
   assert.equal(interval.durationMinutes, 120);
@@ -1459,7 +1457,7 @@ test("the public availability API route and the public web action both delegate 
   assert.ok(routeSrc.includes('from "@/lib/public-availability"'), "expected the API route to import the shared service");
   assert.ok(routeSrc.includes("resolvePublicAvailability("), "expected the API route to call the shared service");
   assert.ok(
-    !routeSrc.includes("resolveBranchCategoryDurations") && !routeSrc.includes("branchScheduleForDateSelect"),
+    !routeSrc.includes("resolveCategoryDurations") && !routeSrc.includes("branchScheduleForDateSelect"),
     "expected the API route's old duplicated inline resolution logic to be removed, not left dead alongside the new call",
   );
 
@@ -1469,7 +1467,7 @@ test("the public availability API route and the public web action both delegate 
   const fnBody = actionsSrc.slice(fnStart, fnEnd);
   assert.ok(fnBody.includes("resolvePublicAvailability("), "expected getBranchDaySlots to call the shared service");
   assert.ok(
-    !fnBody.includes("resolveBranchCategoryDurations(") && !fnBody.includes("resolveTakenCapacityIntervals("),
+    !fnBody.includes("resolveCategoryDurations(") && !fnBody.includes("resolveTakenCapacityIntervals("),
     "expected getBranchDaySlots's old duplicated inline resolution logic to be removed",
   );
 });

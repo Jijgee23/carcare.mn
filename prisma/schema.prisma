@@ -212,7 +212,6 @@ model Branch {
   auditLogs          AuditLog[]
   appointments       Appointment[]
   categories         Category[] // олон-олон: энэ салбарт санал болгох ангилалууд
-  categoryDurations  BranchCategoryDuration[] // ангилал бүрийн салбар-тусгай хугацаа
   orderTimeBookings  OrderTimeBooking[]
 
   @@index([tenantId])
@@ -573,6 +572,11 @@ model Service {
   durationUnitId String?
   durationUnit   Unit?    @relation("ServiceDurationUnit", fields: [durationUnitId], references: [id], onDelete: SetNull)
 
+  // Энэ ажлыг (LABOR/DIAGNOSTIC) НЭГ зэрэг хэдэн захиалга дээр зэрэг хийж
+  // болохыг заана (Category.concurrentCapacity-тай ижил санаа). GOODS-д
+  // хамаарахгүй тул null.
+  concurrentCapacity Int?
+
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -744,8 +748,7 @@ model Category {
   isActive    Boolean @default(true)
 
   // Онлайн захиалгын slot урт тооцоход хэрэглэх tenant-ийн default үргэлжлэх
-  // хугацаа (минут). null бол BranchCategoryDuration override, эсвэл түүнгүй бол
-  // платформын 30 мин руу шатлан буурна (override ?? durationMinutes ?? 30).
+  // хугацаа (минут). null бол платформын 30 мин руу буурна (durationMinutes ?? 30).
   durationMinutes Int?
 
   // Энэ ажлыг НЭГ зэрэг хэдэн захиалга зэрэг хийж болохыг заана (ж: 2 бол
@@ -774,7 +777,6 @@ model Category {
   appointments        Appointment[]
   appointmentLinks    AppointmentCategory[] // олон-ангилалт захиалгын M2M холбоос
   orderLinks          ServiceOrderCategory[] // засварын хуудсан дээрх snapshot холбоос
-  branchDurations     BranchCategoryDuration[] // салбар-тусгай хугацааны override-ууд
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -897,28 +899,6 @@ model OrderTimeBooking {
 enum OrderBookingKind {
   SCHEDULED // Ирээгүй, товлогдсон цаг — startAt ирээдүйд, ажил хараахан эхлээгүй
   ACTIVE // Машин бодитоор ажлын байранд байгаа хугацаа
-}
-
-// --- BranchCategoryDuration (ангилал бүрийн салбар-тусгай хугацааны override)
-// Онлайн захиалгын slot урт: override ?? Category.durationMinutes ?? 30 (минут).
-// Салбар-мастер ЗӨВХӨН өөрийн салбарын мөрийг засварлана (endpoint дээр actor-ийн
-// branchId-аар force хийж хамгаална). Тенант админ бүх салбарынхыг засна.
-// Тусдаа override хүснэгт — одоо байгаа Branch↔Category гишүүнчлэлийн implicit
-// M2M join-д хүрэлгүйгээр нэмэгдэнэ.
-model BranchCategoryDuration {
-  branchId String
-  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
-
-  categoryId String
-  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-
-  durationMinutes Int
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@id([branchId, categoryId])
-  @@index([categoryId])
 }
 
 // --- Unit (хэмжих нэгж — ширхэг, цаг, литр, г.м.) -------------------------

@@ -20,7 +20,7 @@
 //     reserveAppointmentInTransaction (lib/appointment-reservations.ts) does
 //     for the authenticated booking path. An unknown/foreign id is now a
 //     hard rejection, not a silent DEFAULT_CATEGORY_DURATION_MINUTES
-//     fallback (previously resolveBranchCategoryDurations queried
+//     fallback (previously resolveCategoryDurations queried
 //     `category.findMany({ where: { id: { in: uniqueIds } } })` with no
 //     tenant/branch scoping at all).
 //
@@ -40,7 +40,7 @@ import {
   type DayAvailability,
 } from "@/lib/appointment-slots";
 import {
-  resolveBranchCategoryDurations,
+  resolveCategoryDurations,
   resolveTakenCapacityIntervals,
 } from "@/lib/category-duration";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
@@ -135,7 +135,7 @@ export async function resolvePublicAvailability(
 
   const slotMin = branch.slotMinutes ?? DEFAULT_SLOT_MINUTES;
   const { totalMinutes } = categoryIds.length
-    ? await resolveBranchCategoryDurations(prisma, branch.id, categoryIds)
+    ? await resolveCategoryDurations(prisma, categoryIds)
     : { totalMinutes: 0 };
   const appointmentMinutes = totalMinutes > 0 ? totalMinutes : slotMin;
 

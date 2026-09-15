@@ -63,19 +63,11 @@ export default async function CategoriesPage() {
         <span className="text-[var(--oc-muted)]">Ангилал</span>
       </nav>
 
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">Ангилал</h1>
-          <p className="text-sm text-[var(--oc-muted3)] mt-1">
-            Үйлчилгээ (Ажил, Оношилгоо, Сэлбэг)-г ангилах нэгдсэн ангилал. Салбар оноовол тухайн салбарт, хоосон бол бүх салбарт санал болгоно.
-          </p>
-        </div>
-        <Link
-          href="/dashboard/services/durations"
-          className="shrink-0 text-[13px] text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors whitespace-nowrap mt-1"
-        >
-          Ангиллын хугацаа →
-        </Link>
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">Ангилал</h1>
+        <p className="text-sm text-[var(--oc-muted3)] mt-1">
+          Үйлчилгээ (Ажил, Оношилгоо, Сэлбэг)-г ангилах нэгдсэн ангилал. Салбар оноовол тухайн салбарт, хоосон бол бүх салбарт санал болгоно.
+        </p>
       </div>
 
       <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-4 sm:p-5">

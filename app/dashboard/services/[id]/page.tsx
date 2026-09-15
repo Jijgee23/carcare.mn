@@ -114,6 +114,7 @@ export default async function EditServicePage({
               stock: svc.stock?.toString() ?? null,
               durationValue: svc.durationValue?.toString() ?? null,
               durationUnitId: svc.durationUnitId,
+              concurrentCapacity: svc.concurrentCapacity,
               description: svc.description,
               isActive: svc.isActive,
               categoryId: svc.categoryId,

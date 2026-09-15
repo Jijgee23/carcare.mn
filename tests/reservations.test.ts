@@ -20,7 +20,6 @@ function fixture(opts: { duration?: number; closed?: boolean; full?: boolean; mi
     category: { findMany: async (args: { select: { durationMinutes?: boolean } }) => args.select.durationMinutes
       ? [{ id: "category", durationMinutes: opts.duration ?? 60 }]
       : opts.invalidCategory ? [] : [{ id: "category" }] },
-    branchCategoryDuration: { findMany: async () => [] },
     accountVehicle: { findFirst: async () => opts.foreignVehicle ? null : { id: "vehicle" } },
     customer: { findFirst: async () => null },
     appointment: {

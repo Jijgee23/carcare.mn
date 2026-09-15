@@ -29,12 +29,6 @@ export type ActionKey = (typeof ACTIONS)[number]["key"];
 type CrudCode = `${ResourceKey}.${ActionKey}`;
 
 // CRUD-д хуваагдаагүй тусгай permission-ууд.
-// `services.duration` — онлайн захиалгын үргэлжлэх хугацааг (ангиллын default
-// ба салбар-тусгай override) тохируулах эрх. `services.edit`-ээс тусдаа: салбар-
-// мастер зөвхөн ЭНЭ эрхтэйгээр өөрийн салбарын хугацааг засах боломжтой (үнэ/
-// үйлчилгээний бусад засварын эрхгүйгээр). Салбарын хамрах хүрээг код бус,
-// endpoint дээр actor-ийн branchId-аар (branchScopeId/workingBranchScopeId) force
-// хийж хамгаална — booking v2, D-038.
 // `orders.itemStatus` — засварын хуудасны ажил/оношилгоо/сэлбэг мөрийн явцыг
 // (хүлээгдэж буй/эхэлсэн/дууссан) чөлөөтэй өөрчлөх эрх. `orders.edit`-ээс
 // тусдаа: мастер зөвхөн ЭНЭ эрхтэйгээр мөрийн явцаа шинэчилж болно (захиалгын
@@ -49,7 +43,6 @@ type StandaloneCode =
   | "orders.assign"
   | "orders.viewOwn"
   | "orders.editOwn"
-  | "services.duration"
   | "orders.itemStatus"
   | "orders.itemPrice";
 
@@ -117,13 +110,6 @@ export const PERMISSIONS: readonly PermissionDef[] = [
     group: "Тайлан",
   },
   {
-    code: "services.duration",
-    label: "Үйлчилгээний хугацаа тохируулах",
-    description:
-      "Онлайн захиалгын ангилал бүрийн үргэлжлэх хугацааг (default ба салбар-тусгай) тохируулах. Салбар-мастер зөвхөн өөрийн салбарынхыг засна.",
-    group: "Захиалга",
-  },
-  {
     code: "orders.itemStatus",
     label: "Үйлчилгээний мөрийн явц өөрчлөх",
     description:
@@ -174,7 +160,6 @@ export const STANDALONE_PERMISSIONS: ReadonlyArray<PermissionDef> = PERMISSIONS.
     p.code === "audit.view" ||
     p.code === "orders.assignable" ||
     p.code === "orders.assign" ||
-    p.code === "services.duration" ||
     p.code === "orders.itemStatus" ||
     p.code === "orders.itemPrice",
 );

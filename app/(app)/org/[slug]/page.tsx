@@ -68,8 +68,7 @@ export default async function OrgPage({
       : "";
 
   const account = await getAccount();
-  const branchIds = org.branches.map((b) => b.id);
-  const [vehicles, categoryRows, overrides] = await Promise.all([
+  const [vehicles, categoryRows] = await Promise.all([
     // Хэрэглэгчийн бүх машин — өөрөө нэмсэн (AccountVehicle) дээр нэмээд
     // сервисүүдэд бүртгэлтэй, энэ хэрэглэгчид холбогдсон машинууд
     // (/account/vehicles хуудастай ижил логик). Утга нь global Vehicle id.
@@ -86,20 +85,9 @@ export default async function OrgPage({
         branches: { select: { id: true } },
       },
     }),
-    // Салбар-тусгай хугацааны override-ууд.
-    branchIds.length > 0
-      ? prisma.branchCategoryDuration.findMany({
-          where: { branchId: { in: branchIds } },
-          select: { branchId: true, categoryId: true, durationMinutes: true },
-        })
-      : Promise.resolve([]),
   ]);
-  const overrideKey = (branchId: string, categoryId: string) => `${branchId}:${categoryId}`;
-  const overrideByKey = new Map(
-    overrides.map((o) => [overrideKey(o.branchId, o.categoryId), o.durationMinutes]),
-  );
   // Салбар бүрд: тухайн салбарт хамаарах ангилалуудыг шийдэгдсэн хугацаатай нь
-  // (branch override ?? category default ?? 30).
+  // (category default ?? 30).
   const branchCategories = new Map(
     org.branches.map((b) => [
       b.id,
@@ -109,7 +97,6 @@ export default async function OrgPage({
           id: c.id,
           name: c.name,
           durationMinutes: resolveCategoryDurationMinutes({
-            branchOverride: overrideByKey.get(overrideKey(b.id, c.id)) ?? null,
             categoryDefault: c.durationMinutes,
           }),
         })),

@@ -3,7 +3,7 @@ import { buildDaySlots, DEFAULT_SLOT_CAPACITY, DEFAULT_SLOT_MINUTES } from "@/li
 import { bookingDateKey, MAX_ADVANCE_BOOKING_DAYS } from "@/lib/booking-time";
 import { resolveEffectiveSchedule } from "@/lib/branch-effective-schedule";
 import { branchScheduleForDateSelect } from "@/lib/branch-effective-schedule-server";
-import { isSlotAvailable, resolveBranchCategoryDurations } from "@/lib/category-duration";
+import { isSlotAvailable, resolveCategoryDurations } from "@/lib/category-duration";
 
 export class ReservationError extends Error {
   constructor(public status: 400 | 403 | 409, message: string) { super(message); }
@@ -94,7 +94,7 @@ export async function reserveAppointmentInTransaction(
     }, select: { id: true } });
     if (categories.length !== categoryIds.length) throw new ReservationError(400, "Үйлчилгээний ангиллаа дахин сонгоно уу.");
   }
-  const resolved = await resolveBranchCategoryDurations(tx, branch.id, categoryIds);
+  const resolved = await resolveCategoryDurations(tx, categoryIds);
   const duration = resolved.totalMinutes || branch.slotMinutes || DEFAULT_SLOT_MINUTES;
   const schedule = resolveEffectiveSchedule({ dateStr, branch });
   const slots = buildDaySlots({

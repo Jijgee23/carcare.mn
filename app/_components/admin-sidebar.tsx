@@ -36,7 +36,7 @@ function canSeeView(
   if (isOwner) return true;
   if (view === "owner") return false;
   if (view === "audit") return perms.includes("audit.view");
-  // Цэгтэй бол шууд permission code гэж үзнэ (ж: "services.duration") — CRUD-ийн
+  // Цэгтэй бол шууд permission code гэж үзнэ (ж: "audit.view") — CRUD-ийн
   // `${view}.view` дүрэмд ордоггүй standalone эрхэд.
   if (view.includes(".")) return perms.includes(view);
   return perms.includes(`${view}.view`);
@@ -170,11 +170,6 @@ const navItems: NavItem[] = [
         href: "/dashboard/services/categories",
         label: "Ангилал",
         view: "owner",
-      },
-      {
-        href: "/dashboard/services/durations",
-        label: "Ангиллын хугацаа",
-        view: "services.duration",
       },
     ],
   },
@@ -343,8 +338,8 @@ function SidebarNavList({
       ? { ...it, children: it.children.filter((c) => childVisible(it.view, c)) }
       : it;
   // Бүлэг нь өөрийн эрхээр, ЭСВЭЛ (эцгээс ӨӨР) тодорхой эрхтэй харагдах child-тай
-  // бол харагдана — ингэснээр зөвхөн services.duration-той салбар-мастер "Үйлчилгээ"
-  // бүлгийг харж, доторх "Ангиллын хугацаа" руу нэвтэрнэ (бусад child нуугдана).
+  // бол харагдана — ингэснээр тодорхой standalone эрхтэй ажилтан эцэг бүлгээ
+  // харж, доторх зохих child рүү нэвтэрнэ (бусад child нуугдана).
   const isVisible = (it: NavItem): boolean =>
     canSeeView(it.view, isOwner, permissions) ||
     (hasChildren(it) && it.children.some((c) => childVisible(it.view, c)));

@@ -65,7 +65,7 @@ export default async function BookBranchPage({
     .filter(Boolean);
 
   const account = await getAccount();
-  const [vehicles, categoryRows, overrides] = await Promise.all([
+  const [vehicles, categoryRows] = await Promise.all([
     account ? loadAccountVehicles(account.id, account.phone) : Promise.resolve([]),
     prisma.category.findMany({
       where: { tenantId: branch.tenantId, isActive: true },
@@ -78,14 +78,7 @@ export default async function BookBranchPage({
         branches: { select: { id: true } },
       },
     }),
-    prisma.branchCategoryDuration.findMany({
-      where: { branchId: branch.id },
-      select: { categoryId: true, durationMinutes: true },
-    }),
   ]);
-  const overrideByCategoryId = new Map(
-    overrides.map((o) => [o.categoryId, o.durationMinutes]),
-  );
   const branchCategories = categoryRows
     .filter((c) => c.branches.length === 0 || c.branches.some((b) => b.id === branch.id))
     .map((c) => ({
@@ -93,7 +86,6 @@ export default async function BookBranchPage({
       name: c.name,
       systemServiceKeyId: c.systemServiceKeyId,
       durationMinutes: resolveCategoryDurationMinutes({
-        branchOverride: overrideByCategoryId.get(c.id) ?? null,
         categoryDefault: c.durationMinutes,
       }),
     }));

@@ -134,6 +134,6 @@ export function buildDaySlots(opts: {
 }
 
 // `isSlotAvailable` (booking-цагийн давхцал шалгах) нь `lib/category-duration.ts`
-// руу нүүсэн — тэнд аль хэдийн байгаа `resolveBranchCategoryDurations`-ыг
+// руу нүүсэн — тэнд аль хэдийн байгаа `resolveCategoryDurations`-ыг
 // ашиглаж эрт эхэлсэн урт захиалгуудын ЖИНХЭНЭ хугацааг шийднэ (энэ файлаас
 // тийш импортлож циклик импорт үүсгэхээс зайлсхийв).

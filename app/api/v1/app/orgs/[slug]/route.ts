@@ -8,7 +8,7 @@ import { branchScheduleDisplaySelect } from "@/lib/branch-effective-schedule-ser
 
 // GET /api/v1/app/orgs/[slug] — байгууллагын дэлгэрэнгүй + салбарууд (нийтэд).
 // Booking v2: салбар бүрд санал болгох ангилалуудыг шийдэгдсэн хугацаатай нь
-// (branch override ?? category default ?? 30) хавсаргана.
+// (category default ?? 30) хавсаргана.
 export async function GET(
   _req: Request,
   ctx: { params: Promise<{ slug: string }> },
@@ -60,22 +60,6 @@ export async function GET(
   });
   if (!org) return jsonError(404, "Байгууллага олдсонгүй.");
 
-  const branchIds = org.branches.map((b) => b.id);
-
-  // Салбар-тусгай хугацааны override-ууд (branchId+categoryId → минут).
-  const overrides =
-    branchIds.length > 0
-      ? await prisma.branchCategoryDuration.findMany({
-          where: { branchId: { in: branchIds } },
-          select: { branchId: true, categoryId: true, durationMinutes: true },
-        })
-      : [];
-  const overrideKey = (branchId: string, categoryId: string) =>
-    `${branchId}:${categoryId}`;
-  const overrideByKey = new Map(
-    overrides.map((o) => [overrideKey(o.branchId, o.categoryId), o.durationMinutes]),
-  );
-
   const { categories, branches, ...orgRest } = org;
 
   // Салбар бүрд: тухайн салбарт хамаарах ангилалуудыг шийдэгдсэн хугацаатай нь.
@@ -90,7 +74,6 @@ export async function GET(
         name: c.name,
         systemServiceKeyId: c.systemServiceKeyId,
         durationMinutes: resolveCategoryDurationMinutes({
-          branchOverride: overrideByKey.get(overrideKey(b.id, c.id)) ?? null,
           categoryDefault: c.durationMinutes,
         }),
       })),

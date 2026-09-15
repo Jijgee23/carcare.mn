@@ -464,9 +464,6 @@ export async function seedFixtureData(db: SeedDb) {
         update: { description, durationMinutes, isActive: categoryIndex !== 7, systemServiceKeyId, branches: { connect: branches.map((branchId) => ({ id: branchId })) } },
         create: { id, tenantId: tenant.id, name, description, durationMinutes, isActive: categoryIndex !== 7, systemServiceKeyId, branches: { connect: branches.map((branchId) => ({ id: branchId })) } },
       });
-      for (const branchId of branches) {
-        if (categoryIndex < 6) await db.branchCategoryDuration.upsert({ where: { branchId_categoryId: { branchId, categoryId: id } }, update: { durationMinutes: durationMinutes + (branchId.endsWith("2") ? 15 : 0) }, create: { branchId, categoryId: id, durationMinutes: durationMinutes + (branchId.endsWith("2") ? 15 : 0) } });
-      }
     }
     tenantCategories.set(tenant.id, categoryIds);
 

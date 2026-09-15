@@ -9,10 +9,6 @@ type PrismaTransactionClient = {
   category: { findMany(args: {
     where: { id: { in: string[] } }; select: { id: true; durationMinutes: true };
   }): Promise<{ id: string; durationMinutes: number | null }[]> };
-  branchCategoryDuration: { findMany(args: {
-    where: { branchId: string; categoryId: { in: string[] } };
-    select: { categoryId: true; durationMinutes: true };
-  }): Promise<{ categoryId: string; durationMinutes: number }[]> };
   branch: { findUnique(args: {
     where: { id: string }; select: { slotMinutes: true; slotCapacity: true };
   }): Promise<{ slotMinutes: number | null; slotCapacity: number | null } | null> };
@@ -56,10 +52,9 @@ type PrismaTransactionClient = {
 };
 
 // Ангилалд хугацаа тохируулаагүй үеийн эцсийн fallback (минут). Slot-ийн
-// анхдагч урттай санаатай нийцүүлэв — booking v2-ийн шатлал:
-//   BranchCategoryDuration.durationMinutes  (салбар-тусгай override)
-//     ?? Category.durationMinutes            (tenant-ийн default)
-//     ?? DEFAULT_CATEGORY_DURATION_MINUTES   (платформын fallback)
+// анхдагч урттай санаатай нийцүүлэв — шатлал:
+//   Category.durationMinutes             (tenant-ийн default)
+//     ?? DEFAULT_CATEGORY_DURATION_MINUTES (платформын fallback)
 export const DEFAULT_CATEGORY_DURATION_MINUTES = DEFAULT_SLOT_MINUTES;
 
 // Онлайн захиалгын нэг ангиллын хугацааны хил (минут). Дээд хязгаар нь нэг
@@ -123,72 +118,47 @@ export function parseDurationInput(
 }
 
 /**
- * Нэг ангиллын effective хугацааг шатлан сонгоно — pure. `branchOverride` ба
- * `categoryDefault` аль аль нь null байж болно (тохируулаагүй).
+ * Нэг ангиллын effective хугацааг шийднэ — pure. `categoryDefault` null байж
+ * болно (тохируулаагүй).
  */
 export function resolveCategoryDurationMinutes(opts: {
-  branchOverride: number | null | undefined;
   categoryDefault: number | null | undefined;
 }): number {
-  return (
-    opts.branchOverride ??
-    opts.categoryDefault ??
-    DEFAULT_CATEGORY_DURATION_MINUTES
-  );
+  return opts.categoryDefault ?? DEFAULT_CATEGORY_DURATION_MINUTES;
 }
 
 export type ResolvedCategoryDuration = {
   categoryId: string;
   minutes: number;
-  source: "branch" | "tenant" | "default";
+  source: "tenant" | "default";
 };
 
 /**
- * Тухайн салбар дээр өгөгдсөн ангилалуудын effective хугацааг DB-ээс уншиж
- * шийднэ. Одоо байгаа `Branch↔Category` гишүүнчлэлд ХҮРэлгүйгээр зөвхөн
- * `Category.durationMinutes` + `BranchCategoryDuration` override-ыг уншина.
+ * Өгөгдсөн ангилалуудын effective хугацааг DB-ээс уншиж шийднэ (зөвхөн
+ * `Category.durationMinutes`).
  *
  * Буцаах: ангилал тус бүрийн шийдэгдсэн хугацаа (эх сурвалжтай) + нийлбэр.
  * Санал болгосон ангилал бүрийн категори олдоно гэж үзнэ (endpoint талд
  * tenant/branch-д харьяалагдахыг тусдаа шалгах ёстой).
  */
-export async function resolveBranchCategoryDurations(
+export async function resolveCategoryDurations(
   client: PrismaTransactionClient,
-  branchId: string,
   categoryIds: string[],
 ): Promise<{ perCategory: ResolvedCategoryDuration[]; totalMinutes: number }> {
   const uniqueIds = [...new Set(categoryIds)];
   if (uniqueIds.length === 0) return { perCategory: [], totalMinutes: 0 };
 
-  const [categories, overrides] = await Promise.all([
-    client.category.findMany({
-      where: { id: { in: uniqueIds } },
-      select: { id: true, durationMinutes: true },
-    }),
-    client.branchCategoryDuration.findMany({
-      where: { branchId, categoryId: { in: uniqueIds } },
-      select: { categoryId: true, durationMinutes: true },
-    }),
-  ]);
+  const categories = await client.category.findMany({
+    where: { id: { in: uniqueIds } },
+    select: { id: true, durationMinutes: true },
+  });
 
   const defaultById = new Map(categories.map((c) => [c.id, c.durationMinutes]));
-  const overrideById = new Map(
-    overrides.map((o) => [o.categoryId, o.durationMinutes]),
-  );
 
   const perCategory: ResolvedCategoryDuration[] = uniqueIds.map((id) => {
-    const branchOverride = overrideById.get(id) ?? null;
     const categoryDefault = defaultById.get(id) ?? null;
-    const minutes = resolveCategoryDurationMinutes({
-      branchOverride,
-      categoryDefault,
-    });
-    const source =
-      branchOverride != null
-        ? "branch"
-        : categoryDefault != null
-          ? "tenant"
-          : "default";
+    const minutes = resolveCategoryDurationMinutes({ categoryDefault });
+    const source = categoryDefault != null ? "tenant" : "default";
     return { categoryId: id, minutes, source };
   });
 
@@ -227,14 +197,13 @@ type TakenOrderRow = {
 /**
  * Аль хэдийн авсан (PENDING/CONFIRMED) захиалгуудын ЖИНХЭНЭ эзэлж буй
  * хугацааны интервал (эхлэх цаг + өөрийнх нь нийт үргэлжлэх хугацаа) —
- * `resolveBranchCategoryDurations`-ыг нэг л удаа (бүх захиалгын бүх
+ * `resolveCategoryDurations`-ыг нэг л удаа (бүх захиалгын бүх
  * ангиллын id-г нэгтгэж) дуудна. Ангилалгүй захиалга (хуучин өгөгдөл эсвэл
  * ямар ч ангилал сонгоогүй) `fallbackMinutes`-ийг (ихэвчлэн салбарын slot
  * урт) авна.
  */
 export async function resolveTakenAppointmentIntervals(
   client: PrismaTransactionClient,
-  branchId: string,
   appointments: TakenAppointmentRow[],
   fallbackMinutes: number,
 ): Promise<{ start: Date; durationMinutes: number }[]> {
@@ -248,7 +217,7 @@ export async function resolveTakenAppointmentIntervals(
     ...new Set(appointments.flatMap(categoryIdsOf)),
   ];
   const { perCategory } = allCategoryIds.length
-    ? await resolveBranchCategoryDurations(client, branchId, allCategoryIds)
+    ? await resolveCategoryDurations(client, allCategoryIds)
     : { perCategory: [] };
   const minutesById = new Map(perCategory.map((c) => [c.categoryId, c.minutes]));
 
@@ -341,7 +310,6 @@ export async function resolveTakenCapacityIntervals(
   );
   const appointmentIntervals = await resolveTakenAppointmentIntervals(
     client,
-    branchId,
     liveCandidates,
     fallbackMinutes,
   );

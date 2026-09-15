@@ -1,17 +1,15 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import {
   type CategoryActionState,
   createCategoryAction,
   deleteCategoryAction,
   updateCategoryAction,
 } from "@/app/_actions/categories";
-import { Field, FormError } from "@/app/_components/auth-shell";
+import { FormError } from "@/app/_components/auth-shell";
 import { ConfirmForm } from "@/app/_components/confirm-form";
-import { Btn, Chip, PlusIcon, TagChip, ToggleChip } from "@/app/_components/landing-ops-ui";
-import { Modal } from "@/app/_components/modal";
+import { Btn, Chip, PlusIcon, TagChip } from "@/app/_components/landing-ops-ui";
 import { formatDuration } from "@/lib/category-duration";
 import { DurationHmInput } from "./duration-input";
 
@@ -40,6 +38,7 @@ export function CategoriesSection({
   serviceKeys: ServiceKeyOption[];
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
   const branchName = (id: string) =>
     branches.find((b) => b.id === id)?.name ?? "—";
   const serviceKeyName = (id: string) =>
@@ -49,10 +48,20 @@ export function CategoriesSection({
     <div className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-3">
         <h2 className="font-semibold text-[var(--oc-ink)] text-sm">Ангиллууд</h2>
-        <CreateCategoryButton branches={branches} serviceKeys={serviceKeys} />
+        <Btn
+          type="button"
+          size="sm"
+          onClick={() => {
+            setEditingId(null);
+            setIsCreating(true);
+          }}
+        >
+          <PlusIcon />
+          Ангилал нэмэх
+        </Btn>
       </div>
 
-      {categories.length === 0 ? (
+      {categories.length === 0 && !isCreating ? (
         <p className="text-xs text-[var(--oc-muted3)]">
           Одоогоор ангилал бүртгэгдээгүй байна. Дээрх товчоор шинэ ангилал нэмнэ үү.
         </p>
@@ -86,9 +95,17 @@ export function CategoriesSection({
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--oc-line)]">
+              {isCreating ? (
+                <CategoryFormRow
+                  category={null}
+                  branches={branches}
+                  serviceKeys={serviceKeys}
+                  onClose={() => setIsCreating(false)}
+                />
+              ) : null}
               {categories.map((c) =>
                 editingId === c.id ? (
-                  <EditRow
+                  <CategoryFormRow
                     key={c.id}
                     category={c}
                     branches={branches}
@@ -101,7 +118,10 @@ export function CategoriesSection({
                     category={c}
                     branchName={branchName}
                     serviceKeyName={serviceKeyName}
-                    onEdit={() => setEditingId(c.id)}
+                    onEdit={() => {
+                      setIsCreating(false);
+                      setEditingId(c.id);
+                    }}
                   />
                 ),
               )}
@@ -110,41 +130,6 @@ export function CategoriesSection({
         </div>
       )}
     </div>
-  );
-}
-
-function CreateCategoryButton({
-  branches,
-  serviceKeys,
-}: {
-  branches: BranchOption[];
-  serviceKeys: ServiceKeyOption[];
-}) {
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-
-  return (
-    <>
-      <Btn type="button" size="sm" onClick={() => setOpen(true)}>
-        <PlusIcon />
-        Ангилал нэмэх
-      </Btn>
-      <Modal
-        open={open}
-        onClose={() => setOpen(false)}
-        title="Шинэ ангилал"
-        widthClassName="max-w-xl"
-      >
-        <CreateForm
-          branches={branches}
-          serviceKeys={serviceKeys}
-          onSuccess={() => {
-            router.refresh();
-            setOpen(false);
-          }}
-        />
-      </Modal>
-    </>
   );
 }
 
@@ -329,27 +314,44 @@ function ViewRow({
   );
 }
 
-function EditRow({
+// Ангилал засах БОЛОН шинээр үүсгэх хоёуланд ашиглана (`category=null`
+// бол үүсгэх горим) — ижил хэлбэртэй байлгахын тулд нэг л component.
+function CategoryFormRow({
   category,
   branches,
   serviceKeys,
   onClose,
 }: {
-  category: CategoryRow;
+  category: CategoryRow | null;
   branches: BranchOption[];
   serviceKeys: ServiceKeyOption[];
   onClose: () => void;
 }) {
+  const isEdit = category !== null;
+  const action = isEdit
+    ? updateCategoryAction.bind(null, category.id)
+    : createCategoryAction;
   const [state, formAction, pending] = useActionState<
     CategoryActionState,
     FormData
-  >(updateCategoryAction.bind(null, category.id), null);
+  >(action, null);
 
-  if (state?.ok) {
-    onClose();
-  }
+  // `onClose` нь эцэг компонентийн setState дуудна — render үеэр шууд дуудвал
+  // "Cannot update a component while rendering a different component" алдаа
+  // өгдөг тул commit-ийн дараах effect-д хойшлуулна.
+  useEffect(() => {
+    if (state?.ok) onClose();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
 
   const fe = state?.fieldErrors ?? {};
+  // Шинээр үүсгэхэд "Ерөнхий" түлхүүрийг анхны утга болгоно — ихэнх тенант
+  // тодорхой түлхүүр байхгүй бол ч ямар нэг утга сонгосон байх ёстой.
+  const defaultServiceKeyId =
+    category?.systemServiceKeyId ??
+    serviceKeys.find((k) => k.name === "Ерөнхий")?.id ??
+    serviceKeys[0]?.id ??
+    null;
 
   return (
     <tr className="bg-[var(--oc-panel2)]">
@@ -363,14 +365,14 @@ function EditRow({
               name="name"
               type="text"
               required
-              defaultValue={category.name}
+              defaultValue={category?.name}
               placeholder="Нэр"
               className={`auth-input ${fe.name ? "border-red-500/50" : ""}`}
             />
             <input
               name="description"
               type="text"
-              defaultValue={category.description ?? ""}
+              defaultValue={category?.description ?? ""}
               placeholder="Тайлбар"
               className={`auth-input ${fe.description ? "border-red-500/50" : ""}`}
             />
@@ -379,7 +381,7 @@ function EditRow({
               title="Онлайн захиалгын үргэлжлэх хугацаа. Хоосон бол 30 мин."
             >
               <DurationHmInput
-                defaultMinutes={category.durationMinutes}
+                defaultMinutes={category?.durationMinutes ?? null}
                 invalid={!!fe.durationMinutes}
                 compact
               />
@@ -391,7 +393,7 @@ function EditRow({
               min={1}
               max={50}
               required
-              defaultValue={category.concurrentCapacity}
+              defaultValue={category?.concurrentCapacity ?? 1}
               title="Энэ ажлыг нэг зэрэг хэдэн захиалга авах боломжтой"
               className={`auth-input !w-20 ${fe.concurrentCapacity ? "border-red-500/50" : ""}`}
             />
@@ -399,7 +401,7 @@ function EditRow({
               <input
                 type="checkbox"
                 name="isActive"
-                defaultChecked={category.isActive}
+                defaultChecked={category?.isActive ?? true}
                 className="accent-[var(--oc-accent)]"
               />
               Идэвхтэй
@@ -415,10 +417,10 @@ function EditRow({
           {fe.concurrentCapacity ? (
             <p className="text-red-400 text-xs light:text-red-600">{fe.concurrentCapacity}</p>
           ) : null}
-          <BranchPicker branches={branches} selected={category.branchIds} />
+          <BranchPicker branches={branches} selected={category?.branchIds ?? []} />
           <ServiceKeyPicker
             serviceKeys={serviceKeys}
-            defaultValue={category.systemServiceKeyId}
+            defaultValue={defaultServiceKeyId}
             error={fe.systemServiceKeyId}
           />
           <div className="flex gap-2 justify-end">
@@ -430,151 +432,11 @@ function EditRow({
               Болих
             </button>
             <Btn type="submit" disabled={pending} size="sm">
-              {pending ? "Хадгалж..." : "Хадгалах"}
+              {pending ? "Хадгалж..." : isEdit ? "Хадгалах" : "Нэмэх"}
             </Btn>
           </div>
         </form>
       </td>
     </tr>
-  );
-}
-
-function CreateForm({
-  branches,
-  serviceKeys,
-  onSuccess,
-}: {
-  branches: BranchOption[];
-  serviceKeys: ServiceKeyOption[];
-  onSuccess?: () => void;
-}) {
-  const [state, formAction, pending] = useActionState<
-    CategoryActionState,
-    FormData
-  >(createCategoryAction, null);
-
-  // ЗӨВХӨН амжилттай болоход л дуудна (ServiceKeyForm-той адил зарчим).
-  const notifiedRef = useRef(false);
-  useEffect(() => {
-    if (state?.ok && !notifiedRef.current) {
-      notifiedRef.current = true;
-      onSuccess?.();
-    }
-    if (!state?.ok) notifiedRef.current = false;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state]);
-
-  const fe = state?.fieldErrors ?? {};
-  // Шинэ ангилал үүсгэхэд "Ерөнхий" түлхүүрийг анхны утга болгоно — ихэнх
-  // тенант тодорхой түлхүүр байхгүй бол ч ямар нэг утга сонгосон байх ёстой.
-  const defaultServiceKeyId =
-    serviceKeys.find((k) => k.name === "Ерөнхий")?.id ??
-    serviceKeys[0]?.id ??
-    null;
-
-  return (
-    <form action={formAction} className="flex flex-col gap-6" noValidate>
-      {state?.message && !state.ok ? (
-        <FormError message={state.message} />
-      ) : null}
-
-      <div className="flex flex-col gap-4">
-        <FormSectionLabel>Үндсэн мэдээлэл</FormSectionLabel>
-        <Field label="Нэр" htmlFor="cat-name" error={fe.name}>
-          <input
-            id="cat-name"
-            name="name"
-            type="text"
-            required
-            placeholder="Хөдөлгүүр, Угаалга, Тоормос..."
-            className={`auth-input ${fe.name ? "border-red-500/50" : ""}`}
-          />
-        </Field>
-
-        <Field
-          label="Тайлбар"
-          htmlFor="cat-description"
-          hint="заавал биш"
-          error={fe.description}
-        >
-          <input
-            id="cat-description"
-            name="description"
-            type="text"
-            placeholder="Энэ ангилалд хамаарах үйлчилгээний тайлбар"
-            className={`auth-input ${fe.description ? "border-red-500/50" : ""}`}
-          />
-        </Field>
-      </div>
-
-      <div className="h-px bg-[var(--oc-line)]" />
-
-      <div className="flex flex-col gap-4">
-        <FormSectionLabel>Захиалгын тохиргоо</FormSectionLabel>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Field label="Хугацаа" hint="заавал биш" error={fe.durationMinutes}>
-            <DurationHmInput defaultMinutes={null} invalid={!!fe.durationMinutes} />
-          </Field>
-          <Field
-            label="Багтаамж"
-            htmlFor="cat-capacity"
-            hint="нэг зэрэг хэдэн захиалга"
-            error={fe.concurrentCapacity}
-          >
-            <input
-              id="cat-capacity"
-              name="concurrentCapacity"
-              type="number"
-              inputMode="numeric"
-              min={1}
-              max={50}
-              required
-              defaultValue={1}
-              className={`auth-input !w-20 ${fe.concurrentCapacity ? "border-red-500/50" : ""}`}
-            />
-          </Field>
-          {/* Field-ийн label мөртэй эгнээ тэгшлэхийн тулд толгойд адил
-              өндөртэй хоосон spacer нэмнэ (tenant-form.tsx-ийн адил зарчим). */}
-          <div className="flex flex-col gap-1.5 justify-end">
-            <span aria-hidden="true" className="text-sm font-medium select-none">
-              &nbsp;
-            </span>
-            <ToggleChip
-              name="isActive"
-              label="Идэвхтэй"
-              defaultChecked
-              className="h-11 rounded-xl w-full justify-center"
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="h-px bg-[var(--oc-line)]" />
-
-      <div className="flex flex-col gap-4">
-        <FormSectionLabel>Хамрах хүрээ</FormSectionLabel>
-        <BranchPicker branches={branches} selected={[]} />
-        <ServiceKeyPicker
-          serviceKeys={serviceKeys}
-          defaultValue={defaultServiceKeyId}
-          error={fe.systemServiceKeyId}
-        />
-      </div>
-
-      <div className="pt-2 border-t border-[var(--oc-line)] flex justify-end">
-        <Btn type="submit" disabled={pending}>
-          <PlusIcon />
-          {pending ? "Нэмж..." : "Нэмэх"}
-        </Btn>
-      </div>
-    </form>
-  );
-}
-
-function FormSectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="font-plex-mono text-[10.5px] font-medium uppercase tracking-[0.08em] text-[var(--oc-muted3)]">
-      {children}
-    </div>
   );
 }
