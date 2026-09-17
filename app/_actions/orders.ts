@@ -464,8 +464,10 @@ export async function createOrderAction(
 
   // Товлосон цаг өөр ажилтай давхцаж болзошгүй — updateOrderAction-той адил
   // зөвхөн анхааруулга, хатуу хориглол биш (D-хугацааны шийдвэр,
-  // COWORK.md-г үз). Шинэ захиалга тул хасах ID алга ("", хэзээ ч бодит
-  // захиалгын ID-тай тэнцэхгүй).
+  // COWORK.md-г үз). Шинэ захиалга тул хасах order ID алга ("", хэзээ ч
+  // бодит захиалгын ID-тай тэнцэхгүй) — гэвч цаг захиалгаас үүсгэж байгаа бол
+  // тухайн цаг захиалгыг өөрөөсөө хасна, эс бөгөөс энэ захиалгын цаг яг тэр
+  // цаг захиалгаас урьдчилан бөглөгдсэн тул үргэлж өөртэйгөө "давхцана".
   const confirmed = s(formData, "confirmed") === "true";
   if (data.scheduledAt && !confirmed) {
     const durationMinutes = appointmentId
@@ -478,6 +480,7 @@ export async function createOrderAction(
       "",
       data.scheduledAt,
       conflictEnd,
+      appointmentId,
     );
     if (conflict) {
       return {

@@ -60,6 +60,11 @@ export async function findScheduleConflict(
   excludeOrderId: string,
   start: Date,
   end: Date,
+  // Захиалгыг цаг захиалгаас үүсгэж байгаа бол тухайн цаг захиалгын мөрийг
+  // өөрөөсөө хасна — эс бөгөөс энэ шинэ захиалгын цаг яг тэр цаг захиалгаас
+  // урьдчилан бөглөгдсэн (`serviceOrderId` хараахан null, тул `excludeOrderId`-
+  // гаар шүүгдэхгүй) тул үргэлж өөртэйгөө "давхцаж" харагдана.
+  excludeAppointmentId?: string | null,
 ): Promise<ScheduleConflict | null> {
   // An appointment or scheduled order with no saved duration uses the branch
   // slot as a bounded estimate but remains a "possible" conflict. Never read
@@ -78,6 +83,7 @@ export async function findScheduleConflict(
         branchId,
         status: { in: ["PENDING", "CONFIRMED"] },
         OR: [{ serviceOrderId: null }, { serviceOrderId: { not: excludeOrderId } }],
+        ...(excludeAppointmentId ? { id: { not: excludeAppointmentId } } : {}),
         requestedAt: { gte: conflictFloor, lt: end },
       },
       select: {

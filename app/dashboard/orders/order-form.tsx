@@ -157,14 +157,18 @@ export function OrderForm({
     // шаардлагагүй.
     if (!branchId || !scheduledDateKey) return;
     const id = ++previewReqIdRef.current;
-    getBranchDaySchedulePreview(branchId, scheduledDateKey)
+    // Захиалгыг цаг захиалгаас үүсгэж байгаа бол тухайн цаг захиалгын мөрийг
+    // өөрөөсөө хасна — эс бөгөөс энэ захиалгын цаг яг тэр цаг захиалгаас
+    // урьдчилан бөглөгдсэн тул "ghost" блок үргэлж өөрийнхөө эх сурвалжтай
+    // давхцаж, худал давхцлын анхааруулга гарна.
+    getBranchDaySchedulePreview(branchId, scheduledDateKey, appointmentId)
       .then((res) => {
         if (id === previewReqIdRef.current) setPreview(res);
       })
       .catch(() => {
         if (id === previewReqIdRef.current) setPreview(null);
       });
-  }, [branchId, scheduledDateKey]);
+  }, [branchId, scheduledDateKey, appointmentId]);
 
   // Одоо бөглөж буй захиалгын "ghost" блок — сонгосон цаг байхгүй бол алга.
   // Цаг захиалгаас үүссэн бол booking-ийн category-уудаар тооцсон immutable

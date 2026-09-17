@@ -34,6 +34,7 @@ export function BookingFlow({
   // ирсэн эхний утга аль хэдийн зөв) — зөвхөн ХОЖИМ сонголт өөрчлөгдөхөд л
   // fetch хийнэ.
   const isFirstRender = useRef(true);
+  const reqIdRef = useRef(0);
 
   const applySelection = useCallback(
     (ids: string[]) => {
@@ -49,9 +50,10 @@ export function BookingFlow({
       isFirstRender.current = false;
       return;
     }
+    const id = ++reqIdRef.current;
     startTransition(async () => {
       const next = await getBookingBranchResults(selectedIds);
-      setResults(next);
+      if (id === reqIdRef.current) setResults(next);
     });
   }, [selectedIds]);
 

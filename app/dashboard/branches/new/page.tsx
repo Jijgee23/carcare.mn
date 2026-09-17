@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
 import { BranchForm, BRANCH_FORM_ID } from "../branch-form";
 import { getAddressData } from "@/lib/address";
+import { prisma } from "@/lib/prisma";
 
 export const metadata = {
   title: "Шинэ салбар",
@@ -14,7 +15,14 @@ export default async function NewBranchPage() {
   const user = await requireUser();
   if (!canCreate(user, "branches")) redirect("/dashboard/branches");
 
-  const addressData = await getAddressData();
+  const [addressData, tagOptions] = await Promise.all([
+    getAddressData(),
+    prisma.branchTag.findMany({
+      where: { isActive: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+  ]);
 
   return (
     <div className="p-4 sm:p-6 max-w-3xl">
@@ -47,6 +55,7 @@ export default async function NewBranchPage() {
         addressData={addressData}
         mapApiKey={process.env.GOOGLE_MAP_API_KEY ?? ""}
         mapId={process.env.GOOGLE_MAP_ID ?? ""}
+        tagOptions={tagOptions}
       />
     </div>
   );

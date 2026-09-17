@@ -61,11 +61,19 @@ export default async function OrgPage({
   const org = await loadOrg(slug);
   if (!org) notFound();
 
-  // Discover картаас ирсэн салбарыг урьдчилан сонгоно (org-д хамаарвал).
-  const initialBranchId =
-    branchParam && org.branches.some((b) => b.id === branchParam)
-      ? branchParam
-      : "";
+  // Discover-ийн салбарын дэлгэрэнгүйгээс тодорхой салбар сонгож ирсэн бол
+  // (`?branch=`) байгууллага/салбарын сонголтыг ТҮГЖИНЭ — хэрэглэгч зөвхөн
+  // ангилал, огноо/цагаа сонгоно. Энэ нь "салбараар захиалах" (branch-first)
+  // урсгалыг "ангилалаар захиалах" (category-first, /book) урсгалаас цэвэр
+  // тусгаарлана: BookingForm-д зөвхөн ЭНЭ ГАНЦ салбарыг дамжуулснаар (доор)
+  // салбар сэлгэх сонголт бүхэлдээ алга болно (branches.length === 1 бол
+  // booking-form.tsx салбар сонгох Select-ийг рендерлэдэггүй) — категори
+  // сонгоход өөр салбар руу чимээгүйгээр шилжих боломж ч үгүй болно.
+  const lockedBranch = branchParam
+    ? org.branches.find((b) => b.id === branchParam)
+    : undefined;
+  const initialBranchId = lockedBranch?.id ?? "";
+  const bookingBranches = lockedBranch ? [lockedBranch] : org.branches;
 
   const account = await getAccount();
   const [vehicles, categoryRows] = await Promise.all([
@@ -126,8 +134,12 @@ export default async function OrgPage({
           </div>
         )}
         <div>
-          <h1 className="text-2xl font-bold">{org.name}</h1>
-          <p className="text-white/40 text-sm mt-0.5">{org.phone1}</p>
+          <h1 className="text-2xl font-bold">
+            {lockedBranch ? lockedBranch.name : org.name}
+          </h1>
+          <p className="text-white/40 text-sm mt-0.5">
+            {lockedBranch ? `${org.name} · ${org.phone1}` : org.phone1}
+          </p>
         </div>
       </div>
 
@@ -135,13 +147,13 @@ export default async function OrgPage({
       <div className="w-full">
         <div className="glass rounded-2xl p-5 border border-white/[0.08]">
           <h2 className="font-semibold mb-4">Цаг захиалах</h2>
-          {org.branches.length === 0 ? (
+          {bookingBranches.length === 0 ? (
             <p className="text-sm text-white/40">
               Энэ газар идэвхтэй салбаргүй байна.
             </p>
           ) : account ? (
             <BookingForm
-              branches={org.branches.map((b) => ({
+              branches={bookingBranches.map((b) => ({
                 id: b.id,
                 name: b.name,
                 openWeekdays: openWeekdaysOf(b),

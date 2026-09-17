@@ -214,6 +214,7 @@ model Branch {
   auditLogs                         AuditLog[]
   appointments                      Appointment[]
   categories                        Category[] // олон-олон: энэ салбарт санал болгох ангилалууд
+  tags                              BranchTag[] // олон-олон: энэ салбарын бизнесийн төрлийн шошго
   orderTimeBookings                 OrderTimeBooking[]
   employeeWorkScheduleSegments      EmployeeWorkScheduleSegment[]
   employeeScheduleExceptionSegments EmployeeScheduleExceptionSegment[]
@@ -892,6 +893,29 @@ model SystemServiceKey {
   updatedAt DateTime @updatedAt
 
   categories Category[]
+
+  @@index([isActive])
+}
+
+// --- BranchTag (систем admin удирддаг, платформ даяарх бизнесийн төрлийн ----
+// шошго — жишээ: "Угаалгын газар", "Дугуй засвар") — /discover дээр байгууллага
+// хайхад бизнесийн төрлөөр шүүхэд ашиглана. Category-с ялгаатай нь: тенант тус
+// бүрийн өөрийн бичлэг биш, Branch-тай шууд олон-олон холбоотой (тухайн
+// салбарт тохирох тодорхой хугацаа/багтаамж зэрэг нэмэлт талбар шаардахгүй
+// учир Category шиг тенантын завсрын бичлэг хэрэггүй).
+model BranchTag {
+  id          String  @id @default(cuid())
+  name        String  @unique // "Угаалгын газар", "Дугуй засвар" г.м.
+  description String?
+  isActive    Boolean @default(true)
+
+  createdById String?
+  createdBy   SuperAdmin? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  branches Branch[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([isActive])
 }
@@ -1769,6 +1793,7 @@ model SuperAdmin {
   refundedAppointmentPayments AppointmentPayment[]
   createdDiagnosticTemplates  DiagnosticTemplate[]
   createdServiceKeys          SystemServiceKey[]
+  createdBranchTags           BranchTag[]
 }
 
 // --- AuditLog (тенант доторх чухал үйлдлийн түүх) ------------------------

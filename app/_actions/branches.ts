@@ -72,8 +72,21 @@ type Parsed = {
   openDays: Weekday[];
   daySchedules: Record<Weekday, { isOpen: boolean; openTime: string | null; closeTime: string | null }>;
   isPrimary: boolean;
+  tagIds: string[];
   errors: Record<string, string>;
 };
+
+// Илгээсэн tagIds-с зөвхөн бодитоор идэвхтэй BranchTag-т харгалзахыг нь
+// шүүнэ — устсан/идэвхгүй болсон шошгыг чимээгүй орхино (harах:
+// app/_actions/categories.ts-ийн validBranchIds-тэй адил зарчим).
+async function validTagIds(tagIds: string[]): Promise<string[]> {
+  if (tagIds.length === 0) return [];
+  const rows = await prisma.branchTag.findMany({
+    where: { id: { in: tagIds }, isActive: true },
+    select: { id: true },
+  });
+  return rows.map((t) => t.id);
+}
 
 function parseFloatOrNull(v: string): number | null {
   if (!v) return null;
@@ -81,7 +94,7 @@ function parseFloatOrNull(v: string): number | null {
   return Number.isFinite(n) ? n : Number.NaN;
 }
 
-function validate(fd: FormData): Parsed {
+function validate(fd: FormData, opts: { requireTag?: boolean } = {}): Parsed {
   const name = s(fd, "name");
   const phone = s(fd, "phone");
   const city = s(fd, "city");
@@ -185,6 +198,15 @@ function validate(fd: FormData): Parsed {
     }
   }
 
+  const rawTagIds = fd.getAll("tagIds").filter((v): v is string => typeof v === "string");
+  // Шинэ салбарт ядаж нэг шошго ЗААВАЛ — discovery-г бизнесийн төрлөөр шүүхэд
+  // хэрэгжихийн тулд. Хуучин, шошгогүй салбаруудыг буцаагаад заавал шошготой
+  // болгохоор шаардахгүй (тэдгээрийг зөвхөн edit хуудсан дээрх сануулга
+  // banner-аар анхааруулна) — харах: app/dashboard/branches/[id]/page.tsx.
+  if (opts.requireTag && rawTagIds.length === 0) {
+    errors.tagIds = "Ядаж нэг шошго сонгоно уу.";
+  }
+
   return {
     name,
     phone: phone ? (normalizePhone(phone) ?? phone) : null,
@@ -201,6 +223,7 @@ function validate(fd: FormData): Parsed {
     openDays,
     daySchedules,
     isPrimary: fd.get("isPrimary") === "on",
+    tagIds: rawTagIds,
     errors,
   };
 }
@@ -245,7 +268,7 @@ export async function createBranchAction(
     return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
   }
 
-  const p = validate(formData);
+  const p = validate(formData, { requireTag: true });
   if (Object.keys(p.errors).length > 0) {
     return { ok: false, fieldErrors: p.errors };
   }
@@ -259,6 +282,8 @@ export async function createBranchAction(
   if (!limit.allowed) {
     return { ok: false, message: limit.message };
   }
+
+  const tagIds = await validTagIds(p.tagIds);
 
   let createdId: string | null = null;
   try {
@@ -276,7 +301,12 @@ export async function createBranchAction(
       });
       const isPrimary = p.isPrimary || existing === 0;
       const branch = await tx.branch.create({
-        data: { ...toBranchData(p), isPrimary, tenantId: user.tenantId },
+        data: {
+          ...toBranchData(p),
+          isPrimary,
+          tenantId: user.tenantId,
+          tags: { connect: tagIds.map((tagId) => ({ id: tagId })) },
+        },
         select: { id: true },
       });
       createdId = branch.id;
@@ -405,6 +435,11 @@ export async function updateBranchAction(
         data: toBranchData(p),
       });
       if (r.count > 0) {
+        const tagIds = await validTagIds(p.tagIds);
+        await tx.branch.update({
+          where: { id },
+          data: { tags: { set: tagIds.map((tagId) => ({ id: tagId })) } },
+        });
         for (const wd of ALL_WEEKDAYS) {
           await tx.branchSchedule.upsert({
             where: { branchId_weekday: { branchId: id, weekday: wd } },

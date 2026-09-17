@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MarkerClusterer } from "@googlemaps/markerclusterer";
 import { Select } from "@/app/_components/select";
@@ -20,12 +21,10 @@ export type DiscoverBranch = {
   // Бямба/Ням аль нэгэнд ажилладаг эсэх ("Амралтын өдөр ажилладаг" шүүлт).
   weekend: boolean;
   services: string[];
-  // Энэ салбарт хамаарах ангиллуудын системийн ажлын түлхүүрүүд (байгууллага
-  // сонгохоос өмнө "ямар ажил хийлгэх гэж байгаагаа" сонгож хайхад ашиглана).
-  serviceKeyIds: string[];
+  // Бизнесийн төрлийн шошго (жиш: "Угаалгын газар") — салбар карт дээр шууд
+  // харуулна, мөн доор нэг сонголттой шүүлтүүрийн эх сурвалж.
+  tags: { id: string; name: string }[];
 };
-
-export type DiscoverServiceKey = { id: string; name: string };
 
 const DEFAULT_CITY = "Улаанбаатар";
 
@@ -41,6 +40,23 @@ type Marker = { org: DiscoverOrg; branch: DiscoverBranch };
 type MapViewport = { north: number; south: number; east: number; west: number };
 
 type GeoPoint = { lat: number; lng: number };
+
+// Fetch a bit more than what's actually visible so a small pan/zoom-out
+// keeps showing already-fetched pins instead of the edge going empty while
+// waiting for the next idle-triggered fetch. Clamped to valid lat/lng ranges;
+// deliberately not dateline-aware (a 25% pad crossing ±180° is a rare enough
+// case that showing a slightly-too-narrow buffer there is an acceptable
+// trade-off for keeping this simple).
+function padViewport(viewport: MapViewport, factor = 0.25): MapViewport {
+  const latPad = (viewport.north - viewport.south) * factor;
+  const lngPad = (viewport.east - viewport.west) * factor;
+  return {
+    north: Math.min(90, viewport.north + latPad),
+    south: Math.max(-90, viewport.south - latPad),
+    east: Math.min(180, viewport.east + lngPad),
+    west: Math.max(-180, viewport.west - lngPad),
+  };
+}
 
 function distanceLabel(distanceKm: number): string {
   if (distanceKm < 1) {
@@ -133,7 +149,7 @@ async function fetchMapMarkers({
   query,
   city,
   district,
-  serviceKey,
+  tag,
   nearMeLocation,
   openNow,
   weekend,
@@ -144,7 +160,7 @@ async function fetchMapMarkers({
   query: string;
   city: string;
   district: string;
-  serviceKey: string;
+  tag: string;
   nearMeLocation: GeoPoint | null;
   openNow: boolean;
   weekend: boolean;
@@ -159,7 +175,7 @@ async function fetchMapMarkers({
   if (query.trim()) params.set("q", query.trim());
   if (city) params.set("city", city);
   if (district) params.set("district", district);
-  if (serviceKey) params.set("serviceKey", serviceKey);
+  if (tag) params.set("tag", tag);
   if (nearMeLocation) {
     params.set("lat", String(nearMeLocation.lat));
     params.set("lng", String(nearMeLocation.lng));
@@ -328,19 +344,28 @@ function ServiceTags({ services }: { services: string[] }) {
   );
 }
 
+// Бизнесийн төрлийн шошго (жиш: "Угаалгын газар") — салбарын нэрийн яг доор,
+// хаяг/зайнаас өмнө харуулна (тухайн газар "ямар газар вэ" гэдэг нь хаяг,
+// зайнаас илүү тэргүүлэх ач холбогдолтой). Олон шошготой бол ердийн
+// текстээр таслалаар нэгтгэнэ — chip биш, гарчгийн мөрийг өнгөлөг/
+// түгжрэлтэй болгохоос сэргийлнэ.
+function BranchTagLine({ tags }: { tags: { id: string; name: string }[] }) {
+  if (tags.length === 0) return null;
+  return (
+    <div className="text-[11px] font-semibold text-violet-300 light:text-violet-700 truncate">
+      {tags.map((tag) => tag.name).join(" · ")}
+    </div>
+  );
+}
+
 export function DiscoverClient({
   orgs,
-  serviceKeys,
   apiKey,
   mapId,
-  initialServiceKey = "",
 }: {
   orgs: DiscoverOrg[];
-  serviceKeys: DiscoverServiceKey[];
   apiKey: string;
   mapId: string;
-  /** `/book`-оос ирсэн системийн ажлын түлхүүр (аль хэдийн шалгагдсан). */
-  initialServiceKey?: string;
 }) {
   // Аймаг/хотын жагсаалт (branch-ийн баазын утгаас).
   const cities = useMemo(() => {
@@ -353,15 +378,28 @@ export function DiscoverClient({
     return [...s].sort((a, b) => a.localeCompare(b, "mn"));
   }, [orgs]);
 
+  // Бизнесийн төрлийн шошгын жагсаалт (branch-ийн баазын утгаас, city/
+  // district-тэй ижил зарчим) — нэг сонголттой шүүлтүүр (mobile-тай ижил,
+  // харах: carcare_customer_mobile-ийн discovery_screen.dart-ийн _TagFilter).
+  const tags = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const o of orgs)
+      for (const b of o.branches)
+        for (const t of b.tags) byId.set(t.id, t.name);
+    return [...byId.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, "mn"));
+  }, [orgs]);
+
   // Хотын шүүлтүүр анх ороход ХООСОН (бүх аймаг/хот) — газрын зургийн
   // ЭХНИЙ ХАРАГДАЦ Улаанбаатар руу төвлөрдөг ч (доор `UB_CENTER`) энэ зөвхөн
   // камерын байрлал, "хот" шүүлтүүрийг далд идэвхжүүлдэггүй.
   const [city, setCity] = useState("");
   const [citySelectedByUser, setCitySelectedByUser] = useState(false);
   const [district, setDistrict] = useState("");
-  // Ямар ажил хийлгэх гэж байгаагаа (системийн ажлын түлхүүр) байгууллага
-  // сонгохоос өмнө сонгоно — тухайн ажлыг хийдэг салбаруудыг л үлдээнэ.
-  const [serviceKey, setServiceKey] = useState(initialServiceKey);
+  // Бизнесийн төрлийн шошго (жиш: "Угаалгын газар") — нэг дор зөвхөн нэг
+  // сонголт.
+  const [tag, setTag] = useState("");
   // Засварын (үйлчилгээ) нэр эсвэл салбарын нэрээр хайх — жагсаалт/газрын
   // зураг хоёуланд хамаарна.
   const [query, setQuery] = useState("");
@@ -375,6 +413,19 @@ export function DiscoverClient({
   const [filterLoading, setFilterLoading] = useState(false);
   const [filterError, setFilterError] = useState<string | null>(null);
   const [catalogOrgs, setCatalogOrgs] = useState(orgs);
+  const router = useRouter();
+
+  // `orgs` (SSR snapshot) шууд харагдах "Нээлттэй/Хаалттай"-г тодорхойлдог тул
+  // хуудсыг эрт нээгээд урт хугацаанд орхивол хуучирна (салбарын ажлын цаг
+  // сая өнгөрсөн байж болно). Tab харагдаж байх үед л тогтмол шинэчилнэ —
+  // `router.refresh()` server component-ийг дахин ажиллуулж шинэ `orgs`
+  // props-ыг авчирна, шүүлтүүрийн state-д хөндлөнгөөс нөлөөлөхгүй.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") router.refresh();
+    }, 5 * 60_000);
+    return () => clearInterval(interval);
+  }, [router]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -429,7 +480,7 @@ export function DiscoverClient({
   const q = query.trim().toLowerCase();
 
   const visibleOrgs = useMemo(() => {
-    if (!city && !district && !q && !weekendOnly && !serviceKey) return catalogOrgs;
+    if (!city && !district && !q && !weekendOnly && !tag) return catalogOrgs;
     return catalogOrgs
       .map((o) => ({
         ...o,
@@ -437,7 +488,7 @@ export function DiscoverClient({
           (b) =>
             (!city || (b.city ?? "").trim() === city) &&
             (!district || (b.district ?? "").trim() === district) &&
-            (!serviceKey || b.serviceKeyIds.includes(serviceKey)) &&
+            (!tag || b.tags.some((t) => t.id === tag)) &&
             (!q ||
               b.name.toLowerCase().includes(q) ||
               b.services.some((s) => s.toLowerCase().includes(q))),
@@ -448,7 +499,7 @@ export function DiscoverClient({
       // ажилладаг бол ЭНЭ org-ийн БҮХ салбарыг харуулна (зөвхөн weekend
       // салбарыг нь биш) — city/district-ээс ялгаатай зарчим.
       .filter((o) => !weekendOnly || o.branches.some((b) => b.weekend));
-  }, [catalogOrgs, city, district, q, weekendOnly, serviceKey]);
+  }, [catalogOrgs, city, district, q, weekendOnly, tag]);
 
   const markers = useMemo<Marker[]>(
     () =>
@@ -460,15 +511,21 @@ export function DiscoverClient({
     [visibleOrgs],
   );
 
-  // Ажлын төрлийн шүүлтүүр идэвхтэй бол тухайн салбар аль хэдийн энэ ажлыг
-  // санал болгодгийг `visibleOrgs`-ийн шүүлт баталгаажуулсан тул шууд
-  // `/book/branch/[id]`-рүү (ангилал урьдчилан сонгогдож, түгжигдсэн) чиглүүлнэ
-  // — `/org/[slug]`-ийн ерөнхий (ангилалгүй) урсгалыг биш.
   function bookingHref(orgSlug: string, branchId: string): string {
-    if (serviceKey) {
-      return `/book/branch/${encodeURIComponent(branchId)}?keys=${encodeURIComponent(serviceKey)}`;
-    }
     return `/org/${orgSlug}?branch=${encodeURIComponent(branchId)}`;
+  }
+
+  // Mobile-ийн адил: салбар дээр дарахад шууд захиалгын маягт руу орохгүй,
+  // эхлээд дэлгэрэнгүй (хаяг/цаг/үйлчилгээ) хуудас руу орно. Байршлыг
+  // дараагийн алхамд (зайг харуулахад) дамжуулахын тулд query-ээр дамжуулна.
+  function branchDetailHref(orgSlug: string, branchId: string): string {
+    const params = new URLSearchParams();
+    if (nearMeLocation) {
+      params.set("lat", String(nearMeLocation.lat));
+      params.set("lng", String(nearMeLocation.lng));
+    }
+    const qs = params.toString();
+    return `/org/${orgSlug}/branch/${encodeURIComponent(branchId)}${qs ? `?${qs}` : ""}`;
   }
 
   // Газрын зураг ТОХИРУУЛАГДСАН эсэх (apiKey байгаа эсэх) — тогтмол, шүүлтийн
@@ -490,6 +547,12 @@ export function DiscoverClient({
   const mapRequestAbortRef = useRef<AbortController | null>(null);
   const mapRequestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleMapFetchRef = useRef<(viewport: MapViewport) => void>(() => {});
+  // Panning back to a viewport/filter combo already fetched this session
+  // shouldn't hit the network again — cap it so a long session doesn't grow
+  // this unbounded, evicting the oldest entry (simple insertion-order LRU;
+  // re-inserting on a hit keeps it "recently used").
+  const mapCacheRef = useRef<Map<string, { markers: Marker[]; truncated: boolean }>>(new Map());
+  const MAP_CACHE_LIMIT = 50;
 
   const scheduleMapFetch = (viewport: MapViewport) => {
     const generation = mapRequestGenerationRef.current;
@@ -498,12 +561,27 @@ export function DiscoverClient({
       query: query.trim(),
       city,
       district,
-      serviceKey,
+      tag,
       nearMeLocation,
       openNowOnly,
       weekendOnly,
     });
     if (mapRequestKeyRef.current === key) return;
+
+    const cached = mapCacheRef.current.get(key);
+    if (cached) {
+      // Refresh recency, then serve straight from cache — no debounce/fetch.
+      mapCacheRef.current.delete(key);
+      mapCacheRef.current.set(key, cached);
+      if (mapRequestTimerRef.current) clearTimeout(mapRequestTimerRef.current);
+      mapRequestAbortRef.current?.abort();
+      mapRequestKeyRef.current = key;
+      setMapError(false);
+      setMapMarkers(cached.markers);
+      setMapTruncated(cached.truncated);
+      return;
+    }
+
     if (mapRequestTimerRef.current) clearTimeout(mapRequestTimerRef.current);
     mapRequestTimerRef.current = setTimeout(() => {
       mapRequestAbortRef.current?.abort();
@@ -515,7 +593,7 @@ export function DiscoverClient({
         query,
         city,
         district,
-        serviceKey,
+        tag,
         nearMeLocation,
         openNow: openNowOnly,
         weekend: weekendOnly,
@@ -524,6 +602,12 @@ export function DiscoverClient({
         .then((result) => {
           if (controller.signal.aborted || generation !== mapRequestGenerationRef.current) return;
           mapRequestKeyRef.current = key;
+          const cache = mapCacheRef.current;
+          cache.set(key, result);
+          if (cache.size > MAP_CACHE_LIMIT) {
+            const oldest = cache.keys().next().value;
+            if (oldest !== undefined) cache.delete(oldest);
+          }
           setMapError(false);
           setMapMarkers(result.markers);
           setMapTruncated(result.truncated);
@@ -539,7 +623,15 @@ export function DiscoverClient({
   useEffect(() => {
     scheduleMapFetchRef.current = scheduleMapFetch;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, city, district, serviceKey, nearMeLocation, openNowOnly, weekendOnly, orgs]);
+  }, [query, city, district, tag, nearMeLocation, openNowOnly, weekendOnly, orgs]);
+
+  // `orgs` gets a fresh reference from the periodic `router.refresh()` below
+  // (open/hours can go stale on a long-open tab) — cached markers point at
+  // the old `orgs`' branch objects, so drop the cache whenever it changes,
+  // rather than serving now-outdated open/closed status from a cache hit.
+  useEffect(() => {
+    mapCacheRef.current.clear();
+  }, [orgs]);
 
   useEffect(() => {
     mapRequestGenerationRef.current += 1;
@@ -551,7 +643,7 @@ export function DiscoverClient({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMapMarkers(null);
     setMapTruncated(false);
-  }, [query, city, district, serviceKey, nearMeLocation, openNowOnly, weekendOnly]);
+  }, [query, city, district, tag, nearMeLocation, openNowOnly, weekendOnly]);
 
   const markersForMap = mapMarkers ?? markers;
 
@@ -675,12 +767,14 @@ export function DiscoverClient({
         mapIdleListenerRef.current = map.addListener("idle", () => {
           const bounds = map.getBounds();
           if (!bounds) return;
-          scheduleMapFetchRef.current({
-            north: bounds.getNorthEast().lat(),
-            south: bounds.getSouthWest().lat(),
-            east: bounds.getNorthEast().lng(),
-            west: bounds.getSouthWest().lng(),
-          });
+          scheduleMapFetchRef.current(
+            padViewport({
+              north: bounds.getNorthEast().lat(),
+              south: bounds.getSouthWest().lat(),
+              east: bounds.getNorthEast().lng(),
+              west: bounds.getSouthWest().lng(),
+            }),
+          );
         });
         setMapReady(true);
       })
@@ -808,7 +902,7 @@ export function DiscoverClient({
     }
     map.fitBounds(bounds, 48);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, city, district, serviceKey, query, weekendOnly, openNowOnly, nearMeOnly]);
+  }, [mapReady, city, district, tag, query, weekendOnly, openNowOnly, nearMeOnly]);
 
   // Сонгосон маркерыг тодруулж (ягаан + том), түүн рүү зөөлөн төвлөрнө.
   useEffect(() => {
@@ -877,28 +971,20 @@ export function DiscoverClient({
           </button>
         </div>
 
-        {serviceKeys.length > 0 ? (
+        {tags.length > 0 ? (
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <div className="discover-filter-select w-full sm:w-56 shrink-0">
               <Select
-                name="discover-service-key"
-                value={serviceKey}
-                placeholder="Ямар ажил хийлгэх гэж байна?"
+                name="discover-tag"
+                value={tag}
+                placeholder="Салбарын төрөл"
                 onChange={(v) => {
-                  setServiceKey(v);
+                  setTag(v);
                   setSelected(null);
                 }}
-                options={serviceKeys.map((k) => ({ value: k.id, label: k.name }))}
+                options={tags.map((t) => ({ value: t.id, label: t.name }))}
               />
             </div>
-            {serviceKey ? (
-              <Link
-                href={`/book?keys=${encodeURIComponent(serviceKey)}`}
-                className="shrink-0 text-sm text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-600 whitespace-nowrap transition-colors"
-              >
-                Шууд цаг захиалах →
-              </Link>
-            ) : null}
           </div>
         ) : null}
 
@@ -1143,6 +1229,7 @@ export function DiscoverClient({
                     <div className="text-sm text-white/55 truncate">
                       {selected.branch.name}
                     </div>
+                    <BranchTagLine tags={selected.branch.tags} />
                   </div>
                   <button
                     type="button"
@@ -1195,10 +1282,10 @@ export function DiscoverClient({
                   <ServiceTags services={selected.branch.services} />
 
                   <Link
-                    href={bookingHref(selected.org.slug, selected.branch.id)}
+                    href={branchDetailHref(selected.org.slug, selected.branch.id)}
                     className="mt-1 inline-flex w-full items-center justify-center gap-2 bg-violet-600 hover:bg-violet-500 transition-colors px-4 py-3 rounded-2xl text-sm font-semibold"
                   >
-                    Цаг захиалах
+                    Дэлгэрэнгүй
                     <span aria-hidden>→</span>
                   </Link>
                 </div>
@@ -1251,29 +1338,32 @@ export function DiscoverClient({
 
               <ul className="divide-y divide-white/[0.04] border-t border-white/[0.04]">
                 {org.branches.map((b) => (
-                  <li
-                    key={b.id}
-                    className="flex items-start justify-between gap-3 px-4 py-3"
-                  >
-                    <div className="min-w-0">
-                      <div className="text-sm text-white/85">{b.name}</div>
-                      <div className="text-xs text-white/40 mt-0.5 truncate">
-                        {b.address}
+                  <li key={b.id}>
+                    <Link
+                      href={branchDetailHref(org.slug, b.id)}
+                      className="flex items-start justify-between gap-3 px-4 py-3 hover:bg-white/[0.03] transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-sm text-white/85">{b.name}</div>
+                        <BranchTagLine tags={b.tags} />
+                        <div className="text-xs text-white/40 mt-0.5 truncate">
+                          {b.address}
+                        </div>
+                        {b.distanceKm != null ? (
+                          <div className="text-xs text-violet-300 light:text-violet-700 mt-1">
+                            {distanceLabel(b.distanceKm)} зайтай
+                          </div>
+                        ) : null}
+                        {b.services.length > 0 ? (
+                          <div className="mt-1.5">
+                            <ServiceTags services={b.services} />
+                          </div>
+                        ) : null}
                       </div>
-                      {b.distanceKm != null ? (
-                        <div className="text-xs text-violet-300 light:text-violet-700 mt-1">
-                          {distanceLabel(b.distanceKm)} зайтай
-                        </div>
-                      ) : null}
-                      {b.services.length > 0 ? (
-                        <div className="mt-1.5">
-                          <ServiceTags services={b.services} />
-                        </div>
-                      ) : null}
-                    </div>
-                    <div className="shrink-0">
-                      <OpenBadge open={b.open} hours={b.hours} />
-                    </div>
+                      <div className="shrink-0">
+                        <OpenBadge open={b.open} hours={b.hours} />
+                      </div>
+                    </Link>
                   </li>
                 ))}
               </ul>

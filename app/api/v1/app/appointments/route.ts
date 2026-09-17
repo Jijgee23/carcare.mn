@@ -34,6 +34,10 @@ export async function GET(req: Request) {
       ],
     },
     orderBy: { requestedAt: "desc" },
+    // Аль болох цөөн байх ёстой (зөвхөн идэвхтэй/төлбөр хүлээгдэж буй захиалга,
+    // дуусаад/цуцлагдсан нь дээрх NOT-оор шүүгддэг) — гэвч хамгаалалт болгож
+    // хязгаарлана, эс бөгөөс хэт хуучин данс дээр query хэт томордог.
+    take: 200,
     select: {
       id: true,
       status: true,
@@ -73,6 +77,18 @@ export async function GET(req: Request) {
               total: true,
             },
           },
+          // Ажил дуусахаас өмнө ч (жиш: захиалга гараад дараа нь оношилгоо
+          // хийгдвэл) тайлан бэлэн болмогц шууд харагдана — захиалгын
+          // төлвөөр шүүхгүй, /api/v1/app/orders/[id]-тэй ижил зарчим.
+          reports: {
+            orderBy: { createdAt: "desc" },
+            select: {
+              id: true,
+              createdAt: true,
+              mileageAtReport: true,
+              template: { select: { name: true, type: true } },
+            },
+          },
         },
       },
       feeAmount: true,
@@ -102,6 +118,8 @@ export async function GET(req: Request) {
       NOT: [{ status: "COMPLETED", paymentStatus: "PAID" }, { status: "CANCELLED" }],
     },
     orderBy: { createdAt: "desc" },
+    // Дээрхтэй ижил шалтгаанаар хамгаалалтын хязгаар.
+    take: 200,
     select: {
       id: true,
       number: true,
@@ -127,6 +145,15 @@ export async function GET(req: Request) {
           quantity: true,
           unitPrice: true,
           total: true,
+        },
+      },
+      reports: {
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          createdAt: true,
+          mileageAtReport: true,
+          template: { select: { name: true, type: true } },
         },
       },
     },
@@ -176,6 +203,13 @@ export async function GET(req: Request) {
             unitPrice: Number.parseFloat(it.unitPrice.toString()),
             total: Number.parseFloat(it.total.toString()),
           })),
+          reports: a.serviceOrder.reports.map((r) => ({
+            id: r.id,
+            type: r.template.type,
+            templateName: r.template.name,
+            createdAt: r.createdAt,
+            mileageAtReport: r.mileageAtReport,
+          })),
         }
       : null,
     payment: serializeAppointmentFee(a),
@@ -206,6 +240,13 @@ export async function GET(req: Request) {
       quantity: Number.parseFloat(it.quantity.toString()),
       unitPrice: Number.parseFloat(it.unitPrice.toString()),
       total: Number.parseFloat(it.total.toString()),
+    })),
+    reports: o.reports.map((r) => ({
+      id: r.id,
+      type: r.template.type,
+      templateName: r.template.name,
+      createdAt: r.createdAt,
+      mileageAtReport: r.mileageAtReport,
     })),
   }));
 

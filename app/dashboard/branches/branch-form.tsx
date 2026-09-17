@@ -58,7 +58,10 @@ type Initial = {
   openDays: Weekday[];
   daySchedules?: Record<Weekday, { isOpen: boolean; openTime: string | null; closeTime: string | null }>;
   isPrimary: boolean;
+  tagIds?: string[];
 };
+
+export type BranchTagOption = { id: string; name: string };
 
 type DaySchedule = { isOpen: boolean; openTime: string; closeTime: string };
 
@@ -91,11 +94,13 @@ export function BranchForm({
   addressData,
   mapApiKey,
   mapId,
+  tagOptions = [],
 }: {
   initial?: Initial;
   addressData: AddressData;
   mapApiKey: string;
   mapId: string;
+  tagOptions?: BranchTagOption[];
 }) {
   const isEdit = Boolean(initial?.id);
   const action = isEdit
@@ -165,6 +170,13 @@ export function BranchForm({
     initial?.slotCapacity != null ? String(initial.slotCapacity) : "",
   );
   const [isPrimary, setIsPrimary] = useState(initial?.isPrimary ?? false);
+  const [tagIds, setTagIds] = useState<string[]>(initial?.tagIds ?? []);
+  function toggleTag(id: string) {
+    setDirty(true);
+    setTagIds((prev) =>
+      prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id],
+    );
+  }
   // S13 Phase 4: clipped (non-destructive) schedule impact requires an
   // explicit confirm before resubmitting — same confirmed=true convention as
   // app/_actions/orders.ts's postpone/reschedule flows. Erased impact has no
@@ -277,6 +289,42 @@ export function BranchForm({
             </div>
           </div>
         </label>
+
+        {tagOptions.length > 0 ? (
+          <div className="mt-4">
+            <label className="text-sm font-medium text-[var(--oc-ink2)] mb-2 block">
+              Бизнесийн төрлийн шошго{isEdit ? "" : " *"}
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {tagOptions.map((tag) => {
+                const checked = tagIds.includes(tag.id);
+                return (
+                  <label
+                    key={tag.id}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm cursor-pointer transition-colors ${
+                      checked
+                        ? "border-[var(--oc-accent)] bg-[var(--oc-accent)]/10 text-[var(--oc-accent-hi)]"
+                        : "border-[var(--oc-line)] text-[var(--oc-muted2)] hover:border-[var(--oc-line2)]"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      name="tagIds"
+                      value={tag.id}
+                      checked={checked}
+                      onChange={() => toggleTag(tag.id)}
+                      className="sr-only"
+                    />
+                    {tag.name}
+                  </label>
+                );
+              })}
+            </div>
+            {fe.tagIds ? (
+              <p className="text-xs text-red-400 light:text-red-600 mt-1.5">{fe.tagIds}</p>
+            ) : null}
+          </div>
+        ) : null}
       </SectionPanel>
 
       <SectionPanel index={2} total={3} title="Хаяг ба байршил">

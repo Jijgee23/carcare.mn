@@ -111,6 +111,16 @@ const navGroups: NavGroup[] = [
           </svg>
         ),
       },
+      {
+        href: "/system/branch-tags",
+        label: "Салбарын шошго",
+        icon: (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20.59 13.41 11 3.83A2 2 0 0 0 9.59 3.24L3 3v6.59a2 2 0 0 0 .59 1.41l9.59 9.59a2 2 0 0 0 2.82 0l4.59-4.59a2 2 0 0 0 0-2.82Z" />
+            <circle cx="7.5" cy="7.5" r="1.5" />
+          </svg>
+        ),
+      },
     ],
   },
   {

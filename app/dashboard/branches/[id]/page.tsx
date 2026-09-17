@@ -41,15 +41,21 @@ export default async function EditBranchPage({
   if (!canEdit(user, "branches")) redirect("/dashboard/branches");
 
   const { id } = await params;
-  const [branch, addressData, lastAudit] = await Promise.all([
+  const [branch, addressData, tagOptions, lastAudit] = await Promise.all([
     prisma.branch.findFirst({
       where: { id, tenantId: user.tenantId },
       include: {
         schedules: { select: { weekday: true, isOpen: true, openTime: true, closeTime: true } },
+        tags: { select: { id: true } },
         _count: { select: { users: true } },
       },
     }),
     getAddressData(),
+    prisma.branchTag.findMany({
+      where: { isActive: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
     prisma.auditLog.findFirst({
       where: { entity: "Branch", entityId: id },
       orderBy: { createdAt: "desc" },
@@ -85,6 +91,11 @@ export default async function EditBranchPage({
   if (branch.latitude == null || branch.longitude == null)
     missing.push("Газрын зураг дээр байршил тэмдэглээгүй");
   if (!branch.phone) missing.push("Утасны дугаар оруулаагүй");
+  // Шинэ салбарт шошго ЗААВАЛ, харин хуучин шошгогүй салбаруудыг зөвхөн
+  // сануулаад орхино — бусад мэдээлэл засахад нь саад болохгүй (харах:
+  // app/_actions/branches.ts-ийн requireTag зөвхөн create дээр ажилладаг шийдвэр).
+  if (branch.tags.length === 0)
+    missing.push("Бизнесийн төрлийн шошго сонгогдоогүй (discover-т шүүгдэхгүй)");
 
   const shortId = branch.id.slice(-6).toUpperCase();
 
@@ -131,6 +142,7 @@ export default async function EditBranchPage({
           addressData={addressData}
           mapApiKey={process.env.GOOGLE_MAP_API_KEY ?? ""}
           mapId={process.env.GOOGLE_MAP_ID ?? ""}
+          tagOptions={tagOptions}
           initial={{
             id: branch.id,
             name: branch.name,
@@ -148,6 +160,7 @@ export default async function EditBranchPage({
             openDays,
             daySchedules,
             isPrimary: branch.isPrimary,
+            tagIds: branch.tags.map((t) => t.id),
           }}
         />
 

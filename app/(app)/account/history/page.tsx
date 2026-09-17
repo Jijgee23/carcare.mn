@@ -16,8 +16,14 @@ import {
   type PaymentStatus,
 } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
-import { ResetFilters, SearchBox } from "@/app/_components/list-filters";
-import { YearChips } from "@/app/_components/segmented-filter";
+import { FilterSelect, ResetFilters, SearchBox } from "@/app/_components/list-filters";
+import { Pagination } from "@/app/_components/pagination";
+import { getPageInfo, buildMeta } from "@/lib/pagination";
+
+const MONTH_OPTIONS = [
+  "1-р сар", "2-р сар", "3-р сар", "4-р сар", "5-р сар", "6-р сар",
+  "7-р сар", "8-р сар", "9-р сар", "10-р сар", "11-р сар", "12-р сар",
+].map((label, i) => ({ value: String(i + 1), label }));
 
 export const metadata = {
   title: "Үйлчилгээний түүх",
@@ -33,21 +39,44 @@ function formatDate(d: Date): string {
   });
 }
 
-/** Тухайн оны [эхлэл, дараа оны эхлэл) муж (локал цагаар). */
-function yearRange(year: number): { gte: Date; lt: Date } {
-  return { gte: new Date(year, 0, 1), lt: new Date(year + 1, 0, 1) };
+/**
+ * Тухайн оны (эсвэл он+сарын) [эхлэл, дараа мужийн эхлэл) муж (локал цагаар).
+ * `month` зөвхөн `year`-тэй хамт утгатай тул үргэлж хамт дамжина.
+ */
+function yearRange(year: number, month: number | null): { gte: Date; lt: Date } {
+  if (month == null) return { gte: new Date(year, 0, 1), lt: new Date(year + 1, 0, 1) };
+  return { gte: new Date(year, month - 1, 1), lt: new Date(year, month, 1) };
 }
 
 export default async function AccountHistoryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ plate?: string; q?: string; year?: string }>;
+  searchParams: Promise<{
+    plate?: string;
+    q?: string;
+    year?: string;
+    month?: string;
+    page?: string;
+  }>;
 }) {
   const account = await requireAccount();
-  const { plate, q: rawQuery, year: rawYear } = await searchParams;
+  const {
+    plate,
+    q: rawQuery,
+    year: rawYear,
+    month: rawMonth,
+    page: rawPage,
+  } = await searchParams;
+  const { page, pageSize, skip, take } = getPageInfo(rawPage, 20);
   const query = (rawQuery ?? "").trim();
   const parsedYear = Number.parseInt(rawYear ?? "", 10);
   const year = Number.isInteger(parsedYear) ? parsedYear : null;
+  // Сар зөвхөн он сонгогдсон үед л утгатай — эс бөгөөс алгасана.
+  const parsedMonth = Number.parseInt(rawMonth ?? "", 10);
+  const month =
+    year !== null && Number.isInteger(parsedMonth) && parsedMonth >= 1 && parsedMonth <= 12
+      ? parsedMonth
+      : null;
 
   // Энэ account-ийн БАТАЛГААЖСАН эзэмшлийн машинууд: аль нэг байгууллагад
   // account-той холбоотой Customer-т бүртгэлтэй TenantVehicle (утсаар
@@ -99,7 +128,7 @@ export default async function AccountHistoryPage({
     });
   }
   if (year !== null) {
-    const range = yearRange(year);
+    const range = yearRange(year, month);
     filters.push({
       OR: [
         { completedAt: range },
@@ -113,25 +142,30 @@ export default async function AccountHistoryPage({
     ? { ...ownershipWhere, AND: filters }
     : ownershipWhere;
 
-  const orders = await prisma.serviceOrder.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-    take: 100,
-    select: {
-      id: true,
-      number: true,
-      status: true,
-      paymentStatus: true,
-      scheduledAt: true,
-      completedAt: true,
-      createdAt: true,
-      totalAmount: true,
-      tenant: { select: { name: true } },
-      branch: { select: { name: true } },
-      vehicle: { select: { plate: true, make: true, model: true } },
-      _count: { select: { items: true } },
-    },
-  });
+  const [orders, ordersTotal] = await Promise.all([
+    prisma.serviceOrder.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip,
+      take,
+      select: {
+        id: true,
+        number: true,
+        status: true,
+        paymentStatus: true,
+        scheduledAt: true,
+        completedAt: true,
+        createdAt: true,
+        totalAmount: true,
+        tenant: { select: { name: true } },
+        branch: { select: { name: true } },
+        vehicle: { select: { plate: true, make: true, model: true } },
+        _count: { select: { items: true } },
+      },
+    }),
+    prisma.serviceOrder.count({ where }),
+  ]);
+  const ordersMeta = buildMeta(ordersTotal, page, pageSize);
 
   // D-085: цуцлагдсан/ирээгүй/татгалзсан цаг (ServiceOrder огт үүсээгүй тул
   // дээрх query-д тусахгүй) — эдгээр нь одоо идэвхтэй жагсаалтад (D-083/D-084)
@@ -153,7 +187,7 @@ export default async function AccountHistoryPage({
       ],
     });
   }
-  if (year !== null) cancelledFilters.push({ requestedAt: yearRange(year) });
+  if (year !== null) cancelledFilters.push({ requestedAt: yearRange(year, month) });
 
   const cancelledAppointments = await prisma.appointment.findMany({
     where: cancelledFilters.length
@@ -193,7 +227,7 @@ export default async function AccountHistoryPage({
     ]),
   ].sort((a, b) => b - a);
 
-  const hasFilter = Boolean(query) || year !== null;
+  const hasFilter = Boolean(query) || year !== null || month !== null;
 
   return (
     <div className="w-full flex flex-col gap-6">
@@ -231,8 +265,15 @@ export default async function AccountHistoryPage({
           placeholder="Байгууллага, салбар, дугаараар хайх"
           paramName="q"
         />
-        <YearChips years={availableYears} />
-        <ResetFilters paramNames={["q", "year"]} />
+        <FilterSelect
+          paramName="year"
+          placeholder="Бүх он"
+          options={availableYears.map((y) => ({ value: String(y), label: String(y) }))}
+        />
+        {year !== null ? (
+          <FilterSelect paramName="month" placeholder="Бүх сар" options={MONTH_OPTIONS} />
+        ) : null}
+        <ResetFilters paramNames={["q", "year", "month"]} />
       </div>
 
       {orders.length === 0 && cancelledAppointments.length === 0 ? (
@@ -285,6 +326,12 @@ export default async function AccountHistoryPage({
               </Link>
             );
           })}
+          <Pagination
+            page={ordersMeta.page}
+            totalPages={ordersMeta.totalPages}
+            total={ordersMeta.total}
+            params={{ plate, q: query, year, month }}
+          />
         </div>
       ) : null}
 

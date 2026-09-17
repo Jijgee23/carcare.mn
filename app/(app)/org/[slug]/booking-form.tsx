@@ -79,8 +79,21 @@ export function BookingForm({
 
   const selectedBranch = branches.find((b) => b.id === branchId);
 
-  // Байгууллагын БҮХ салбарт байгаа ангиллууд (давхардалгүй, нэрээр эрэмбэлэгдсэн).
+  // Хэрэглэгч discover-ээс ТОДОРХОЙ салбар сонгож ирсэн бол (`?branch=`)
+  // зөвхөн ТУХАЙН салбарын ангиллыг харуулна — эс бөгөөс байгууллагын өөр
+  // салбарт байгаа (энэ салбараас аль хэдийн хассан ч) ангилал энд гарч,
+  // сонговол `toggleCategory`-гийн auto-switch логик чимээгүйгээр өөр
+  // салбар руу шилжүүлдэг байсан (хэрэглэгчийн шууд сонгосон салбарыг
+  // зөрчиж). Тодорхой салбаргүйгээр ирсэн бол (category-first урсгал,
+  // mobile-тай ижил шийдвэр) байгууллагын БҮХ салбарын ангилалын нэгдлийг
+  // хэвээр үлдээнэ — энэ тохиолдолд салбар хараахан сонгогдоогүй байна.
   const allCategories = (() => {
+    if (initialBranchId) {
+      const branch = branches.find((b) => b.id === initialBranchId);
+      return [...(branch?.categories ?? [])].sort((a, b) =>
+        a.name.localeCompare(b.name),
+      );
+    }
     const byId = new Map<string, Category>();
     for (const b of branches) for (const c of b.categories) byId.set(c.id, c);
     return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));

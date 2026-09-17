@@ -99,6 +99,15 @@ export function ReportAnswers({
     return ordered;
   }, [schema, data]);
 
+  // Энэ загварын check хариултууд яг өнгөний нэрсээр (Хэвийн/Анхаарах/Солих)
+  // бичигдсэн бол "Хариултаар" мөр "Төлвөөр" мөртэй ялгаагүй шошготой
+  // давхацна (зөрхий тоо нэмэгддэгээс өөр юу ч нэмэхгүй) — ийм үед энэ
+  // мөрийг бүхэлд нь нуучихна.
+  const duplicatesToneFilter =
+    toneFilterEnabled &&
+    filterOptions.length === CHECK_TONES.length &&
+    filterOptions.every((o) => CHECK_TONES.some((t) => CHECK_TONE_LABEL[t] === o.value));
+
   return (
     <div className="flex flex-col gap-5">
       {toneFilterEnabled ? (
@@ -121,7 +130,7 @@ export function ReportAnswers({
         </div>
       ) : null}
 
-      {filterOptions.length > 1 ? (
+      {filterOptions.length > 1 && !duplicatesToneFilter ? (
         <div className="no-print flex items-center gap-1.5 flex-wrap">
           <span className="text-xs text-[var(--oc-muted3)] mr-1">Хариултаар:</span>
           <FilterChip

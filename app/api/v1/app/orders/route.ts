@@ -6,6 +6,23 @@ import { prisma } from "@/lib/prisma";
 import { ownedVehicleIdsForAccount } from "@/lib/vehicles";
 import { bookingDateKey, bookingDayBounds } from "@/lib/booking-time";
 
+// `month` заавал биш, зөвхөн `year`-той хамт нарийвчлал нэмнэ (1-12) —
+// хайрцаглах хугацааг [year-month-01, дараагийн сарын 01) болгож бодно.
+function yearMonthRange(year: number, month: number | undefined) {
+  if (!month) {
+    return {
+      start: bookingDayBounds(`${year}-01-01`).start,
+      end: bookingDayBounds(`${year + 1}-01-01`).start,
+    };
+  }
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextYear = month === 12 ? year + 1 : year;
+  return {
+    start: bookingDayBounds(`${year}-${String(month).padStart(2, "0")}-01`).start,
+    end: bookingDayBounds(`${nextYear}-${String(nextMonth).padStart(2, "0")}-01`).start,
+  };
+}
+
 // GET /api/v1/app/orders — миний үйлчилгээний түүх (auth, бүх байгууллага
 // дамнасан). Засварын хуудас бүрт хавсаргасан оношилгооны тайлангийн товч жагсаалт
 // (reports) хавсарна — дэлгэрэнгүй бөглөлтийг [id] дуудлагаас авна.
@@ -29,6 +46,15 @@ export async function GET(req: Request) {
   ) {
     return jsonError(400, "Он буруу байна.");
   }
+  // Сар зөвхөн он сонгосны дараах нарийвчлал тул оноос тусад нь утгагүй.
+  const monthRaw = url.searchParams.get("month")?.trim();
+  const month = monthRaw ? Number(monthRaw) : undefined;
+  if (monthRaw) {
+    if (!year) return jsonError(400, "Сарын шүүлт хийхийн тулд оноо сонгоно уу.");
+    if (!/^\d{1,2}$/.test(monthRaw) || month == null || month < 1 || month > 12) {
+      return jsonError(400, "Сар буруу байна.");
+    }
+  }
 
   // Эзэмшлийн машинууд (баталгаажсан холбоос) — account/history веб хуудастай
   // ижил зарчим (харах: lib/vehicles.ts ownedVehicleIdsForAccount).
@@ -49,12 +75,8 @@ export async function GET(req: Request) {
   };
   if (vehicleIdFilter) where.vehicleId = vehicleIdFilter;
   if (year) {
-    const bounds = bookingDayBounds(`${year}-01-01`);
-    const nextBounds = bookingDayBounds(`${year + 1}-01-01`);
-    where.completedAt = {
-      gte: bounds.start,
-      lt: nextBounds.start,
-    };
+    const range = yearMonthRange(year, month);
+    where.completedAt = { gte: range.start, lt: range.end };
   }
   if (q) {
     where.AND = [
@@ -78,12 +100,8 @@ export async function GET(req: Request) {
     serviceOrderId: null,
   };
   if (year) {
-    const bounds = bookingDayBounds(`${year}-01-01`);
-    const nextBounds = bookingDayBounds(`${year + 1}-01-01`);
-    cancelledWhere.requestedAt = {
-      gte: bounds.start,
-      lt: nextBounds.start,
-    };
+    const range = yearMonthRange(year, month);
+    cancelledWhere.requestedAt = { gte: range.start, lt: range.end };
   }
   if (q) {
     cancelledWhere.AND = [

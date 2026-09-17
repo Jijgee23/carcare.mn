@@ -18,27 +18,12 @@ export const metadata = {
 // Каталог нь нийтэд нээлттэй (нэвтрэхгүйгээр үзнэ).
 export const dynamic = "force-dynamic";
 
-export default async function DiscoverPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ serviceKey?: string }>;
-}) {
-  // `/book` дээр сонгосон системийн ажлын түлхүүр (mobile-ийн Захиалах таб →
-  // Хайх таб шилжилттэй ижил) — байхгүй/танигдаагүй бол шүүлтгүй.
-  const { serviceKey: requestedServiceKey } = await searchParams;
+export default async function DiscoverPage() {
   // Олон tenant-ийн нийтэд нээлттэй каталог — цор ганц tenant гэж байхгүй.
   setBypassContext();
   // Багц нь онлайн захиалга дэмждэг tenant-уудыг л харуулна.
   const allowedPlans = await plansWithFeature(PLAN_LIMIT_CODES.ONLINE_BOOKING);
   const now = new Date();
-  // Ямар ч ангилалд холбогдоогүй түлхүүрийг ШҮҮНЭ ГАРГАНА — сонговол баталгаатай
-  // хоосон үр дүн буцаах (map/list бүхэлдээ "олдсонгүй" болж хоосорно) сонголтыг
-  // цэсэнд огт харуулахгүй.
-  const serviceKeys = await prisma.systemServiceKey.findMany({
-    where: { isActive: true, categories: { some: { isActive: true } } },
-    orderBy: { name: "asc" },
-    select: { id: true, name: true },
-  });
   const tenants = await prisma.tenant.findMany({
     where: {
       acceptsOnlineBooking: true,
@@ -64,6 +49,7 @@ export default async function DiscoverPage({
           address: true,
           latitude: true,
           longitude: true,
+          tags: { select: { id: true, name: true } },
           ...branchScheduleDisplaySelect(),
         },
       },
@@ -75,7 +61,6 @@ export default async function DiscoverPage({
         orderBy: { name: "asc" },
         select: {
           name: true,
-          systemServiceKeyId: true,
           branches: { select: { id: true } },
         },
       },
@@ -118,15 +103,6 @@ export default async function DiscoverPage({
         (c) => c.branches.length === 0 || c.branches.some((x) => x.id === b.id),
       );
       const services = matchingCategories.map((c) => c.name);
-      // Тэдгээр ангиллын холбогдсон системийн ажлын түлхүүрүүд (байгууллага
-      // сонгохоос өмнөх "ямар ажил хийлгэх гэж байна?" хайлтад ашиглана).
-      const serviceKeyIds = [
-        ...new Set(
-          matchingCategories
-            .map((c) => c.systemServiceKeyId)
-            .filter((id): id is string => Boolean(id)),
-        ),
-      ];
       return {
         id: b.id,
         name: b.name,
@@ -140,7 +116,7 @@ export default async function DiscoverPage({
         hours: status.hours,
         weekend,
         services,
-        serviceKeyIds,
+        tags: b.tags,
       };
     }),
   }));
@@ -157,12 +133,6 @@ export default async function DiscoverPage({
 
       <DiscoverClient
         orgs={orgs}
-        serviceKeys={serviceKeys}
-        initialServiceKey={
-          serviceKeys.some((k) => k.id === requestedServiceKey)
-            ? (requestedServiceKey as string)
-            : ""
-        }
         apiKey={process.env.GOOGLE_MAP_API_KEY ?? ""}
         mapId={process.env.GOOGLE_MAP_ID ?? ""}
       />

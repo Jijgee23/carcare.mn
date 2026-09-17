@@ -48,10 +48,19 @@ export type BranchDaySchedulePreview = {
  * this is a supplementary visual aid, not a required step, so a caller can
  * simply render nothing instead of surfacing an error to a worker who is
  * mid-flow filling in an unrelated field.
+ *
+ * `excludeAppointmentId`: when an order is being created FROM an existing
+ * appointment, the form pre-fills the order's time from that appointment's
+ * own `requestedAt` — so without this, the appointment's own row would
+ * always intersect the form's "ghost" block and show a false self-overlap
+ * warning (mirrors `moveAppointmentInTransaction`'s exclusion arg to
+ * `isSlotAvailable` in lib/appointment-reservations.ts, same "don't conflict
+ * with yourself" principle).
  */
 export async function getBranchDaySchedulePreview(
   branchId: string,
   dateStr: string,
+  excludeAppointmentId?: string,
 ): Promise<BranchDaySchedulePreview | null> {
   const user = await requireUser();
   if (!canView(user, "appointments")) return null;
@@ -89,6 +98,7 @@ export async function getBranchDaySchedulePreview(
   // D-076: never hide an "upcoming" follow-up row through this mechanism —
   // see the identical fix/comment in day-rows.tsx's buildDayRows.
   const rows: SchedulePreviewRow[] = schedule.intervals
+    .filter((row) => !(row.source === "appointment" && row.id === excludeAppointmentId))
     .filter((row) => row.source !== "order" || row.role === "upcoming" || !isHiddenCarryOverOrder(row.id))
     .sort((a, b) => a.startMs - b.startMs)
     .map((row, rowIndex) => {

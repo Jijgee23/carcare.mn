@@ -38,6 +38,9 @@ export type DiscoveryFilters = {
   // "Ямар ажил хийлгэх гэж байна?" — SystemServiceKey.id-аар шүүнэ (аль ч
   // байгууллагад хамаарахгүй, платформ даяарх түлхүүр).
   serviceKey: string;
+  // Бизнесийн төрлийн шошго (BranchTag.id) — салбар шууд холбогдоно, Category
+  // дундуур дамжихгүй.
+  tag: string;
   viewport?: DiscoveryViewport;
 };
 
@@ -96,6 +99,7 @@ export function parseDiscoveryFilters(sp: URLSearchParams):
       openNow: sp.get("openNow") === "1" || sp.get("openNow") === "true",
       weekend: sp.get("weekend") === "1" || sp.get("weekend") === "true",
       serviceKey: sp.get("serviceKey")?.trim() ?? "",
+      tag: sp.get("tag")?.trim() ?? "",
       ...(parsedViewport.viewport ? { viewport: parsedViewport.viewport } : {}),
     },
   };
@@ -116,6 +120,7 @@ type DiscoveryBranch = {
   schedules: Array<Record<string, unknown>>;
   scheduleExceptions: Array<Record<string, unknown>>;
   scheduleSeasons: Array<Record<string, unknown>>;
+  tags: Array<{ id: string; name: string }>;
 };
 
 type DiscoveryTenant = {
@@ -150,6 +155,7 @@ export type DiscoveryOrganization = {
     weekend: boolean;
     services: string[];
     serviceKeyIds: string[];
+    tags: Array<{ id: string; name: string }>;
     distanceKm?: number;
   }>;
 };
@@ -165,10 +171,15 @@ export type DiscoveryMarker = {
   latitude: number;
   longitude: number;
   serviceKeyIds: string[];
+  tagIds: string[];
   distanceKm?: number;
 };
 
-export async function getDiscoveryCatalog(filters: DiscoveryFilters) {
+export async function getDiscoveryCatalog(
+  filters: DiscoveryFilters,
+  options?: { includeFacets?: boolean },
+) {
+  const includeFacets = options?.includeFacets ?? true;
   const allowedPlans = await plansWithFeature(PLAN_LIMIT_CODES.ONLINE_BOOKING);
   const hasCoordinates = filters.lat != null && filters.lng != null;
   const viewportWhere = filters.viewport
@@ -240,6 +251,7 @@ export async function getDiscoveryCatalog(filters: DiscoveryFilters) {
           address: true,
           latitude: true,
           longitude: true,
+          tags: { select: { id: true, name: true } },
           ...branchScheduleDisplaySelect(),
         },
       },
@@ -281,7 +293,9 @@ export async function getDiscoveryCatalog(filters: DiscoveryFilters) {
     for (const branch of tenant.branches) {
       const services = servicesFor(branch.id);
       const serviceKeyIds = serviceKeyIdsFor(branch.id);
+      const tagIds = branch.tags.map((t) => t.id);
       if (filters.serviceKey && !serviceKeyIds.includes(filters.serviceKey)) continue;
+      if (filters.tag && !tagIds.includes(filters.tag)) continue;
       if (
         filters.query &&
         !tenantNameMatch &&
@@ -326,6 +340,7 @@ export async function getDiscoveryCatalog(filters: DiscoveryFilters) {
         weekend: worksWeekend,
         services,
         serviceKeyIds,
+        tags: branch.tags,
         ...(distance == null ? {} : { distanceKm: Math.round(distance * 10) / 10 }),
       });
     }
@@ -346,6 +361,7 @@ export async function getDiscoveryCatalog(filters: DiscoveryFilters) {
         latitude: branch.lat,
         longitude: branch.lng,
         serviceKeyIds: branch.serviceKeyIds,
+        tagIds: branch.tags.map((t) => t.id),
         ...(branch.distanceKm == null ? {} : { distanceKm: branch.distanceKm }),
       });
     }
@@ -357,10 +373,15 @@ export async function getDiscoveryCatalog(filters: DiscoveryFilters) {
     filtered.splice(0, filtered.length, ...indexed.map((item) => item.organization));
   }
 
-  const facetBranches = await prisma.branch.findMany({
-    where: { isActive: true, tenant: { acceptsOnlineBooking: true, suspended: false, plan: { in: allowedPlans } } },
-    select: { city: true, district: true },
-  });
+  // Map endpoints only consume `markers`/`markerCount`/`markersTruncated` and
+  // never `facets` — skip this nationwide (unscoped by viewport) query there,
+  // since otherwise it re-runs on every map pan/zoom for no reason.
+  const facetBranches = includeFacets
+    ? await prisma.branch.findMany({
+        where: { isActive: true, tenant: { acceptsOnlineBooking: true, suspended: false, plan: { in: allowedPlans } } },
+        select: { city: true, district: true },
+      })
+    : [];
   const districts = facetBranches
     .filter((branch) => !filters.city || branch.city === filters.city)
     .map((branch) => branch.district?.trim())

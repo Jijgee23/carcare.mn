@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { PageHeader } from "@/app/_components/page-header";
 import { requireUser } from "@/lib/auth";
@@ -37,9 +38,31 @@ export default async function NewReportPage({
 
   const backHref = `/dashboard/orders/${orderId}`;
 
-  // Захиалга эхэлсний дараа л оношилгоо бөглөнө (UI-аас гадуур хандсан хамгаалалт).
+  // Захиалга эхэлсний дараа л оношилгоо бөглөнө (UI-аас гадуур хандсан
+  // хамгаалалт — order-items.tsx-ийн холбоос аль хэдийн disable-лэгдсэн ч,
+  // хуучин таб/шууд URL-аар ирж болзошгүй). Урьд нь энд redirect(backHref)
+  // дуудаж ажилтныг тайлбаргүйгээр захиалгын хуудас руу шууд буцаадаг байсан
+  // — оронд нь энд үлдээж, яагаад боломжгүйг тайлбарлана.
   if (!canFillDiagnostics(order.status as OrderStatus)) {
-    redirect(backHref);
+    return (
+      <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
+        <PageHeader
+          title="Оношилгоо бөглөх"
+          description={`Засварын хуудас #${order.number} · ${order.vehicle.plate}`}
+        />
+        <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-6 flex flex-col items-start gap-3">
+          <p className="text-sm text-[var(--oc-muted)]">
+            Захиалга эхлээгүй байна. Эхлүүлсний дараа оношилгоо бөглөнө.
+          </p>
+          <Link
+            href={backHref}
+            className="text-sm text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors"
+          >
+            ← Захиалга руу буцах
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   // Оношилгоог захиалгын "Үйлчилгээ" хэсгээс (kind=DIAGNOSTIC мөр нэмэх)

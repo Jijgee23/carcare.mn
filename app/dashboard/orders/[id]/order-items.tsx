@@ -204,10 +204,8 @@ export function OrderItems({
                       className={`px-5 py-2.5 ${boxed ? `border-l ${groupBorder}` : ""} ${bottomEdgeBorder} ${cancelled ? "opacity-50" : "text-[var(--oc-ink)]"}`}
                     >
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className={cancelled ? "line-through" : ""}>
-                          {it.description}
-                        </span>
-                        {g.kind !== "PART" ? (
+                        <span>{it.description}</span>
+                        {g.kind !== "PART" || cancelled ? (
                           <span
                             className={`shrink-0 font-plex-mono text-[9px] px-1.5 py-0.5 rounded-full ${SERVICE_ITEM_STATUS_BADGE[status]}`}
                           >
@@ -221,13 +219,20 @@ export function OrderItems({
                           >
                             Тайлан үзэх →
                           </Link>
-                        ) : needsReport && !cancelled ? (
+                        ) : needsReport && !cancelled && orderStarted ? (
                           <Link
                             href={`/dashboard/orders/${orderId}/diagnostics/new?itemId=${it.id}`}
                             className="shrink-0 text-[11px] font-medium text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors"
                           >
                             Бөглөх →
                           </Link>
+                        ) : needsReport && !cancelled ? (
+                          <span
+                            title="Захиалга эхлээгүй байна — эхлүүлсний дараа оношилгоо бөглөх боломжтой"
+                            className="shrink-0 text-[11px] font-medium text-[var(--oc-muted3)] cursor-not-allowed"
+                          >
+                            Бөглөх →
+                          </span>
                         ) : null}
                       </div>
                       {cancelled && it.cancelledAt ? (

@@ -125,16 +125,32 @@ export function buildDayRows(
   returnTo?: string,
 ): { rows: DayRow[]; issues: ScheduleIssue[] } {
   const appointmentById = new Map(schedule.appointments.map((a) => [a.id, a]));
+  // `buildBranchSchedule` suppresses a booked appointment's OWN interval once
+  // its linked order contributes a visible occupancy interval (avoids double-
+  // counting the same job for capacity/overlap purposes) — correct there, but
+  // this appointments-only day view then had NOTHING to render for it (the
+  // order-source interval that replaced it is filtered out below). Resolve
+  // those back to the appointment they represent instead of losing the row.
+  const appointmentByOrderId = new Map(
+    schedule.appointments
+      .filter((a) => a.serviceOrderId)
+      .map((a) => [a.serviceOrderId as string, a]),
+  );
 
-  const appointmentIntervals = schedule.intervals.filter((row) => row.source === "appointment");
+  const appointmentIntervals = schedule.intervals.filter(
+    (row) => row.source === "appointment" || appointmentByOrderId.has(row.id),
+  );
   const issues = schedule.issues.filter((issue) => issue.source === "appointment");
-  const issueBySourceId = new Map(issues.map((issue) => [`${issue.source}:${issue.id}`, issue]));
+  const issueBySourceId = new Map(issues.map((issue) => [`appointment:${issue.id}`, issue]));
 
   const rows: DayRow[] = appointmentIntervals
     .sort((a, b) => a.startMs - b.startMs)
     .map((row) => {
-      const issue = issueBySourceId.get(`${row.source}:${row.id}`);
-      const appt = appointmentById.get(row.id);
+      const appt =
+        row.source === "appointment"
+          ? appointmentById.get(row.id)
+          : appointmentByOrderId.get(row.id);
+      const issue = appt ? issueBySourceId.get(`appointment:${appt.id}`) : undefined;
       const name = appt ? appointmentDisplayName(appt) : "—";
       const statusLabel = appt ? APPOINTMENT_STATUS_LABEL[appt.status] : "";
       const statusClass = appt ? APPOINTMENT_STATUS_BADGE[appt.status] : "";
@@ -218,7 +234,10 @@ export function buildDayRows(
       return {
         key: `${row.source}-${row.id}`,
         source: "appointment" as const,
-        id: row.id,
+        // `row.id` is the ORDER id for a row resolved via `appointmentByOrderId`
+        // — callers (e.g. grid-schedule.tsx's goToBookingDetail) expect an
+        // appointment id here, so always resolve through `appt` when present.
+        id: appt?.id ?? row.id,
         startMs: row.startMs,
         endMs: row.endMs,
         endsAtDayBoundary: row.endMs === schedule.rangeEnd.getTime(),
