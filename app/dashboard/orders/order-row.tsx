@@ -19,9 +19,9 @@ export function OrderRow({
   const router = useRouter();
 
   function handleClick(e: MouseEvent<HTMLTableRowElement>) {
-    // Дотроос link/button дарвал тэдгээрт зориул
+    // Дотроос link/button/checkbox дарвал тэдгээрт зориул
     const target = e.target as HTMLElement;
-    if (target.closest("a, button, [data-stop-row-click]")) return;
+    if (target.closest("a, button, input, [data-stop-row-click]")) return;
 
     if (e.metaKey || e.ctrlKey || e.button === 1) {
       window.open(href, "_blank", "noopener,noreferrer");
@@ -42,7 +42,7 @@ export function OrderRow({
     <tr
       onClick={handleClick}
       onAuxClick={handleAuxClick}
-      className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.03] transition-colors cursor-pointer"
+      className="border-b border-[var(--oc-line)] last:border-0 hover:bg-white/[0.03] transition-colors cursor-pointer"
     >
       {children}
     </tr>

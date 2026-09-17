@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { Prisma } from "@/app/generated/prisma/client";
 import type { SubscriptionPayment } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
+import { formatTugrik } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
 import { QPayService } from "@/lib/qpay";
 import { periodEndDate } from "@/lib/subscription";
@@ -72,7 +73,7 @@ export async function activateSubscriptionPayment(
         entity: "Tenant",
         entityId: payment.tenantId,
         action: "PAYMENT_CHANGE",
-        summary: `Багц идэвхжив: ${payment.plan} · ${payment.amount.toString()}₮`,
+        summary: `Багц идэвхжив: ${payment.plan} · ${formatTugrik(payment.amount.toString())}`,
         after: {
           paymentId: payment.id,
           plan: payment.plan,

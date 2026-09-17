@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { BtnLink } from "@/app/_components/landing-ops-ui";
+import { EmptyState } from "@/app/_components/empty-state";
 import { requireAccount } from "@/lib/auth/account";
 import {
   ITEM_KIND_BADGE,
@@ -186,9 +187,9 @@ export default async function AccountHistoryDetailPage({
         </h2>
 
         {order.items.length === 0 ? (
-          <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-8 text-center text-sm text-[var(--oc-muted3)]">
+          <EmptyState padding="p-8">
             Мөр бүртгэгдээгүй байна.
-          </div>
+          </EmptyState>
         ) : (
           <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden divide-y divide-[var(--oc-line)]">
             {order.items.map((it) => (

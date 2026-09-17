@@ -55,6 +55,7 @@ export default async function OrderDetailPage({
   if (!canView(user, "orders")) redirect("/dashboard");
   const canChangeItemStatus = hasPermission(user, "orders.itemStatus");
   const canChangeItemPrice = hasPermission(user, "orders.itemPrice");
+  const canViewItemHistory = hasPermission(user, "orders.itemHistory");
   const canDeleteOrder = canDelete(user, "orders");
   const canEditPayments = canEdit(user, "payments");
   const canRecordPayments = canCreate(user, "payments");
@@ -366,6 +367,7 @@ export default async function OrderDetailPage({
                 canEdit={isEditable && canEditOrder}
                 canChangeStatus={isEditable && canChangeItemStatus}
                 canChangePrice={isEditable && canChangeItemPrice}
+                canViewHistory={canViewItemHistory}
                 orderStarted={orderStarted}
               />
             )}

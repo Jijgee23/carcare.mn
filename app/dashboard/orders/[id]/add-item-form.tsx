@@ -8,7 +8,7 @@ import {
 import { FormError } from "@/app/_components/auth-shell";
 import { Btn, TabButton } from "@/app/_components/landing-ops-ui";
 import { Select } from "@/app/_components/select";
-import { formatPriceInput, liveFormatPriceInput } from "@/lib/orders";
+import { formatPriceInput, formatTugrik, liveFormatPriceInput } from "@/lib/orders";
 import type { ServiceKind } from "@/lib/services";
 
 export type ServiceOption = {
@@ -267,7 +267,7 @@ function FormContent({
                 options={filteredLabor.map((s) => ({
                   value: s.id,
                   label: s.name,
-                  hint: `${s.laborCategoryName ?? "Ангилалгүй"} · ${s.price}₮`,
+                  hint: `${s.laborCategoryName ?? "Ангилалгүй"} · ${formatTugrik(s.price)}`,
                 }))}
               />
               {fe.serviceId ? (
@@ -287,7 +287,7 @@ function FormContent({
               options={diagnosticTemplates.map((t) => ({
                 value: t.id,
                 label: t.name,
-                hint: `${t.price}₮${t.durationMin ? ` · ${t.durationMin}мин` : ""}`,
+                hint: `${formatTugrik(t.price)}${t.durationMin ? ` · ${t.durationMin}мин` : ""}`,
               }))}
             />
             {fe.diagnosticTemplateId ? (
@@ -308,7 +308,7 @@ function FormContent({
               options={partServices.map((s) => ({
                 value: s.id,
                 label: `${s.name}${s.code ? ` · ${s.code}` : ""}`,
-                hint: `${s.stock != null ? `${s.stock} ${s.unit} · ` : ""}${s.price}₮`,
+                hint: `${s.stock != null ? `${s.stock} ${s.unit} · ` : ""}${formatTugrik(s.price)}`,
               }))}
             />
             {fe.serviceId ? (

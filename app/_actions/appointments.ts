@@ -8,6 +8,9 @@ import { assertActiveSubscription } from "@/lib/subscription-server";
 import { canCreate, canEdit, workingBranchScopeId } from "@/lib/auth/roles";
 import { canEditOrder } from "@/lib/auth/order-access";
 import { formatWhen, resolveCustomerForAccount } from "@/lib/appointments";
+import { type BulkActionState, parseIdsJson } from "@/lib/bulk-action";
+import { resolveCategoryDurations } from "@/lib/category-duration";
+import { customerLabel } from "@/lib/customers";
 import { ensureAppointmentFeeCheckout } from "@/lib/appointment-payments";
 import { ensureTenantVehicle } from "@/lib/vehicles";
 import {
@@ -16,7 +19,6 @@ import {
 } from "@/lib/appointment-slots";
 import { resolvePublicAvailability } from "@/lib/public-availability";
 import { logAudit } from "@/lib/audit";
-import { customerLabel } from "@/lib/customers";
 import { createNotification, notifyStaff } from "@/lib/notifications";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { isFeatureEnabled } from "@/lib/plan-limits-server";
@@ -1337,4 +1339,152 @@ export async function markAppointmentArrived(
 
   revalidatePath("/dashboard/appointments");
   return { ok: true, message: "Ирсэн гэж тэмдэглэлээ." };
+}
+
+/**
+ * Ажлын төрлийг (categories) солино — Засварын хуудас (ServiceOrder) үүссэн
+ * цаг захиалгад хориглоно, учир нь тухайн үед ажлын төрөл түүхэн мэдээлэл
+ * болж хувирдаг (харах: resolveCategoryDurations, D-076 тэмдэглэл).
+ * Хугацааны тооцоог дахин хийж estimatedDurationMinutes-ийг шинэчилнэ, учир
+ * нь энэ нь слотын багтаамжид нөлөөлдөг.
+ */
+async function applyAppointmentCategoryChange(
+  user: Awaited<ReturnType<typeof requireUser>>,
+  id: string,
+  categoryIds: string[],
+) {
+  const appt = await prisma.appointment.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      tenantId: true,
+      branchId: true,
+      serviceOrderId: true,
+      categories: { select: { category: { select: { name: true } } } },
+    },
+  });
+  if (!appt) throw new Error("Цаг захиалга олдсонгүй.");
+  if (user.tenantId !== appt.tenantId) {
+    throw new Error("Танд энэ цагийг удирдах эрх байхгүй.");
+  }
+  await assertStaffScope(user, appt.branchId);
+  if (appt.serviceOrderId) {
+    throw new Error("Засварын хуудас үүссэн тул ажлын төрлийг энд өөрчлөх боломжгүй.");
+  }
+
+  const uniqueIds = [...new Set(categoryIds)];
+  if (uniqueIds.length === 0) throw new Error("Дор хаяж нэг ажлын төрөл сонгоно уу.");
+
+  const categories = await prisma.category.findMany({
+    where: { id: { in: uniqueIds }, tenantId: user.tenantId, isActive: true },
+    select: { id: true, name: true },
+  });
+  if (categories.length !== uniqueIds.length) {
+    throw new Error("Сонгосон ажлын төрөл олдсонгүй.");
+  }
+
+  const beforeNames = appt.categories.map((c) => c.category.name);
+  const afterNames = categories.map((c) => c.name);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.appointmentCategory.deleteMany({ where: { appointmentId: appt.id } });
+    await tx.appointmentCategory.createMany({
+      data: uniqueIds.map((categoryId) => ({ appointmentId: appt.id, categoryId })),
+    });
+    const { totalMinutes } = await resolveCategoryDurations(tx, uniqueIds);
+    await tx.appointment.update({
+      where: { id: appt.id },
+      data: { estimatedDurationMinutes: totalMinutes },
+    });
+    await logAudit({
+      tenantId: appt.tenantId,
+      userId: user.id,
+      branchId: appt.branchId,
+      entity: "Appointment",
+      entityId: appt.id,
+      action: "UPDATE",
+      summary: `Ажлын төрөл: ${beforeNames.join(", ") || "—"} → ${afterNames.join(", ")}`,
+      after: { categoryIds: uniqueIds },
+    });
+  });
+}
+
+// Жагсаалтаас олноор сонгож ажлын төрлийг нэг зэрэг солих (харах:
+// bulkChangeOrderStatusAction/bulkAssignOrderAction, app/_actions/orders.ts —
+// адил all-or-nothing БИШ загвар).
+export async function bulkChangeAppointmentCategoryAction(
+  _prev: BulkActionState,
+  formData: FormData,
+): Promise<BulkActionState> {
+  let user;
+  try {
+    user = await requireUser();
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
+  if (!canEdit(user, "appointments")) {
+    return { ok: false, message: "Танд цаг захиалга удирдах эрх байхгүй." };
+  }
+
+  const categoryIds = formData
+    .getAll("categoryIds")
+    .filter((x): x is string => typeof x === "string" && x.length > 0);
+  if (categoryIds.length === 0) {
+    return { ok: false, message: "Дор хаяж нэг ажлын төрөл сонгоно уу." };
+  }
+
+  const ids = parseIdsJson(s(formData, "appointmentIdsJson"));
+  if (ids.length === 0) return { ok: false, message: "Дор хаяж нэг цаг захиалга сонгоно уу." };
+
+  const appointments = await prisma.appointment.findMany({
+    where: { id: { in: ids }, tenantId: user.tenantId },
+    select: {
+      id: true,
+      account: { select: { name: true, phone: true } },
+      customer: { select: { fullName: true, phone: true } },
+    },
+  });
+  const labelById = new Map(
+    appointments.map((a) => [
+      a.id,
+      customerLabel({
+        fullName: a.account?.name ?? a.customer?.fullName,
+        phone: a.account?.phone ?? a.customer?.phone,
+      }),
+    ]),
+  );
+
+  let succeeded = 0;
+  const errors: string[] = [];
+  for (const id of ids) {
+    try {
+      await applyAppointmentCategoryChange(user, id, categoryIds);
+      succeeded++;
+    } catch (e) {
+      const label = labelById.get(id) ?? id;
+      errors.push(`${label}: ${e instanceof Error ? e.message : "алдаа"}`);
+    }
+  }
+
+  revalidatePath("/dashboard/appointments");
+  revalidatePath("/dashboard/appointments/calendar");
+
+  if (succeeded === 0) {
+    return {
+      ok: false,
+      message: errors[0] ?? "Ажлын төрөл солиход алдаа гарлаа.",
+      succeeded,
+      failed: errors.length,
+      errors,
+    };
+  }
+  return {
+    ok: true,
+    message: `${succeeded}/${ids.length} цаг захиалгын ажлын төрөл шинэчлэгдлээ.${
+      errors.length ? ` (${errors.length} амжилтгүй)` : ""
+    }`,
+    succeeded,
+    failed: errors.length,
+    errors: errors.length ? errors : undefined,
+  };
 }

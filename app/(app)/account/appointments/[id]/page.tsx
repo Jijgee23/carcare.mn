@@ -168,7 +168,7 @@ export default async function AccountAppointmentDetailPage({
   const feeLabel = appt.payment
     ? "Хураамж төлөгдсөн ✓"
     : appt.feeQpayInvoiceId
-      ? `Хураамж төлөх · ${Number.parseFloat(feeAmount!.toString()).toLocaleString("mn-MN")}₮`
+      ? `Хураамж төлөх · ${formatTugrik(feeAmount!.toString())}`
       : null;
   const categoryNames = appt.categories.length
     ? appt.categories.map((c) => c.category.name)

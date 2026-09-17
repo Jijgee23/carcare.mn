@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { EmptyState } from "@/app/_components/empty-state";
 
 export type ServiceKey = { id: string; name: string };
 
@@ -55,9 +56,9 @@ export function CategoryPickerGrid({
       </div>
 
       {filtered.length === 0 ? (
-        <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-8 text-center text-sm text-[var(--oc-muted3)]">
+        <EmptyState padding="p-8">
           &quot;{query}&quot; гэсэн ажлын төрөл олдсонгүй.
-        </div>
+        </EmptyState>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {filtered.map((k) => {

@@ -1,3 +1,4 @@
+import { formatTugrik } from "@/lib/orders";
 import { Prisma, prisma } from "@/lib/prisma";
 import { sendPushToAccount, sendPushToSuperAdmin, sendPushToTokens, sendPushToUser } from "@/lib/push";
 import { setBypassContext } from "@/lib/tenant-context";
@@ -228,7 +229,7 @@ export const NOTIFICATION_REGISTRY: Record<NotificationType, NotificationDef> = 
     build: (i) => ({
       title: "Төлбөр хүлээн авлаа",
       body: i.amount
-        ? `Таны ${i.amount}₮ төлбөр амжилттай бүртгэгдлээ.`
+        ? `Таны ${formatTugrik(i.amount)} төлбөр амжилттай бүртгэгдлээ.`
         : "Таны төлбөр амжилттай бүртгэгдлээ.",
       data: {
         type: "order_payment_received",

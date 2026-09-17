@@ -190,6 +190,16 @@ export function formatTugrik(amount: number | string | null | undefined): string
   return `${n.toLocaleString("mn-MN", { maximumFractionDigits: 2 })}₮`;
 }
 
+/**
+ * Дүн/валютыг тусад нь (өөр өөр фонт хэмжээгээр) харуулдаг хэсгүүдэд
+ * (жиш нь PlanPrice, SubscriptionPayment) зориулсан валютын тэмдэг —
+ * "MNT" бол апп даяар ашигладаг "₮" тэмдэгтэй нийцүүлж харуулна, өөр
+ * (ирээдүйн) валют бол raw кодыг нь хэвээр үзүүлнэ.
+ */
+export function currencySymbol(currency: string): string {
+  return currency === "MNT" ? "₮" : currency;
+}
+
 // "100,000" хэлбэрээр (мянгатын таслал, бутархайгүй бол цэг харуулахгүй)
 // форматлана — үнэ бичих/засах input-д ашиглана. "en-US" locale
 // санаатайгаар — "mn-MN" зарим орчинд server/client өөр гарч hydration

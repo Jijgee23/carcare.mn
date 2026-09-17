@@ -5,6 +5,7 @@ import {
   canChangeOrderItemStatus,
   canEditOrder,
   canViewOrder,
+  canViewOrderItemHistory,
   orderEditScope,
   orderReadWhere,
   orderViewScope,
@@ -72,4 +73,12 @@ test("item status requires standalone permission and effective edit access", () 
   const editor = user(["orders.viewOwn", "orders.editOwn", "orders.itemStatus"]);
   assert.equal(canChangeOrderItemStatus(editor, order("u1")), true);
   assert.equal(canChangeOrderItemStatus(editor, order("other")), false);
+});
+
+test("item history requires standalone permission and effective view access (not edit)", () => {
+  const noPermission = user(["orders.viewOwn", "orders.editOwn"]);
+  assert.equal(canViewOrderItemHistory(noPermission, order("u1")), false);
+  const viewerOnly = user(["orders.viewOwn", "orders.itemHistory"]);
+  assert.equal(canViewOrderItemHistory(viewerOnly, order("u1")), true);
+  assert.equal(canViewOrderItemHistory(viewerOnly, order("other")), false);
 });

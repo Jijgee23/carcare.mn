@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { getBookingBranchResults, type BookingBranchResult } from "@/app/_actions/book";
+import { EmptyState } from "@/app/_components/empty-state";
 import { CategoryPickerModal } from "./category-picker-modal";
 import { CategoryTagsBar } from "./category-tags-bar";
 import type { ServiceKey } from "./category-picker-grid";
@@ -88,14 +89,14 @@ export function BookingFlow({
 
       <div className={`transition-opacity ${isPending ? "opacity-50" : ""}`}>
         {selectedIds.length === 0 ? (
-          <div className="rounded-[10px] border border-dashed border-[var(--oc-line)] p-10 text-center text-sm text-[var(--oc-muted3)]">
+          <EmptyState dashed>
             Ажлын төрлөө сонгоход тохирох салбарууд эндээс харагдана.
-          </div>
+          </EmptyState>
         ) : results.length === 0 ? (
-          <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-10 text-center text-sm text-[var(--oc-muted3)]">
+          <EmptyState>
             Сонгосон ажлуудыг зэрэг гүйцэтгэдэг салбар олдсонгүй. Ажлын
             төрлөөсөө хасаад дахин үзнэ үү.
-          </div>
+          </EmptyState>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {results.map((r) => (

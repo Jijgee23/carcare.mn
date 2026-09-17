@@ -1,10 +1,18 @@
-import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
-import { logAudit } from "@/lib/audit";
 import { branchScopeId } from "@/lib/auth/roles";
 import { canEditOrder, canViewOrder } from "@/lib/auth/order-access";
+import {
+  cancelOrderQPayInvoice,
+  createOrReuseOrderQPayInvoice,
+} from "@/lib/order-payments";
 import { prisma } from "@/lib/prisma";
 import { TenantQPayService } from "@/lib/qpay-tenant";
+
+const STATUS_BY_REASON = {
+  already_paid: 422,
+  no_remaining: 422,
+  qpay_error: 502,
+} as const;
 
 /**
  * Төлбөрийн банкны deeplink `urls`-ийг буцаана. Хадгалагдсан байвал шууд,
@@ -117,108 +125,20 @@ export async function POST(
   });
   if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
   if (!canEditOrder(auth.user, order)) return jsonError(403, "Танд энэ засварын хуудсыг засах эрх байхгүй.");
-  if (order.paymentStatus === "PAID") {
-    return jsonError(422, "Засварын хуудас бүрэн төлөгдсөн.");
-  }
 
-  const total = order.totalAmount ?? new Prisma.Decimal(0);
-  const paid = order.paidAmount ?? new Prisma.Decimal(0);
-  const remaining = total.minus(paid);
-  if (remaining.lte(0)) return jsonError(422, "Үлдэгдэл байхгүй.");
-
-  // Pending байвал дахин ашиглана
-  const existing = await prisma.orderPayment.findFirst({
-    where: {
-      orderId: id,
-      tenantId: auth.user.tenantId,
-      status: "PENDING",
-      method: "QPAY",
-    },
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      qrImage: true,
-      qrText: true,
-      amount: true,
-      qpayUrls: true,
-      qpayInvoiceId: true,
-    },
-  });
-  if (existing) {
-    return jsonOk({
-      payment: {
-        id: existing.id,
-        qrImage: existing.qrImage,
-        qrText: existing.qrText,
-        amount: existing.amount.toString(),
-        urls: await resolvePaymentUrls(auth.user.tenantId, existing),
-      },
-    });
-  }
-
-  const payment = await prisma.orderPayment.create({
-    data: {
-      tenantId: auth.user.tenantId,
-      orderId: id,
-      amount: remaining,
-      method: "QPAY",
-      status: "PENDING",
-    },
-    select: { id: true },
-  });
-
-  const inv = await TenantQPayService.createInvoice({
-    tenantId: auth.user.tenantId,
-    senderInvoiceNo: payment.id,
-    invoiceReceiverCode:
-      order.customer.fullName || order.customer.phone,
-    invoiceDescription: `Засварын хуудас #${order.number}`,
-    amount: Number.parseFloat(remaining.toString()),
-  });
-
-  if ("error" in inv) {
-    await prisma.orderPayment.update({
-      where: { id: payment.id },
-      data: { status: "FAILED" },
-    });
-    return jsonError(502, inv.error);
-  }
-
-  const updated = await prisma.orderPayment.update({
-    where: { id: payment.id },
-    data: {
-      qpayInvoiceId: inv.invoice_id,
-      qrText: inv.qr_text,
-      qrImage: inv.qr_image,
-      qpayUrls: inv.urls ?? [],
-    },
-    select: {
-      id: true,
-      qrImage: true,
-      qrText: true,
-      amount: true,
-      qpayUrls: true,
-      qpayInvoiceId: true,
-    },
-  });
-
-  await logAudit({
-    tenantId: auth.user.tenantId,
-    userId: auth.user.id,
-    entity: "ServiceOrder",
-    entityId: id,
-    action: "PAYMENT_CHANGE",
-    summary: `QPay QR үүсгэв · ${remaining.toString()}₮`,
-    after: { paymentId: payment.id, amount: remaining.toString() },
-  });
+  // Invoice үүсгэх/дахин ашиглах логик хуваалцсан цөмд шилжсэн — мөн
+  // app/_actions/order-payments.ts-ийн createOrderQPayInvoiceAction
+  // (dashboard) дуудна (харах: lib/order-payments.ts-ийн comment).
+  const result = await createOrReuseOrderQPayInvoice(auth.user.tenantId, auth.user.id, order);
+  if (!result.ok) return jsonError(STATUS_BY_REASON[result.reason], result.message);
 
   return jsonOk({
     payment: {
-      id: updated.id,
-      qrImage: updated.qrImage,
-      qrText: updated.qrText,
-      amount: updated.amount.toString(),
-      urls: await resolvePaymentUrls(auth.user.tenantId, updated),
+      id: result.payment.id,
+      qrImage: result.payment.qrImage,
+      qrText: result.payment.qrText,
+      amount: result.payment.amount,
+      urls: await resolvePaymentUrls(auth.user.tenantId, result.payment),
     },
   });
 }
@@ -247,15 +167,10 @@ export async function DELETE(
   const paymentId = (body as Record<string, unknown>).paymentId as string;
   if (!paymentId) return jsonError(400, "paymentId шаардлагатай.");
 
-  await prisma.orderPayment.updateMany({
-    where: {
-      id: paymentId,
-      tenantId: auth.user.tenantId,
-      orderId: id,
-      status: "PENDING",
-    },
-    data: { status: "CANCELLED" },
-  });
+  // Цуцлах логик хуваалцсан цөмд шилжсэн — мөн app/_actions/order-payments.ts-ийн
+  // cancelOrderQPayPaymentAction (dashboard) дуудна (харах:
+  // lib/order-payments.ts-ийн comment).
+  await cancelOrderQPayInvoice(auth.user.tenantId, auth.user.id, paymentId, id);
 
   return jsonOk({ ok: true });
 }

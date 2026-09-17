@@ -42,6 +42,10 @@ type CrudCode = `${ResourceKey}.${ActionKey}`;
 // зөвхөн ЗАСАХ (өөрчлөх/дарж бичих) энэ эрх шаардана — `employees.edit`-ээс
 // тусдаа, учир нь мастер/манагер ажилтны бусад мэдээлэл (нэр/утас/цалин г.м.)
 // засах эрхгүйгээр ч зөвхөн хувиар зохицуулах шаардлагатай байж болно.
+// `orders.itemHistory` — засварын хуудасны цуцлагдсан ажил/оношилгоо/сэлбэг
+// мөрийн түүхийг (хэн, хэзээ цуцалсан) харах эрх. Энгийн харах (`orders.view`/
+// `orders.viewOwn`)-аас тусдаа: цуцлагдсан мөр анхнаасаа жагсаалтад
+// харагдахгүй тул зөвхөн ЭНЭ эрхтэй хэрэглэгч "Түүх" товчоор нээж үзнэ.
 type StandaloneCode =
   | "audit.view"
   | "orders.assignable"
@@ -50,6 +54,7 @@ type StandaloneCode =
   | "orders.editOwn"
   | "orders.itemStatus"
   | "orders.itemPrice"
+  | "orders.itemHistory"
   | "employees.schedule";
 
 export type PermissionCode = CrudCode | StandaloneCode;
@@ -130,6 +135,13 @@ export const PERMISSIONS: readonly PermissionDef[] = [
     group: "Захиалга",
   },
   {
+    code: "orders.itemHistory",
+    label: "Үйлчилгээний мөрийн түүх харах",
+    description:
+      "Засварын хуудсанд цуцлагдсан ажил/оношилгоо/сэлбэг мөрийн түүхийг (хэн, хэзээ цуцалсан) харах.",
+    group: "Захиалга",
+  },
+  {
     code: "employees.schedule",
     label: "Ажлын хувиар засах",
     description:
@@ -175,5 +187,6 @@ export const STANDALONE_PERMISSIONS: ReadonlyArray<PermissionDef> = PERMISSIONS.
     p.code === "orders.assign" ||
     p.code === "orders.itemStatus" ||
     p.code === "orders.itemPrice" ||
+    p.code === "orders.itemHistory" ||
     p.code === "employees.schedule",
 );

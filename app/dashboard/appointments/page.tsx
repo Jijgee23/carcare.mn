@@ -1,19 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Prisma } from "@/app/generated/prisma/client";
-import {
-  AppointmentArrivedButton,
-  AppointmentConfirmReject,
-  AppointmentNoShowButton,
-  AppointmentRescheduleButton,
-} from "./appointment-row-actions";
+import { BulkAppointmentsTable, type BulkAppointmentRow } from "./bulk-appointments-table";
 import { AddLinkButton, BtnLink } from "@/app/_components/landing-ops-ui";
 import { FilterSelect, ResetFilters, SearchBox } from "@/app/_components/list-filters";
 import { EmptyState } from "@/app/_components/page-header";
 import { Pagination } from "@/app/_components/pagination";
 import {
   APPOINTMENT_STATUSES,
-  APPOINTMENT_STATUS_BADGE,
   APPOINTMENT_STATUS_LABEL,
   type AppointmentStatus,
 } from "@/lib/appointments";
@@ -23,11 +17,7 @@ import { customerLabel } from "@/lib/customers";
 import { formatPhone } from "@/lib/phone";
 import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
-import {
-  APPOINTMENT_BOOKING_PAYMENT_BADGE,
-  APPOINTMENT_BOOKING_PAYMENT_LABEL,
-  appointmentBookingPaymentStatus,
-} from "@/lib/appointment-payment-status";
+import { appointmentBookingPaymentStatus } from "@/lib/appointment-payment-status";
 
 export const metadata = {
   title: "Цаг захиалга",
@@ -159,6 +149,66 @@ export default async function AppointmentsPage({
     select: { id: true, name: true },
   });
 
+  // Ажлын төрөл олноор солих модальд хэрэглэнэ — зөвхөн засах эрхтэй бол.
+  const categories = canRespond
+    ? await prisma.category.findMany({
+        where: { tenantId: user.tenantId, isActive: true },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true },
+      })
+    : [];
+
+  const bulkRows: BulkAppointmentRow[] = appointments.map((a) => {
+    const orderHref = `/dashboard/orders/new?${new URLSearchParams({
+      customerId: a.customerId ?? "",
+      vehicleId: a.vehicleId ?? "",
+      branchId: a.branchId,
+      scheduledAt: a.requestedAt.toISOString(),
+      note: a.note ?? "",
+      appointmentId: a.id,
+    }).toString()}`;
+    // Онлайн бол Account-аас, утсаар бүртгэсэн бол Customer-аас.
+    // Нэргүй бол placeholder биш — утсаар нь харуулна (customerLabel).
+    const apptPhone = a.account?.phone ?? a.customer?.phone ?? "";
+    const displayName = customerLabel({
+      fullName: a.account?.name ?? a.customer?.fullName,
+      phone: apptPhone,
+    });
+    // displayName өөрөө утас болсон бол доор давхардуулахгүй.
+    const phoneLine =
+      apptPhone && displayName !== formatPhone(apptPhone) ? formatPhone(apptPhone) : null;
+    // Booking v2: олон ангилал сонгосон бол бүгдийг нь харуулна; энэ
+    // migration-ийн өмнөх мөрүүд дээр `categories` хоосон тул хуучин ганц
+    // `category`-руу fallback хийнэ.
+    const categoryNames = a.categories.length
+      ? a.categories.map((c) => c.category.name)
+      : a.category
+        ? [a.category.name]
+        : [];
+    const bookingPaymentStatus = appointmentBookingPaymentStatus(a);
+    return {
+      id: a.id,
+      displayName,
+      phoneLine,
+      branchName: a.branch.name,
+      categoryNames,
+      requestedAtLabel: formatDateTime(a.requestedAt),
+      requestedAtIso: a.requestedAt.toISOString(),
+      orderScheduledLabel:
+        a.serviceOrder && a.serviceOrder.status !== "SCHEDULED" && a.serviceOrder.scheduledAt
+          ? `Товлосон огноо: ${formatDateTime(a.serviceOrder.scheduledAt)}`
+          : null,
+      note: a.note,
+      status: a.status,
+      bookingPaymentStatus,
+      serviceOrderId: a.serviceOrder?.id ?? null,
+      serviceOrderNumber: a.serviceOrder?.number ?? null,
+      orderHref,
+      canConfirm: bookingPaymentStatus === "NOT_REQUIRED" || bookingPaymentStatus === "PAID",
+      arrived: !!a.arrivedAt,
+    };
+  });
+
   const meta = buildMeta(filteredTotal, page, pageSize);
 
   return (
@@ -221,159 +271,12 @@ export default async function AppointmentsPage({
           }
         />
       ) : (
-        <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden flex-1 min-h-0 flex flex-col">
-          <div className="overflow-auto flex-1 min-h-0">
-            <table className="w-full min-w-[760px]">
-              <thead>
-                <tr className="border-b border-[var(--oc-line)]">
-                  {["Үйлчлүүлэгч", "Салбар", "Хүссэн цаг", "Тэмдэглэл", "Төлөв", "Үйлдэл"].map(
-                    (h) => (
-                      <th
-                        key={h}
-                        className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-5 py-3"
-                      >
-                        {h}
-                      </th>
-                    ),
-                  )}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--oc-line)]">
-                {appointments.map((a) => {
-                  const orderHref = `/dashboard/orders/new?${new URLSearchParams({
-                    customerId: a.customerId ?? "",
-                    vehicleId: a.vehicleId ?? "",
-                    branchId: a.branchId,
-                    scheduledAt: a.requestedAt.toISOString(),
-                    note: a.note ?? "",
-                    appointmentId: a.id,
-                  }).toString()}`;
-                  // Онлайн бол Account-аас, утсаар бүртгэсэн бол Customer-аас.
-                  // Нэргүй бол placeholder биш — утсаар нь харуулна (customerLabel).
-                  const apptPhone = a.account?.phone ?? a.customer?.phone ?? "";
-                  const displayName = customerLabel({
-                    fullName: a.account?.name ?? a.customer?.fullName,
-                    phone: apptPhone,
-                  });
-                  // displayName өөрөө утас болсон бол доор давхардуулахгүй.
-                  const phoneLine =
-                    apptPhone && displayName !== formatPhone(apptPhone)
-                      ? formatPhone(apptPhone)
-                      : null;
-                  // Booking v2: олон ангилал сонгосон бол бүгдийг нь харуулна;
-                  // энэ migration-ийн өмнөх мөрүүд дээр `categories` хоосон тул
-                  // хуучин ганц `category`-руу fallback хийнэ.
-                  const categoryNames = a.categories.length
-                    ? a.categories.map((c) => c.category.name)
-                    : a.category
-                      ? [a.category.name]
-                      : [];
-                  const bookingPaymentStatus = appointmentBookingPaymentStatus(a);
-                  return (
-                    <tr
-                      key={a.id}
-                      className="hover:bg-white/[0.02] transition-colors"
-                    >
-                      <td className="px-5 py-4">
-                        <div className="text-sm font-medium text-[var(--oc-ink)]">
-                          {displayName}
-                        </div>
-                        {phoneLine ? (
-                          <div className="font-plex-mono text-xs text-[var(--oc-muted3)]">
-                            {phoneLine}
-                          </div>
-                        ) : null}
-                      </td>
-                      <td className="px-5 py-4 text-sm text-[var(--oc-muted2)]">
-                        {a.branch.name}
-                        {categoryNames.length ? (
-                          <span className="block text-xs text-[var(--oc-muted3)] mt-0.5">
-                            {categoryNames.join(", ")}
-                          </span>
-                        ) : null}
-                      </td>
-                      <td className="px-5 py-4 font-plex-mono text-sm text-[var(--oc-muted2)] whitespace-nowrap">
-                        {formatDateTime(a.requestedAt)}
-                        {a.serviceOrder && a.serviceOrder.status !== "SCHEDULED" ? (
-                          <span className="block text-xs text-[var(--oc-muted3)] mt-0.5">
-                            {a.serviceOrder.scheduledAt
-                              ? `Товлосон огноо: ${formatDateTime(a.serviceOrder.scheduledAt)}`
-                              : null}
-                          </span>
-                        ) : null}
-                      </td>
-                      <td className="px-5 py-4 text-sm text-[var(--oc-muted3)] max-w-[220px] truncate">
-                        {a.note || "—"}
-                      </td>
-                      <td className="px-5 py-4">
-                        <span
-                          className={`font-plex-mono text-[11px] px-2.5 py-1 rounded-full ${APPOINTMENT_STATUS_BADGE[a.status]}`}
-                        >
-                          {APPOINTMENT_STATUS_LABEL[a.status]}
-                        </span>
-                        {bookingPaymentStatus !== "NOT_REQUIRED" ? (
-                            <span
-                              className={`block w-fit mt-1 font-plex-mono text-[10px] px-2 py-0.5 rounded-full border ${APPOINTMENT_BOOKING_PAYMENT_BADGE[bookingPaymentStatus]}`}
-                            >
-                              {APPOINTMENT_BOOKING_PAYMENT_LABEL[bookingPaymentStatus]}
-                            </span>
-                          ) : null}
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="flex items-center justify-end gap-2">
-                          {a.status === "CONFIRMED" && a.serviceOrder ? (
-                            <BtnLink
-                              href={`/dashboard/orders/${a.serviceOrder.id}`}
-                              variant="ghost"
-                              size="sm"
-                              className="whitespace-nowrap"
-                            >
-                              №{a.serviceOrder.number} харах
-                            </BtnLink>
-                          ) : null}
-
-                          {canRespond && a.status === "PENDING" ? (
-                            <AppointmentConfirmReject
-                              appointmentId={a.id}
-                              canConfirm={
-                                bookingPaymentStatus === "NOT_REQUIRED" ||
-                                bookingPaymentStatus === "PAID"
-                              }
-                            />
-                          ) : null}
-
-                          {canRespond &&
-                          a.status === "CONFIRMED" &&
-                          !a.serviceOrder ? (
-                            <>
-                              <BtnLink
-                                href={orderHref}
-                                size="sm"
-                                className="whitespace-nowrap"
-                              >
-                                Засварын хуудас үүсгэх →
-                              </BtnLink>
-                              {!a.arrivedAt ? (
-                                <>
-                                  <AppointmentArrivedButton appointmentId={a.id} />
-                                  <AppointmentNoShowButton appointmentId={a.id} />
-                                  <AppointmentRescheduleButton
-                                    appointmentId={a.id}
-                                    requestedAt={a.requestedAt.toISOString()}
-                                  />
-                                </>
-                              ) : null}
-                            </>
-                          ) : null}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <BulkAppointmentsTable
+          rows={bulkRows}
+          categories={categories}
+          canBulkEdit={canRespond}
+          canRespond={canRespond}
+        />
       )}
 
       {!highlightId ? (

@@ -1,4 +1,5 @@
 import { requireUser } from "@/lib/auth";
+import { formatTugrik } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
 import type { QPayBankUrl } from "@/lib/qpay";
 import {
@@ -17,13 +18,6 @@ export const metadata = {
 function fmtDate(d: Date | null | undefined): string {
   if (!d) return "—";
   return d.toLocaleString("mn-MN", { hour12: false });
-}
-
-function fmtAmount(v: { toString: () => string } | null | undefined): string {
-  if (!v) return "—";
-  const n = Number.parseFloat(v.toString());
-  if (!Number.isFinite(n)) return "—";
-  return `${n.toLocaleString("mn-MN")} ₮`;
 }
 
 export default async function SubscriptionPage() {
@@ -226,7 +220,7 @@ export default async function SubscriptionPage() {
                         {fmtDate(s.endsAt)}
                       </td>
                       <td className="px-5 py-3 font-plex-mono text-xs text-[var(--oc-ink2)]">
-                        {fmtAmount(s.amount)}
+                        {formatTugrik(s.amount?.toString())}
                       </td>
                       <td className="px-5 py-3 text-xs text-[var(--oc-muted3)] max-w-[260px]">
                         {s.notes ?? "—"}

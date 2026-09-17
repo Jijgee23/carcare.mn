@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import { EmptyState } from "@/app/_components/empty-state";
 import { TenantAuthShellWide } from "@/app/_components/tenant-auth-shell";
 import { requireUser } from "@/lib/auth";
 import { canChooseAllBranches, eligibleBranchIds } from "@/lib/auth/roles";
@@ -77,9 +78,9 @@ export default async function ChooseBranchPage({
         subtitle="Өнөөдөр аль салбарт ажиллахаа сонгоно уу — захиалга, цаг захиалга, тайлан цаашид энэ салбараар харагдана. Дараа нь dashboard-ийн баннераас өөр салбар руу шилжиж болно."
       >
         {branches.length === 0 && !allowAllBranches ? (
-          <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-6 text-center text-sm text-[var(--oc-muted3)]">
+          <EmptyState padding="p-6">
             Идэвхтэй салбар алга. Эхлээд салбараа бүртгүүлнэ үү.
-          </div>
+          </EmptyState>
         ) : (
           <ChooseBranchForm
             branches={branches}

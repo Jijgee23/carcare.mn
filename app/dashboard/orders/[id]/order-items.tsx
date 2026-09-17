@@ -75,6 +75,7 @@ export function OrderItems({
   canEdit,
   canChangeStatus,
   canChangePrice,
+  canViewHistory,
   orderStarted,
 }: {
   items: OrderItemLite[];
@@ -82,11 +83,20 @@ export function OrderItems({
   canEdit: boolean;
   canChangeStatus: boolean;
   canChangePrice: boolean;
+  canViewHistory: boolean;
   orderStarted: boolean;
 }) {
   const showActionColumn = canEdit || canChangeStatus;
+  const cancelledCount = items.filter((i) => i.status === "CANCELLED").length;
+  const [showHistory, setShowHistory] = useState(false);
+  // Цуцлагдсан ажил/оношилгоо/сэлбэгийг шууд харуулахгүй — эрхтэй хэрэглэгч
+  // "Түүх" товч дарсан үед л жагсаалтад орно.
+  const visibleItems =
+    showHistory && canViewHistory
+      ? items
+      : items.filter((i) => i.status !== "CANCELLED");
   const groups = KIND_ORDER.map((kind) => {
-    const list = items.filter((i) => i.kind === kind);
+    const list = visibleItems.filter((i) => i.kind === kind);
     const subtotal = list.reduce(
       (acc, i) =>
         acc + (i.status === "CANCELLED" ? 0 : Number.parseFloat(i.total) || 0),
@@ -112,7 +122,7 @@ export function OrderItems({
           active={activeTab === "ALL"}
           onClick={() => setTab("ALL")}
           label="Бүгд"
-          count={items.length}
+          count={visibleItems.length}
         />
         {groups.map((g) => (
           <TabButton
@@ -124,6 +134,42 @@ export function OrderItems({
             kind={g.kind}
           />
         ))}
+        {canViewHistory && cancelledCount > 0 ? (
+          <button
+            type="button"
+            onClick={() => setShowHistory((v) => !v)}
+            aria-pressed={showHistory}
+            title={
+              showHistory
+                ? "Цуцлагдсан мөрүүдийг нуух"
+                : "Цуцлагдсан мөрүүдийг харах"
+            }
+            className={`ml-auto shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${showHistory
+              ? "bg-red-500/15 text-red-400 light:bg-red-100 light:text-red-700"
+              : "text-[var(--oc-muted2)] hover:text-[var(--oc-ink2)] hover:bg-white/[0.05]"
+              }`}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M3 12a9 9 0 1 0 3-6.7" />
+              <path d="M3 4v5h5" />
+              <path d="M12 7v5l3 3" />
+            </svg>
+            Түүх
+            <span className="font-plex-mono tabular-nums text-xs opacity-70">
+              {cancelledCount}
+            </span>
+          </button>
+        ) : null}
       </div>
 
       {/* Мөрүүд — багана толгойтой хүснэгт: Тоо / Нэгж үнэ / Дүн зэрэгцэнэ */}
@@ -151,17 +197,16 @@ export function OrderItems({
                 <tr aria-hidden="true">
                   <td
                     colSpan={showActionColumn ? 5 : 4}
-                    className="h-2.5 p-0 bg-[var(--oc-panel)]"
+                    className="h-5 p-0 bg-[var(--oc-panel)]"
                   />
                 </tr>
               ) : null}
               {activeTab === "ALL" ? (
-                /* Бүлгийн гарчиг — хэсгийн толгой шиг уншигдана, бүлгийг
-                   хүрээлэх өнгөт хайрцасны дээд ирмэг эндээс эхэлнэ. */
+                /* Бүлгийн гарчиг — зөвхөн зүүн талд нь бүлгийн өнгөт зураас. */
                 <tr className="bg-[var(--oc-panel2)]">
                   <td
                     colSpan={showActionColumn ? 5 : 4}
-                    className={`px-5 py-1.5 border-t border-l border-r ${ITEM_KIND_BORDER[g.kind]}`}
+                    className={`px-5 py-1.5 border-l ${ITEM_KIND_BORDER[g.kind]}`}
                   >
                     <div className="flex items-center gap-2">
                       <span
@@ -185,23 +230,17 @@ export function OrderItems({
                 const rowStatuses = needsReport
                   ? CHANGEABLE_STATUSES.filter((s) => s !== "COMPLETED")
                   : CHANGEABLE_STATUSES;
-                // Бүлгийг хайрцаглаж буй үед л (Бүгд tab) талын хүрээг зурна —
-                // тухайн бүлгийн сүүлчийн мөр доод ирмэгээр хайрцсыг хаана.
+                // Бүлгийг ялгах зорилгоор (Бүгд tab) зөвхөн зүүн талд нь
+                // бүлгийн өнгөт зураас зурна.
                 const boxed = activeTab === "ALL";
-                const isLastItem = itemIndex === g.items.length - 1;
                 const groupBorder = ITEM_KIND_BORDER[g.kind];
-                const rightEdgeBorder = boxed
-                  ? `border-r ${groupBorder}`
-                  : "";
-                const bottomEdgeBorder =
-                  boxed && isLastItem ? `border-b ${groupBorder}` : "";
                 return (
                   <tr
                     key={it.id}
                     className={`hover:bg-white/[0.02] transition-colors ${itemIndex > 0 ? "border-t border-[var(--oc-line)]" : ""}`}
                   >
                     <td
-                      className={`px-5 py-2.5 ${boxed ? `border-l ${groupBorder}` : ""} ${bottomEdgeBorder} ${cancelled ? "opacity-50" : "text-[var(--oc-ink)]"}`}
+                      className={`px-5 py-2.5 ${boxed ? `border-l ${groupBorder}` : ""} ${cancelled ? "opacity-50" : "text-[var(--oc-ink)]"}`}
                     >
                       <div className="flex items-center gap-2 flex-wrap">
                         <span>{it.description}</span>
@@ -247,13 +286,11 @@ export function OrderItems({
                       </span>
                     </td>
                     <td
-                      className={`hidden sm:table-cell px-2 py-2.5 text-right font-plex-mono text-[var(--oc-muted2)] tabular-nums whitespace-nowrap ${bottomEdgeBorder}`}
+                      className="hidden sm:table-cell px-2 py-2.5 text-right font-plex-mono text-[var(--oc-muted2)] tabular-nums whitespace-nowrap"
                     >
                       {qtyText(it.quantity)}
                     </td>
-                    <td
-                      className={`hidden sm:table-cell px-2 py-2.5 text-right font-plex-mono text-[var(--oc-muted2)] tabular-nums whitespace-nowrap ${bottomEdgeBorder}`}
-                    >
+                    <td className="hidden sm:table-cell px-2 py-2.5 text-right font-plex-mono text-[var(--oc-muted2)] tabular-nums whitespace-nowrap">
                       <PriceCell
                         itemId={it.id}
                         unitPrice={it.unitPrice}
@@ -261,12 +298,12 @@ export function OrderItems({
                       />
                     </td>
                     <td
-                      className={`px-5 py-2.5 text-right font-plex-mono font-semibold tabular-nums whitespace-nowrap ${showActionColumn ? "" : rightEdgeBorder} ${bottomEdgeBorder} ${cancelled ? "opacity-50 line-through" : "text-[var(--oc-ink)]"}`}
+                      className={`px-5 py-2.5 text-right font-plex-mono font-semibold tabular-nums whitespace-nowrap ${cancelled ? "opacity-50" : "text-[var(--oc-ink)]"}`}
                     >
                       {formatTugrik(it.total)}
                     </td>
                     {showActionColumn ? (
-                      <td className={`pr-3 py-2.5 ${rightEdgeBorder} ${bottomEdgeBorder}`}>
+                      <td className="pr-3 py-2.5">
                         <div className="flex items-center justify-start gap-1">
                           {canChangeStatus &&
                             g.kind !== "PART" &&

@@ -84,3 +84,13 @@ export function canChangeOrderItemPrice(
 ): boolean {
   return has(user, "orders.itemPrice") && canEditOrder(user, order);
 }
+
+/** Viewing cancelled-item history is read-only, so it's clamped to the view
+ * scope (not the edit scope) — a user who can only view the order (but not
+ * edit it) can still hold this permission and see its cancellation history. */
+export function canViewOrderItemHistory(
+  user: OrderAccessUser,
+  order: { assignedToId: string | null },
+): boolean {
+  return has(user, "orders.itemHistory") && canViewOrder(user, order);
+}

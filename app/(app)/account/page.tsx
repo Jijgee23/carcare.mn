@@ -8,7 +8,12 @@ import {
   APPOINTMENT_STATUS_LABEL,
 } from "@/lib/appointments";
 import { requireAccount } from "@/lib/auth/account";
-import { ORDER_STATUS_BADGE, ORDER_STATUS_LABEL, type OrderStatus } from "@/lib/orders";
+import {
+  formatTugrik,
+  ORDER_STATUS_BADGE,
+  ORDER_STATUS_LABEL,
+  type OrderStatus,
+} from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
 
 export const metadata = {
@@ -156,7 +161,7 @@ export default async function AccountPage() {
               const feeLabel = a.payment
                 ? "Хураамж төлөгдсөн ✓"
                 : a.feeQpayInvoiceId
-                  ? `Хураамж төлөх · ${Number.parseFloat(feeAmount!.toString()).toLocaleString("mn-MN")}₮`
+                  ? `Хураамж төлөх · ${formatTugrik(feeAmount!.toString())}`
                   : "Хураамж — дахин оролдох";
 
               return (

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { EmptyState } from "@/app/_components/empty-state";
 import { PageHeader } from "@/app/_components/page-header";
 import { requireSuperAdmin } from "@/lib/auth/system";
 import { getDevOtps, type OtpType } from "@/lib/auth/otp";
@@ -40,10 +41,10 @@ export default async function SystemOtpPage() {
       />
 
       {otps.length === 0 ? (
-        <div className="rounded-2xl border border-[var(--oc-line)] bg-[var(--oc-panel)] p-8 text-center text-sm text-[var(--oc-muted3)]">
+        <EmptyState padding="p-8">
           OTP код алга. Бүртгэл / нууц үг сэргээх үйлдэл хийгээд энэ хуудсыг
           сэргээнэ үү.
-        </div>
+        </EmptyState>
       ) : (
         <div className="rounded-2xl border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-x-auto">
           <table className="w-full min-w-[640px]">

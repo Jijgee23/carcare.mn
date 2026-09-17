@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Prisma } from "@/app/generated/prisma/client";
+import { EmptyState } from "@/app/_components/empty-state";
 import { FilterSelect, ResetFilters, SearchBox } from "@/app/_components/list-filters";
 import { PageHeader } from "@/app/_components/page-header";
 import { Pagination } from "@/app/_components/pagination";
@@ -338,8 +339,6 @@ async function CustomerTab({
 
 function Empty() {
   return (
-    <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-10 text-center text-sm text-[var(--oc-muted3)]">
-      Бичлэг алга.
-    </div>
+    <EmptyState>Бичлэг алга.</EmptyState>
   );
 }

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
+import { type BulkActionState, parseIdsJson } from "@/lib/bulk-action";
 import { parseDurationInput } from "@/lib/category-duration";
 import { prisma } from "@/lib/prisma";
 
@@ -297,4 +298,86 @@ export async function deleteCategoryAction(formData: FormData): Promise<void> {
 
   revalidatePath("/dashboard/services/categories");
   revalidatePath("/dashboard/services", "layout");
+}
+
+// Жагсаалтаас олноор сонгож системийн түлхүүрийг нэг зэрэг солих (харах:
+// bulkChangeServiceCategoryAction app/_actions/services.ts — адил
+// all-or-nothing БИШ загвар). Түлхүүр бүх ангилалд заавал тул хоослож болохгүй.
+export async function bulkChangeCategorySystemKeyAction(
+  _prev: BulkActionState,
+  formData: FormData,
+): Promise<BulkActionState> {
+  let user;
+  try {
+    user = await authorizeOwner();
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
+
+  const systemServiceKeyId = await validServiceKeyId(s(formData, "systemServiceKeyId"));
+  if (!systemServiceKeyId) {
+    return { ok: false, message: "Системийн ангилал сонгоно уу." };
+  }
+  const key = await prisma.systemServiceKey.findUnique({
+    where: { id: systemServiceKeyId },
+    select: { name: true },
+  });
+
+  const ids = parseIdsJson(s(formData, "categoryIdsJson"));
+  if (ids.length === 0) return { ok: false, message: "Дор хаяж нэг ангилал сонгоно уу." };
+
+  const categories = await prisma.category.findMany({
+    where: { id: { in: ids }, tenantId: user.tenantId },
+    select: { id: true, name: true, systemServiceKeyId: true },
+  });
+  const byId = new Map(categories.map((c) => [c.id, c]));
+
+  let succeeded = 0;
+  const errors: string[] = [];
+  for (const id of ids) {
+    const cat = byId.get(id);
+    try {
+      if (!cat) throw new Error("Олдсонгүй.");
+      if (cat.systemServiceKeyId !== systemServiceKeyId) {
+        await prisma.category.update({
+          where: { id: cat.id },
+          data: { systemServiceKeyId },
+        });
+        await logAudit({
+          tenantId: user.tenantId,
+          userId: user.id,
+          entity: "Category",
+          entityId: cat.id,
+          action: "UPDATE",
+          summary: `Системийн ангилал: ${key?.name ?? systemServiceKeyId}`,
+          after: { systemServiceKeyId },
+        });
+      }
+      succeeded++;
+    } catch (e) {
+      errors.push(`${cat?.name ?? id}: ${e instanceof Error ? e.message : "алдаа"}`);
+    }
+  }
+
+  revalidatePath("/dashboard/services/categories");
+  revalidatePath("/dashboard/services", "layout");
+
+  if (succeeded === 0) {
+    return {
+      ok: false,
+      message: errors[0] ?? "Түлхүүр солиход алдаа гарлаа.",
+      succeeded,
+      failed: errors.length,
+      errors,
+    };
+  }
+  return {
+    ok: true,
+    message: `${succeeded}/${ids.length} ангиллын системийн түлхүүр шинэчлэгдлээ.${
+      errors.length ? ` (${errors.length} амжилтгүй)` : ""
+    }`,
+    succeeded,
+    failed: errors.length,
+    errors: errors.length ? errors : undefined,
+  };
 }

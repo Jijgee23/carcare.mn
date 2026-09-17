@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Prisma } from "@/app/generated/prisma/client";
 import { BtnLink, Chip } from "@/app/_components/landing-ops-ui";
+import { EmptyState } from "@/app/_components/empty-state";
 import {
   APPOINTMENT_STATUS_BADGE,
   APPOINTMENT_STATUS_LABEL,
@@ -277,11 +278,11 @@ export default async function AccountHistoryPage({
       </div>
 
       {orders.length === 0 && cancelledAppointments.length === 0 ? (
-        <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-10 text-center text-sm text-[var(--oc-muted3)]">
+        <EmptyState>
           {hasFilter
             ? "Илэрц олдсонгүй."
             : "Одоогоор хийгдсэн үйлчилгээ алга. Цаг захиалга баталгаажиж, үйлчилгээ хийгдсэний дараа энд харагдана."}
-        </div>
+        </EmptyState>
       ) : orders.length > 0 ? (
         <div className="flex flex-col gap-3">
           {orders.map((o) => {

@@ -11,6 +11,7 @@ import { ConfirmButton } from "@/app/_components/confirm-form";
 import { Btn } from "@/app/_components/landing-ops-ui";
 import { QPayBankGrid } from "@/app/_components/qpay-bank-grid";
 import { QPayDrawer } from "@/app/_components/qpay-drawer";
+import { formatTugrik } from "@/lib/orders";
 import type { QPayBankUrl } from "@/lib/qpay-tenant";
 
 export type PendingOrderPayment = {
@@ -65,7 +66,7 @@ export function QPayWidget({
         <div className="min-w-0">
           <div className="text-[11px] text-[var(--oc-muted3)]">Төлбөр хүлээгдэж байна</div>
           <div className="font-plex-mono text-sm font-semibold text-[var(--oc-ink2)] tabular-nums">
-            {Number.parseFloat(pending.amount).toLocaleString("mn-MN")}₮
+            {formatTugrik(pending.amount)}
           </div>
         </div>
         <Btn type="button" size="sm" onClick={() => setDrawerOpen(true)}>
@@ -153,7 +154,7 @@ function QRPanel({
       <div className="text-center text-xs text-[var(--oc-muted3)]">
         Үлдэгдэл:{" "}
         <span className="font-plex-mono text-[var(--oc-ink2)] font-semibold">
-          {Number.parseFloat(pending.amount).toLocaleString("mn-MN")}₮
+          {formatTugrik(pending.amount)}
         </span>
       </div>
 

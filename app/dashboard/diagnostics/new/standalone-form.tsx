@@ -14,6 +14,7 @@ import {
   type ReportActionState,
 } from "@/app/_actions/diagnostic-reports";
 import { Field, FormError } from "@/app/_components/auth-shell";
+import { EmptyState } from "@/app/_components/empty-state";
 import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
 import { customerLabel } from "@/lib/customers";
 import {
@@ -289,9 +290,7 @@ export function StandaloneDiagnosticForm({
           </section>
         </>
       ) : (
-        <div className="rounded-[10px] bg-[var(--oc-panel)] p-10 text-center text-sm text-[var(--oc-muted3)] border border-[var(--oc-line)]">
-          Загвар сонгосны дараа асуултууд харагдана.
-        </div>
+        <EmptyState>Загвар сонгосны дараа асуултууд харагдана.</EmptyState>
       )}
 
       <div className="flex gap-3">

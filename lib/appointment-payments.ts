@@ -9,6 +9,7 @@ import { DEFAULT_SLOT_MINUTES } from "@/lib/appointment-slots";
 import { notifyStaff } from "@/lib/notifications";
 import { getPlatformSettings } from "@/lib/platform-settings";
 import { prisma } from "@/lib/prisma";
+import { formatTugrik } from "@/lib/orders";
 import { QPayService, type QPayBankUrl } from "@/lib/qpay";
 import { getAppBaseUrl } from "@/lib/subscription-server";
 
@@ -298,7 +299,7 @@ export async function confirmAppointmentPayment(
           paid: false,
           underpaidAmount: check.underpaidAmount,
           message:
-            `Дутуу төлбөр (${check.underpaidAmount.toLocaleString("mn-MN")}₮ / ${expectedAmount.toLocaleString("mn-MN")}₮) хүлээж авсан ч энэ цаг аль хэдийн эзлэгдсэн тул захиалга цуцлагдлаа. ` +
+            `Дутуу төлбөр (${formatTugrik(check.underpaidAmount)} / ${formatTugrik(expectedAmount)}) хүлээж авсан ч энэ цаг аль хэдийн эзлэгдсэн тул захиалга цуцлагдлаа. ` +
             "Байгууллагатай холбогдож цаг дахин товлох/буцаан олголт хийлгэнэ үү.",
         };
       }
@@ -306,7 +307,7 @@ export async function confirmAppointmentPayment(
         ok: true,
         paid: false,
         underpaidAmount: check.underpaidAmount,
-        message: `Дутуу төлбөр: ${check.underpaidAmount.toLocaleString("mn-MN")}₮ / ${expectedAmount.toLocaleString("mn-MN")}₮ ирсэн. Үлдэгдлийг нөхөж төлнө үү.`,
+        message: `Дутуу төлбөр: ${formatTugrik(check.underpaidAmount)} / ${formatTugrik(expectedAmount)} ирсэн. Үлдэгдлийг нөхөж төлнө үү.`,
       };
     }
     return { ok: true, paid: false };

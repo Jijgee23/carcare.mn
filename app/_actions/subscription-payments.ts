@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
+import { formatTugrik } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
 import { QPayService } from "@/lib/qpay";
 import { confirmSubscriptionPayment } from "@/lib/subscription-payments";
@@ -113,7 +114,7 @@ export async function createSubscriptionPaymentAction(
     entity: "Tenant",
     entityId: user.tenantId,
     action: "PAYMENT_CHANGE",
-    summary: `Багцын QPay QR үүсгэв: ${price.plan} · ${amountNumber}₮`,
+    summary: `Багцын QPay QR үүсгэв: ${price.plan} · ${formatTugrik(amountNumber)}`,
     after: { paymentId: payment.id, plan: price.plan, amount: amountNumber },
   });
 
@@ -176,7 +177,7 @@ export async function cancelSubscriptionPaymentAction(
     entity: "Tenant",
     entityId: user.tenantId,
     action: "PAYMENT_CHANGE",
-    summary: `Багцын QPay QR цуцлав: ${payment.plan} · ${payment.amount.toString()}₮`,
+    summary: `Багцын QPay QR цуцлав: ${payment.plan} · ${formatTugrik(payment.amount.toString())}`,
     after: { paymentId, plan: payment.plan, status: "CANCELLED" },
   });
 

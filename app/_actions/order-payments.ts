@@ -11,10 +11,15 @@ import { createNotification } from "@/lib/notifications";
 import {
   ORDER_PAYMENT_METHODS,
   ORDER_PAYMENT_METHOD_LABEL,
+  formatTugrik,
   type OrderPaymentMethod,
 } from "@/lib/orders";
+import {
+  cancelOrderQPayInvoice,
+  confirmOrderQPayPayment,
+  createOrReuseOrderQPayInvoice,
+} from "@/lib/order-payments";
 import { prisma } from "@/lib/prisma";
-import { TenantQPayService } from "@/lib/qpay-tenant";
 
 // Төлбөр (бүтэн эсвэл хэсэгчилсэн) амжилттай бүртгэгдэхэд холбогдох цаг
 // захиалгын account-д мэдэгдэнэ — `orders.ts`-ийн notifyOrderStatusChange-тэй
@@ -95,83 +100,15 @@ export async function createOrderQPayInvoiceAction(
   });
   if (!order) return { ok: false, message: "Засварын хуудас олдсонгүй." };
   if (!(await canEditOrderForUser(user, orderId))) return { ok: false, message: "Танд энэ төлбөрийг засах эрх байхгүй." };
-  if (order.paymentStatus === "PAID") {
-    return { ok: false, message: "Засварын хуудас бүрэн төлөгдсөн." };
-  }
 
-  const total = order.totalAmount ?? new Prisma.Decimal(0);
-  const paid = order.paidAmount ?? new Prisma.Decimal(0);
-  const remaining = total.minus(paid);
-  if (remaining.lte(0)) {
-    return { ok: false, message: "Үлдэгдэл байхгүй." };
-  }
-
-  // Pending QR байвал — үлдэгдэл өөрчлөгдөөгүй л бол дахин ашиглана. Энэ
-  // хооронд өөр төлбөр бүртгэгдсэн/цуцлагдсан бол үлдэгдэл өөрчлөгдсөн байх
-  // тул хуучин (буруу дүнтэй) QR-ийг цуцалж доор шинээр үүсгэнэ.
-  const pending = await prisma.orderPayment.findFirst({
-    where: { orderId, status: "PENDING", method: "QPAY" },
-    orderBy: { createdAt: "desc" },
-  });
-  if (pending) {
-    if (pending.amount.equals(remaining)) {
-      return { ok: true, paymentId: pending.id };
-    }
-    await prisma.orderPayment.update({
-      where: { id: pending.id },
-      data: { status: "CANCELLED" },
-    });
-  }
-
-  // SubscriptionPayment-тэй ижил pattern
-  const payment = await prisma.orderPayment.create({
-    data: {
-      tenantId: user.tenantId,
-      orderId,
-      amount: remaining,
-      method: "QPAY",
-      status: "PENDING",
-    },
-    select: { id: true },
-  });
-
-  const inv = await TenantQPayService.createInvoice({
-    tenantId: user.tenantId,
-    senderInvoiceNo: payment.id,
-    invoiceReceiverCode: order.customer.fullName || order.customer.phone,
-    invoiceDescription: `Засварын хуудас #${order.number}`,
-    amount: Number.parseFloat(remaining.toString()),
-  });
-  if ("error" in inv) {
-    await prisma.orderPayment.update({
-      where: { id: payment.id },
-      data: { status: "FAILED" },
-    });
-    return { ok: false, message: inv.error };
-  }
-
-  await prisma.orderPayment.update({
-    where: { id: payment.id },
-    data: {
-      qpayInvoiceId: inv.invoice_id,
-      qrText: inv.qr_text,
-      qrImage: inv.qr_image,
-      qpayUrls: inv.urls ?? Prisma.JsonNull,
-    },
-  });
-
-  await logAudit({
-    tenantId: user.tenantId,
-    userId: user.id,
-    entity: "ServiceOrder",
-    entityId: orderId,
-    action: "PAYMENT_CHANGE",
-    summary: `QPay QR үүсгэв · ${remaining.toString()}₮`,
-    after: { paymentId: payment.id, amount: remaining.toString() },
-  });
+  // Invoice үүсгэх/дахин ашиглах логик хуваалцсан цөмд шилжсэн — мөн
+  // app/api/v1/orders/[id]/qpay/route.ts-ийн POST (мобайл клиент) дуудна
+  // (харах: lib/order-payments.ts-ийн comment).
+  const result = await createOrReuseOrderQPayInvoice(user.tenantId, user.id, order);
+  if (!result.ok) return { ok: false, message: result.message };
 
   revalidatePath(`/dashboard/orders/${orderId}`);
-  return { ok: true, paymentId: payment.id };
+  return { ok: true, paymentId: result.payment.id };
 }
 
 /**
@@ -188,109 +125,25 @@ export async function checkOrderQPayPaymentAction(
   const paymentId = s(formData, "paymentId");
   if (!paymentId) return { ok: false, paid: false, message: "ID шаардлагатай." };
 
-  const payment = await prisma.orderPayment.findFirst({
+  const paymentRow = await prisma.orderPayment.findFirst({
     where: { id: paymentId, tenantId: user.tenantId },
+    select: { orderId: true },
   });
-  if (!payment) return { ok: false, paid: false, message: "Төлбөр олдсонгүй." };
-  if (!(await canEditOrderForUser(user, payment.orderId))) return { ok: false, paid: false, message: "Танд энэ төлбөрийг засах эрх байхгүй." };
-  if (payment.status === "PAID") {
-    return { ok: true, paid: true };
-  }
-  if (!payment.qpayInvoiceId) {
-    return { ok: false, paid: false, message: "QPay invoice байхгүй." };
+  if (!paymentRow) return { ok: false, paid: false, message: "Төлбөр олдсонгүй." };
+  if (!(await canEditOrderForUser(user, paymentRow.orderId))) {
+    return { ok: false, paid: false, message: "Танд энэ төлбөрийг засах эрх байхгүй." };
   }
 
-  const check = await TenantQPayService.checkPayment(
-    user.tenantId,
-    payment.qpayInvoiceId,
-  );
-  if ("error" in check) {
-    return { ok: false, paid: false, message: check.error };
-  }
-  if (!check.paid) {
-    return { ok: true, paid: false };
-  }
+  // Жинхэнэ QPay шалгалт + PAID болгох логик хуваалцсан цөмд шилжсэн — мөн энэ
+  // action-ийн dashboard-ийн хажуугаар app/api/v1/orders/[id]/qpay/check/route.ts
+  // (мобайл клиент) дуудна (харах: lib/order-payments.ts-ийн comment).
+  const result = await confirmOrderQPayPayment(user.tenantId, user.id, paymentId);
+  if (!result.ok) return { ok: false, paid: false, message: result.message };
+  if (!result.paid) return { ok: true, paid: false, message: result.message };
 
-  // Бодит төлсөн дүнг expected-тэй тулгана — хэсэгчилсэн төлбөрийг бүтэн гэж
-  // тооцож захиалгыг PAID болгохоос сэргийлнэ.
-  if (new Prisma.Decimal(check.paidAmount).lt(payment.amount)) {
-    return {
-      ok: true,
-      paid: false,
-      message: "Төлбөр бүрэн төлөгдөөгүй байна. Дахин шалгана уу.",
-    };
-  }
+  await notifyOrderPaymentReceived(result.orderId, result.amount);
 
-  // PAID — захиалгын төлбөрийн төлөвийг шинэчлэх
-  const paidAt = check.paidAt ?? new Date();
-  try {
-    await prisma.$transaction(async (tx) => {
-      const fresh = await tx.orderPayment.findUnique({
-        where: { id: payment.id },
-        select: { status: true },
-      });
-      if (fresh?.status === "PAID") return;
-
-      await tx.orderPayment.update({
-        where: { id: payment.id },
-        data: {
-          status: "PAID",
-          paidAt,
-          qpayPaymentId: check.paymentId,
-        },
-      });
-
-      // Захиалгын paidAmount/paymentStatus-ийг шинэчлэх — гаднаас уншсан
-      // (HTTP round-trip-ийн өмнөх) хуучин утга биш, транзакц дотор дахин
-      // уншсан шинэ утгаас тооцно (зэрэгцээ бэлнээр төлсөн зэрэг өөрчлөлт
-      // алдагдахаас сэргийлнэ).
-      const freshOrder = await tx.serviceOrder.findUniqueOrThrow({
-        where: { id: payment.orderId },
-        select: { totalAmount: true, paidAmount: true },
-      });
-      const total = freshOrder.totalAmount ?? new Prisma.Decimal(0);
-      const prevPaid = freshOrder.paidAmount ?? new Prisma.Decimal(0);
-      const newPaid = prevPaid.plus(payment.amount);
-      const nextStatus = newPaid.gte(total) ? "PAID" : "PARTIAL";
-
-      await tx.serviceOrder.update({
-        where: { id: payment.orderId },
-        data: {
-          paidAmount: newPaid,
-          paymentStatus: nextStatus,
-          paidAt: nextStatus === "PAID" ? paidAt : null,
-        },
-      });
-
-      await logAudit(
-        {
-          tenantId: user.tenantId,
-          userId: user.id,
-          entity: "ServiceOrder",
-          entityId: payment.orderId,
-          action: "PAYMENT_CHANGE",
-          summary: `QPay PAID · ${payment.amount.toString()}₮ → ${nextStatus}`,
-          after: {
-            paymentId: payment.id,
-            qpayPaymentId: check.paymentId,
-            newPaidAmount: newPaid.toString(),
-            paymentStatus: nextStatus,
-          },
-        },
-        tx,
-      );
-    });
-  } catch (e) {
-    return {
-      ok: false,
-      paid: false,
-      message: e instanceof Error ? e.message : "Хадгалахад алдаа.",
-    };
-  }
-
-  await notifyOrderPaymentReceived(payment.orderId, payment.amount.toString());
-
-  revalidatePath(`/dashboard/orders/${payment.orderId}`);
+  revalidatePath(`/dashboard/orders/${result.orderId}`);
   return { ok: true, paid: true };
 }
 
@@ -302,29 +155,17 @@ export async function cancelOrderQPayPaymentAction(
   const paymentId = s(formData, "paymentId");
   if (!paymentId) return;
 
-  const payment = await prisma.orderPayment.findFirst({
+  const paymentRow = await prisma.orderPayment.findFirst({
     where: { id: paymentId, tenantId: user.tenantId, status: "PENDING" },
-    select: { orderId: true, amount: true },
+    select: { orderId: true },
   });
-  if (!payment) return;
-  if (!(await canEditOrderForUser(user, payment.orderId))) return;
+  if (!paymentRow) return;
+  if (!(await canEditOrderForUser(user, paymentRow.orderId))) return;
 
-  await prisma.orderPayment.updateMany({
-    where: { id: paymentId, tenantId: user.tenantId, status: "PENDING" },
-    data: { status: "CANCELLED" },
-  });
+  const result = await cancelOrderQPayInvoice(user.tenantId, user.id, paymentId);
+  if (!result.ok) return;
 
-  await logAudit({
-    tenantId: user.tenantId,
-    userId: user.id,
-    entity: "ServiceOrder",
-    entityId: payment.orderId,
-    action: "PAYMENT_CHANGE",
-    summary: `QPay QR цуцлав · ${payment.amount.toString()}₮`,
-    after: { paymentId, amount: payment.amount.toString(), status: "CANCELLED" },
-  });
-
-  revalidatePath(`/dashboard/orders/${payment.orderId}`);
+  revalidatePath(`/dashboard/orders/${result.orderId}`);
 }
 
 /**
@@ -376,7 +217,7 @@ export async function recordOrderPaymentAction(
   if (amount.gt(remaining)) {
     return {
       ok: false,
-      message: `Дүн үлдэгдэл (${remaining.toString()}₮)-ээс их байж болохгүй.`,
+      message: `Дүн үлдэгдэл (${formatTugrik(remaining.toString())})-ээс их байж болохгүй.`,
     };
   }
 
@@ -422,7 +263,7 @@ export async function recordOrderPaymentAction(
           entity: "ServiceOrder",
           entityId: orderId,
           action: "PAYMENT_CHANGE",
-          summary: `${ORDER_PAYMENT_METHOD_LABEL[method]} · ${amount.toString()}₮ бүртгэв`,
+          summary: `${ORDER_PAYMENT_METHOD_LABEL[method]} · ${formatTugrik(amount.toString())} бүртгэв`,
           after: {
             paymentId: payment.id,
             method,
@@ -509,7 +350,7 @@ export async function reverseOrderPaymentAction(formData: FormData): Promise<voi
         entity: "ServiceOrder",
         entityId: payment.orderId,
         action: "PAYMENT_CHANGE",
-        summary: `${ORDER_PAYMENT_METHOD_LABEL[payment.method] ?? payment.method} · ${payment.amount.toString()}₮ бүртгэлийг цуцлав`,
+        summary: `${ORDER_PAYMENT_METHOD_LABEL[payment.method] ?? payment.method} · ${formatTugrik(payment.amount.toString())} бүртгэлийг цуцлав`,
         after: {
           paymentId: payment.id,
           status: "CANCELLED",

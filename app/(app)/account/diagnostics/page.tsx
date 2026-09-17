@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Prisma } from "@/app/generated/prisma/client";
 import { BtnLink } from "@/app/_components/landing-ops-ui";
+import { EmptyState } from "@/app/_components/empty-state";
 import { requireAccount } from "@/lib/auth/account";
 import {
   DIAGNOSTIC_TYPE_BADGE,
@@ -150,11 +151,11 @@ export default async function AccountDiagnosticsPage({
       </div>
 
       {reports.length === 0 ? (
-        <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-10 text-center text-sm text-[var(--oc-muted3)]">
+        <EmptyState>
           {hasFilter
             ? "Сонгосон нөхцөлд тохирох тайлан алга."
             : "Одоогоор оношилгооны тайлан алга. Үйлчилгээ хийгдэж, тайлан бөглөгдсөний дараа энд харагдана."}
-        </div>
+        </EmptyState>
       ) : (
         <div className="flex flex-col gap-3">
           {reports.map((r) => {

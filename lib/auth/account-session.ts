@@ -1,9 +1,8 @@
-import { SignJWT, jwtVerify } from "jose";
+import { createJwtSession } from "@/lib/auth/jwt-session";
 
 // Эцсийн хэрэглэгчийн (Account) session — тенантын User болон SuperAdmin-аас
 // тусдаа cookie + tag-тай. Утсаар OTP-ээр нэвтэрсэн global бүртгэл.
 export const ACCOUNT_COOKIE_NAME = "carcare_account_session";
-const ALG = "HS256";
 export const ACCOUNT_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 60; // 60 хоног
 
 export type AccountSessionPayload = {
@@ -11,42 +10,18 @@ export type AccountSessionPayload = {
   phone: string;
 };
 
-function getSecret(): Uint8Array {
-  const secret = process.env.SESSION_SECRET;
-  if (!secret || secret.length < 32) {
-    throw new Error(
-      "SESSION_SECRET орчны хувьсагч заавал шаардлагатай (32+ тэмдэгт).",
-    );
-  }
-  // Account session-д tag нэмэх — User / system session-той эргэлзэхгүйн тулд
-  return new TextEncoder().encode(`account:${secret}`);
-}
-
-export async function signAccountSession(
-  payload: AccountSessionPayload,
-): Promise<string> {
-  return await new SignJWT({ ...payload })
-    .setProtectedHeader({ alg: ALG })
-    .setIssuedAt()
-    .setExpirationTime(`${ACCOUNT_SESSION_MAX_AGE_SECONDS}s`)
-    .sign(getSecret());
-}
-
-export async function verifyAccountSession(
-  token: string,
-): Promise<AccountSessionPayload | null> {
-  try {
-    const { payload } = await jwtVerify<AccountSessionPayload>(
-      token,
-      getSecret(),
-      { algorithms: [ALG] },
-    );
+const client = createJwtSession<AccountSessionPayload>({
+  tag: "account",
+  secretEnvVars: ["SESSION_SECRET"],
+  maxAgeSeconds: ACCOUNT_SESSION_MAX_AGE_SECONDS,
+  parse(payload) {
     if (!payload.accountId || !payload.phone) return null;
     return {
-      accountId: payload.accountId,
-      phone: payload.phone,
+      accountId: payload.accountId as string,
+      phone: payload.phone as string,
     };
-  } catch {
-    return null;
-  }
-}
+  },
+});
+
+export const signAccountSession = client.sign;
+export const verifyAccountSession = client.verify;

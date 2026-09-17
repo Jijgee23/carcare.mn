@@ -1,49 +1,30 @@
-import { SignJWT, jwtVerify } from "jose";
 import { prisma } from "@/lib/prisma";
 import { setBypassContext } from "@/lib/tenant-context";
+import { createJwtSession } from "@/lib/auth/jwt-session";
 
 // Эцсийн хэрэглэгчийн (Account) мобайл API token. User-ийн api-token-аас tag-аар
 // тусгаарлагдсан. Refresh-гүй, хугацаагүй (`exp` claim-гүй) — зөвхөн Account.isActive
 // = false болгосноор хүчингүй болно (getApiAccountFromRequest-д шалгадаг).
-const ALG = "HS256";
 
 export type AccountTokenPayload = {
   accountId: string;
   phone: string;
 };
 
-function getSecret(): Uint8Array {
-  const secret = process.env.API_TOKEN_SECRET ?? process.env.SESSION_SECRET;
-  if (!secret || secret.length < 32) {
-    throw new Error(
-      "API_TOKEN_SECRET эсвэл SESSION_SECRET тогтоосон байх ёстой (32+ тэмдэгт).",
-    );
-  }
-  return new TextEncoder().encode(`account-api:${secret}`);
-}
-
-export async function signAccountApiToken(
-  payload: AccountTokenPayload,
-): Promise<string> {
-  return await new SignJWT({ ...payload })
-    .setProtectedHeader({ alg: ALG })
-    .setIssuedAt()
-    .sign(getSecret());
-}
-
-export async function verifyAccountApiToken(
-  token: string,
-): Promise<AccountTokenPayload | null> {
-  try {
-    const { payload } = await jwtVerify<AccountTokenPayload>(token, getSecret(), {
-      algorithms: [ALG],
-    });
+const client = createJwtSession<AccountTokenPayload>({
+  tag: "account-api",
+  secretEnvVars: ["API_TOKEN_SECRET", "SESSION_SECRET"],
+  parse(payload) {
     if (!payload.accountId || !payload.phone) return null;
-    return { accountId: payload.accountId, phone: payload.phone };
-  } catch {
-    return null;
-  }
-}
+    return {
+      accountId: payload.accountId as string,
+      phone: payload.phone as string,
+    };
+  },
+});
+
+export const signAccountApiToken = client.sign;
+export const verifyAccountApiToken = client.verify;
 
 /** Authorization: Bearer <token>-аас Account-ийг тогтооно. Хүчингүй бол null. */
 

@@ -52,7 +52,7 @@ export default async function InProgressOrdersPage({
         customer: { select: { fullName: true } },
         vehicle: { select: { plate: true } },
         branch: { select: { name: true } },
-        items: { select: { status: true } },
+        items: { select: { status: true, kind: true } },
       },
     }),
     prisma.serviceOrder.count({ where }),
@@ -90,7 +90,10 @@ export default async function InProgressOrdersPage({
           <div className="divide-y divide-[var(--oc-line)] overflow-auto flex-1 min-h-0">
             {orders.map((o) => {
               const status = o.status as OrderStatus;
-              const activeItems = o.items.filter((it) => it.status !== "CANCELLED");
+              // Сэлбэг (PART) мөрүүд явцгүй тул тооцоололд оролцохгүй.
+              const activeItems = o.items.filter(
+                (it) => it.status !== "CANCELLED" && it.kind !== "PART",
+              );
               const completedCount = activeItems.filter(
                 (it) => it.status === "COMPLETED",
               ).length;

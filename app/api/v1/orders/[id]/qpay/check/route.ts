@@ -1,10 +1,15 @@
-import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
-import { logAudit } from "@/lib/audit";
-import { prisma } from "@/lib/prisma";
 import { canEditOrder } from "@/lib/auth/order-access";
 import { branchScopeId } from "@/lib/auth/roles";
-import { TenantQPayService } from "@/lib/qpay-tenant";
+import { confirmOrderQPayPayment } from "@/lib/order-payments";
+import { prisma } from "@/lib/prisma";
+
+const STATUS_BY_REASON = {
+  not_found: 404,
+  no_invoice: 422,
+  qpay_error: 502,
+  save_failed: 500,
+} as const;
 
 export async function POST(
   req: Request,
@@ -35,69 +40,13 @@ export async function POST(
   if ((scope && payment.order.branchId !== scope) || !canEditOrder(auth.user, payment.order)) {
     return jsonError(403, "Танд энэ төлбөрийг засах эрх байхгүй.");
   }
-  if (payment.status === "PAID") return jsonOk({ paid: true });
-  if (!payment.qpayInvoiceId) {
-    return jsonError(422, "QPay invoice байхгүй.");
-  }
 
-  const check = await TenantQPayService.checkPayment(
-    auth.user.tenantId,
-    payment.qpayInvoiceId,
-  );
-  if ("error" in check) return jsonError(502, check.error);
-  if (!check.paid) {
-    return jsonOk({ paid: false, message: "Төлбөр төлөгдөөгүй байна." });
-  }
-
-  const paidAt = check.paidAt ?? new Date();
-  try {
-    await prisma.$transaction(async (tx) => {
-      const fresh = await tx.orderPayment.findUnique({
-        where: { id: payment.id },
-        select: { status: true },
-      });
-      if (fresh?.status === "PAID") return;
-
-      await tx.orderPayment.update({
-        where: { id: payment.id },
-        data: { status: "PAID", paidAt, qpayPaymentId: check.paymentId },
-      });
-
-      const total = payment.order.totalAmount ?? new Prisma.Decimal(0);
-      const prevPaid = payment.order.paidAmount ?? new Prisma.Decimal(0);
-      const newPaid = prevPaid.plus(payment.amount);
-      const nextStatus = newPaid.gte(total) ? "PAID" : "PARTIAL";
-
-      await tx.serviceOrder.update({
-        where: { id: payment.orderId },
-        data: {
-          paidAmount: newPaid,
-          paymentStatus: nextStatus,
-          paidAt: nextStatus === "PAID" ? paidAt : null,
-        },
-      });
-
-      await logAudit(
-        {
-          tenantId: auth.user.tenantId,
-          userId: auth.user.id,
-          entity: "ServiceOrder",
-          entityId: payment.orderId,
-          action: "PAYMENT_CHANGE",
-          summary: `QPay PAID · ${payment.amount.toString()}₮ → ${nextStatus}`,
-          after: {
-            paymentId: payment.id,
-            qpayPaymentId: check.paymentId,
-            newPaidAmount: newPaid.toString(),
-            paymentStatus: nextStatus,
-          },
-        },
-        tx,
-      );
-    });
-  } catch (e) {
-    return jsonError(500, e instanceof Error ? e.message : "Хадгалахад алдаа.");
-  }
+  // Жинхэнэ QPay шалгалт + PAID болгох логик хуваалцсан цөмд шилжсэн — мөн
+  // dashboard-ийн app/_actions/order-payments.ts-ийн checkOrderQPayPaymentAction
+  // дуудна (харах: lib/order-payments.ts-ийн comment).
+  const result = await confirmOrderQPayPayment(auth.user.tenantId, auth.user.id, paymentId);
+  if (!result.ok) return jsonError(STATUS_BY_REASON[result.reason], result.message);
+  if (!result.paid) return jsonOk({ paid: false, message: result.message });
 
   return jsonOk({ paid: true });
 }

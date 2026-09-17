@@ -1,5 +1,6 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, type Prisma as PrismaTypes } from "@/app/generated/prisma/client";
+import { env } from "@/lib/env";
 import { getTenantContext } from "@/lib/tenant-context";
 
 /**
@@ -56,28 +57,29 @@ const globalForPrisma = globalThis as unknown as {
  * дарж тохируулж болно (ж: PgBouncer-ийн ард).
  */
 function poolMax(): number {
-  const raw = process.env.DATABASE_POOL_MAX;
-  if (raw) {
-    const n = Number.parseInt(raw, 10);
-    if (Number.isFinite(n) && n > 0) return n;
-  }
+  if (env.DATABASE_POOL_MAX) return env.DATABASE_POOL_MAX;
   return process.env.VERCEL ? 1 : 10;
 }
 
-function createBaseClient(): PrismaClient {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    throw new Error(
-      "DATABASE_URL орчны хувьсагч тохируулагдаагүй байна. .env файлд DATABASE_URL=... нэмнэ үү.",
-    );
-  }
+/**
+ * Сул холболтыг хэдий хугацааны дараа хаах вэ. Serverless (Vercel) дээр
+ * хурдан суллах нь чухал (instance хэзээ ч устаж болно). Харин урт амьдрах
+ * сервер (VPS / PM2) дээр pool аль хэдийн `poolMax()`-аар (жижиг, тогтмол)
+ * хязгаарлагдсан тул сул зогсолтын дараа холболтыг хаах шаардлагагүй — хаавал
+ * дараагийн урсгал ирэхэд шинэ холболтуудыг зэрэг нээх шаардлагатай болж,
+ * яг тэр мөчид pg-ийн "client already executing a query" race дахин
+ * гарч ирдэг (warm-up-ийн зайлсхийхийг оролддог тохиолдол).
+ */
+function idleTimeoutMillis(): number {
+  return process.env.VERCEL ? 10_000 : 0;
+}
 
+function createBaseClient(): PrismaClient {
   return new PrismaClient({
     adapter: new PrismaPg({
-      connectionString: url,
+      connectionString: env.DATABASE_URL,
       max: poolMax(),
-      // Сул холболтыг хурдан суллана (serverless дээр чухал).
-      idleTimeoutMillis: 10_000,
+      idleTimeoutMillis: idleTimeoutMillis(),
       connectionTimeoutMillis: 10_000,
     }),
     log:
@@ -109,30 +111,34 @@ export async function withBookingTransaction<T>(
 }
 
 /**
- * Сервер эхлэхэд (зөвхөн БОДИТ ажиллах үед — `next build`-ийн static
- * generation worker-үүдэд БИШ, тэдгээр нь `NEXT_PHASE=phase-production-build`
- * тул module-ыг хэд хэдэн тусдаа process дотор зэрэг ачаалж, warm-up
- * зэрэгцэн Postgres-ийн max_connections-г шавхаж static export-ийг эвдэж
- * байсныг олж, ийнхүү хязгаарласан) pool-ыг тэр даруй бүрэн дүүргэнэ
- * (`poolMax()` тооны холболт зэрэг үүсгэнэ) — эхний бодит хүсэлтүүд ирэхэд
- * ШИНЭ холболт зэрэг үүсгэх (cold start) хийхгүй байхын тулд. Бодит
- * production-д (PM2 restart-ийн дараах эхний давалгаа) зэрэгцээ шинэ
- * холболт үүсгэх мөч дээр `pg`-ийн "client already executing a query" race
- * ажиглагдсан — pool аль хэдийн дүүрсэн үед энэ цонх бүхэлдээ алга болно.
- * RLS extension-ийг тойрч (context шаардахгүй) суурь client дээр шууд
- * ажиллуулна.
+ * Pool-ыг тэр даруй бүрэн дүүргэнэ (`poolMax()` тооны холболт үүсгэнэ) — эхний
+ * бодит хүсэлтүүд ирэхэд ШИНЭ холболт зэрэг үүсгэх (cold start) хийхгүй
+ * байхын тулд. Бодит production-д (PM2 restart-ийн дараах эхний давалгаа)
+ * зэрэгцээ шинэ холболт үүсгэх мөч дээр `pg`-ийн "client already executing a
+ * query" race ажиглагдсан — pool аль хэдийн дүүрсэн үед энэ цонх бүхэлдээ
+ * алга болно. RLS extension-ийг тойрч (context шаардахгүй) суурь client дээр
+ * шууд ажиллуулна.
+ *
+ * `instrumentation.ts`-ийн `register()`-ээс `await`-тэйгээр дуудагдана —
+ * Next.js сервер бодит хүсэлт хүлээж авахаас ӨМНӨ (fire-and-forget биш,
+ * блоклож) дуусгахын тулд: өмнө нь module-load дээр `void (async...`-аар
+ * дэвсгэрт ажиллуулдаг байсан ч, warm-up дуусахаас өмнө ирсэн бодит хүсэлт
+ * яг тэр л race-ийг дахин үүсгэх боломжтой байсан.
+ *
+ * `next build`-ийн static generation worker-үүдэд (`NEXT_PHASE=
+ * phase-production-build`) дуудагдахгүй — эдгээр нь module-ыг хэд хэдэн
+ * тусдаа process дотор зэрэг ачаалж, warm-up зэрэгцэн Postgres-ийн
+ * max_connections-г шавхаж static export-ийг эвдэж байсныг олсон.
  */
-if (baseClient && process.env.NEXT_PHASE !== "phase-production-build") {
+export async function warmPool(): Promise<void> {
+  if (!baseClient || process.env.NEXT_PHASE === "phase-production-build") return;
   // Дараалуулж (Promise.all-аар зэрэг биш) явуулна: `baseClient.$queryRaw` бүр
   // адаптерын нэг pg Pool-оос холболт авахыг оролддог тул поол бүрэн дүүрээгүй
   // үед нэг зэрэг олон дуудлага "client already executing a query" (pg-ийн
-  // deprecation warning) үүсгэдэг байсан — pool аль хэдийн дүүрсэн тохиолдолд
-  // ажиглагдаагүй ч энд ч давхцах боломжтой тул урьдчилан зайлсхийнэ.
-  void (async () => {
-    for (let i = 0; i < poolMax(); i++) {
-      await baseClient.$queryRaw`SELECT 1`.catch(() => {});
-    }
-  })();
+  // deprecation warning) үүсгэдэг байсан.
+  for (let i = 0; i < poolMax(); i++) {
+    await baseClient.$queryRaw`SELECT 1`.catch(() => {});
+  }
 }
 
 /**

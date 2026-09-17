@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { EmptyState } from "@/app/_components/empty-state";
 import { requireAccount } from "@/lib/auth/account";
 import { prisma } from "@/lib/prisma";
 import type { QPayBankUrl } from "@/lib/qpay";
@@ -66,10 +67,10 @@ export default async function AppointmentPayPage({
           underpaidAmount={appt.feeUnderpaidAmount?.toString() ?? null}
         />
       ) : (
-        <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-6 text-center text-sm text-[var(--oc-muted3)]">
+        <EmptyState padding="p-6">
           Төлбөрийн invoice хараахан үүсээгүй байна. Түр хүлээгээд дахин
           нээнэ үү.
-        </div>
+        </EmptyState>
       )}
     </div>
   );

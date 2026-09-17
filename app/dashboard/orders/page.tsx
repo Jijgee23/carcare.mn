@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Prisma } from "@/app/generated/prisma/client";
 import {
   DateRangeFilter,
@@ -12,26 +11,20 @@ import { Pagination } from "@/app/_components/pagination";
 import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { customerLabel } from "@/lib/customers";
 import { requireUser } from "@/lib/auth";
-import { canCreate, canView, workingBranchScopeId } from "@/lib/auth/roles";
-import { orderReadWhere } from "@/lib/auth/order-access";
+import { canCreate, canEdit, canView, workingBranchScopeId } from "@/lib/auth/roles";
+import { canAssignOrders, orderReadWhere } from "@/lib/auth/order-access";
 import { redirect } from "next/navigation";
 import {
-  ITEM_KIND_BADGE,
-  ITEM_KIND_LABEL,
   ORDER_STATUSES,
-  ORDER_STATUS_BADGE,
   ORDER_STATUS_LABEL,
-  PAYMENT_STATUS_BADGE,
   PAYMENT_STATUS_LABEL,
-  POSTPAID_BADGE,
   POSTPAID_LABEL,
-  type ItemKind,
+  formatTugrik,
   type OrderStatus,
   type PaymentStatus,
-  formatTugrik,
 } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
-import { OrderRow } from "./order-row";
+import { BulkOrdersTable, type BulkOrderRow } from "./bulk-orders-table";
 
 export const metadata = {
   title: "Засварын хуудас",
@@ -110,8 +103,11 @@ export default async function OrdersPage({
     ];
   }
 
+  const canBulkEdit = canEdit(user, "orders");
+  const canAssign = canAssignOrders(user);
+
   const { page, pageSize, skip, take } = getPageInfo(pageParam);
-  const [orders, filteredTotal, counts, branches, customers, vehicles] =
+  const [orders, filteredTotal, counts, branches, customers, vehicles, employees] =
     await Promise.all([
     prisma.serviceOrder.findMany({
       where,
@@ -165,6 +161,13 @@ export default async function OrdersPage({
         },
       })
       .then((rows) => rows.map((r) => r.vehicle)),
+    canBulkEdit
+      ? prisma.user.findMany({
+          where: { tenantId: user.tenantId, isActive: true },
+          orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+          select: { id: true, firstName: true, lastName: true },
+        })
+      : Promise.resolve([]),
   ]);
 
   const countByStatus = Object.fromEntries(
@@ -172,6 +175,38 @@ export default async function OrdersPage({
   );
   const total = counts.reduce((a, c) => a + c._count._all, 0);
   const meta = buildMeta(filteredTotal, page, pageSize);
+
+  const bulkRows: BulkOrderRow[] = orders.map((o) => ({
+    id: o.id,
+    number: o.number,
+    customerLabel: customerLabel(o.customer),
+    vehicleMakeModel: `${o.vehicle.make} ${o.vehicle.model}`,
+    vehiclePlate: o.vehicle.plate,
+    items: o.items,
+    itemCount: o._count.items,
+    branchName: o.branch.name,
+    assignedToLabel: o.assignedTo
+      ? `${o.assignedTo.lastName} ${o.assignedTo.firstName}`
+      : null,
+    scheduledAtLabel: o.scheduledAt
+      ? o.scheduledAt.toLocaleString("mn-MN", {
+          year: "numeric",
+          month: "short",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        })
+      : null,
+    totalLabel: formatTugrik(o.totalAmount ? o.totalAmount.toString() : null),
+    paymentStatus: o.paymentStatus as PaymentStatus,
+    isPostpaid: o.isPostpaid,
+    status: o.status as OrderStatus,
+  }));
+  const employeeOptions = employees.map((e) => ({
+    id: e.id,
+    label: `${e.lastName} ${e.firstName}`,
+  }));
 
   return (
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
@@ -193,7 +228,7 @@ export default async function OrdersPage({
       />
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        <StatCard label="Нийт" value={total} color="text-white" />
+        <StatCard label="Нийт" value={total} color="text-[var(--oc-ink)]" />
         <StatCard
           label={ORDER_STATUS_LABEL.SCHEDULED}
           value={countByStatus.SCHEDULED ?? 0}
@@ -283,154 +318,27 @@ export default async function OrdersPage({
         />
       </div>
 
-      <div className="glass rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
-        <div className="px-4 py-2.5 border-b border-white/[0.06] flex items-center">
-          <div className="ml-auto text-xs text-white/30 light:text-slate-500">
+      <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden flex-1 min-h-0 flex flex-col">
+        <div className="px-4 py-2.5 border-b border-[var(--oc-line)] flex items-center">
+          <div className="ml-auto text-xs text-[var(--oc-muted3)]">
             {filteredTotal} засварын хуудас
           </div>
         </div>
 
         {orders.length === 0 ? (
-          <div className="px-5 py-16 text-center text-white/40 text-sm flex-1">
+          <div className="px-5 py-16 text-center text-[var(--oc-muted3)] text-sm flex-1">
             {status
               ? "Энэ статуст засварын хуудас алга."
               : "Засварын хуудас алга байна. Эхний засварын хуудсаа үүсгээрэй."}
           </div>
         ) : (
-          <div className="overflow-auto flex-1 min-h-0">
-            <table className="w-full min-w-[800px]">
-              <thead>
-                <tr className="border-b border-white/[0.06]">
-                  {[
-                    "#",
-                    "Үйлчлүүлэгч",
-                    "Машин",
-                    "Үйлчилгээ",
-                    "Салбар",
-                    "Хариуцагч",
-                    "Огноо",
-                    "Дүн",
-                    "Статус",
-                  ].map((h) => (
-                    <th
-                      key={h}
-                      className="text-left text-xs text-white/30 light:text-slate-500 font-medium px-5 py-3"
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {orders.map((o) => (
-                  <OrderRow
-                    key={o.id}
-                    href={`/dashboard/orders/${o.id}`}
-                  >
-                    <td className="px-5 py-4">
-                      <Link
-                        href={`/dashboard/orders/${o.id}`}
-                        className="font-mono text-sm font-semibold text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
-                      >
-                        #{o.number}
-                      </Link>
-                    </td>
-                    <td className="px-5 py-4 text-sm text-white/80">
-                      {customerLabel(o.customer)}
-                    </td>
-                    <td className="px-5 py-4 text-sm">
-                      <div className="text-white/80">
-                        {o.vehicle.make} {o.vehicle.model}
-                      </div>
-                      <div className="text-xs text-white/30 font-mono">
-                        {o.vehicle.plate}
-                      </div>
-                    </td>
-                    <td className="px-5 py-4 text-xs">
-                      {o._count.items === 0 ? (
-                        <span className="text-white/30">—</span>
-                      ) : (
-                        <div className="flex flex-col gap-1 max-w-[220px]">
-                          {o.items.map((it) => (
-                            <div
-                              key={it.id}
-                              className="flex items-center gap-1.5"
-                            >
-                              <span
-                                className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded-full ${
-                                  ITEM_KIND_BADGE[it.kind as ItemKind]
-                                }`}
-                              >
-                                {ITEM_KIND_LABEL[it.kind as ItemKind]}
-                              </span>
-                              <span className="text-white/70 truncate">
-                                {it.description}
-                              </span>
-                            </div>
-                          ))}
-                          {o._count.items > o.items.length ? (
-                            <span className="text-white/30">
-                              +{o._count.items - o.items.length} өөр
-                            </span>
-                          ) : null}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-5 py-4 text-sm text-white/50">
-                      {o.branch.name}
-                    </td>
-                    <td className="px-5 py-4 text-sm text-white/50">
-                      {o.assignedTo
-                        ? `${o.assignedTo.lastName} ${o.assignedTo.firstName}`
-                        : "—"}
-                    </td>
-                    <td className="px-5 py-4 text-xs text-white/40">
-                      {o.scheduledAt
-                        ? o.scheduledAt.toLocaleString("mn-MN", {
-                            year: "numeric",
-                            month: "short",
-                            day: "2-digit",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            hour12: false,
-                          })
-                        : "—"}
-                    </td>
-                    <td className="px-5 py-4 text-sm">
-                      <div className="text-white/80">
-                        {formatTugrik(
-                          o.totalAmount ? o.totalAmount.toString() : null,
-                        )}
-                      </div>
-                      <span
-                        className={`mt-1 inline-block text-[10px] px-1.5 py-0.5 rounded-full ${
-                          PAYMENT_STATUS_BADGE[o.paymentStatus as PaymentStatus]
-                        }`}
-                      >
-                        {PAYMENT_STATUS_LABEL[o.paymentStatus as PaymentStatus]}
-                      </span>
-                      {o.isPostpaid ? (
-                        <span
-                          className={`mt-1 ml-1 inline-block text-[10px] px-1.5 py-0.5 rounded-full ${POSTPAID_BADGE}`}
-                        >
-                          Дараа
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="px-5 py-4">
-                      <span
-                        className={`text-xs px-2.5 py-1 rounded-full ${
-                          ORDER_STATUS_BADGE[o.status as OrderStatus]
-                        }`}
-                      >
-                        {ORDER_STATUS_LABEL[o.status as OrderStatus]}
-                      </span>
-                    </td>
-                  </OrderRow>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <BulkOrdersTable
+            rows={bulkRows}
+            employees={employeeOptions}
+            canBulkEdit={canBulkEdit}
+            canAssign={canAssign}
+            currentUserId={user.id}
+          />
         )}
 
         <Pagination
@@ -464,9 +372,9 @@ function StatCard({
   color: string;
 }) {
   return (
-    <div className="glass rounded-xl p-4">
+    <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-4">
       <div className={`text-2xl font-bold ${color}`}>{value}</div>
-      <div className="text-xs text-white/40 mt-1">{label}</div>
+      <div className="text-xs text-[var(--oc-muted3)] mt-1">{label}</div>
     </div>
   );
 }

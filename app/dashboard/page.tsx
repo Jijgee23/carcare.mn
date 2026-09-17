@@ -167,7 +167,7 @@ export default async function DashboardPage({
         updatedAt: true,
         customer: { select: { fullName: true } },
         vehicle: { select: { plate: true } },
-        items: { select: { status: true } },
+        items: { select: { status: true, kind: true } },
       },
     }),
     prisma.tenantVehicle.count({
@@ -435,8 +435,9 @@ export default async function DashboardPage({
               <div className="divide-y divide-[var(--oc-line)]">
                 {recentlyUpdatedOrders.map((o) => {
                   const status = o.status as OrderStatus;
+                  // Сэлбэг (PART) мөрүүд явцгүй тул тооцоололд оролцохгүй.
                   const activeItems = o.items.filter(
-                    (it) => it.status !== "CANCELLED",
+                    (it) => it.status !== "CANCELLED" && it.kind !== "PART",
                   );
                   const completedCount = activeItems.filter(
                     (it) => it.status === "COMPLETED",
@@ -585,7 +586,10 @@ function StatCard({
     <div className="group bg-[var(--oc-panel)] hover:bg-[var(--oc-panel2)] transition-colors p-3 sm:p-4 flex flex-col gap-2.5 sm:gap-3 h-full">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="font-plex-mono text-[10.5px] uppercase tracking-[0.1em] text-[var(--oc-muted3)] truncate">
+          <div
+            title={label}
+            className="font-plex-mono text-[10.5px] uppercase tracking-[0.1em] text-[var(--oc-muted3)] truncate"
+          >
             {label}
           </div>
           <div className={`font-plex-mono text-xl sm:text-2xl font-semibold mt-1 tabular-nums ${toneClass}`}>

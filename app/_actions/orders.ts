@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
+import { type BulkActionState, parseIdsJson } from "@/lib/bulk-action";
 import { createNotification } from "@/lib/notifications";
 import {
   canCreate,
@@ -32,6 +33,7 @@ import {
 import { moveLinkedAppointmentOrder, LinkedRescheduleError } from "@/lib/linked-reschedule";
 import {
   ITEM_KINDS,
+  ORDER_STATUSES,
   ORDER_STATUS_TRANSITIONS,
   SERVICE_ITEM_STATUSES,
   canChangeServiceItemStatus,
@@ -65,6 +67,11 @@ export type OrderActionState = {
   message?: string;
   fieldErrors?: Record<string, string>;
 } | null;
+
+// Захиалгын bulk action-уудын (статус солих, хариуцагч оноох) үр дүнгийн
+// хэлбэр — `lib/bulk-action.ts`-ийн нийтлэг хэлбэрийн alias (импортлогч
+// талуудын нэрийг өөрчлөхгүйн тулд).
+export type BulkOrderActionState = BulkActionState;
 
 // S06 fix: validation that happens INSIDE a withOrderTransaction lock (i.e.
 // against the freshly re-read row, not any earlier pre-lock read) throws this
@@ -864,6 +871,193 @@ export async function updateOrderAction(
 
 // --- STATUS CHANGE --------------------------------------------------------
 
+/**
+ * `changeOrderStatusAction` (ганц захиалга) БОЛОН `bulkChangeOrderStatusAction`
+ * (олноор сонгосон) хоёулаа энэ цөм логикийг дуудна — S06 fix-ийн шинжийг
+ * (нэг row lock дотор шалгаад бичих) хадгалж, хоёр action хооронд давхардуулж
+ * бичихээс сэргийлнэ. `duration`-г зөвхөн ганц захиалгын урсгал (formData-аас)
+ * дамжуулна — bulk урсгалд IN_PROGRESS-д шилжихдээ хугацаа автоматаар
+ * тооцоологдоогүй захиалгыг зүгээр л алгасна (доор bulkChangeOrderStatusAction).
+ */
+async function applyOrderStatusChange(
+  user: Awaited<ReturnType<typeof requireUser>>,
+  id: string,
+  next: OrderStatus,
+  duration?: { hours: string; minutes: string },
+): Promise<void> {
+  await assertOrderEditAccess(user, id);
+
+  // S06 fix: everything that validates and everything that writes now
+  // happens under ONE row lock on this order — re-read fresh inside
+  // withOrderTransaction, validated against THAT state, never against a
+  // pre-lock read — so a concurrent status change/cancel/expiry can't slot
+  // in between validation and write.
+  await withOrderTransaction(
+    user.tenantId,
+    id,
+    {
+      id: true,
+      branchId: true,
+      status: true,
+      startedAt: true,
+      estimatedDurationMinutes: true,
+      items: {
+        where: { status: { not: "CANCELLED" } },
+        select: {
+          kind: true,
+          status: true,
+          quantity: true,
+          service: {
+            select: {
+              durationValue: true,
+              durationUnit: { select: { name: true, code: true } },
+            },
+          },
+          diagnosticTemplate: { select: { durationMin: true } },
+        },
+      },
+    },
+    async (tx, orderRaw) => {
+      const order = orderRaw as {
+        id: string;
+        branchId: string;
+        status: OrderStatus;
+        startedAt: Date | null;
+        estimatedDurationMinutes: number | null;
+        items: ServiceDurationItem[];
+      } | null;
+      if (!order) throw new OrderActionValidationError("Засварын хуудас олдсонгүй.");
+      assertOrderBranchScope(user, order.branchId);
+
+      const allowed = ORDER_STATUS_TRANSITIONS[order.status as OrderStatus];
+      if (!allowed?.includes(next)) {
+        throw new OrderActionValidationError("Энэ статус руу шилжих боломжгүй.");
+      }
+      // Дуусгахаас өмнө нэмэгдсэн оношилгооны мөр бүгд тайлантай (бөглөгдсөн) байх ёстой.
+      if (next === "COMPLETED") {
+        const pending = await tx.serviceItem.count({
+          where: {
+            orderId: order.id,
+            kind: "DIAGNOSTIC",
+            status: { not: "CANCELLED" },
+            diagnosticReportId: null,
+          },
+        });
+        if (pending > 0) {
+          throw new OrderActionValidationError(
+            "Бөглөгдөөгүй оношилгоо байна. Бүх оношилгоог бөглөсний дараа засварын хуудсыг дуусгана уу.",
+          );
+        }
+      }
+
+      const now = new Date();
+      const enteringInProgress = next === "IN_PROGRESS";
+      const startingFresh = enteringInProgress && order.status === "SCHEDULED";
+
+      // Ажил эхлэхэд үргэлжлэх хугацааны тооцоолол
+      // байх ёстой — эс бөгөөс энэ захиалга хугацаагүй, тодорхойгүй хугацаагаар
+      // ажлын байрыг эзэлж, cap=1 мэт бага багтаамжтай салбарт БҮХ цаг захиалгыг
+      // бүрмөсөн хаадаг байсан (D-хугацааны шийдвэр). Аль хэдийн тооцоолол байвал
+      // (жишээ нь холбогдсон цаг захиалгаас өвлөгдсөн) дахин асуухгүй.
+      let effectiveDurationMinutes = order.estimatedDurationMinutes;
+      const serviceItemDurationMinutes = enteringInProgress
+        ? calculateServiceItemDurationMinutes(order.items)
+        : null;
+      if (effectiveDurationMinutes == null && serviceItemDurationMinutes != null) {
+        effectiveDurationMinutes = serviceItemDurationMinutes;
+      }
+      if (enteringInProgress && effectiveDurationMinutes == null) {
+        const parsed = parseDurationInput(
+          duration?.hours ?? "",
+          duration?.minutes ?? "",
+        );
+        if (!parsed.ok) {
+          throw new OrderActionValidationError("", { duration: parsed.error });
+        }
+        if (parsed.minutes == null) {
+          throw new OrderActionValidationError("", {
+            duration: "Ажлыг эхлүүлэхийн өмнө ойролцоо үргэлжлэх хугацааг оруулна уу.",
+          });
+        }
+        effectiveDurationMinutes = parsed.minutes;
+      }
+
+      const updates: Prisma.ServiceOrderUpdateInput = { status: next };
+      const startedAt = startingFresh ? now : order.startedAt;
+      if (startingFresh) {
+        updates.startedAt = startedAt;
+      }
+      if (startingFresh && effectiveDurationMinutes !== order.estimatedDurationMinutes) {
+        updates.estimatedDurationMinutes = effectiveDurationMinutes;
+      }
+      if (next === "COMPLETED") {
+        updates.completedAt = new Date();
+      }
+      // Хүчин чадлын эзэмшил: идэвхтэй ажил хүчин чадал эзэлнэ; дууссан/цуцлагдсан
+      // ажил тэр даруй суллана.
+      if (next === "COMPLETED" || next === "CANCELLED") {
+        updates.occupiesCapacity = false;
+      } else {
+        updates.occupiesCapacity = true;
+      }
+      if (enteringInProgress && effectiveDurationMinutes != null && startedAt) {
+        updates.expectedFinishAt = new Date(
+          startedAt.getTime() + effectiveDurationMinutes * 60000,
+        );
+      }
+
+      await tx.serviceOrder.update({
+        where: { id: order.id },
+        data: updates,
+      });
+      // D-068 dual-write: close() is a no-op when nothing matching is open,
+      // so this stays correct regardless of the order's prior booking state.
+      // Starting active work ("all") consumes any prior SCHEDULED booking
+      // that's now actually starting. COMPLETED closes only ACTIVE. CANCELLED
+      // closes "all": the whole order is void, so nothing about it should
+      // remain open, matching the service-item cancellation just below.
+      if (enteringInProgress) {
+        await closeOpenOrderTimeBooking(tx, order.id, now, "all");
+        await openOrderTimeBooking(tx, {
+          tenantId: user.tenantId,
+          orderId: order.id,
+          branchId: order.branchId,
+          kind: "ACTIVE",
+          startAt: now,
+          endAt: (updates.expectedFinishAt as Date | undefined) ?? null,
+          createdById: user.id,
+        });
+      } else if (next === "COMPLETED") {
+        await closeOpenOrderTimeBooking(tx, order.id, updates.completedAt as Date, "ACTIVE");
+      } else if (next === "CANCELLED") {
+        await closeOpenOrderTimeBooking(tx, order.id, now, "all");
+      }
+    // Захиалгыг бүхэлд нь цуцлахад дотор нь бөглөгдсөн (COMPLETED) байсан
+    // мөр — тэр дундаа бөглөгдсөн оношилгооны хуудас — идэвхтэй хэвээр
+    // үлдэж, дуусаагүй мэт харагдахаас сэргийлж бүх мөрийг мөн цуцална.
+      if (next === "CANCELLED") {
+        await tx.serviceItem.updateMany({
+          where: { orderId: order.id, status: { not: "CANCELLED" } },
+          data: { status: "CANCELLED", cancelledAt: new Date(), cancelledById: user.id },
+        });
+      }
+      await logAudit(
+        {
+          tenantId: user.tenantId,
+          userId: user.id,
+          entity: "ServiceOrder",
+          entityId: order.id,
+          action: "STATUS_CHANGE",
+          summary: `${order.status} → ${next}`,
+          before: { status: order.status },
+          after: { status: next },
+        },
+        tx,
+      );
+    },
+  );
+}
+
 export async function changeOrderStatusAction(
   _prev: OrderActionState,
   formData: FormData,
@@ -877,178 +1071,12 @@ export async function changeOrderStatusAction(
   const id = s(formData, "id");
   const next = s(formData, "status") as OrderStatus;
   if (!id || !next) return { ok: false, message: "Буруу хүсэлт." };
-  try { await assertOrderEditAccess(user, id); } catch (e) { return { ok: false, message: e instanceof Error ? e.message : "Алдаа" }; }
 
-  // S06 fix: everything that validates and everything that writes now
-  // happens under ONE row lock on this order — re-read fresh inside
-  // withOrderTransaction, validated against THAT state, never against a
-  // pre-lock read — so a concurrent status change/cancel/expiry can't slot
-  // in between validation and write.
   try {
-    await withOrderTransaction(
-      user.tenantId,
-      id,
-      {
-        id: true,
-        branchId: true,
-        status: true,
-        startedAt: true,
-        estimatedDurationMinutes: true,
-        items: {
-          where: { status: { not: "CANCELLED" } },
-          select: {
-            kind: true,
-            status: true,
-            quantity: true,
-            service: {
-              select: {
-                durationValue: true,
-                durationUnit: { select: { name: true, code: true } },
-              },
-            },
-            diagnosticTemplate: { select: { durationMin: true } },
-          },
-        },
-      },
-      async (tx, orderRaw) => {
-        const order = orderRaw as {
-          id: string;
-          branchId: string;
-          status: OrderStatus;
-          startedAt: Date | null;
-          estimatedDurationMinutes: number | null;
-          items: ServiceDurationItem[];
-        } | null;
-        if (!order) throw new OrderActionValidationError("Засварын хуудас олдсонгүй.");
-        assertOrderBranchScope(user, order.branchId);
-
-        const allowed = ORDER_STATUS_TRANSITIONS[order.status as OrderStatus];
-        if (!allowed?.includes(next)) {
-          throw new OrderActionValidationError("Энэ статус руу шилжих боломжгүй.");
-        }
-        // Дуусгахаас өмнө нэмэгдсэн оношилгооны мөр бүгд тайлантай (бөглөгдсөн) байх ёстой.
-        if (next === "COMPLETED") {
-          const pending = await tx.serviceItem.count({
-            where: {
-              orderId: order.id,
-              kind: "DIAGNOSTIC",
-              status: { not: "CANCELLED" },
-              diagnosticReportId: null,
-            },
-          });
-          if (pending > 0) {
-            throw new OrderActionValidationError(
-              "Бөглөгдөөгүй оношилгоо байна. Бүх оношилгоог бөглөсний дараа засварын хуудсыг дуусгана уу.",
-            );
-          }
-        }
-
-        const now = new Date();
-        const enteringInProgress = next === "IN_PROGRESS";
-        const startingFresh = enteringInProgress && order.status === "SCHEDULED";
-
-        // Ажил эхлэхэд үргэлжлэх хугацааны тооцоолол
-        // байх ёстой — эс бөгөөс энэ захиалга хугацаагүй, тодорхойгүй хугацаагаар
-        // ажлын байрыг эзэлж, cap=1 мэт бага багтаамжтай салбарт БҮХ цаг захиалгыг
-        // бүрмөсөн хаадаг байсан (D-хугацааны шийдвэр). Аль хэдийн тооцоолол байвал
-        // (жишээ нь холбогдсон цаг захиалгаас өвлөгдсөн) дахин асуухгүй.
-        let effectiveDurationMinutes = order.estimatedDurationMinutes;
-        const serviceItemDurationMinutes = enteringInProgress
-          ? calculateServiceItemDurationMinutes(order.items)
-          : null;
-        if (effectiveDurationMinutes == null && serviceItemDurationMinutes != null) {
-          effectiveDurationMinutes = serviceItemDurationMinutes;
-        }
-        if (enteringInProgress && effectiveDurationMinutes == null) {
-          const parsed = parseDurationInput(
-            s(formData, "durationHours"),
-            s(formData, "durationMinutes"),
-          );
-          if (!parsed.ok) {
-            throw new OrderActionValidationError("", { duration: parsed.error });
-          }
-          if (parsed.minutes == null) {
-            throw new OrderActionValidationError("", {
-              duration: "Ажлыг эхлүүлэхийн өмнө ойролцоо үргэлжлэх хугацааг оруулна уу.",
-            });
-          }
-          effectiveDurationMinutes = parsed.minutes;
-        }
-
-        const updates: Prisma.ServiceOrderUpdateInput = { status: next };
-        const startedAt = startingFresh ? now : order.startedAt;
-        if (startingFresh) {
-          updates.startedAt = startedAt;
-        }
-        if (startingFresh && effectiveDurationMinutes !== order.estimatedDurationMinutes) {
-          updates.estimatedDurationMinutes = effectiveDurationMinutes;
-        }
-        if (next === "COMPLETED") {
-          updates.completedAt = new Date();
-        }
-        // Хүчин чадлын эзэмшил: идэвхтэй ажил хүчин чадал эзэлнэ; дууссан/цуцлагдсан
-        // ажил тэр даруй суллана.
-        if (next === "COMPLETED" || next === "CANCELLED") {
-          updates.occupiesCapacity = false;
-        } else {
-          updates.occupiesCapacity = true;
-        }
-        if (enteringInProgress && effectiveDurationMinutes != null && startedAt) {
-          updates.expectedFinishAt = new Date(
-            startedAt.getTime() + effectiveDurationMinutes * 60000,
-          );
-        }
-
-        await tx.serviceOrder.update({
-          where: { id: order.id },
-          data: updates,
-        });
-        // D-068 dual-write: close() is a no-op when nothing matching is open,
-        // so this stays correct regardless of the order's prior booking state.
-        // Starting active work ("all") consumes any prior SCHEDULED booking
-        // that's now actually starting. COMPLETED closes only ACTIVE. CANCELLED
-        // closes "all": the whole order is void, so nothing about it should
-        // remain open, matching the service-item cancellation just below.
-        if (enteringInProgress) {
-          await closeOpenOrderTimeBooking(tx, order.id, now, "all");
-          await openOrderTimeBooking(tx, {
-            tenantId: user.tenantId,
-            orderId: order.id,
-            branchId: order.branchId,
-            kind: "ACTIVE",
-            startAt: now,
-            endAt: (updates.expectedFinishAt as Date | undefined) ?? null,
-            createdById: user.id,
-          });
-        } else if (next === "COMPLETED") {
-          await closeOpenOrderTimeBooking(tx, order.id, updates.completedAt as Date, "ACTIVE");
-        } else if (next === "CANCELLED") {
-          await closeOpenOrderTimeBooking(tx, order.id, now, "all");
-        }
-    // Захиалгыг бүхэлд нь цуцлахад дотор нь бөглөгдсөн (COMPLETED) байсан
-    // мөр — тэр дундаа бөглөгдсөн оношилгооны хуудас — идэвхтэй хэвээр
-    // үлдэж, дуусаагүй мэт харагдахаас сэргийлж бүх мөрийг мөн цуцална.
-        if (next === "CANCELLED") {
-          await tx.serviceItem.updateMany({
-            where: { orderId: order.id, status: { not: "CANCELLED" } },
-            data: { status: "CANCELLED", cancelledAt: new Date(), cancelledById: user.id },
-          });
-        }
-        await logAudit(
-          {
-            tenantId: user.tenantId,
-            userId: user.id,
-            entity: "ServiceOrder",
-            entityId: order.id,
-            action: "STATUS_CHANGE",
-            summary: `${order.status} → ${next}`,
-            before: { status: order.status },
-            after: { status: next },
-          },
-          tx,
-        );
-      },
-    );
+    await applyOrderStatusChange(user, id, next, {
+      hours: s(formData, "durationHours"),
+      minutes: s(formData, "durationMinutes"),
+    });
   } catch (e) {
     return orderActionErrorResult(e);
   }
@@ -1065,6 +1093,179 @@ export async function changeOrderStatusAction(
   revalidatePath(`/dashboard/orders/${id}`);
   revalidatePath("/dashboard");
   return { ok: true, message: "Статус шинэчлэгдлээ." };
+}
+
+/**
+ * Жагсаалтын хуудсанд олноор сонгосон захиалгын статусыг нэг зэрэг
+ * өөрчилнэ. All-or-nothing БИШ — захиалга бүрийг тус тусад нь (өөрийн row
+ * lock-тойгоор) `applyOrderStatusChange`-аар боловсруулж, амжилтгүй болсон
+ * нь (жишээ нь буруу шилжилт, бөглөгдөөгүй оношилгоотой, эсвэл IN_PROGRESS
+ * рүү орохдоо хугацаа автоматаар тооцоологдоогүй) бусдыг зогсоохгүй —
+ * зөвхөн тухайн мөрийг алгасаж, эцэст нь алдааны жагсаалтаар мэдээлнэ.
+ */
+export async function bulkChangeOrderStatusAction(
+  _prev: BulkOrderActionState,
+  formData: FormData,
+): Promise<BulkOrderActionState> {
+  let user;
+  try {
+    user = await authorize("edit");
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
+  const next = s(formData, "status") as OrderStatus;
+  if (!next || !(ORDER_STATUSES as readonly string[]).includes(next)) {
+    return { ok: false, message: "Статус сонгоно уу." };
+  }
+  const ids = parseIdsJson(s(formData, "orderIdsJson"));
+  if (ids.length === 0) return { ok: false, message: "Дор хаяж нэг захиалга сонгоно уу." };
+
+  const orders = await prisma.serviceOrder.findMany({
+    where: { id: { in: ids }, tenantId: user.tenantId },
+    select: { id: true, number: true },
+  });
+  const numberById = new Map(orders.map((o) => [o.id, o.number]));
+
+  let succeeded = 0;
+  const errors: string[] = [];
+  const notifyIds: string[] = [];
+  for (const id of ids) {
+    try {
+      await applyOrderStatusChange(user, id, next);
+      succeeded++;
+      notifyIds.push(id);
+    } catch (e) {
+      const label = numberById.get(id) ? `#${numberById.get(id)}` : id;
+      errors.push(`${label}: ${e instanceof Error ? e.message : "алдаа"}`);
+    }
+  }
+
+  for (const id of notifyIds) {
+    if (next === "COMPLETED") await notifyOrderStatusChange(id, "order_completed");
+    else if (next === "CANCELLED") await notifyOrderStatusChange(id, "order_cancelled");
+    else if (next === "IN_PROGRESS") await notifyOrderStatusChange(id, "order_in_progress");
+  }
+
+  revalidatePath("/dashboard/orders");
+  revalidatePath("/dashboard");
+
+  if (succeeded === 0) {
+    return {
+      ok: false,
+      message: errors[0] ?? "Статус шинэчлэхэд алдаа гарлаа.",
+      succeeded,
+      failed: errors.length,
+      errors,
+    };
+  }
+  return {
+    ok: true,
+    message: `${succeeded}/${ids.length} захиалгын статус шинэчлэгдлээ.${
+      errors.length ? ` (${errors.length} амжилтгүй)` : ""
+    }`,
+    succeeded,
+    failed: errors.length,
+    errors,
+  };
+}
+
+/**
+ * Жагсаалтын хуудсанд олноор сонгосон захиалгад нэг зэрэг хариуцагч оноох.
+ * `orders.assign` эрхгүй хэрэглэгч зөвхөн өөрийгөө оноож болно (ганц
+ * захиалгын urсгалтай (createOrderAction/updateOrderAction) адил дүрэм).
+ * All-or-nothing биш — захиалга бүрийг тус тусад нь шалгаж бичнэ.
+ */
+export async function bulkAssignOrderAction(
+  _prev: BulkOrderActionState,
+  formData: FormData,
+): Promise<BulkOrderActionState> {
+  let user;
+  try {
+    user = await authorize("edit");
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
+  const ids = parseIdsJson(s(formData, "orderIdsJson"));
+  if (ids.length === 0) return { ok: false, message: "Дор хаяж нэг захиалга сонгоно уу." };
+
+  let assignedToId: string | null = s(formData, "assignedToId") || null;
+  if (!canAssignOrders(user)) {
+    if (assignedToId && assignedToId !== user.id) {
+      return { ok: false, message: "Зөвхөн өөрийгөө хариуцагчаар оноож болно." };
+    }
+    assignedToId = user.id;
+  }
+
+  let assignee: { id: string; firstName: string; lastName: string } | null = null;
+  if (assignedToId) {
+    assignee = await prisma.user.findFirst({
+      where: { id: assignedToId, tenantId: user.tenantId },
+      select: { id: true, firstName: true, lastName: true },
+    });
+    if (!assignee) return { ok: false, message: "Ажилтан олдсонгүй." };
+  }
+
+  const orders = await prisma.serviceOrder.findMany({
+    where: { id: { in: ids }, tenantId: user.tenantId },
+    select: { id: true, number: true, branchId: true, assignedToId: true },
+  });
+  const orderById = new Map(orders.map((o) => [o.id, o]));
+
+  let succeeded = 0;
+  const errors: string[] = [];
+  for (const id of ids) {
+    const order = orderById.get(id);
+    try {
+      if (!order) throw new Error("Засварын хуудас олдсонгүй.");
+      assertOrderBranchScope(user, order.branchId);
+      if (!canEditOrder(user, order)) {
+        throw new Error("Танд энэ засварын хуудсыг засах эрх байхгүй.");
+      }
+      if (order.assignedToId !== assignedToId) {
+        await prisma.serviceOrder.update({
+          where: { id: order.id },
+          data: { assignedToId },
+        });
+        await logAudit({
+          tenantId: user.tenantId,
+          userId: user.id,
+          entity: "ServiceOrder",
+          entityId: order.id,
+          action: "UPDATE",
+          summary: assignee
+            ? `Хариуцагч: ${assignee.lastName} ${assignee.firstName}`
+            : "Хариуцагчийг арилгав",
+          after: { assignedToId },
+        });
+      }
+      succeeded++;
+    } catch (e) {
+      const label = order ? `#${order.number}` : id;
+      errors.push(`${label}: ${e instanceof Error ? e.message : "алдаа"}`);
+    }
+  }
+
+  revalidatePath("/dashboard/orders");
+  revalidatePath("/dashboard");
+
+  if (succeeded === 0) {
+    return {
+      ok: false,
+      message: errors[0] ?? "Хариуцагч оноход алдаа гарлаа.",
+      succeeded,
+      failed: errors.length,
+      errors,
+    };
+  }
+  return {
+    ok: true,
+    message: `${succeeded}/${ids.length} захиалганд хариуцагч оноогдлоо.${
+      errors.length ? ` (${errors.length} амжилтгүй)` : ""
+    }`,
+    succeeded,
+    failed: errors.length,
+    errors,
+  };
 }
 
 // Захиалгын статус өөрчлөгдөхөд холбогдох цаг захиалгын account-д мэдэгдэнэ

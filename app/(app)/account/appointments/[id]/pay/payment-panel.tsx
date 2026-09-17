@@ -8,6 +8,7 @@ import {
 import { Btn } from "@/app/_components/landing-ops-ui";
 import { QPayBankGrid } from "@/app/_components/qpay-bank-grid";
 import { useToast } from "@/app/_components/toast";
+import { formatTugrik } from "@/lib/orders";
 import type { QPayBankUrl } from "@/lib/qpay";
 
 export function AppointmentPaymentPanel({
@@ -94,8 +95,8 @@ export function AppointmentPaymentPanel({
 
       {!paid && underpaidAmount != null ? (
         <div className="mt-6 bg-[var(--oc-warn)]/10 border border-[var(--oc-warn)]/25 text-[var(--oc-warn)] rounded-[10px] px-4 py-3 text-sm text-center">
-          Дутуу төлбөр ирсэн: {Number.parseFloat(underpaidAmount).toLocaleString("mn-MN")}₮
-          / {Number.parseFloat(amount).toLocaleString("mn-MN")}₮. Үлдэгдлийг
+          Дутуу төлбөр ирсэн: {formatTugrik(underpaidAmount)}
+          / {formatTugrik(amount)}. Үлдэгдлийг
           дахин уншуулж нөхнө үү.
         </div>
       ) : null}

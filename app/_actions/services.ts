@@ -7,6 +7,7 @@ import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canEdit } from "@/lib/auth/roles";
 import { assertActiveSubscription } from "@/lib/subscription-server";
+import { type BulkActionState, parseIdsJson } from "@/lib/bulk-action";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { enforceCountLimit } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
@@ -430,4 +431,88 @@ export async function adjustServiceStockAction(
   revalidatePath("/dashboard/services/goods");
   revalidatePath(`/dashboard/services/${id}`);
   return { ok: true, message: "Үлдэгдэл шинэчлэгдлээ." };
+}
+
+// Жагсаалтаас олноор сонгож ангилал солих (харах:
+// bulkChangeOrderStatusAction/bulkAssignOrderAction app/_actions/orders.ts,
+// bulkChangeAppointmentCategoryAction app/_actions/appointments.ts — адил
+// all-or-nothing БИШ загвар). Ангилал бүх Service-д заавал тул хоослож
+// болохгүй.
+export async function bulkChangeServiceCategoryAction(
+  _prev: BulkActionState,
+  formData: FormData,
+): Promise<BulkActionState> {
+  let user;
+  try {
+    user = await authorize("edit");
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
+
+  const categoryId = s(formData, "categoryId");
+  if (!categoryId) return { ok: false, message: "Ангилал сонгоно уу." };
+
+  const category = await prisma.category.findFirst({
+    where: { id: categoryId, tenantId: user.tenantId },
+    select: { id: true, name: true },
+  });
+  if (!category) return { ok: false, message: "Сонгосон ангилал олдсонгүй." };
+
+  const ids = parseIdsJson(s(formData, "serviceIdsJson"));
+  if (ids.length === 0) return { ok: false, message: "Дор хаяж нэг мөр сонгоно уу." };
+
+  const services = await prisma.service.findMany({
+    where: { id: { in: ids }, tenantId: user.tenantId },
+    select: { id: true, name: true, code: true, categoryId: true },
+  });
+  const byId = new Map(services.map((svc) => [svc.id, svc]));
+
+  let succeeded = 0;
+  const errors: string[] = [];
+  for (const id of ids) {
+    const svc = byId.get(id);
+    const label = svc ? (svc.code ? `${svc.code} · ${svc.name}` : svc.name) : id;
+    try {
+      if (!svc) throw new Error("Олдсонгүй.");
+      if (svc.categoryId !== categoryId) {
+        await prisma.service.update({
+          where: { id: svc.id },
+          data: { categoryId },
+        });
+        await logAudit({
+          tenantId: user.tenantId,
+          userId: user.id,
+          entity: "Service",
+          entityId: svc.id,
+          action: "UPDATE",
+          summary: `Ангилал: ${category.name}`,
+          after: { categoryId },
+        });
+      }
+      succeeded++;
+    } catch (e) {
+      errors.push(`${label}: ${e instanceof Error ? e.message : "алдаа"}`);
+    }
+  }
+
+  revalidatePath("/dashboard/services", "layout");
+
+  if (succeeded === 0) {
+    return {
+      ok: false,
+      message: errors[0] ?? "Ангилал солиход алдаа гарлаа.",
+      succeeded,
+      failed: errors.length,
+      errors,
+    };
+  }
+  return {
+    ok: true,
+    message: `${succeeded}/${ids.length} мөрийн ангилал шинэчлэгдлээ.${
+      errors.length ? ` (${errors.length} амжилтгүй)` : ""
+    }`,
+    succeeded,
+    failed: errors.length,
+    errors: errors.length ? errors : undefined,
+  };
 }

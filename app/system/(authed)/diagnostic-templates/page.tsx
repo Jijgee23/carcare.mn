@@ -6,6 +6,7 @@ import {
 import { formatTugrik } from "@/lib/orders";
 import { AddLinkButton, Chip } from "@/app/_components/landing-ops-ui";
 import { ClickableRow } from "@/app/_components/clickable-row";
+import { EmptyState } from "@/app/_components/empty-state";
 import { PageHeader } from "@/app/_components/page-header";
 import { requireSuperAdmin } from "@/lib/auth/system";
 import { prisma } from "@/lib/prisma";
@@ -38,9 +39,7 @@ export default async function SystemDiagnosticTemplatesPage() {
       />
 
       {templates.length === 0 ? (
-        <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-10 text-center text-sm text-[var(--oc-muted3)]">
-          Одоогоор загвар алга байна.
-        </div>
+        <EmptyState>Одоогоор загвар алга байна.</EmptyState>
       ) : (
         <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden flex-1 min-h-0 flex flex-col">
           <div className="overflow-auto flex-1 min-h-0">

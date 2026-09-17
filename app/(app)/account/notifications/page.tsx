@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BtnLink, Chip } from "@/app/_components/landing-ops-ui";
+import { EmptyState } from "@/app/_components/empty-state";
 import { requireAccount } from "@/lib/auth/account";
 import {
   NOTIFICATION_TYPE_LABEL,
@@ -45,9 +46,7 @@ export default async function AccountNotificationsPage() {
       </div>
 
       {rows.length === 0 ? (
-        <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-10 text-center text-sm text-[var(--oc-muted3)]">
-          Одоогоор мэдэгдэл алга байна.
-        </div>
+        <EmptyState>Одоогоор мэдэгдэл алга байна.</EmptyState>
       ) : (
         <div className="flex flex-col gap-3">
           {rows.map((n) => (

@@ -7,6 +7,7 @@ import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canEdit } from "@/lib/auth/roles";
 import { assertActiveSubscription } from "@/lib/subscription-server";
+import { type BulkActionState, parseIdsJson } from "@/lib/bulk-action";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { enforceCountLimit } from "@/lib/plan-limits-server";
@@ -405,6 +406,121 @@ export async function updateEmployeeAction(
   revalidatePath("/dashboard/employees");
   revalidatePath(`/dashboard/employees/${id}`);
   redirect("/dashboard/employees");
+}
+
+// --- BULK UPDATE (role / main branch) --------------------------------------
+
+// Жагсаалтаас олноор сонгож үүрэг болон/эсвэл үндсэн салбарыг зэрэг солих
+// (харах: bulkChangeServiceCategoryAction app/_actions/services.ts — адил
+// all-or-nothing БИШ загвар: мөр бүр тусдаа боловсруулагдана). Аль нэг
+// талбарыг л сонгосон ч болно (заавал хоёуланг зэрэг сонгох албагүй).
+export async function bulkUpdateEmployeeRoleBranchAction(
+  _prev: BulkActionState,
+  formData: FormData,
+): Promise<BulkActionState> {
+  let user;
+  try {
+    user = await authorize("edit");
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
+
+  const roleId = s(formData, "roleId");
+  const branchId = s(formData, "branchId");
+  if (!roleId && !branchId) {
+    return { ok: false, message: "Үүрэг эсвэл салбарын аль нэгийг сонгоно уу." };
+  }
+
+  let roleName = "";
+  if (roleId) {
+    const r = await ensureRoleBelongsToTenant(user.tenantId, roleId);
+    if (!r.ok) return { ok: false, message: "Сонгосон үүрэг олдсонгүй эсвэл идэвхгүй байна." };
+    roleName = r.name ?? "";
+  }
+
+  let branchName = "";
+  if (branchId) {
+    const branch = await prisma.branch.findFirst({
+      where: { id: branchId, tenantId: user.tenantId },
+      select: { name: true },
+    });
+    if (!branch) return { ok: false, message: "Сонгосон салбар олдсонгүй." };
+    branchName = branch.name;
+  }
+
+  const ids = parseIdsJson(s(formData, "employeeIdsJson"));
+  if (ids.length === 0) return { ok: false, message: "Дор хаяж нэг ажилтан сонгоно уу." };
+
+  const employees = await prisma.user.findMany({
+    where: { id: { in: ids }, tenantId: user.tenantId },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      isOwner: true,
+      roleId: true,
+      branchId: true,
+    },
+  });
+  const byId = new Map(employees.map((e) => [e.id, e]));
+
+  const changeSummary =
+    [roleName && `үүрэг: ${roleName}`, branchName && `салбар: ${branchName}`]
+      .filter(Boolean)
+      .join(", ");
+
+  let succeeded = 0;
+  const errors: string[] = [];
+  for (const id of ids) {
+    const emp = byId.get(id);
+    const label = emp ? `${emp.lastName} ${emp.firstName}` : id;
+    try {
+      if (!emp) throw new Error("Олдсонгүй.");
+      // OWNER (тенант админ)-ын үүрэг/салбарыг олноор ч сольж болохгүй —
+      // updateEmployeeAction-тэй ижил дүрэм.
+      if (emp.isOwner) throw new Error("Тенант админыг өөрчлөх боломжгүй.");
+
+      const data: { roleId?: string; branchId?: string } = {};
+      if (roleId && emp.roleId !== roleId) data.roleId = roleId;
+      if (branchId && emp.branchId !== branchId) data.branchId = branchId;
+
+      if (Object.keys(data).length > 0) {
+        await prisma.user.update({ where: { id: emp.id }, data });
+        await logAudit({
+          tenantId: user.tenantId,
+          userId: user.id,
+          entity: "User",
+          entityId: emp.id,
+          action: "UPDATE",
+          summary: `${label} · олноор ${changeSummary}`,
+          before: { roleId: emp.roleId, branchId: emp.branchId },
+          after: { roleId: data.roleId ?? emp.roleId, branchId: data.branchId ?? emp.branchId },
+        });
+      }
+      succeeded++;
+    } catch (e) {
+      errors.push(`${label}: ${e instanceof Error ? e.message : "алдаа"}`);
+    }
+  }
+
+  revalidatePath("/dashboard/employees");
+
+  if (succeeded === 0) {
+    return {
+      ok: false,
+      message: errors[0] ?? "Шинэчлэх явцад алдаа гарлаа.",
+      succeeded,
+      failed: errors.length,
+      errors,
+    };
+  }
+  return {
+    ok: true,
+    message: `${succeeded}/${ids.length} ажилтан шинэчлэгдлээ.${errors.length ? ` (${errors.length} амжилтгүй)` : ""}`,
+    succeeded,
+    failed: errors.length,
+    errors,
+  };
 }
 
 // --- ACTIVATE / DEACTIVATE -----------------------------------------------

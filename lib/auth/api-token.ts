@@ -1,8 +1,7 @@
-import { SignJWT, jwtVerify } from "jose";
 import { prisma } from "@/lib/prisma";
 import { setBypassContext, setTenantContext } from "@/lib/tenant-context";
+import { createJwtSession } from "@/lib/auth/jwt-session";
 
-const ALG = "HS256";
 // Access token нь богино настай — мобайл клиент refresh-ээр шинэчилнэ.
 export const ACCESS_TOKEN_MAX_AGE_SECONDS = 60 * 60 * 24; // 24 цаг
 
@@ -12,42 +11,22 @@ export type ApiTokenPayload = {
   isOwner: boolean;
 };
 
-function getSecret(): Uint8Array {
+const client = createJwtSession<ApiTokenPayload>({
   // Анхдагч нь session-тэй ижил secret-г ашиглана
-  const secret = process.env.API_TOKEN_SECRET ?? process.env.SESSION_SECRET;
-  if (!secret || secret.length < 32) {
-    throw new Error(
-      "API_TOKEN_SECRET эсвэл SESSION_SECRET тогтоосон байх ёстой (32+ тэмдэгт).",
-    );
-  }
-  return new TextEncoder().encode(secret);
-}
-
-export async function signApiToken(payload: ApiTokenPayload): Promise<string> {
-  return await new SignJWT({ ...payload })
-    .setProtectedHeader({ alg: ALG })
-    .setIssuedAt()
-    .setExpirationTime(`${ACCESS_TOKEN_MAX_AGE_SECONDS}s`)
-    .sign(getSecret());
-}
-
-export async function verifyApiToken(
-  token: string,
-): Promise<ApiTokenPayload | null> {
-  try {
-    const { payload } = await jwtVerify<ApiTokenPayload>(token, getSecret(), {
-      algorithms: [ALG],
-    });
+  secretEnvVars: ["API_TOKEN_SECRET", "SESSION_SECRET"],
+  maxAgeSeconds: ACCESS_TOKEN_MAX_AGE_SECONDS,
+  parse(payload) {
     if (!payload.userId || !payload.tenantId) return null;
     return {
-      userId: payload.userId,
-      tenantId: payload.tenantId,
+      userId: payload.userId as string,
+      tenantId: payload.tenantId as string,
       isOwner: Boolean(payload.isOwner),
     };
-  } catch {
-    return null;
-  }
-}
+  },
+});
+
+export const signApiToken = client.sign;
+export const verifyApiToken = client.verify;
 
 export type ApiUser = NonNullable<
   Awaited<ReturnType<typeof getApiUserFromRequest>>
