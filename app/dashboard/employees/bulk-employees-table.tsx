@@ -11,6 +11,12 @@ import type { BulkActionState } from "@/lib/bulk-action";
 import { Btn, Chip } from "@/app/_components/landing-ops-ui";
 import { ClickableRow } from "@/app/_components/clickable-row";
 import { Modal } from "@/app/_components/modal";
+import {
+  SelectAllCell,
+  SelectRowCell,
+  SelectionActions,
+  useRowSelection,
+} from "@/app/_components/row-selection";
 import { RowActionsMenu, RowMenuFormItem } from "@/app/_components/row-actions";
 import { Select } from "@/app/_components/select";
 import { useToast } from "@/app/_components/toast";
@@ -54,54 +60,17 @@ export function BulkEmployeesTable({
   canModify: boolean;
   canRemove: boolean;
 }) {
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const selection = useRowSelection(rows);
   const [pickerOpen, setPickerOpen] = useState(false);
-
-  const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
-
-  function toggleAll() {
-    setSelected((prev) => {
-      if (rows.length > 0 && rows.every((r) => prev.has(r.id))) return new Set();
-      return new Set(rows.map((r) => r.id));
-    });
-  }
-
-  function toggleOne(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function clearSelection() {
-    setSelected(new Set());
-  }
 
   return (
     <>
-      {canBulkEdit && selected.size > 0 ? (
-        <div
-          data-stop-row-click
-          className="px-4 py-2.5 border-b border-[var(--oc-line)] flex flex-wrap items-center gap-3 text-xs text-[var(--oc-muted3)]"
-        >
-          <span>{selected.size} ажилтан сонгогдсон</span>
-          <Btn
-            type="button"
-            size="sm"
-            onClick={() => setPickerOpen(true)}
-          >
-            Үүрэг/Салбар солих
-          </Btn>
-          <button
-            type="button"
-            onClick={clearSelection}
-            className="text-[var(--oc-muted3)] hover:text-[var(--oc-ink2)] underline underline-offset-2"
-          >
-            Сонголт цэвэрлэх
-          </button>
-        </div>
+      {canBulkEdit ? (
+        <SelectionActions
+          selection={selection}
+          noun="ажилтан"
+          actions={[{ label: "Үүрэг/Салбар солих", onSelect: () => setPickerOpen(true) }]}
+        />
       ) : null}
 
       <div className="overflow-auto flex-1 min-h-0">
@@ -109,14 +78,7 @@ export function BulkEmployeesTable({
           <thead>
             <tr className="border-b border-[var(--oc-line)]">
               {canBulkEdit ? (
-                <th className="w-10 px-3 py-3">
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    onChange={toggleAll}
-                    aria-label="Бүгдийг сонгох"
-                  />
-                </th>
+                <SelectAllCell selection={selection} />
               ) : null}
               {[
                 "Ажилтан",
@@ -137,21 +99,18 @@ export function BulkEmployeesTable({
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-[var(--oc-line)]">
+          <tbody className="divide-y divide-[var(--oc-line)]" {...selection.dragArea}>
             {rows.map((u) => {
               const initials = ((u.lastName[0] ?? "") + (u.firstName[0] ?? "")).toUpperCase();
               const href = `/dashboard/employees/${u.id}`;
               return (
                 <ClickableRow key={u.id} href={href}>
                   {canBulkEdit ? (
-                    <td className="w-10 px-3 py-4" data-stop-row-click>
-                      <input
-                        type="checkbox"
-                        checked={selected.has(u.id)}
-                        onChange={() => toggleOne(u.id)}
-                        aria-label={`${u.lastName} ${u.firstName} сонгох`}
-                      />
-                    </td>
+                    <SelectRowCell
+                      selection={selection}
+                      id={u.id}
+                      label={`${u.lastName} ${u.firstName} сонгох`}
+                    />
                   ) : null}
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-3">
@@ -215,13 +174,13 @@ export function BulkEmployeesTable({
 
       {pickerOpen ? (
         <BulkRoleBranchModal
-          employeeIds={[...selected]}
+          employeeIds={[...selection.selected]}
           roles={roles}
           branches={branches}
           onClose={() => setPickerOpen(false)}
           onDone={() => {
             setPickerOpen(false);
-            clearSelection();
+            selection.clear();
           }}
         />
       ) : null}

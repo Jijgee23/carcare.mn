@@ -320,11 +320,16 @@ html.light .landing-ops {
   border: 1px solid color-mix(in srgb, var(--branch-color) 28%, transparent);
   box-shadow: inset 3px 0 0 var(--branch-color);
 }
-.landing-ops .shift-box-selected {
-  border-color: var(--branch-color);
+/* Сонгогдсон ээлж: салбарын өнгөнөөс ялгаж бүхэлдээ accent өнгөнд шилжинэ —
+   `--branch-color`-ыг accent болгосноор bg/хүрээ/зүүн зураас/`.branch-ink` текст
+   бүгд дагана (`.branch-cN`-ээс хожим бичигдсэн тул давамгайлна). */
+.landing-ops .shift-box.shift-box-selected {
+  --branch-color: var(--oc-accent);
+  background: color-mix(in srgb, var(--oc-accent) 18%, transparent);
+  border-color: var(--oc-accent);
   box-shadow:
-    inset 3px 0 0 var(--branch-color),
-    0 0 0 3px color-mix(in srgb, var(--oc-accent) 14%, transparent);
+    inset 3px 0 0 var(--oc-accent),
+    0 0 0 2px color-mix(in srgb, var(--oc-accent) 30%, transparent);
 }
 .landing-ops .branch-avatar {
   background: color-mix(in srgb, var(--branch-color) 14%, transparent);
@@ -332,6 +337,14 @@ html.light .landing-ops {
 }
 .landing-ops .branch-ink { color: var(--branch-color); }
 .landing-ops .branch-dot { background: var(--branch-color); }
+/* Bulk сонголт: checkbox нь checked мөр — үндсэн өнгөний 10% тунгалаг дэвсгэр
+   (row-selection.tsx `SelectRowCell`). hover дээр арай тод. */
+.landing-ops tbody tr:has(> td[data-select-key] > input:checked) {
+  background-color: color-mix(in srgb, var(--oc-accent) 10%, transparent);
+}
+.landing-ops tbody tr:has(> td[data-select-key] > input:checked):hover {
+  background-color: color-mix(in srgb, var(--oc-accent) 14%, transparent);
+}
 .landing-ops {
   background-color: var(--oc-carbon);
   color: var(--oc-ink);

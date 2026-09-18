@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState, type ReactNode } from "react";
+import { useActionState, useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   bulkUpsertEmployeeShiftAction,
   resetEmployeeShiftAction,
@@ -9,7 +9,9 @@ import {
 } from "@/app/_actions/employee-schedule";
 import { Btn } from "@/app/_components/landing-ops-ui";
 import { Modal } from "@/app/_components/modal";
+import { SelectionContextMenu, type BulkAction } from "@/app/_components/row-selection";
 import { Select } from "@/app/_components/select";
+import { SELECT_KEY_ATTR, useDragSelect } from "@/app/_components/use-drag-select";
 import {
   FALLBACK_BRANCH_CLASS,
   buildBranchColorMap,
@@ -123,11 +125,17 @@ export function ScheduleGrid({
     cell: ScheduleCell;
   } | null>(null);
 
-  // Олноор засах (bulk) горим — олон (ажилтан × өдөр) нүд сонгоод НЭГ зэрэг
-  // ижил хувиар тохируулна. `selected`-ийн key бүр `cellKey(userId, date)`.
-  const [bulkMode, setBulkMode] = useState(false);
+  // Толгойн товчнуудын мөр `min-h`-тэй: товч гарч ирэх/алга болоход grid дээш-доош
+  // шилжихгүй (чирж буй заагчийн доорх нүд солигдохоос сэргийлнэ).
+  // Нүдний сонголт ҮРГЭЛЖ идэвхтэй (тусгай горим асаах шаардлагагүй): нүд дарах
+  // буюу чирж (ажилтан × өдөр) олон нүд сонгоод "Тохируулах"-аар нэг зэрэг ижил
+  // хувиар тохируулна; яг 1 нүд сонгосон бол бүтэн (override арилгах г.м) нэгжийн
+  // засварлагч нээгдэнэ. Нүдийг давхар дарвал шууд нэгжийн засварлагч.
+  // `selected`-ийн key бүр `cellKey(userId, date)`.
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkEditorOpen, setBulkEditorOpen] = useState(false);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
 
   function toggleCell(userId: string, date: string) {
     setSelected((prev) => {
@@ -165,12 +173,71 @@ export function ScheduleGrid({
     });
   }
 
+  // Хулганаар дараад чирвэл (ажилтан × өдөр) тэгш өнцөгт хүрээний нүднүүдийг
+  // нэг дор будна — anchor нүднээс заагчийн доорх нүд хүртэл.
+  const rowIndex = new Map(rows.map((r, i) => [r.id, i]));
+  const dateIndex = new Map(dates.map((d, i) => [d, i]));
+  const drag = useDragSelect({
+    selected,
+    setSelected,
+    enabled: canEdit,
+    rangeKeys(anchor, current) {
+      const [aUser, aDate] = anchor.split("|");
+      const [cUser, cDate] = current.split("|");
+      const r1 = rowIndex.get(aUser);
+      const r2 = rowIndex.get(cUser);
+      const c1 = dateIndex.get(aDate);
+      const c2 = dateIndex.get(cDate);
+      if (r1 === undefined || r2 === undefined || c1 === undefined || c2 === undefined) return null;
+      const keys: string[] = [];
+      for (let r = Math.min(r1, r2); r <= Math.max(r1, r2); r++) {
+        const row = rows[r];
+        for (let c = Math.min(c1, c2); c <= Math.max(c1, c2); c++) {
+          const d = dates[c];
+          if (row.cells[d]) keys.push(cellKey(row.id, d));
+        }
+      }
+      return keys;
+    },
+  });
+
   const rowById = new Map(rows.map((r) => [r.id, r]));
   const bulkTargets: BulkTarget[] = [...selected].map((key) => {
     const [userId, date] = key.split("|");
     const weekday = rowById.get(userId)?.cells[date]?.weekday ?? weekdayOf(date);
     return { userId, date, weekday };
   });
+
+  function clearSelection() {
+    setSelected(new Set());
+  }
+
+  function editCell(row: EmployeeScheduleRow, date: string, cell: ScheduleCell) {
+    setEditing({
+      userId: row.id,
+      employeeName: row.name,
+      homeBranchId: row.homeBranchId,
+      homeBranchName: row.homeBranchName,
+      date,
+      cell,
+    });
+  }
+
+  /** Сонгосон нүднүүдийг тохируулах: 1 нүд → нэгжийн засварлагч, олон → багц. */
+  function openEditor() {
+    if (bulkTargets.length === 1) {
+      const { userId, date } = bulkTargets[0];
+      const row = rowById.get(userId);
+      const cell = row?.cells[date];
+      if (row && cell) {
+        editCell(row, date, cell);
+        return;
+      }
+    }
+    setBulkEditorOpen(true);
+  }
+
+  const selectionActions: BulkAction[] = [{ label: "Тохируулах", onSelect: openEditor }];
 
   // ── Харагдацын тооцоо ────────────────────────────────────────────────────
   const branchColor = buildBranchColorMap(branches);
@@ -226,47 +293,30 @@ export function ScheduleGrid({
         <div className="flex flex-wrap items-end justify-between gap-6">
           <div className="min-w-0">{header}</div>
           {canEdit ? (
-            <div className="flex flex-wrap items-center gap-2.5">
-              {bulkMode ? (
+            <div className="flex min-h-[38px] flex-wrap items-center gap-2.5">
+              <span className="text-[13px] text-[var(--oc-muted2)]">
+                {selected.size > 0
+                  ? `${selected.size} нүд сонгогдсон`
+                  : "Нүд дарж/чирж сонгоно уу · давхар дарвал шууд засна"}
+              </span>
+              {selected.size > 0 ? (
                 <>
-                  <span className="text-[13px] text-[var(--oc-muted2)]">
-                    {selected.size > 0 ? `${selected.size} нүд сонгогдсон` : "Нүднүүдээ сонгоно уу"}
-                  </span>
-                  {selected.size > 0 ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setBulkEditorOpen(true)}
-                        className="rounded-[10px] bg-[var(--oc-accent)] px-4 py-[9px] text-[13px] font-bold text-[var(--oc-on-accent)] transition-colors hover:bg-[var(--oc-accent-hi)]"
-                      >
-                        Тохируулах
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSelected(new Set())}
-                        className="text-[13px] text-[var(--oc-muted2)] transition-colors hover:text-[var(--oc-ink)]"
-                      >
-                        Сонголт цэвэрлэх
-                      </button>
-                    </>
-                  ) : null}
+                  <button
+                    type="button"
+                    onClick={openEditor}
+                    className="rounded-[10px] bg-[var(--oc-accent)] px-4 py-[9px] text-[13px] font-bold text-[var(--oc-on-accent)] transition-colors hover:bg-[var(--oc-accent-hi)]"
+                  >
+                    Тохируулах
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearSelection}
+                    className="text-[13px] text-[var(--oc-muted2)] transition-colors hover:text-[var(--oc-ink)]"
+                  >
+                    Сонголт цэвэрлэх
+                  </button>
                 </>
               ) : null}
-              <button
-                type="button"
-                onClick={() => {
-                  setBulkMode((v) => !v);
-                  setSelected(new Set());
-                }}
-                aria-pressed={bulkMode}
-                className={`flex items-center gap-2 rounded-[10px] border px-3.5 py-[9px] text-[13px] font-semibold transition-colors ${
-                  bulkMode
-                    ? "border-[var(--oc-accent)] bg-[var(--oc-accent)]/10 text-[var(--oc-accent)]"
-                    : "border-[var(--oc-line)] text-[var(--oc-muted)] hover:border-[var(--oc-muted3)] hover:text-[var(--oc-ink)]"
-                }`}
-              >
-                {bulkMode ? "Олноор засах ✕" : "Олноор засах"}
-              </button>
             </div>
           ) : null}
         </div>
@@ -278,7 +328,14 @@ export function ScheduleGrid({
         {rows.length === 0 ? (
           <p className="py-16 text-center text-sm text-[var(--oc-muted3)]">Ажилтан олдсонгүй.</p>
         ) : (
-          <div style={{ minWidth: rowMinWidth }}>
+          <div
+            style={{ minWidth: rowMinWidth }}
+            onContextMenu={(e) => {
+              if (!canEdit || selected.size === 0) return;
+              e.preventDefault();
+              setMenu({ x: e.clientX, y: e.clientY });
+            }}
+          >
             {/* Толгой мөр */}
             <div
               className="grid border-b border-[var(--oc-line)] bg-[var(--oc-panel2)]"
@@ -304,7 +361,7 @@ export function ScheduleGrid({
                       compact ? "items-center px-1 py-2" : "px-3.5 py-[11px]"
                     }`}
                   >
-                    {bulkMode ? (
+                    {canEdit ? (
                       <input
                         type="checkbox"
                         checked={rows.length > 0 && rows.every((r) => selected.has(cellKey(r.id, d)))}
@@ -355,7 +412,7 @@ export function ScheduleGrid({
                     className="sticky left-0 z-10 flex min-w-0 items-center gap-3 bg-[var(--oc-panel)] px-[18px] py-3 transition-colors group-hover:bg-[var(--oc-panel2)]"
                     title={row.homeBranchName ? `Үндсэн салбар: ${row.homeBranchName}` : undefined}
                   >
-                    {bulkMode ? (
+                    {canEdit ? (
                       <input
                         type="checkbox"
                         checked={rowAllSelected}
@@ -390,7 +447,7 @@ export function ScheduleGrid({
                     const cell = row.cells[d];
                     const hasBranches = cellHasBranches(cell);
                     const isExplicitOff = cellIsExplicitOff(cell);
-                    const isSelected = bulkMode && selected.has(cellKey(row.id, d));
+                    const isSelected = selected.has(cellKey(row.id, d));
                     const emptyLabel = compact
                       ? isExplicitOff
                         ? "Ам"
@@ -408,25 +465,20 @@ export function ScheduleGrid({
                         type="button"
                         disabled={!canEdit}
                         title={cellTitle(cell)}
-                        aria-pressed={bulkMode ? isSelected : undefined}
+                        aria-pressed={isSelected}
+                        {...{ [SELECT_KEY_ATTR]: cell ? cellKey(row.id, d) : undefined }}
+                        onPointerDown={drag.onPointerDown}
                         onClick={() => {
-                          if (!canEdit || !cell) return;
-                          if (bulkMode) {
-                            toggleCell(row.id, d);
-                            return;
-                          }
-                          setEditing({
-                            userId: row.id,
-                            employeeName: row.name,
-                            homeBranchId: row.homeBranchId,
-                            homeBranchName: row.homeBranchName,
-                            date: d,
-                            cell,
-                          });
+                          if (canEdit && cell) toggleCell(row.id, d);
                         }}
-                        className={`group/cell flex flex-col justify-center gap-1.5 border-l border-[var(--oc-line2)] text-left ${
+                        onDoubleClick={() => {
+                          if (canEdit && cell) editCell(row, d, cell);
+                        }}
+                        className={`group/cell flex flex-col justify-center gap-1.5 border-l border-[var(--oc-line2)] text-left transition-colors ${
                           compact ? "p-1" : "p-2"
-                        } ${canEdit ? "cursor-pointer" : "cursor-default"}`}
+                        } ${canEdit ? "cursor-pointer" : "cursor-default"} ${
+                          isSelected ? "bg-[var(--oc-accent)]/10" : ""
+                        }`}
                       >
                         {hasBranches ? (
                           cell!.segments.map((seg, i) => {
@@ -512,8 +564,18 @@ export function ScheduleGrid({
           onClose={() => setBulkEditorOpen(false)}
           onDone={() => {
             setBulkEditorOpen(false);
-            setSelected(new Set());
+            clearSelection();
           }}
+        />
+      ) : null}
+
+      {menu && selected.size > 0 ? (
+        <SelectionContextMenu
+          position={menu}
+          summary={`${selected.size} нүд сонгогдсон`}
+          actions={selectionActions}
+          onClear={clearSelection}
+          onClose={closeMenu}
         />
       ) : null}
     </div>

@@ -13,6 +13,13 @@ import { FormError } from "@/app/_components/auth-shell";
 import { ConfirmForm } from "@/app/_components/confirm-form";
 import { Btn, Chip, PlusIcon, TagChip } from "@/app/_components/landing-ops-ui";
 import { Modal } from "@/app/_components/modal";
+import {
+  SelectAllCell,
+  SelectRowCell,
+  SelectionActions,
+  useRowSelection,
+  type RowSelection,
+} from "@/app/_components/row-selection";
 import { Select } from "@/app/_components/select";
 import { useToast } from "@/app/_components/toast";
 import { formatDuration } from "@/lib/category-duration";
@@ -44,37 +51,12 @@ export function CategoriesSection({
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const selection = useRowSelection(categories);
   const [keyPickerOpen, setKeyPickerOpen] = useState(false);
   const branchName = (id: string) =>
     branches.find((b) => b.id === id)?.name ?? "—";
   const serviceKeyName = (id: string) =>
     serviceKeys.find((k) => k.id === id)?.name ?? null;
-
-  const allSelected =
-    categories.length > 0 && categories.every((c) => selected.has(c.id));
-
-  function toggleAll() {
-    setSelected((prev) => {
-      if (categories.length > 0 && categories.every((c) => prev.has(c.id))) {
-        return new Set();
-      }
-      return new Set(categories.map((c) => c.id));
-    });
-  }
-
-  function toggleOne(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function clearSelection() {
-    setSelected(new Set());
-  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -99,41 +81,23 @@ export function CategoriesSection({
         </p>
       ) : (
         <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden overflow-x-auto">
-          {selected.size > 0 ? (
-            <div
-              data-stop-row-click
-              className="px-4 py-2.5 border-b border-[var(--oc-line)] flex flex-wrap items-center gap-3 text-xs text-[var(--oc-muted3)]"
-            >
-              <span>{selected.size} ангилал сонгогдсон</span>
-              <Btn
-                type="button"
-                size="sm"
-                disabled={serviceKeys.length === 0}
-                title={serviceKeys.length === 0 ? "Идэвхтэй системийн ангилал алга." : undefined}
-                onClick={() => setKeyPickerOpen(true)}
-              >
-                Системийн түлхүүр солих
-              </Btn>
-              <button
-                type="button"
-                onClick={clearSelection}
-                className="text-[var(--oc-muted3)] hover:text-[var(--oc-ink2)] underline underline-offset-2"
-              >
-                Сонголт цэвэрлэх
-              </button>
-            </div>
-          ) : null}
+          <SelectionActions
+            selection={selection}
+            noun="ангилал"
+            actions={[
+              {
+                label: "Системийн түлхүүр солих",
+                disabled: serviceKeys.length === 0,
+                title:
+                  serviceKeys.length === 0 ? "Идэвхтэй системийн ангилал алга." : undefined,
+                onSelect: () => setKeyPickerOpen(true),
+              },
+            ]}
+          />
           <table className="w-full text-sm min-w-[640px]">
             <thead>
               <tr className="border-b border-[var(--oc-line)]">
-                <th className="w-10 px-3 py-2.5">
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    onChange={toggleAll}
-                    aria-label="Бүгдийг сонгох"
-                  />
-                </th>
+                <SelectAllCell selection={selection} className="w-10 px-3 py-2.5" />
                 <th className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-4 py-2.5">
                   Нэр
                 </th>
@@ -158,7 +122,7 @@ export function CategoriesSection({
                 <th className="px-4 py-2.5 w-40" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-[var(--oc-line)]">
+            <tbody className="divide-y divide-[var(--oc-line)]" {...selection.dragArea}>
               {isCreating ? (
                 <CategoryFormRow
                   category={null}
@@ -182,8 +146,7 @@ export function CategoriesSection({
                     category={c}
                     branchName={branchName}
                     serviceKeyName={serviceKeyName}
-                    checked={selected.has(c.id)}
-                    onToggle={() => toggleOne(c.id)}
+                    selection={selection}
                     onEdit={() => {
                       setIsCreating(false);
                       setEditingId(c.id);
@@ -198,12 +161,12 @@ export function CategoriesSection({
 
       {keyPickerOpen ? (
         <BulkServiceKeyModal
-          categoryIds={[...selected]}
+          categoryIds={[...selection.selected]}
           serviceKeys={serviceKeys}
           onClose={() => setKeyPickerOpen(false)}
           onDone={() => {
             setKeyPickerOpen(false);
-            clearSelection();
+            selection.clear();
           }}
         />
       ) : null}
@@ -372,28 +335,24 @@ function ViewRow({
   category,
   branchName,
   serviceKeyName,
-  checked,
-  onToggle,
+  selection,
   onEdit,
 }: {
   category: CategoryRow;
   branchName: (id: string) => string;
   serviceKeyName: (id: string) => string | null;
-  checked: boolean;
-  onToggle: () => void;
+  selection: RowSelection;
   onEdit: () => void;
 }) {
   const keyName = serviceKeyName(category.systemServiceKeyId);
   return (
     <tr className="hover:bg-white/[0.02] transition-colors">
-      <td className="w-10 px-3 py-3" data-stop-row-click>
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={onToggle}
-          aria-label={`${category.name} сонгох`}
-        />
-      </td>
+      <SelectRowCell
+        selection={selection}
+        id={category.id}
+        label={`${category.name} сонгох`}
+        className="w-10 px-3 py-3"
+      />
       <td className="px-4 py-3 text-[var(--oc-ink)]">
         {category.name}
         {category.description ? (

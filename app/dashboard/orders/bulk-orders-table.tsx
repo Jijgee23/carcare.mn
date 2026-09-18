@@ -9,6 +9,12 @@ import {
   type BulkOrderActionState,
 } from "@/app/_actions/orders";
 import { Btn } from "@/app/_components/landing-ops-ui";
+import {
+  SelectAllCell,
+  SelectRowCell,
+  SelectionActions,
+  useRowSelection,
+} from "@/app/_components/row-selection";
 import { Modal } from "@/app/_components/modal";
 import { Select } from "@/app/_components/select";
 import { useToast } from "@/app/_components/toast";
@@ -65,59 +71,25 @@ export function BulkOrdersTable({
   canAssign: boolean;
   currentUserId: string;
 }) {
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const selection = useRowSelection(rows);
   const [statusPickerOpen, setStatusPickerOpen] = useState(false);
   const [assignPickerOpen, setAssignPickerOpen] = useState(false);
 
-  const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
-
-  function toggleAll() {
-    setSelected((prev) => {
-      if (rows.length > 0 && rows.every((r) => prev.has(r.id))) return new Set();
-      return new Set(rows.map((r) => r.id));
-    });
-  }
-
-  function toggleOne(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function clearSelection() {
-    setSelected(new Set());
-  }
-
   return (
     <>
-      {canBulkEdit && selected.size > 0 ? (
-        <div
-          data-stop-row-click
-          className="px-4 py-2.5 border-b border-[var(--oc-line)] flex flex-wrap items-center gap-3 text-xs text-[var(--oc-muted3)]"
-        >
-          <span>{selected.size} захиалга сонгогдсон</span>
-          <Btn type="button" size="sm" onClick={() => setStatusPickerOpen(true)}>
-            Статус солих
-          </Btn>
-          <Btn
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={() => setAssignPickerOpen(true)}
-          >
-            Хариуцагч оноох
-          </Btn>
-          <button
-            type="button"
-            onClick={clearSelection}
-            className="text-[var(--oc-muted3)] hover:text-[var(--oc-ink2)] underline underline-offset-2"
-          >
-            Сонголт цэвэрлэх
-          </button>
-        </div>
+      {canBulkEdit ? (
+        <SelectionActions
+          selection={selection}
+          noun="захиалга"
+          actions={[
+            { label: "Статус солих", onSelect: () => setStatusPickerOpen(true) },
+            {
+              label: "Хариуцагч оноох",
+              variant: "ghost",
+              onSelect: () => setAssignPickerOpen(true),
+            },
+          ]}
+        />
       ) : null}
 
       <div className="overflow-auto flex-1 min-h-0">
@@ -125,14 +97,7 @@ export function BulkOrdersTable({
           <thead>
             <tr className="border-b border-[var(--oc-line)]">
               {canBulkEdit ? (
-                <th className="w-10 px-3 py-3">
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    onChange={toggleAll}
-                    aria-label="Бүгдийг сонгох"
-                  />
-                </th>
+                <SelectAllCell selection={selection} />
               ) : null}
               {[
                 "#",
@@ -154,18 +119,15 @@ export function BulkOrdersTable({
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody {...selection.dragArea}>
             {rows.map((o) => (
               <OrderRow key={o.id} href={`/dashboard/orders/${o.id}`}>
                 {canBulkEdit ? (
-                  <td className="w-10 px-3 py-4" data-stop-row-click>
-                    <input
-                      type="checkbox"
-                      checked={selected.has(o.id)}
-                      onChange={() => toggleOne(o.id)}
-                      aria-label={`#${o.number} сонгох`}
-                    />
-                  </td>
+                  <SelectRowCell
+                    selection={selection}
+                    id={o.id}
+                    label={`#${o.number} сонгох`}
+                  />
                 ) : null}
                 <td className="px-5 py-4">
                   <Link
@@ -250,24 +212,24 @@ export function BulkOrdersTable({
 
       {statusPickerOpen ? (
         <BulkStatusModal
-          orderIds={[...selected]}
+          orderIds={[...selection.selected]}
           onClose={() => setStatusPickerOpen(false)}
           onDone={() => {
             setStatusPickerOpen(false);
-            clearSelection();
+            selection.clear();
           }}
         />
       ) : null}
       {assignPickerOpen ? (
         <BulkAssignModal
-          orderIds={[...selected]}
+          orderIds={[...selection.selected]}
           employees={employees}
           canAssign={canAssign}
           currentUserId={currentUserId}
           onClose={() => setAssignPickerOpen(false)}
           onDone={() => {
             setAssignPickerOpen(false);
-            clearSelection();
+            selection.clear();
           }}
         />
       ) : null}
