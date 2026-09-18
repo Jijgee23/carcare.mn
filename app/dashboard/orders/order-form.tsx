@@ -111,16 +111,11 @@ export function OrderForm({
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [showVehicleForm, setShowVehicleForm] = useState(false);
 
-  // Товлосон огноог өөр ажилтай давхцуулж хадгалахаас өмнө сервэрийн
-  // анхааруулгыг харуулж, ЗӨВХӨН дараагийн (дахин) дарахад confirmed=true
-  // явуулна — reviseExpectedFinishAction/status-controls.tsx-ийн адил
-  // зарчим. Render-ийн үед нөхцөлт setState (useEffect биш) ашиглав.
-  const [scheduleConfirmArmed, setScheduleConfirmArmed] = useState(false);
-  const [prevState, setPrevState] = useState<OrderActionState>(null);
-  if (state !== prevState) {
-    setPrevState(state);
-    setScheduleConfirmArmed(Boolean(state?.fieldErrors?.confirmNeeded));
-  }
+  // D-111: the two-step "давхцаж байна → press again" confirmation is gone.
+  // createOrderAction/updateOrderAction no longer emit `confirmNeeded`, so the
+  // armed state, the hidden `confirmed` input and the "Тийм, үргэлжлүүлэх"
+  // button label that went with it have all been removed. Working-hours
+  // violations still come back as an ordinary `scheduledAt` field error.
 
   const fe = state?.fieldErrors ?? {};
 
@@ -155,7 +150,11 @@ export function OrderForm({
     // (`branchId && scheduledDateKey && preview`) аль хэдийн preview-г
     // харуулахгүй тул энд `setPreview(null)` дуудаж дахин render үүсгэх
     // шаардлагагүй.
-    if (!branchId || !scheduledDateKey) return;
+    //
+    // Засах горимд (захиалгын дэлгэрэнгүй хуудсан дахь маягт) хуваарийн
+    // урьдчилсан харагдац огт харагдахгүй тул үүнийг татахгүй — эс бөгөөс
+    // салбар/огноо өөрчлөх бүрд ашиггүй сервер дуудлага явна.
+    if (isEdit || !branchId || !scheduledDateKey) return;
     const id = ++previewReqIdRef.current;
     // Захиалгыг цаг захиалгаас үүсгэж байгаа бол тухайн цаг захиалгын мөрийг
     // өөрөөсөө хасна — эс бөгөөс энэ захиалгын цаг яг тэр цаг захиалгаас
@@ -168,7 +167,7 @@ export function OrderForm({
       .catch(() => {
         if (id === previewReqIdRef.current) setPreview(null);
       });
-  }, [branchId, scheduledDateKey, appointmentId]);
+  }, [isEdit, branchId, scheduledDateKey, appointmentId]);
 
   // Одоо бөглөж буй захиалгын "ghost" блок — сонгосон цаг байхгүй бол алга.
   // Цаг захиалгаас үүссэн бол booking-ийн category-уудаар тооцсон immutable
@@ -266,11 +265,6 @@ export function OrderForm({
         <input type="hidden" name="appointmentId" value={appointmentId} />
       ) : null}
       {next && !isEdit ? <input type="hidden" name="next" value={next} /> : null}
-      <input
-        type="hidden"
-        name="confirmed"
-        value={scheduleConfirmArmed ? "true" : ""}
-      />
       {state?.ok ? (
         <div className="bg-[var(--oc-ok)]/10 border border-[var(--oc-ok)]/25 rounded-lg px-3 py-2 text-sm text-[var(--oc-ok)]">
           {state.message ?? "Хадгалагдлаа."}
@@ -279,8 +273,12 @@ export function OrderForm({
       <FormError message={state?.message && !state.ok ? state.message : undefined} />
 
       {/* Тухайн өдрийн бодит хуваарь — календарын Өдөр харагдацтай адил
-          дээд хэсэгт, бүтэн өргөнөөр. */}
-      {branchId && scheduledDateKey && preview ? (
+          дээд хэсэгт, бүтэн өргөнөөр. ЗӨВХӨН шинэ захиалга үүсгэхэд: тэнд
+          цагаа сонгож байгаа тул өдрийн ачаалал хэрэгтэй. Захиалгын
+          дэлгэрэнгүй хуудсан дахь засах маягтад харуулахгүй — тэр хуудас
+          аль хэдийн товлогдсон нэг захиалгын тухай бөгөөд хуудсыг
+          уртасгахаас өөр зүйл нэмэхгүй (хэрэглэгчийн шийдвэр). */}
+      {!isEdit && branchId && scheduledDateKey && preview ? (
         <div className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-[var(--oc-ink2)]">Өдрийн хуваарь</span>
           <SchedulePreviewGrid
@@ -447,10 +445,7 @@ export function OrderForm({
             withTime
             min={todayStr()}
             defaultValue={toLocalDatetimeInput(autoScheduledAt)}
-            onChange={(v) => {
-              setScheduleConfirmArmed(false);
-              setScheduledAtLocal(v);
-            }}
+            onChange={(v) => setScheduledAtLocal(v)}
             error={Boolean(fe.scheduledAt)}
           />
         </Field>
@@ -513,13 +508,7 @@ export function OrderForm({
           ← Буцах
         </BtnLink>
         <Btn type="submit" disabled={pending}>
-          {pending
-            ? "..."
-            : scheduleConfirmArmed
-              ? "Тийм, үргэлжлүүлэх"
-              : isEdit
-                ? "Хадгалах"
-                : "Засварын хуудас үүсгэх"}
+          {pending ? "..." : isEdit ? "Хадгалах" : "Засварын хуудас үүсгэх"}
         </Btn>
       </div>
     </form>

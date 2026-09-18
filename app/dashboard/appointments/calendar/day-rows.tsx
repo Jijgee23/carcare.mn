@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   APPOINTMENT_STATUS_BADGE,
   APPOINTMENT_STATUS_LABEL,
+  type AppointmentStatus,
 } from "@/lib/appointments";
 import { customerLabel } from "@/lib/customers";
 import type { ScheduleIssue } from "@/lib/branch-schedule";
@@ -80,6 +81,10 @@ export type DayRow = {
   endsAtDayBoundary: boolean;
   uncertain: boolean;
   name: string;
+  // Түүхий төлөв — `statusLabel`/`statusClass` нь жагсаалтын badge-д зориулагдсан
+  // бол `GridSchedule` блокийн өнгийг төлвөөр (`STATUS_COLOR`) шийддэг тул
+  // класс задлан унших биш, enum-ыг нь шууд авна.
+  status: AppointmentStatus | null;
   statusLabel: string;
   statusClass: string;
   paymentStatusLabel: string | null;
@@ -243,6 +248,7 @@ export function buildDayRows(
         endsAtDayBoundary: row.endMs === schedule.rangeEnd.getTime(),
         uncertain: row.uncertain,
         name,
+        status: appt?.status ?? null,
         statusLabel,
         statusClass,
         paymentStatusLabel:

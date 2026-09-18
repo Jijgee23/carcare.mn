@@ -206,15 +206,26 @@ export function buildBranchSchedule(input: Scope & {
     if (a.serviceOrderId && orderIntervalIds.has(a.serviceOrderId)) continue;
     if (a.serviceOrderId) {
       const linkedOrder = orders.get(a.serviceOrderId);
-      // A COMPLETED order is an intentional, normal state — not an issue.
-      // Appointment status has no terminal "done" state of its own (see
-      // AppointmentStatus), so without this the ordinary same-day book →
-      // convert → finish path would flag the appointment as if its link were
-      // broken. The order doesn't disappear from the app: it remains fully
-      // visible (and filterable) on /dashboard/orders. A CANCELLED (or
-      // missing) linked order still needs staff attention, so keep flagging
-      // those.
-      if (linkedOrder?.status === "COMPLETED") {
+      // A terminal linked order — COMPLETED or CANCELLED — is an intentional,
+      // settled state, so the booking leaves the day view entirely: no
+      // interval, no issue. Appointment status has no terminal "done" state of
+      // its own (see AppointmentStatus), so without this the ordinary same-day
+      // book → convert → finish path would flag the appointment as if its link
+      // were broken. The order doesn't disappear from the app: it remains fully
+      // visible (and filterable) on /dashboard/orders.
+      //
+      // CANCELLED was previously flagged `linked-order-not-occupying` (D-067)
+      // on the theory that staff should resolve it. In practice that produced a
+      // row describing the capacity model rather than the event, sharing its
+      // wording with a live-but-released order, and offering no action at all —
+      // every action in buildDayRows is gated off `status`, `arrivedAt` or
+      // `!serviceOrderId`, all of which a cancelled-order booking fails, and
+      // the Attention view D-067 assumed would catch it was never built. See
+      // D-110.
+      //
+      // A MISSING linked order still means a broken reference and is still
+      // flagged below.
+      if (linkedOrder?.status === "COMPLETED" || linkedOrder?.status === "CANCELLED") {
         continue;
       }
       issue(

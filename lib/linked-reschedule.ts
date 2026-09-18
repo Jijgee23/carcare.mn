@@ -28,7 +28,6 @@
 import type { AppointmentStatus, OrderStatus } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import {
-  findScheduleConflict,
   getBranchSlotMinutes,
   validateScheduledOrderHours,
 } from "@/lib/order-schedule-validation";
@@ -166,14 +165,16 @@ export async function moveLinkedAppointmentOrder(
         appt.estimatedDurationMinutes ??
         (await getBranchSlotMinutes(input.tenantId, order.branchId));
 
+      // D-111 removed the schedule-overlap check that used to follow this one,
+      // so working hours is now the only confirmable warning on this path.
       const hoursError = await validateScheduledOrderHours(
         input.tenantId,
         order.branchId,
         input.newTime,
         durationMinutes,
       );
-      // D-087 superseded: an hours violation is now a confirmable warning,
-      // not a hard block — matches the schedule-conflict check below.
+      // D-087 superseded: an hours violation is a confirmable warning, not a
+      // hard block.
       if (hoursError && !input.confirmed) {
         throw new LinkedRescheduleError(
           `${hoursError} Үргэлжлүүлэхийн тулд дахин "Хадгалах" дарна уу.`,
@@ -182,23 +183,6 @@ export async function moveLinkedAppointmentOrder(
       }
 
       const endAt = new Date(input.newTime.getTime() + durationMinutes * 60000);
-      if (!input.confirmed) {
-        const conflict = await findScheduleConflict(
-          input.tenantId,
-          order.branchId,
-          order.id,
-          input.newTime,
-          endAt,
-        );
-        if (conflict) {
-          throw new LinkedRescheduleError(
-            conflict.certainty === "possible"
-              ? `Шинэ товлосон огноо ${conflict.label}-тай давхцах магадлалтай. Үргэлжлүүлэхийн тулд дахин "Хадгалах" дарна уу.`
-              : `Шинэ товлосон огноо ${conflict.label}-тай давхцаж байна. Үргэлжлүүлэхийн тулд дахин "Хадгалах" дарна уу.`,
-            { confirmNeeded: "true" },
-          );
-        }
-      }
 
       const previousRequestedAt = appt.requestedAt;
       const previousScheduledAt = order.scheduledAt;

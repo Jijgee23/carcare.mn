@@ -145,9 +145,13 @@ function toLocalDatetimeInput(iso: string): string {
 }
 
 // Баталгаажсан (CONFIRMED) цагийг өөр хугацаанд шилжүүлэх — "ирээгүй" гэж
-// тэмдэглэхийн оронд, ирц алдсан цагийг сэргээх боломж. Давхцлын анхааруулга
-// (findAppointmentRescheduleConflict) order-ийн RescheduleControl-той ижил
-// зарчим: хатуу хориглол биш, дахин "Хадгалах" дарахад confirmed=true явна.
+// тэмдэглэхийн оронд, ирц алдсан цагийг сэргээх боломж.
+//
+// D-111 removed the schedule-overlap warning this control used to show. The
+// confirm-then-continue state below is still reachable, but now only for the
+// working-hours warning raised by moveLinkedAppointmentOrder when the booking
+// is linked to a SCHEDULED order (D-087) — a real branch constraint. A plain
+// unlinked reschedule no longer asks for a second click at all.
 export function AppointmentRescheduleButton({
   appointmentId,
   requestedAt,

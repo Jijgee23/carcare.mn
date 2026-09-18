@@ -991,88 +991,6 @@ export async function markAppointmentNoShow(
 }
 
 /**
- * Тухайн салбарт өгөгдсөн хугацааны хүрээ (`start`-`end`) өөр цаг захиалга
- * эсвэл захиалгатай (order) давхцаж байгаа эсэхийг шалгана — `orders.ts`-ийн
- * ижил нэртэй функцтэй адил зарчим, гэхдээ энд ӨӨРИЙН ГЭСЭН Appointment-ийг
- * (шилжүүлж буй) хасна (order үүсэхэд order.ts нь `excludeOrderId`-аар
- * ServiceOrder-оо хасдаг — энд харин Appointment.id-аар өөрийгөө хасна).
- * Зөвхөн danger-биш (non-blocking) сануулга — staff "Хадгалах"-аа дахин
- * дарж давхцлыг зөвшөөрч болно.
- */
-async function findAppointmentRescheduleConflict(
-  tenantId: string,
-  branchId: string,
-  excludeAppointmentId: string,
-  start: Date,
-  end: Date,
-): Promise<string | null> {
-  const [appts, orders] = await Promise.all([
-    prisma.appointment.findMany({
-      where: {
-        tenantId,
-        branchId,
-        id: { not: excludeAppointmentId },
-        status: { in: ["PENDING", "CONFIRMED"] },
-        requestedAt: { lt: end },
-      },
-      select: {
-        requestedAt: true,
-        estimatedDurationMinutes: true,
-        account: { select: { name: true, phone: true } },
-        customer: { select: { fullName: true, phone: true } },
-      },
-    }),
-    prisma.serviceOrder.findMany({
-      where: {
-        tenantId,
-        branchId,
-        status: { in: ["SCHEDULED", "IN_PROGRESS"] },
-      },
-      select: {
-        number: true,
-        status: true,
-        scheduledAt: true,
-        startedAt: true,
-        estimatedDurationMinutes: true,
-        expectedFinishAt: true,
-        occupiesCapacity: true,
-        customer: { select: { fullName: true, phone: true } },
-      },
-    }),
-  ]);
-
-  const startMs = start.getTime();
-  const endMs = end.getTime();
-
-  for (const a of appts) {
-    const s0 = a.requestedAt.getTime();
-    const e0 = a.estimatedDurationMinutes
-      ? s0 + a.estimatedDurationMinutes * 60000
-      : Number.POSITIVE_INFINITY;
-    if (s0 < endMs && e0 > startMs) {
-      return `цаг захиалга (${customerLabel({ fullName: a.account?.name ?? a.customer?.fullName, phone: a.account?.phone ?? a.customer?.phone })})`;
-    }
-  }
-
-  for (const o of orders) {
-    if (o.status !== "SCHEDULED" && o.occupiesCapacity === false) continue;
-    const scheduled = o.status === "SCHEDULED" && o.occupiesCapacity !== true;
-    const s0 = (scheduled ? o.scheduledAt : o.startedAt)?.getTime();
-    if (s0 == null) continue;
-    const e0 =
-      o.expectedFinishAt?.getTime() ??
-      (scheduled && o.estimatedDurationMinutes
-        ? s0 + o.estimatedDurationMinutes * 60000
-        : Number.POSITIVE_INFINITY);
-    if (s0 < endMs && e0 > startMs) {
-      return `захиалга #${o.number} (${customerLabel(o.customer)})`;
-    }
-  }
-
-  return null;
-}
-
-/**
  * Ажилтан CONFIRMED цагийг өөр хугацаанд шилжүүлнэ — "ирээгүй" гэж
  * тэмдэглэхийн оронд, алдсан цагийг сэргээх боломж (2026-09-08: "ирц
  * алдсан" цагийг NO_SHOW болгохоос гадна дахин товлож болох байх ёстой
@@ -1219,23 +1137,12 @@ export async function rescheduleAppointmentAction(
     return { ok: false, message: "Ажиллах цагт багтах сул цаг сонгоно уу." };
   }
 
-  if (!confirmed) {
-    const conflictEnd = new Date(requestedAt.getTime() + durationMinutes * 60000);
-    const conflict = await findAppointmentRescheduleConflict(
-      user.tenantId,
-      appt.branchId,
-      appt.id,
-      requestedAt,
-      conflictEnd,
-    );
-    if (conflict) {
-      return {
-        ok: false,
-        message: `Шинэ цаг ${conflict}-тай давхцаж байна. Үргэлжлүүлэхийн тулд дахин "Хадгалах" дарна уу.`,
-        fieldErrors: { confirmNeeded: "true" },
-      };
-    }
-  }
+  // D-111: the schedule-overlap warning that used to sit here is gone. It
+  // never blocked anything — it asked staff to press "Хадгалах" a second time —
+  // and it was capacity-blind, returning on the FIRST overlapping row without
+  // consulting the branch's `slotCapacity`, so a branch with three bays warned
+  // as soon as one was in use. The working-hours validation above is a real
+  // constraint and still hard-blocks.
 
   const previous = appt.requestedAt;
 

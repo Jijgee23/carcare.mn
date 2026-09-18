@@ -19,6 +19,7 @@ type PrismaTransactionClient = {
       categories: { select: { categoryId: true } };
       status: true; createdAt: true; feeAmount: true; feeUnderpaidAmount: true;
       payment: { select: { status: true } };
+      serviceOrder: { select: { status: true } };
     };
   }): Promise<TakenAppointmentCandidateRow[]> };
   serviceOrder?: { findMany(args: {
@@ -175,13 +176,22 @@ export type TakenAppointmentRow = {
   categories: { categoryId: string }[];
 };
 
-/** TakenAppointmentRow plus the fields needed to detect an expired unpaid hold. */
+/** A linked order in a settled end state no longer occupies anything (D-110). */
+function isTerminalOrderStatus(status: string | null | undefined): boolean {
+  return status === "COMPLETED" || status === "CANCELLED";
+}
+
+/**
+ * TakenAppointmentRow plus the fields needed to detect an expired unpaid hold
+ * and a linked order that has already finished or been cancelled.
+ */
 type TakenAppointmentCandidateRow = TakenAppointmentRow & {
   status: string;
   createdAt: Date;
   feeAmount: unknown;
   feeUnderpaidAmount: unknown;
   payment: { status: string } | null;
+  serviceOrder?: { status: string } | null;
 };
 
 type TakenOrderRow = {
@@ -266,6 +276,7 @@ export async function resolveTakenCapacityIntervals(
         feeAmount: true,
         feeUnderpaidAmount: true,
         payment: { select: { status: true } },
+        serviceOrder: { select: { status: true } },
       },
     }),
     // D-076: order ids otherwise out of scope (e.g. COMPLETED) that still
@@ -306,6 +317,14 @@ export async function resolveTakenCapacityIntervals(
   const liveCandidates = candidates.filter(
     (a) =>
       (!a.serviceOrderId || !orderIds.has(a.serviceOrderId)) &&
+      // A booking whose order has finished or been cancelled no longer holds
+      // its slot — matching buildBranchSchedule, which drops it from the day
+      // view for the same reason (D-110). Without this the appointment is
+      // counted on its own the moment the order goes terminal, because a
+      // terminal order falls out of `orderCandidates`' status filter and so
+      // stops suppressing it: a completed 2.5-hour job kept blocking its slot
+      // against new customer bookings for the rest of the day.
+      !isTerminalOrderStatus(a.serviceOrder?.status) &&
       !(a.status === "PENDING" && isPendingAppointmentPaymentExpired(a)),
   );
   const appointmentIntervals = await resolveTakenAppointmentIntervals(

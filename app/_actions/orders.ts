@@ -26,7 +26,6 @@ import {
   withOrderTransaction,
 } from "@/lib/order-time-booking";
 import {
-  findScheduleConflict,
   getBranchSlotMinutes,
   validateScheduledOrderHours,
 } from "@/lib/order-schedule-validation";
@@ -469,37 +468,13 @@ export async function createOrderAction(
     return { ok: false, fieldErrors: { scheduledAt: scheduledHoursError } };
   }
 
-  // Товлосон цаг өөр ажилтай давхцаж болзошгүй — updateOrderAction-той адил
-  // зөвхөн анхааруулга, хатуу хориглол биш (D-хугацааны шийдвэр,
-  // COWORK.md-г үз). Шинэ захиалга тул хасах order ID алга ("", хэзээ ч
-  // бодит захиалгын ID-тай тэнцэхгүй) — гэвч цаг захиалгаас үүсгэж байгаа бол
-  // тухайн цаг захиалгыг өөрөөсөө хасна, эс бөгөөс энэ захиалгын цаг яг тэр
-  // цаг захиалгаас урьдчилан бөглөгдсэн тул үргэлж өөртэйгөө "давхцана".
-  const confirmed = s(formData, "confirmed") === "true";
-  if (data.scheduledAt && !confirmed) {
-    const durationMinutes = appointmentId
-      ? appointmentEstimatedDurationMinutes ?? branchSlotMinutes
-      : walkInEstimatedDurationMinutes ?? branchSlotMinutes;
-    const conflictEnd = new Date(data.scheduledAt.getTime() + durationMinutes * 60000);
-    const conflict = await findScheduleConflict(
-      user.tenantId,
-      data.branchId,
-      "",
-      data.scheduledAt,
-      conflictEnd,
-      appointmentId,
-    );
-    if (conflict) {
-      return {
-        ok: false,
-        message:
-          conflict.certainty === "possible"
-            ? `Товлосон огноо ${conflict.label}-тай давхцах магадлалтай. Үргэлжлүүлэхийн тулд дахин "Захиалга үүсгэх" дарна уу.`
-            : `Товлосон огноо ${conflict.label}-тай давхцаж байна. Үргэлжлүүлэхийн тулд дахин "Захиалга үүсгэх" дарна уу.`,
-        fieldErrors: { confirmNeeded: "true" },
-      };
-    }
-  }
+  // D-111: the schedule-overlap warning that used to sit here is gone. It was
+  // a confirm-then-continue prompt that never blocked anything, and it fired
+  // on the FIRST overlapping row regardless of the branch's `slotCapacity` —
+  // so a branch with room for three cars warned as soon as one was busy.
+  // Working-hours validation (validateScheduledOrderHours, above) is a real
+  // constraint and stays; real capacity is still enforced for bookings by
+  // isSlotAvailable.
 
   // Багцын хязгаар: daily_orders + max_active_orders
   const todayStart = new Date();
@@ -549,6 +524,14 @@ export async function createOrderAction(
           });
         }
 
+        // Цаг захиалгаас удамшуулсан анхны тооцоолол (D-041 маягийн зарчим) —
+        // категори өөрчлөгдвөл энэ хуучин захиалгад нөлөөлөхгүй. Walk-in
+        // захиалгад ажилтны гараар оруулсан ойролцоо хугацааг хадгална.
+        const orderEstimatedDurationMinutes = appointmentId
+          ? appointmentEstimatedDurationMinutes ?? (data.scheduledAt ? branchSlotMinutes : null)
+          : walkInEstimatedDurationMinutes ?? (data.scheduledAt ? branchSlotMinutes : null);
+        const bookingStartAt = data.scheduledAt ?? new Date();
+
         const order = await tx.serviceOrder.create({
           data: {
             number,
@@ -561,12 +544,7 @@ export async function createOrderAction(
             scheduledAt: data.scheduledAt,
             notes: data.notes,
             isPostpaid: vehicleIsPostpaid,
-            // Цаг захиалгаас удамшуулсан анхны тооцоолол (D-041 маягийн зарчим) —
-            // категори өөрчлөгдвөл энэ хуучин захиалгад нөлөөлөхгүй. Walk-in
-            // захиалгад ажилтны гараар оруулсан ойролцоо хугацааг хадгална.
-            estimatedDurationMinutes: appointmentId
-              ? appointmentEstimatedDurationMinutes ?? (data.scheduledAt ? branchSlotMinutes : null)
-              : walkInEstimatedDurationMinutes ?? (data.scheduledAt ? branchSlotMinutes : null),
+            estimatedDurationMinutes: orderEstimatedDurationMinutes,
             categories: appointmentCategorySnapshots.length
               ? {
                   create: appointmentCategorySnapshots.map((category) => ({
@@ -583,13 +561,29 @@ export async function createOrderAction(
         // D-068 dual-write: every order starts life as an open SCHEDULED
         // booking — changeOrderStatusAction closes/reopens it as work
         // actually starts, pauses, resumes, or finishes.
+        //
+        // `endAt` MUST carry the estimate written above. Since the D-068 step 3
+        // read-path swap, resolveOrderIntervals prefers this row over the
+        // ServiceOrder scalars, and a null `endAt` means "no evidence of an
+        // end" — so leaving it null discarded the booking's category-derived
+        // duration outright: buildBranchSchedule fell back to one branch slot
+        // (`missing-estimate`, `uncertain`) and resolveTakenCapacityIntervals
+        // reserved only that slot for the whole job. The reschedule paths
+        // (updateOrderAction, rescheduleOrderAction, lib/linked-reschedule.ts)
+        // always computed this end correctly, as did
+        // scripts/backfill-order-time-booking.ts — creation was the one writer
+        // that did not, which is why the D-068 live comparison saw no
+        // mismatches (every row then in the table came from the backfill).
         await openOrderTimeBooking(scopedTx, {
           tenantId: user.tenantId,
           orderId: order.id,
           branchId: data.branchId,
           kind: "SCHEDULED",
-          startAt: data.scheduledAt ?? new Date(),
-          endAt: null,
+          startAt: bookingStartAt,
+          endAt:
+            orderEstimatedDurationMinutes != null
+              ? new Date(bookingStartAt.getTime() + orderEstimatedDurationMinutes * 60000)
+              : null,
           createdById: user.id,
         });
 
@@ -763,32 +757,7 @@ export async function updateOrderAction(
     data.scheduledAt != null &&
     (existing.scheduledAt == null ||
       data.scheduledAt.getTime() !== existing.scheduledAt.getTime());
-  const confirmed = s(formData, "confirmed") === "true";
-  if (existing.status === "SCHEDULED" && scheduledChanged && !confirmed) {
-    // Хугацаа тодорхойгүй бол (тооцоолол алга) 1 цагийн ойролцоо цонхоор
-    // шалгана — зөвхөн анхааруулгын зорилготой энгийн таамаг, хадгалагдахгүй.
-    const durationMinutes = existing.estimatedDurationMinutes ?? branchSlotMinutes;
-    const conflictEnd = new Date(
-      data.scheduledAt!.getTime() + durationMinutes * 60000,
-    );
-    const conflict = await findScheduleConflict(
-      user.tenantId,
-      data.branchId,
-      id,
-      data.scheduledAt!,
-      conflictEnd,
-    );
-    if (conflict) {
-      return {
-        ok: false,
-        message:
-          conflict.certainty === "possible"
-            ? `Шинэ товлосон огноо ${conflict.label}-тай давхцах магадлалтай. Үргэлжлүүлэхийн тулд дахин "Хадгалах" дарна уу.`
-            : `Шинэ товлосон огноо ${conflict.label}-тай давхцаж байна. Үргэлжлүүлэхийн тулд дахин "Хадгалах" дарна уу.`,
-        fieldErrors: { confirmNeeded: "true" },
-      };
-    }
-  }
+  // D-111: schedule-overlap warning removed here too — see createOrderAction.
 
   try {
     // S06 fix: lock the row, re-read it fresh, re-validate against THAT
@@ -1425,27 +1394,8 @@ export async function reviseExpectedFinishAction(
 
   if (expectedFinishAt && !confirmed) {
     const conflictStart = activeStartAt!;
-    const conflict = await findScheduleConflict(
-      user.tenantId,
-      order.branchId,
-      order.id,
-      conflictStart,
-      expectedFinishAt,
-    );
-    if (conflict) {
-      return {
-        ok: false,
-        message:
-          conflict.certainty === "possible"
-            ? `Шинэ дуусах хугацаа ${conflict.label}-тай давхцах магадлалтай. Түүний дуусах хугацаа тодорхойгүй байна. Үргэлжлүүлэхийн тулд дахин "Хадгалах" дарна уу.`
-            : `Шинэ дуусах хугацаа ${conflict.label}-тай давхцаж байна. Үргэлжлүүлэхийн тулд дахин "Хадгалах" дарна уу.`,
-        fieldErrors: {
-          confirmNeeded: "true",
-          conflictKind: conflict.certainty,
-        },
-      };
-    }
-
+    // D-111: schedule-overlap warning removed — see createOrderAction. The
+    // closing-time warning below is a real branch constraint and stays.
     if (
       await expectedFinishNeedsScheduleWarning(
         user.tenantId,
@@ -1686,26 +1636,11 @@ export async function rescheduleOrderAction(
       fieldErrors: { confirmNeeded: "true" },
     };
   }
-  const conflictEnd = new Date(scheduledAt.getTime() + durationMinutes * 60000);
-  if (!confirmed) {
-    const conflict = await findScheduleConflict(
-      user.tenantId,
-      order.branchId,
-      order.id,
-      scheduledAt,
-      conflictEnd,
-    );
-    if (conflict) {
-      return {
-        ok: false,
-        message:
-          conflict.certainty === "possible"
-            ? `Шинэ товлосон огноо ${conflict.label}-тай давхцах магадлалтай. Үргэлжлүүлэхийн тулд дахин "Хадгалах" дарна уу.`
-            : `Шинэ товлосон огноо ${conflict.label}-тай давхцаж байна. Үргэлжлүүлэхийн тулд дахин "Хадгалах" дарна уу.`,
-        fieldErrors: { confirmNeeded: "true" },
-      };
-    }
-  }
+  // D-111: schedule-overlap warning removed — see createOrderAction. The
+  // hours check above is a real branch constraint and stays confirmable.
+  // This end time used to be the overlap window's; it is, and always was, also
+  // the moved booking row's own end, which is its only remaining job.
+  const bookingEndAt = new Date(scheduledAt.getTime() + durationMinutes * 60000);
 
   // S06 fix: re-validate status === SCHEDULED against a fresh, locked read
   // before writing — a concurrent start/cancel/postpone must not be
@@ -1737,7 +1672,7 @@ export async function rescheduleOrderAction(
         // open booking's start/end in place instead of closing+opening a new row.
         await updateOpenOrderTimeBookingSchedule(tx, fresh.id, {
           startAt: scheduledAt,
-          endAt: conflictEnd,
+          endAt: bookingEndAt,
         });
         await logAudit(
           {

@@ -708,7 +708,12 @@ function DayScheduleGrid({
     );
   }
 
-  const { rows } = buildDayRows(schedule, canRespondAppointments, canEditOrders, returnTo);
+  const { rows, issues } = buildDayRows(
+    schedule,
+    canRespondAppointments,
+    canEditOrders,
+    returnTo,
+  );
 
   const hours = branchHours
     ? branchHoursForDate(branchHours, new Date(`${dayKey}T00:00:00+08:00`))
@@ -735,6 +740,23 @@ function DayScheduleGrid({
           Салбар: <span className="text-[var(--oc-ink2)] font-medium">{branchName}</span>
         </div>
       ) : null}
+
+      {/* Жагсаалтын харагдац (`DaySchedule`) дээр байдаг анхааруулгын хэсэг —
+          өмнө нь grid дээр `issues`-ийг огт харуулдаггүй байсан тул хоёр
+          харагдацын хооронд сэлгэхэд мэдээлэл алдагддаг байв. */}
+      {issues.length > 0 ? (
+        <div className="rounded-[10px] border border-[var(--oc-warn)]/25 bg-[var(--oc-warn)]/[0.06] p-3 flex flex-wrap gap-1.5">
+          {issues.map((issue, i) => (
+            <span
+              key={`${issue.source}-${issue.id}-${i}`}
+              className="font-plex-mono text-[10.5px] px-2 py-1 rounded-full bg-[var(--oc-warn)]/15 text-[var(--oc-warn)] border border-[var(--oc-warn)]/25"
+            >
+              {SCHEDULE_ISSUE_LABEL[issue.reason]}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
       <GridSchedule
         rows={rows}
         axisStartMs={axisStartMs}

@@ -197,12 +197,25 @@ test("completed and explicitly released work clears its linked appointment quiet
   assert.equal(result.intervals.length, 0);
   assert.ok(!result.issues.some((issue) => issue.reason === "linked-order-not-occupying"));
 });
-test("cancelled linked order still flags its appointment for attention", () => {
+// D-110 supersedes the former "cancelled linked order still flags its
+// appointment for attention" expectation (D-067). A terminal linked order —
+// COMPLETED or CANCELLED — settles the booking, so it leaves the day view
+// entirely rather than reappearing with a warning nobody could act on.
+test("D-110: a booking whose linked order was cancelled leaves the day view entirely", () => {
   const result = project([order({ status: "CANCELLED", occupiesCapacity: false })],
     [appointment({ serviceOrderId: "order" })]);
-  assert.equal(result.intervals.length, 1);
-  assert.equal(result.intervals[0].source, "appointment");
-  assert.ok(result.issues.some((issue) => issue.reason === "linked-order-not-occupying"));
+  assert.equal(result.intervals.length, 0, "expected no interval for the booking or the cancelled order");
+  assert.equal(result.issues.length, 0, "expected no attention issue — the state is settled, not broken");
+});
+test("D-110: the same holds for a completed linked order", () => {
+  const result = project([order({ status: "COMPLETED", occupiesCapacity: false })],
+    [appointment({ serviceOrderId: "order" })]);
+  assert.equal(result.intervals.length, 0);
+  assert.equal(result.issues.length, 0);
+});
+test("D-110: a MISSING linked order is still a broken reference and still flagged", () => {
+  const result = project([], [appointment({ serviceOrderId: "order" })]);
+  assert.ok(result.issues.some((issue) => issue.reason === "missing-order"));
 });
 test("completed car still in workspace continues to consume capacity", () => {
   assert.equal(project([order({ status: "COMPLETED" })]).intervals.length, 1);
@@ -1328,13 +1341,95 @@ test("moveLinkedAppointmentOrder (lib/linked-reschedule.ts) re-fetches the appoi
   );
 });
 
-test("moveLinkedAppointmentOrder validates hours and schedule conflicts using the shared order-schedule-validation helpers, not a duplicate implementation", () => {
+test("createOrderAction opens its SCHEDULED booking with an endAt derived from the order's estimate, never a hardcoded null", () => {
+  // Regression guard. createOrderAction used to pass `endAt: null` here while
+  // writing a perfectly good estimatedDurationMinutes (for a booking, the sum
+  // of the customer's picked categories) onto the order itself. Since the
+  // D-068 step 3 read-path swap, resolveOrderIntervals prefers this row over
+  // the ServiceOrder scalars and reads a null endAt as "no evidence of an
+  // end" — so buildBranchSchedule collapsed the day-view block to one branch
+  // slot (missing-estimate/uncertain) and resolveTakenCapacityIntervals
+  // reserved only that slot, letting customers book over a job already in the
+  // calendar. Every reschedule path and the one-off backfill script always
+  // computed this end correctly; creation was the lone writer that did not.
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "app", "_actions", "orders.ts"),
+    "utf8",
+  );
+  const fnStart = src.indexOf("export async function createOrderAction");
+  assert.ok(fnStart >= 0, "createOrderAction not found");
+  const fnEnd = src.indexOf("\nexport async function ", fnStart + 1);
+  assert.ok(fnEnd > fnStart, "expected another exported action after createOrderAction");
+  const body = src.slice(fnStart, fnEnd);
+
+  const openIdx = body.indexOf("openOrderTimeBooking(");
+  assert.ok(openIdx !== -1, "expected the D-068 dual-write openOrderTimeBooking call");
+  const openCall = body.slice(openIdx, body.indexOf("});", openIdx));
+  assert.ok(
+    !/endAt:\s*null/.test(openCall),
+    "createOrderAction must not hardcode endAt: null — derive it from the order's estimatedDurationMinutes",
+  );
+  assert.ok(
+    openCall.includes("60000"),
+    "expected endAt to be computed as startAt + duration minutes",
+  );
+
+  // The booking row's end and the order's own stored estimate must come from
+  // the SAME expression — two independently written copies are exactly how
+  // they drifted apart before.
+  const estimateMatches = body.match(/estimatedDurationMinutes:\s*([A-Za-z0-9_]+)/g) ?? [];
+  assert.ok(
+    estimateMatches.some((m) => m.includes("orderEstimatedDurationMinutes")),
+    "expected the order's estimatedDurationMinutes to be written from the shared hoisted constant",
+  );
+  assert.ok(
+    openCall.includes("orderEstimatedDurationMinutes"),
+    "expected the booking row's endAt to be derived from that same constant",
+  );
+});
+
+test("moveLinkedAppointmentOrder validates hours using the shared order-schedule-validation helper, not a duplicate implementation", () => {
   const src = fs.readFileSync(path.join(__dirname, "..", "lib", "linked-reschedule.ts"), "utf8");
   assert.ok(src.includes("validateScheduledOrderHours("), "expected reuse of validateScheduledOrderHours");
-  assert.ok(src.includes("findScheduleConflict("), "expected reuse of findScheduleConflict");
   assert.ok(
     src.includes('from "@/lib/order-schedule-validation"'),
-    "expected these to be imported from the S12 shared validation module, not reimplemented",
+    "expected it to be imported from the S12 shared validation module, not reimplemented",
+  );
+  // D-111: the schedule-overlap check this path used to run was removed. It
+  // never blocked a save and ignored slotCapacity.
+  assert.ok(
+    !src.includes("findScheduleConflict("),
+    "the overlap confirmation was removed in D-111 — do not reintroduce it here",
+  );
+});
+
+test("D-111: no schedule-overlap confirmation survives in any order or appointment write path", () => {
+  for (const rel of [
+    ["app", "_actions", "orders.ts"],
+    ["app", "_actions", "appointments.ts"],
+    ["lib", "linked-reschedule.ts"],
+    ["lib", "order-schedule-validation.ts"],
+  ]) {
+    const src = fs.readFileSync(path.join(__dirname, "..", ...rel), "utf8");
+    assert.ok(
+      !src.includes("findScheduleConflict(") && !src.includes("findAppointmentRescheduleConflict("),
+      `${rel.join("/")} must not call an overlap-conflict checker (removed in D-111)`,
+    );
+  }
+  // The real constraints D-111 deliberately KEPT.
+  const ordersSrc = fs.readFileSync(path.join(__dirname, "..", "app", "_actions", "orders.ts"), "utf8");
+  assert.ok(
+    ordersSrc.includes("validateScheduledOrderHours("),
+    "working-hours validation must survive — it is a real branch constraint, not an overlap heuristic",
+  );
+  const reservationsSrc = fs.readFileSync(path.join(__dirname, "..", "lib", "appointment-reservations.ts"), "utf8");
+  assert.ok(
+    reservationsSrc.includes("isSlotAvailable("),
+    "the real slotCapacity check on booking creation must survive",
+  );
+  assert.ok(
+    reservationsSrc.includes("ReservationConflictError"),
+    "the staff capacity-full override must survive — it guards a real capacity limit",
   );
 });
 
