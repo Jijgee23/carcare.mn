@@ -413,6 +413,51 @@ export function toNotificationItem(n: {
   };
 }
 
+// Мобайл (Account) клиент рүү дамжуулах хэлбэр. Вэбийн `href` биш, түүхий
+// `data`-г буцаана: апп нь `/account/...` гэсэн вэб замыг ашиглаж чадахгүй,
+// deep-link-ээ `data.appointmentId`/`orderId`-аас өөрөө барьдаг (мобайлын
+// `router.dart` → `_handleNotificationTap`, push data-тай яг ижил түлхүүр).
+export type AccountNotificationItem = {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  data: Record<string, string>;
+  read: boolean;
+  createdAt: string; // ISO
+};
+
+export function toAccountNotificationItem(n: {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  data: Prisma.JsonValue | null;
+  readAt: Date | null;
+  createdAt: Date;
+}): AccountNotificationItem {
+  // Registry-ийн `data` үргэлж Record<string, string> боловч DB дэх хуучин мөр
+  // өөр хэлбэртэй байж болох тул string биш утгыг чимээгүй хаяна — клиент
+  // талын parse хатуу байх шаардлагагүй болно.
+  const data =
+    n.data && typeof n.data === "object" && !Array.isArray(n.data)
+      ? Object.fromEntries(
+          Object.entries(n.data as Record<string, unknown>).filter(
+            (entry): entry is [string, string] => typeof entry[1] === "string",
+          ),
+        )
+      : {};
+  return {
+    id: n.id,
+    type: n.type,
+    title: n.title,
+    body: n.body,
+    data,
+    read: n.readAt != null,
+    createdAt: n.createdAt.toISOString(),
+  };
+}
+
 /** Мэдэгдэл дээр дарахад шилжих холбоос — type болон хадгалсан data-аас. */
 export function notificationHref(
   type: string,

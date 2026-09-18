@@ -38,26 +38,6 @@ export const metadata = {
 
 export const dynamic = "force-dynamic";
 
-function computeIsDelayed(order: {
-  status: string;
-  expectedFinishAt: Date | null;
-}): boolean {
-  return (
-    order.status !== "COMPLETED" &&
-    order.status !== "CANCELLED" &&
-    order.expectedFinishAt != null &&
-    order.expectedFinishAt.getTime() < Date.now()
-  );
-}
-
-function fmtEstimatedMinutes(total: number): string {
-  const hours = Math.floor(total / 60);
-  const minutes = total % 60;
-  if (hours && minutes) return `${hours} ц ${minutes} мин`;
-  if (hours) return `${hours} ц`;
-  return `${minutes} мин`;
-}
-
 function fmtDateTime(d: Date): string {
   return d.toLocaleString("mn-MN", {
     year: "numeric",
@@ -92,8 +72,6 @@ export default async function AccountWalkInOrderDetailPage({
       scheduledAt: true,
       startedAt: true,
       completedAt: true,
-      estimatedDurationMinutes: true,
-      expectedFinishAt: true,
       totalAmount: true,
       paidAmount: true,
       tenant: { select: { name: true } },
@@ -125,7 +103,6 @@ export default async function AccountWalkInOrderDetailPage({
   });
   if (!order) notFound();
 
-  const isDelayed = computeIsDelayed(order);
   // Дууссан + бүрэн төлөгдсөн ажлыг Үйлчилгээний түүхэнд харуулна (харах:
   // app/account/history) — /api/v1/app/appointments-ийн ижил дүрэм.
   const settled = order.status === "COMPLETED" && order.paymentStatus === "PAID";
@@ -173,29 +150,6 @@ export default async function AccountWalkInOrderDetailPage({
             <span className="text-xs text-[var(--oc-muted2)]">
               Товлосон огноо: {fmtDateTime(order.scheduledAt)}
             </span>
-          ) : null}
-          {order.estimatedDurationMinutes != null ||
-          order.expectedFinishAt != null ? (
-            <div className="flex flex-col gap-0.5">
-              {order.estimatedDurationMinutes != null ? (
-                <span className="text-xs text-[var(--oc-muted2)]">
-                  Ойролцоо хугацаа: {fmtEstimatedMinutes(order.estimatedDurationMinutes)}
-                </span>
-              ) : null}
-              {order.expectedFinishAt ? (
-                <span
-                  className={`text-xs ${isDelayed ? "text-red-400 font-medium" : "text-[var(--oc-muted2)]"}`}
-                >
-                  {isDelayed ? "Дуусах ёстой байсан" : "Дуусах хугацаа"}:{" "}
-                  {fmtDateTime(order.expectedFinishAt)}
-                </span>
-              ) : null}
-              {isDelayed ? (
-                <span className="text-xs text-red-400 font-medium">
-                  Төлөвлөснөөс хожимдож байна
-                </span>
-              ) : null}
-            </div>
           ) : null}
           {order.items.length ? (
             <div className="flex flex-col divide-y divide-[var(--oc-line)]">

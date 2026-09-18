@@ -41,30 +41,6 @@ export const metadata = {
 
 export const dynamic = "force-dynamic";
 
-// react-hooks/purity: `new Date()`/`Date.now()` дуудлагыг component-ийн
-// render биед шууд бичихгүй (lib/appointments-calendar.ts-ийн ижил тайлбарыг
-// үз) — тусдаа module-level helper-т шилжүүлнэ.
-function computeIsDelayed(order: {
-  status: string;
-  expectedFinishAt: Date | null;
-} | null): boolean {
-  return (
-    order != null &&
-    order.status !== "COMPLETED" &&
-    order.status !== "CANCELLED" &&
-    order.expectedFinishAt != null &&
-    order.expectedFinishAt.getTime() < Date.now()
-  );
-}
-
-function fmtEstimatedMinutes(total: number): string {
-  const hours = Math.floor(total / 60);
-  const minutes = total % 60;
-  if (hours && minutes) return `${hours} ц ${minutes} мин`;
-  if (hours) return `${hours} ц`;
-  return `${minutes} мин`;
-}
-
 function fmtDateTime(d: Date): string {
   return d.toLocaleString("mn-MN", {
     year: "numeric",
@@ -118,8 +94,6 @@ export default async function AccountAppointmentDetailPage({
           scheduledAt: true,
           startedAt: true,
           completedAt: true,
-          estimatedDurationMinutes: true,
-          expectedFinishAt: true,
           totalAmount: true,
           paidAmount: true,
           vehicle: { select: { plate: true, make: true, model: true, year: true } },
@@ -181,8 +155,6 @@ export default async function AccountAppointmentDetailPage({
     appt.serviceOrder?.status === "COMPLETED" &&
     appt.serviceOrder?.paymentStatus === "PAID";
   // Тооцоолсон дуусах хугацаанаас хэтэрсэн ч ажил хараахан дуусаагүй эсэх —
-  // completedAt-тай андуурч болохгүй (carcare_customer_mobile-ийн isDelayed-тай ижил).
-  const isDelayed = computeIsDelayed(appt.serviceOrder);
   // Захиалга үүссэний дараа тэнд snapshot хийгдсэн машиныг тэргүүн ээлжид
   // харуулна (баталгаажсаны дараа өөрчлөгдсөн байж болзошгүй тул) — байхгүй
   // бол (захиалга хараахан үүсээгүй) хэрэглэгчийн сонгосон accountVehicle.
@@ -267,29 +239,6 @@ export default async function AccountAppointmentDetailPage({
               <span className="text-xs text-[var(--oc-muted2)]">
                 Товлосон огноо: {fmtDateTime(appt.serviceOrder.scheduledAt)}
               </span>
-            ) : null}
-            {appt.serviceOrder.estimatedDurationMinutes != null ||
-            appt.serviceOrder.expectedFinishAt != null ? (
-              <div className="flex flex-col gap-0.5">
-                {appt.serviceOrder.estimatedDurationMinutes != null ? (
-                  <span className="text-xs text-[var(--oc-muted2)]">
-                    Ойролцоо хугацаа: {fmtEstimatedMinutes(appt.serviceOrder.estimatedDurationMinutes)}
-                  </span>
-                ) : null}
-                {appt.serviceOrder.expectedFinishAt ? (
-                  <span
-                    className={`text-xs ${isDelayed ? "text-red-400 font-medium" : "text-[var(--oc-muted2)]"}`}
-                  >
-                    {isDelayed ? "Дуусах ёстой байсан" : "Дуусах хугацаа"}:{" "}
-                    {fmtDateTime(appt.serviceOrder.expectedFinishAt)}
-                  </span>
-                ) : null}
-                {isDelayed ? (
-                  <span className="text-xs text-red-400 font-medium">
-                    Төлөвлөснөөс хожимдож байна
-                  </span>
-                ) : null}
-              </div>
             ) : null}
             {appt.serviceOrder.items.length ? (
               <div className="flex flex-col divide-y divide-[var(--oc-line)]">
