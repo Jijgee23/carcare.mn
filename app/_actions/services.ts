@@ -57,6 +57,7 @@ type Parsed = {
   stock: Prisma.Decimal | null;
   durationValue: Prisma.Decimal | null;
   durationUnitId: string | null;
+  reminderIntervalMonths: number | null;
   description: string | null;
   isActive: boolean;
   categoryId: string | null;
@@ -78,6 +79,7 @@ async function validate(
   const stockRaw = s(fd, "stock");
   const durationValueRaw = s(fd, "durationValue");
   const durationUnitIdRaw = s(fd, "durationUnitId");
+  const reminderIntervalMonthsRaw = s(fd, "reminderIntervalMonths");
   const description = s(fd, "description");
   const categoryIdRaw = s(fd, "categoryId");
   const isActive = fd.get("isActive") === "on";
@@ -149,6 +151,19 @@ async function validate(
     }
   }
 
+  // Сануулгын давтамж (сар) — заавал биш, дурын төрөлд. Тавьвал энэ
+  // үйлчилгээ COMPLETED болсон мөр бүрээс хойш ийм олон сарын дараа
+  // үйлчлүүлэгчид push сануулга явна (харах: app/api/cron/service-reminders).
+  let reminderIntervalMonths: number | null = null;
+  if (reminderIntervalMonthsRaw) {
+    const n = Number.parseInt(reminderIntervalMonthsRaw, 10);
+    if (!Number.isFinite(n) || n <= 0) {
+      errors.reminderIntervalMonths = "Сар эерэг бүхэл тоо байх ёстой.";
+    } else {
+      reminderIntervalMonths = n;
+    }
+  }
+
   // Бүх төрөлд ангилал заавал
   if (!categoryIdRaw) {
     errors.categoryId = "Ангилал сонгоно уу.";
@@ -177,6 +192,7 @@ async function validate(
       stock,
       durationValue,
       durationUnitId,
+      reminderIntervalMonths,
       description: description || null,
       isActive,
       categoryId,
@@ -227,6 +243,7 @@ export async function createServiceAction(
         stock: data.stock,
         durationValue: data.durationValue,
         durationUnitId: data.durationUnitId,
+        reminderIntervalMonths: data.reminderIntervalMonths,
         description: data.description,
         isActive: data.isActive,
         categoryId: data.categoryId,
@@ -290,6 +307,7 @@ export async function updateServiceAction(
     price: data.price,
     costPrice: data.costPrice,
     durationValue: data.durationValue,
+    reminderIntervalMonths: data.reminderIntervalMonths,
     description: data.description,
     isActive: data.isActive,
     unitId: data.unitId,

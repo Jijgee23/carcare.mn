@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { signOutAction } from "@/app/_actions/auth";
 import { submitStaffFeedback } from "@/app/_actions/feedback";
 import { Brand, BrandMark } from "./brand";
 import { FeedbackButton } from "./feedback-button";
+import { HoverFlyoutPortal, useHoverFlyout } from "./nav-hover-flyout";
 import { StaffNotificationBell } from "./staff-notification-bell";
 import { ThemeToggle } from "./theme-toggle";
 import { useSidebarCollapse } from "./use-sidebar-collapse";
@@ -18,9 +18,14 @@ type NavLeaf = {
   icon?: React.ReactNode;
   exact?: boolean;
   // Харагдах эрх: resource key (ж: "orders"), "audit", "owner", эсвэл undefined
-  // (бүгдэд харагдана). Owner үргэлж бүгдийг харна.
+  // (бүгдэд харагдана). Owner үргэлж бүгдийг харна. Бүлгийн child нь эцгийн
+  // `view`-г өвлөдөг тул ЭРХГҮЙ ч бүгдэд харагдах child-д `PUBLIC_VIEW` заана.
   view?: string;
 };
+
+/** Child item-ийг эцгийн эрхээс үл хамааран бүх ажилтанд харуулах тэмдэг
+ * (ж: "Ажилтнууд" бүлэг доторх "Миний хувиар"). */
+const PUBLIC_VIEW = "public";
 
 // Тухайн нав item-ийг хэрэглэгч харах эрхтэй эсэх.
 function canSeeView(
@@ -28,7 +33,7 @@ function canSeeView(
   isOwner: boolean,
   perms: string[],
 ): boolean {
-  if (!view) return true;
+  if (!view || view === PUBLIC_VIEW) return true;
   if (isOwner) return true;
   if (view === "owner") return false;
   if (view === "audit") return perms.includes("audit.view");
@@ -63,16 +68,6 @@ const navItems: NavItem[] = [
     ),
   },
   {
-    href: "/dashboard/my-schedule",
-    label: "Миний хувиар",
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="9" />
-        <path d="M12 7v5l3 2" />
-      </svg>
-    ),
-  },
-  {
     href: "/dashboard/branches",
     view: "branches",
     label: "Салбарууд",
@@ -100,6 +95,8 @@ const navItems: NavItem[] = [
     children: [
       { href: "/dashboard/employees", label: "Ажилтнууд", exact: true },
       { href: "/dashboard/employees/schedule", label: "Ажлын хувиар" },
+      // Ажилтан бүр өөрийнхөө хувиарыг харна — эцгийн `employees` эрх шаардахгүй.
+      { href: "/dashboard/my-schedule", label: "Миний хувиар", view: PUBLIC_VIEW },
       { href: "/dashboard/employees/roles", label: "Үүргүүд", view: "owner" },
     ],
   },
@@ -201,17 +198,6 @@ const secondaryItems: NavItem[] = [
     ),
   },
   {
-    href: "/dashboard/audit",
-    view: "audit",
-    label: "Аудит лог",
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 8v4l3 3" />
-        <circle cx="12" cy="12" r="10" />
-      </svg>
-    ),
-  },
-  {
     href: "/dashboard/settings",
     view: "owner",
     label: "Тохиргоо",
@@ -226,6 +212,8 @@ const secondaryItems: NavItem[] = [
       { href: "/dashboard/settings/system", label: "Системийн" },
       { href: "/dashboard/settings/qpay", label: "QPay" },
       { href: "/dashboard/settings/subscription", label: "Багц" },
+      // `audit.view` эрхтэй (owner биш) ажилтанд бүлэг зөвхөн энэ child-аар харагдана.
+      { href: "/dashboard/audit", label: "Аудит лог", view: "audit" },
     ],
   },
   {
@@ -325,10 +313,15 @@ function SidebarNavList({
   // child (ж: "Ажилтнууд") бүлгээ бүхэлд нь ил гаргаж, эрхгүй хуудас руу оруулна.
   const childVisible = (parentView: string | undefined, c: NavLeaf): boolean =>
     canSeeView(c.view ?? parentView, isOwner, permissions);
-  const filterChildren = (it: NavItem): NavItem =>
-    hasChildren(it)
-      ? { ...it, children: it.children.filter((c) => childVisible(it.view, c)) }
-      : it;
+  // Бүлгийн ӨӨРИЙН эрх байхгүй (зөвхөн child-аар харагдаж буй) бол бүлгийн
+  // href-ийг эхний харагдах child рүү заана — хумигдсан rail-ийн icon дээр
+  // дарахад эрхгүй хуудас (→ redirect) руу биш, зохих child рүү орно.
+  const filterChildren = (it: NavItem): NavItem => {
+    if (!hasChildren(it)) return it;
+    const children = it.children.filter((c) => childVisible(it.view, c));
+    const ownAllowed = canSeeView(it.view, isOwner, permissions);
+    return { ...it, children, href: ownAllowed ? it.href : (children[0]?.href ?? it.href) };
+  };
   // Бүлэг нь өөрийн эрхээр, ЭСВЭЛ (эцгээс ӨӨР) тодорхой эрхтэй харагдах child-тай
   // бол харагдана — ингэснээр тодорхой standalone эрхтэй ажилтан эцэг бүлгээ
   // харж, доторх зохих child рүү нэвтэрнэ (бусад child нуугдана).
@@ -368,7 +361,7 @@ function SidebarNavList({
   function isOpen(href: string): boolean {
     const explicit = openGroups[href];
     if (typeof explicit === "boolean") return explicit;
-    const group = [...navItems, ...secondaryItems].find(
+    const group = [...visibleNav, ...visibleSecondary].find(
       (it) => it.href === href && hasChildren(it),
     );
     return group ? isGroupActive(pathname, group as NavGroup) : false;
@@ -433,75 +426,6 @@ function SidebarNavList({
         ),
       )}
     </nav>
-  );
-}
-
-// Collapsed rail дотор hover flyout байрлуулах helper. `nav`-ийн эцэг элемент
-// нь `overflow-y-auto` тул (CSS-ийн дүрмээр overflow-x нь мөн "auto" болж,
-// хажуу тийш гарсан зүйлийг таслачихдаг) `absolute`-аар байрлуулсан tooltip/цэс
-// харагдахгүй байсан — тиймээс `document.body`-руу portal хийж, trigger-ийн
-// bounding rect дээр үндэслэн `position: fixed`-ээр байрлуулна (DatePicker-тэй
-// ижил зарчим). Портал хийсэн ч hover тасрахгүйн тулд flyout дээр очиход ч мөн
-// нээлттэй хэвээр байлгаж, бага зэрэг саатал (120ms)-тайгаар хаана.
-type FlyoutPos = { top: number; left: number };
-
-function useHoverFlyout() {
-  const anchorRef = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<FlyoutPos>({ top: 0, left: 0 });
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  function clearCloseTimer() {
-    if (closeTimer.current) {
-      clearTimeout(closeTimer.current);
-      closeTimer.current = null;
-    }
-  }
-  function onEnter() {
-    clearCloseTimer();
-    const el = anchorRef.current;
-    if (el) {
-      const r = el.getBoundingClientRect();
-      setPos({ top: r.top, left: r.right + 12 });
-    }
-    setOpen(true);
-  }
-  function onLeave() {
-    clearCloseTimer();
-    closeTimer.current = setTimeout(() => setOpen(false), 120);
-  }
-  useEffect(() => clearCloseTimer, []);
-
-  return { anchorRef, open, pos, onEnter, onLeave };
-}
-
-function HoverFlyoutPortal({
-  pos,
-  open,
-  onEnter,
-  onLeave,
-  center,
-  children,
-}: {
-  pos: FlyoutPos;
-  open: boolean;
-  onEnter: () => void;
-  onLeave: () => void;
-  center?: boolean;
-  children: React.ReactNode;
-}) {
-  if (typeof document === "undefined") return null;
-  return createPortal(
-    <div
-      onMouseEnter={onEnter}
-      onMouseLeave={onLeave}
-      style={{ position: "fixed", top: pos.top, left: pos.left }}
-      className={`sidebar-tooltip z-[200] origin-left transition-all ${center ? "-translate-y-1/2" : ""
-        } ${open ? "pointer-events-auto opacity-100 scale-100" : "pointer-events-none opacity-0 scale-95"}`}
-    >
-      {children}
-    </div>,
-    document.body,
   );
 }
 

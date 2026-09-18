@@ -46,6 +46,11 @@ type CrudCode = `${ResourceKey}.${ActionKey}`;
 // мөрийн түүхийг (хэн, хэзээ цуцалсан) харах эрх. Энгийн харах (`orders.view`/
 // `orders.viewOwn`)-аас тусдаа: цуцлагдсан мөр анхнаасаа жагсаалтад
 // харагдахгүй тул зөвхөн ЭНЭ эрхтэй хэрэглэгч "Түүх" товчоор нээж үзнэ.
+// `customers.notify` — тухайн тенантын (онлайн бүртгэлтэй) бүх үйлчлүүлэгчид
+// push зар/мэдэгдэл (хямдрал, урамшуулал гэх мэт) илгээх эрх. `customers.view`/
+// `customers.edit`-ээс тусдаа — мэдээлэл харах/засах боломжтой ч заавал бөөнөөр
+// зар илгээх боломжтой байх албагүй тул шинэ Role-д анхдагчаар ОРОХГҮЙ (өмнө
+// байгаагүй, мэдрэмтгий шинэ боломж).
 type StandaloneCode =
   | "audit.view"
   | "orders.assignable"
@@ -55,6 +60,7 @@ type StandaloneCode =
   | "orders.itemStatus"
   | "orders.itemPrice"
   | "orders.itemHistory"
+  | "customers.notify"
   | "employees.schedule";
 
 export type PermissionCode = CrudCode | StandaloneCode;
@@ -142,6 +148,13 @@ export const PERMISSIONS: readonly PermissionDef[] = [
     group: "Захиалга",
   },
   {
+    code: "customers.notify",
+    label: "Үйлчлүүлэгчид зар илгээх",
+    description:
+      "Онлайн бүртгэлтэй бүх үйлчлүүлэгчид push зар/мэдэгдэл (хямдрал, урамшуулал гэх мэт) илгээх.",
+    group: "Үндсэн",
+  },
+  {
     code: "employees.schedule",
     label: "Ажлын хувиар засах",
     description:
@@ -188,5 +201,6 @@ export const STANDALONE_PERMISSIONS: ReadonlyArray<PermissionDef> = PERMISSIONS.
     p.code === "orders.itemStatus" ||
     p.code === "orders.itemPrice" ||
     p.code === "orders.itemHistory" ||
+    p.code === "customers.notify" ||
     p.code === "employees.schedule",
 );

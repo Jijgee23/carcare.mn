@@ -24,12 +24,14 @@ export const NOTIFICATION_TYPES = [
   "order_in_progress",
   "order_payment_received",
   "order_rescheduled",
+  "service_reminder",
   "appointment_rescheduled",
   "appointment_rescheduled_by_account",
   "subscription_expiring",
   "feedback_replied_staff",
   "feedback_replied_account",
   "tenant_created",
+  "tenant_promo",
   "broadcast_staff",
   "broadcast_account",
 ] as const;
@@ -54,12 +56,14 @@ export const NOTIFICATION_TYPE_LABEL: Record<NotificationType, string> = {
   order_in_progress: "Ажил эхэллээ",
   order_payment_received: "Төлбөр хүлээн авсан",
   order_rescheduled: "Товлосон огноо шилжсэн",
+  service_reminder: "Үйлчилгээний сануулга",
   appointment_rescheduled: "Цаг шилжсэн",
   appointment_rescheduled_by_account: "Хэрэглэгч цагаа шилжүүлсэн",
   subscription_expiring: "Багц дуусах",
   feedback_replied_staff: "Санал хүсэлтэд хариу ирсэн",
   feedback_replied_account: "Санал хүсэлтэд хариу ирсэн",
   tenant_created: "Шинэ байгууллага бүртгүүлсэн",
+  tenant_promo: "Байгууллагын зар",
   broadcast_staff: "Мэдэгдэл",
   broadcast_account: "Мэдэгдэл",
 };
@@ -248,6 +252,28 @@ export const NOTIFICATION_REGISTRY: Record<NotificationType, NotificationDef> = 
     }),
     href: (d) => appointmentHref(d),
   },
+  // "Дараагийн үйлчилгээний сануулга" — `Service.reminderIntervalMonths`
+  // тохируулсан үйлчилгээ COMPLETED болсноос хойш тэр олон сарын дараа,
+  // cron-оор (app/api/cron/service-reminders) НЭГ л удаа илгээгдэнэ.
+  service_reminder: {
+    realm: "account",
+    build: (i) => ({
+      title: i.serviceName ? `${i.serviceName} — цаг боллоо` : "Үйлчилгээний цаг боллоо",
+      body: i.vehiclePlate
+        ? `${i.vehiclePlate} — «${i.serviceName ?? "үйлчилгээ"}» дахин хийлгэх цаг боллоо.`
+        : `«${i.serviceName ?? "Үйлчилгээ"}» дахин хийлгэх цаг боллоо.`,
+      data: {
+        type: "service_reminder",
+        serviceItemId: i.serviceItemId ?? "",
+        serviceId: i.serviceId ?? "",
+        vehicleId: i.vehicleId ?? "",
+      },
+      // Cron давхар дуудагдсан ч (эсвэл өдөр бүр дахин тааралдсан ч) нэг л
+      // мөр үүснэ — `ServiceItem.reminderSentAt` guard-тай хамт давхар хамгаалалт.
+      dedupeKey: i.serviceItemId ? `service_reminder:${i.serviceItemId}` : undefined,
+    }),
+    href: () => "/book",
+  },
   appointment_rescheduled: {
     realm: "account",
     build: (i) => ({
@@ -306,6 +332,20 @@ export const NOTIFICATION_REGISTRY: Record<NotificationType, NotificationDef> = 
       data: { type: "tenant_created", tenantId: i.tenantId ?? "" },
     }),
     href: (d) => (d.tenantId ? `/system/tenants/${d.tenantId}` : "/system/tenants"),
+  },
+  // Тенант (байгууллага) өөрийн үйлчлүүлэгчиддээ гар аргаар илгээсэн зар/
+  // урамшуулал (жишээ нь "20% хямдрал") — `customers.notify` эрхтэй ажилтан
+  // л илгээнэ (харах: broadcastTenantPromo, app/_actions/customers.ts).
+  // Систем админы broadcast_account-аас тусдаа: энэ зөвхөн ТУХАЙН тенантын
+  // үйлчлүүлэгчид (өөр tenant-ийн үйлчлүүлэгч огт хамрагдахгүй) хүрнэ.
+  tenant_promo: {
+    realm: "account",
+    build: (i) => ({
+      title: i.title ?? "Мэдэгдэл",
+      body: i.body ?? "",
+      data: { type: "tenant_promo", tenantId: i.tenantId ?? "" },
+    }),
+    href: () => "/account/notifications",
   },
   // Систем админаас гар аргаар бичсэн мэдэгдэл — доорх 2 нь зөвхөн хүлээн
   // авагчийн realm-ээрээ ялгаатай, текст нь бүрэн admin-аас ирнэ (fixed
@@ -634,6 +674,76 @@ async function broadcastToRealm(
     total += rows.length;
     cursor = ids[ids.length - 1];
     if (rows.length < BROADCAST_BATCH_SIZE) break;
+  }
+
+  return total;
+}
+
+/**
+ * Тенант ӨӨРИЙН (зөвхөн тухайн tenantId-тай) онлайн бүртгэлтэй
+ * (`Customer.accountId != null`) үйлчлүүлэгчиддээ зар/урамслал илгээнэ —
+ * системийн `broadcastNotification`-аас ялгаатай нь ЗӨВХӨН энэ тенантын
+ * үйлчлүүлэгчид хүрнэ (бусад tenant-ийн `Customer` мөрөнд хамаарахгүй).
+ * Тенант-ийн хэмжээнд ажилладаг тул RLS-г тойрох (`setBypassContext`)
+ * шаардлагагүй — дуудагч аль хэдийн тухайн тенантын context-той.
+ * `Customer.id`-аар cursor pagination хийж (ENTERPRISE багцын хязгааргүй
+ * тенантад ч зохицуулах) 500-аар багцална (broadcastNotification-тэй адил).
+ */
+export async function broadcastTenantPromo(args: {
+  tenantId: string;
+  title: string;
+  body: string;
+}): Promise<number> {
+  const built = {
+    title: args.title,
+    body: args.body,
+    data: { type: "tenant_promo", tenantId: args.tenantId } as Record<string, string>,
+  };
+
+  let cursor: string | undefined;
+  let total = 0;
+
+  for (; ;) {
+    const customers = await prisma.customer.findMany({
+      where: { tenantId: args.tenantId, accountId: { not: null } },
+      select: { id: true, accountId: true },
+      take: BROADCAST_BATCH_SIZE,
+      orderBy: { id: "asc" },
+      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+    });
+    if (customers.length === 0) break;
+
+    const accountIds = customers
+      .map((c) => c.accountId)
+      .filter((id): id is string => Boolean(id));
+
+    await prisma.notification.createMany({
+      data: accountIds.map((accountId) => ({
+        type: "tenant_promo",
+        title: built.title,
+        body: built.body,
+        data: built.data,
+        tenantId: args.tenantId,
+        accountId,
+      })),
+    });
+
+    const tokens = await prisma.device.findMany({
+      where: { accountId: { in: accountIds }, firebaseToken: { not: null } },
+      select: { firebaseToken: true },
+    });
+    try {
+      await sendPushToTokens(
+        tokens.map((t) => t.firebaseToken).filter((t): t is string => Boolean(t)),
+        { title: built.title, body: built.body, data: built.data },
+      );
+    } catch (err) {
+      console.warn("[notify] tenant_promo push:", err);
+    }
+
+    total += accountIds.length;
+    cursor = customers[customers.length - 1].id;
+    if (customers.length < BROADCAST_BATCH_SIZE) break;
   }
 
   return total;

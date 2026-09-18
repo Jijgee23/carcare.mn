@@ -258,6 +258,14 @@ html.light
   --oc-warn: #dc7f4f;
   /* Accent товч/badge дээрх текст — theme өөрчлөгдсөн ч бараан хэвээр үлдэнэ. */
   --oc-on-accent: #14120c;
+  /* Ажлын хувиарын салбар бүрийн өнгө (designs/Schedule Calendar) — салбарын
+     индексээр ээлжлэн оноогдоно; light-д бараан хувилбар. */
+  --oc-b1: #22d3ee;
+  --oc-b2: #f5b74e;
+  --oc-b3: #a78bfa;
+  --oc-b4: #4ade80;
+  --oc-b5: #f472b6;
+  --oc-b6: #fb923c;
   /* `Select`/`FilterSelect`/`DatePicker` зэрэг олон хуудсанд хуваалцдаг
      компонентууд дотроо ердийн violet брэндийн CSS var/inline-style ашигладаг
      тул энд Ops Console (cyan) руу дарж бичнэ — компонентын код өөрчлөгдөхгүй. */
@@ -282,11 +290,48 @@ html.light .landing-ops {
   --oc-accent-hi: #0891b2;
   --oc-ok: #1e9f6e;
   --oc-warn: #b45309;
+  --oc-b1: #0e7490;
+  --oc-b2: #b45309;
+  --oc-b3: #6d28d9;
+  --oc-b4: #15803d;
+  --oc-b5: #be185d;
+  --oc-b6: #c2410c;
   --accent-strong: var(--oc-accent-hi);
   --select-option-active-bg: rgba(14, 116, 144, 0.14);
   --filter-active-border: rgba(14, 116, 144, 0.4);
   --filter-active-bg: rgba(14, 116, 144, 0.14);
 }
+
+/* Ажлын хувиарын салбарын өнгө (designs/Schedule Calendar). `.branch-c1..c6`
+   нь `--branch-color`-ыг тогтооно, `.shift-box`/`.branch-*` класс түүнийг
+   хэрэглэнэ. АНХААР: `--oc-bN`-ийг зөвхөн inline style-аас `var()`-аар дуудвал
+   CSS build (lightningcss) уг token-уудыг "хэрэглэгдээгүй" гэж устгадаг тул
+   заавал энд CSS дотор лавлана — компонентууд inline style биш эдгээр класс
+   ашиглана. */
+.landing-ops .branch-c0 { --branch-color: var(--oc-muted3); } /* салбар тодорхойгүй */
+.landing-ops .branch-c1 { --branch-color: var(--oc-b1); }
+.landing-ops .branch-c2 { --branch-color: var(--oc-b2); }
+.landing-ops .branch-c3 { --branch-color: var(--oc-b3); }
+.landing-ops .branch-c4 { --branch-color: var(--oc-b4); }
+.landing-ops .branch-c5 { --branch-color: var(--oc-b5); }
+.landing-ops .branch-c6 { --branch-color: var(--oc-b6); }
+.landing-ops .shift-box {
+  background: color-mix(in srgb, var(--branch-color) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--branch-color) 28%, transparent);
+  box-shadow: inset 3px 0 0 var(--branch-color);
+}
+.landing-ops .shift-box-selected {
+  border-color: var(--branch-color);
+  box-shadow:
+    inset 3px 0 0 var(--branch-color),
+    0 0 0 3px color-mix(in srgb, var(--oc-accent) 14%, transparent);
+}
+.landing-ops .branch-avatar {
+  background: color-mix(in srgb, var(--branch-color) 14%, transparent);
+  color: var(--branch-color);
+}
+.landing-ops .branch-ink { color: var(--branch-color); }
+.landing-ops .branch-dot { background: var(--branch-color); }
 .landing-ops {
   background-color: var(--oc-carbon);
   color: var(--oc-ink);

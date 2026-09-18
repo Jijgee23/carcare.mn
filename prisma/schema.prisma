@@ -600,6 +600,12 @@ model ServiceItem {
   startedAt   DateTime?
   completedAt DateTime?
 
+  // Энэ мөр (COMPLETED, `service.reminderIntervalMonths` тохируулсан) дээр
+  // "дараагийн үйлчилгээний сануулга" push-г үйлчлүүлэгчид ЯГ НЭГ л удаа
+  // илгээсэн эсэх — cron дахин давхардуулж илгээхгүй байхын баталгаа (харах:
+  // app/api/cron/service-reminders/route.ts).
+  reminderSentAt DateTime?
+
   orderId String
   order   ServiceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
@@ -666,6 +672,14 @@ model Service {
   durationValue  Decimal? @db.Decimal(12, 3)
   durationUnitId String?
   durationUnit   Unit?    @relation("ServiceDurationUnit", fields: [durationUnitId], references: [id], onDelete: SetNull)
+
+  // Энэ үйлчилгээг ямар давтамжтай дахин хийлгэх ёстойг (сараар) заавал биш
+  // тохируулна — жишээ нь "Тос солиулах" → 6. `null` бол сануулга огт
+  // ажиллахгүй. Тохируулсан бол тухайн үйлчилгээ дууссан ServiceItem мөр
+  // бүрт (completedAt-аас хойш ийм олон сар өнгөрсний дараа) үйлчлүүлэгчид
+  // НЭГ удаа push сануулга илгээнэ (харах: app/api/cron/service-reminders/
+  // route.ts, ServiceItem.reminderSentAt).
+  reminderIntervalMonths Int?
 
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -903,6 +917,7 @@ model SystemServiceKey {
 // бүрийн өөрийн бичлэг биш, Branch-тай шууд олон-олон холбоотой (тухайн
 // салбарт тохирох тодорхой хугацаа/багтаамж зэрэг нэмэлт талбар шаардахгүй
 // учир Category шиг тенантын завсрын бичлэг хэрэггүй).
+
 model BranchTag {
   id          String  @id @default(cuid())
   name        String  @unique // "Угаалгын газар", "Дугуй засвар" г.м.

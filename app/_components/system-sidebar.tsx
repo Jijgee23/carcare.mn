@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { signOutSystemAction } from "@/app/_actions/system-auth";
 import { Brand, BrandMark } from "./brand";
+import { HoverFlyoutPortal, useHoverFlyout } from "./nav-hover-flyout";
 import { useSidebarCollapse } from "./use-sidebar-collapse";
 
 type NavItem = {
@@ -225,6 +226,16 @@ const navGroups: NavGroup[] = [
     label: null,
     items: [
       {
+        href: "/system/api-docs",
+        label: "Мобайл API",
+        icon: (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="16 18 22 12 16 6" />
+            <polyline points="8 6 2 12 8 18" />
+          </svg>
+        ),
+      },
+      {
         href: "/system/settings",
         label: "Тохиргоо",
         icon: (
@@ -280,6 +291,65 @@ function NavLeafRow({
         {!collapsed ? item.label : null}
       </Link>
       {collapsed ? <NavTooltip label={item.label} /> : null}
+    </div>
+  );
+}
+
+// Хумигдсан rail дотор ХАРГИЙН БҮХ item-ийг тэгш эрхтэй icon мөрөөр
+// жагсаавал бүлгийн ялгаа (гарчиг) бүрмөсөн алдагдана — admin-sidebar.tsx-ийн
+// NavGroupItem-тэй адил зарчмаар (нэг төлөөлөгч icon + hover flyout доторх
+// бүлгийн гарчиг+child-ууд) засав.
+function CollapsedNavGroup({
+  group,
+  active,
+  icon,
+  isActive,
+}: {
+  group: NavGroup;
+  active: boolean;
+  icon: React.ReactNode;
+  isActive: (item: NavItem) => boolean;
+}) {
+  const { anchorRef, open, pos, onEnter, onLeave } = useHoverFlyout();
+  return (
+    <div ref={anchorRef} className="relative" onMouseEnter={onEnter} onMouseLeave={onLeave}>
+      <div
+        title={group.label ?? undefined}
+        className={`flex h-11 items-center justify-center rounded-xl text-[13px] font-medium transition-colors ${
+          active ? activePillClasses : inactivePillClasses
+        }`}
+      >
+        {icon ? (
+          <span className={`nav-icon ${active ? "" : "text-[var(--oc-muted3)]"}`}>{icon}</span>
+        ) : null}
+      </div>
+
+      {/* Portal (`document.body`) → `.landing-ops`-ийн гадна, `var(--oc-*)`
+          уламжлагдахгүй тул шууд hex + `light:` variant (admin-sidebar.tsx-ийн
+          NavGroupItem-тэй адил). */}
+      <HoverFlyoutPortal pos={pos} open={open} onEnter={onEnter} onLeave={onLeave}>
+        <div className="min-w-[11rem] overflow-hidden rounded-xl border border-[#23272e] light:border-[#e3e0da] bg-[#101318] light:bg-[#faf9f8] py-1.5 shadow-xl">
+          <div className="px-3 py-1.5 font-plex-mono text-[11px] font-semibold uppercase tracking-[0.1em] text-[#6e747e] light:text-[#90949b]">
+            {group.label}
+          </div>
+          {group.items.map((item) => {
+            const childActive = isActive(item);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`block px-3 py-2 text-[13px] transition-colors ${
+                  childActive
+                    ? "bg-[#22d3ee]/10 light:bg-[#0e7490]/10 text-[#22d3ee] light:text-[#0e7490]"
+                    : "text-[#a7adb6] light:text-[#5c6067] hover:bg-white/[0.06] hover:text-[#edeef0] light:hover:text-[#1e1f24]"
+                }`}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </div>
+      </HoverFlyoutPortal>
     </div>
   );
 }
@@ -371,14 +441,20 @@ export function SystemSidebar({
       ) : null}
 
       <nav className={`sidebar-scroll flex-1 overflow-y-auto pb-4 space-y-0.5 ${collapsed ? "px-2 pt-3" : "px-3"}`}>
-        {navGroups.map((group) => {
+        {navGroups.map((group, groupIndex) => {
           // Ганц item-тэй (гарчиггүй) бүлэг тенант дашбоардын NavLeafLink шиг
           // энгийн холбоос хэвээр үлдэнэ — олон item-тэй бүлэг л
-          // NavGroupItem (admin-sidebar.tsx) шиг toggle хийгдэнэ.
+          // NavGroupItem (admin-sidebar.tsx) шиг toggle хийгдэнэ. `contents`
+          // (space-y-0.5-г эвдэхгүйн тулд, харах: доорх тайлбар) бүхий
+          // wrapper-т key өгнө — `group.label` null тул index ашиглана.
           if (!group.label) {
-            return group.items.map((item) => (
-              <NavLeafRow key={item.href} item={item} active={isActive(item)} collapsed={collapsed} />
-            ));
+            return (
+              <div key={`ungrouped-${groupIndex}`} className="contents">
+                {group.items.map((item) => (
+                  <NavLeafRow key={item.href} item={item} active={isActive(item)} collapsed={collapsed} />
+                ))}
+              </div>
+            );
           }
 
           const groupActive = group.items.some(isActive);
@@ -386,11 +462,20 @@ export function SystemSidebar({
           const representativeIcon = group.items[0]?.icon;
 
           if (collapsed) {
-            // Rail горимд toggle хийх зай байхгүй тул бүлгийн бүх item-ийг
-            // тэгш эрхтэй icon мөрөөр жагсаана (tooltip-той).
-            return group.items.map((item) => (
-              <NavLeafRow key={item.href} item={item} active={isActive(item)} collapsed={collapsed} />
-            ));
+            // Rail горимд toggle хийх зай байхгүй — admin-sidebar.tsx-ийн
+            // NavGroupItem-тэй адил, бүлэг бүрийг НЭГ төлөөлөгч icon болгож,
+            // hover flyout-оор нь бүлгийн гарчиг+child-уудыг харуулна (өмнө нь
+            // бүлгийн БҮХ item-ийг тэгш жагсаадаг байсан тул гарчиг бүрмөсөн
+            // алдагдаж, тенант админы sidebar-тай адилгүй байсан).
+            return (
+              <CollapsedNavGroup
+                key={group.label}
+                group={group}
+                active={groupActive}
+                icon={representativeIcon}
+                isActive={isActive}
+              />
+            );
           }
 
           return (

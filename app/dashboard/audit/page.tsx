@@ -65,6 +65,7 @@ const ENTITY_LABEL: Record<EntityType, string> = {
   DiagnosticTemplate: "Оношилгооны загвар",
   DiagnosticReport: "Оношилгооны тайлан",
   Appointment: "Цаг захиалга",
+  Notification: "Мэдэгдэл",
 };
 
 const ACTION_OPTIONS = Object.entries(ACTION_LABEL).map(([value, label]) => ({

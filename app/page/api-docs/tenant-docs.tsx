@@ -191,7 +191,8 @@ Res: 200 { "orders": [{ "id": "...", "number": "...", "status": "...", "paymentS
 Res:  201 { "order": {...} }
 422  { "error": "Хүсэлт буруу.", "fieldErrors": { "branchId": "...", "customerId": "...", "vehicleId": "..." } }
 422  { "error": "Хүсэлт буруу.", "fieldErrors": { "branchId": "Зөвхөн өөрийн салбарт засварын хуудас үүсгэх боломжтой." } }
-500  { "error": "Засварын хуудасны дугаар үүсгэж чадсангүй. Дахин оролдоно уу." }`}</Code>
+403  { "error": "Та зөвхөн өөрийгөө хариуцагчаар оноож болно." }   // orders.assign эрхгүй ажилтан өөр хүн оноох гэвэл
+500  { "error": "Захиалгын дугаар үүсгэж чадсангүй. Дахин оролдоно уу." }`}</Code>
         </Endpoint>
 
         <Endpoint method="GET" path="/api/v1/orders/[id]" auth="bearer" bearerLabel={BEARER} tags={["branch-scoped"]} title="Засварын хуудасны дэлгэрэнгүй (мөрүүд + оношилгооны тайлан хамт).">
@@ -202,12 +203,14 @@ Res:  201 { "order": {...} }
 404 { "error": "Засварын хуудас олдсонгүй." }`}</Code>
         </Endpoint>
 
-        <Endpoint method="PATCH" path="/api/v1/orders/[id]" auth="bearer" bearerLabel={BEARER} tags={["Эрх: orders.edit", "Багц идэвхтэй байх шаардлагатай"]} title="Засварын хуудасны статус/тэмдэглэл/хариуцагч засах — зөвшөөрөгдсөн шилжилтээр л статус солигдоно.">
-          <Code>{`Req:  { "status": "IN_PROGRESS", "notes": "...", "assignedToId": "..." }  // бүгд заавал биш
+        <Endpoint method="PATCH" path="/api/v1/orders/[id]" auth="bearer" bearerLabel={BEARER} tags={["Эрх: orders.edit (эсвэл orders.editOwn — өөрийн хариуцсан)", "Багц идэвхтэй байх шаардлагатай"]} title="Засварын хуудасны статус/тэмдэглэл/хариуцагч засах — зөвшөөрөгдсөн шилжилтээр л статус солигдоно. IN_PROGRESS руу шилжихэд ажлын хугацаа тодорхойгүй бол (мөрүүдээс тооцоолох боломжгүй) durationMinutes заавал.">
+          <Code>{`Req:  { "status": "IN_PROGRESS", "durationMinutes": 90, "notes": "...", "assignedToId": "..." }  // бүгд заавал биш
 Res:  200 { "order": {...} }
+403  { "error": "Танд энэ засварын хуудсыг засах эрх байхгүй." } | { "error": "Зөвхөн orders.assign эрхтэй хэрэглэгч хариуцагч өөрчилж болно." }
 404  { "error": "Засварын хуудас олдсонгүй." }
 422  { "error": "Дууссан / цуцлагдсан засварын хуудасны мэдээллийг засах боломжгүй." }
-422  { "error": "\\"PENDING\\" статусаас \\"COMPLETED\\" руу шилжих боломжгүй." }`}</Code>
+422  { "error": "\\"PENDING\\" статусаас \\"COMPLETED\\" руу шилжих боломжгүй." }
+422  { "error": "Ажлыг эхлүүлэхийн өмнө \\"durationMinutes\\" (бүхэл тоо, 5–720) шаардлагатай." }`}</Code>
         </Endpoint>
 
         <Endpoint method="POST" path="/api/v1/orders/[id]/items" auth="bearer" bearerLabel={BEARER} tags={["Эрх: orders.edit", "Багц идэвхтэй байх шаардлагатай"]} title="Засварын хуудсанд ажил/сэлбэг/оношилгооны мөр нэмэх (каталогоос үнэ/нэр автоматаар татагдана).">
@@ -272,10 +275,13 @@ Res:  200 { "paid": true } | { "paid": false, "message": "Төлбөр төлө�
         <Endpoint method="GET" path="/api/v1/appointments" auth="bearer" bearerLabel={BEARER} tags={["Эрх: appointments.view", "branch-scoped"]} title="Цагийн жагсаалт. month= параметрээр өдөр тус бүрийн тоог авах боломжтой.">
           <Code>{`Query: ?status=&date=YYYY-MM-DD&month=YYYY-MM&branchId=&page=&pageSize=
 Res (month горим): 200 { "dates": ["2026-09-02", "2026-09-05", ...] }
-Res (энгийн):      200 { "appointments": [{ "id": "...", "status": "PENDING", "requestedAt": "...", "note": "...",
-  "branch": {...}, "category": {...} | null, "account": { "name": "...", "phone": "..." } | null,
-  "customer": {...} | null, "accountVehicle": {...} | null, "vehicle": {...} | null,
-  "serviceOrder": { "id": "...", "number": "..." } | null }], "pagination": {...} }`}</Code>
+Res (энгийн):      200 { "appointments": [{ "id": "...", "status": "PENDING", "requestedAt": "...", "note": "...", "createdAt": "...",
+  "branch": { "id": "...", "name": "..." }, "category": { "id": "...", "name": "..." } | null,
+  "account": { "name": "...", "phone": "..." } | null,                          // онлайн захиалга
+  "customer": { "id": "...", "fullName": "...", "phone": "..." } | null,
+  "accountVehicle": { "plate": "...", "make": "...", "model": "..." } | null,
+  "vehicle": { "id": "...", "plate": "...", "make": "...", "model": "..." } | null,
+  "serviceOrder": { "id": "...", "number": "..." } | null }], "pagination": {...} }   // pageSize max 100`}</Code>
         </Endpoint>
 
         <Endpoint method="PATCH" path="/api/v1/appointments/[id]" auth="bearer" bearerLabel={BEARER} tags={["Эрх: appointments.edit", "branch-scoped"]} title="Цагийн статус солих (зөвшөөрөгдсөн шилжилтээр л).">
@@ -293,11 +299,15 @@ Res:  200 { "appointment": {...} }
         <Endpoint method="GET" path="/api/v1/services" auth="bearer" bearerLabel={BEARER} title="Ажил/сэлбэг/оношилгооны каталог.">
           <Code>{`Query: ?type=LABOR|GOODS|DIAGNOSTIC&q=&isActive=&page=&pageSize=
 Res: 200 { "services": [{ "id": "...", "type": "...", "name": "...", "code": "...", "price": 0, "costPrice": 0,
-  "stock": 0, "description": "...", "isActive": true, "unit": {...}, "category": {...}, "createdAt": "..." }], "pagination": {...} }`}</Code>
+  "stock": 0, "description": "...", "isActive": true,
+  "durationValue": 1.5 | null, "durationUnit": { "id": "...", "name": "цаг", "code": "h" } | null,   // ажлын хугацаа (LABOR)
+  "unit": { "id": "...", "name": "...", "code": "..." } | null, "category": { "id": "...", "name": "..." } | null, "createdAt": "..." }],
+  "pagination": {...} }`}</Code>
         </Endpoint>
 
         <Endpoint method="POST" path="/api/v1/services" auth="bearer" bearerLabel={BEARER} tags={["Багц идэвхтэй байх шаардлагатай"]} title="Шинэ ажил/сэлбэг/оношилгоо үүсгэх.">
-          <Code>{`Req:  { "type": "GOODS", "name": "...", "price": 0, "code": "...", "costPrice": 0, "stock": 0, "unitId": "...", "categoryId": "..." }
+          <Code>{`Req:  { "type": "GOODS", "name": "...", "price": 0, "code": "...", "costPrice": 0, "stock": 0, "unitId": "...", "categoryId": "...",
+        "durationValue": 1.5, "durationUnitId": "..." }   // type/name/price заавал
 Res:  200 { "service": {...} }
 400  { "error": "Төрөл буруу байна (LABOR | GOODS | DIAGNOSTIC)" } | { "error": "Нэр заавал шаардлагатай" } | { "error": "Үнэ буруу байна" }`}</Code>
         </Endpoint>
@@ -314,8 +324,9 @@ Res: 200 { "categories": [{ "id": "...", "name": "...", "description": "...", "i
 
         <Endpoint method="POST" path="/api/v1/labor-categories" auth="bearer" bearerLabel={BEARER} title="Шинэ ажлын ангилал үүсгэх (нэр давхцахгүй).">
           <Code>{`Req:  { "name": "...", "description": "...", "isActive": true }
-Res:  200 { "category": {...} }
-400  { "error": "Тийм нэртэй ангилал аль хэдийн байна" }`}</Code>
+Res:  200 { "category": {...} }        // системийн ангилал автоматаар "Ерөнхий" түлхүүрт холбогдоно
+400  { "error": "Тийм нэртэй ангилал аль хэдийн байна" }
+500  { "error": "Системийн ерөнхий ангилал тохируулагдаагүй байна." }`}</Code>
         </Endpoint>
 
         <Endpoint method="PATCH" path="/api/v1/labor-categories/[id]" auth="bearer" bearerLabel={BEARER} title="Ажлын ангилал засах.">

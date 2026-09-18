@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { canEdit } from "@/lib/auth/roles";
 import { assertActiveSubscription } from "@/lib/subscription-server";
+import { type BulkActionState } from "@/lib/bulk-action";
 import { ALL_WEEKDAYS, isValidTime, type Weekday } from "@/lib/branches";
 import { bookingDayBounds } from "@/lib/booking-time";
 import { logAudit } from "@/lib/audit";
@@ -435,4 +436,73 @@ export async function deleteBranchScheduleSeasonAction(formData: FormData): Prom
   }
   revalidatePath(`/dashboard/branches/${branchId}/schedule`);
   revalidatePath(`/dashboard/branches/${branchId}`);
+}
+
+// --- ALL-BRANCH HOLIDAY (fan-out) ------------------------------------------
+
+/**
+ * Нэг л удаа (жишээ нь Шинэ жил) огноо оруулбал, тенантын БҮХ салбарт нэг
+ * зэрэг "тусгай өдөр" (BranchScheduleException) тохируулна — салбар бүрийг
+ * тусад нь орж ижил огноог давтан оруулах шаардлагагүй болгоно. Салбар бүрд
+ * ЯГ адилхан `upsertBranchScheduleExceptionAction`-г дуудна (impact-шалгалт,
+ * audit, revalidate зэрэг бүхнийг тэндээс өвлөнө — шинэ бизнес логик энд
+ * нэмэхгүй), тул мөр бүр (энд: салбар бүр) тусад нь боловсруулагдана — нэг
+ * салбарт захиалга цуцлагдах эрсдэлтэй (`erased`) эсвэл баталгаажуулаагүй
+ * (`needsConfirm`) тохиолдол гарвал ЗӨВХӨН тэр салбар алгасагдаж, error
+ * жагсаалтад орно (тухайн салбарыг ажилтан дараа нь /dashboard/branches/
+ * [id]/schedule хуудаснаас тусад нь баталгаажуулна) — бусад салбарт саад
+ * болохгүй (харах: lib/bulk-action.ts-ийн ерөнхий "all-or-nothing БИШ" загвар).
+ */
+export async function applyHolidayToAllBranchesAction(
+  _prev: BulkActionState,
+  formData: FormData,
+): Promise<BulkActionState> {
+  const user = await requireUser();
+  if (!canEdit(user, "branches")) {
+    return { ok: false, message: "Танд салбарын хуваарь засах эрх байхгүй." };
+  }
+  await assertActiveSubscription(user.tenantId);
+
+  const branches = await prisma.branch.findMany({
+    where: { tenantId: user.tenantId },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true },
+  });
+  if (branches.length === 0) {
+    return { ok: false, message: "Салбар олдсонгүй." };
+  }
+
+  let succeeded = 0;
+  const errors: string[] = [];
+  for (const branch of branches) {
+    // `formData` дахин ашиглана — талбарын нэрс (date/label/exception_*)
+    // upsertBranchScheduleExceptionAction-ийн хүлээж буй нэртэй ЯГ адил тул
+    // хөрвүүлэлт хэрэггүй; функц зөвхөн УНШИНА (мутэйт хийхгүй) тул нэг
+    // FormData-г олон удаа дамжуулах аюулгүй.
+    const result = await upsertBranchScheduleExceptionAction(branch.id, null, formData);
+    if (result?.ok) {
+      succeeded++;
+    } else {
+      errors.push(`${branch.name}: ${result?.message ?? "алдаа"}`);
+    }
+  }
+
+  revalidatePath("/dashboard/branches");
+
+  if (succeeded === 0) {
+    return {
+      ok: false,
+      message: errors[0] ?? "Хадгалахад алдаа гарлаа.",
+      succeeded,
+      failed: errors.length,
+      errors,
+    };
+  }
+  return {
+    ok: true,
+    message: `${succeeded}/${branches.length} салбарт хадгалагдлаа.${errors.length ? ` (${errors.length} амжилтгүй)` : ""}`,
+    succeeded,
+    failed: errors.length,
+    errors,
+  };
 }

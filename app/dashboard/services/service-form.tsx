@@ -29,6 +29,7 @@ type Initial = {
   stock: string | null;
   durationValue: string | null;
   durationUnitId: string | null;
+  reminderIntervalMonths: number | null;
   description: string | null;
   isActive: boolean;
   categoryId: string | null;
@@ -98,6 +99,9 @@ export function ServiceForm({
   const [stock, setStock] = useState(initial?.stock ?? "0");
   const [durationValue, setDurationValue] = useState(
     initial?.durationValue ?? "",
+  );
+  const [reminderIntervalMonths, setReminderIntervalMonths] = useState(
+    initial?.reminderIntervalMonths != null ? String(initial.reminderIntervalMonths) : "",
   );
   const [description, setDescription] = useState(initial?.description ?? "");
   const [isActive, setIsActive] = useState(initial?.isActive ?? true);
@@ -357,6 +361,30 @@ export function ServiceForm({
             </Field>
           </>
         )}
+      </div>
+
+      <div className="flex flex-wrap gap-4">
+        <Field
+          label="Сануулга давтамж"
+          htmlFor="reminderIntervalMonths"
+          hint="сараар — жишээ нь тос 6 сар тутам, заавал биш"
+          error={fe.reminderIntervalMonths}
+          className={FIELD_MW}
+        >
+          <div className="flex items-center gap-2">
+            <input
+              id="reminderIntervalMonths"
+              name="reminderIntervalMonths"
+              type="text"
+              inputMode="numeric"
+              value={reminderIntervalMonths}
+              onChange={(e) => setReminderIntervalMonths(e.target.value)}
+              className={`auth-input ${fe.reminderIntervalMonths ? "border-red-500/50" : ""}`}
+              placeholder="6"
+            />
+            <span className="text-sm text-[var(--oc-muted3)] shrink-0">сар</span>
+          </div>
+        </Field>
       </div>
 
       <Field label="Тайлбар" htmlFor="description" hint="заавал биш" className="max-w-2xl">

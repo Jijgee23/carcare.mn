@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useState, type ReactNode } from "react";
 import {
   bulkUpsertEmployeeShiftAction,
   resetEmployeeShiftAction,
@@ -10,6 +10,14 @@ import {
 import { Btn } from "@/app/_components/landing-ops-ui";
 import { Modal } from "@/app/_components/modal";
 import { Select } from "@/app/_components/select";
+import {
+  FALLBACK_BRANCH_CLASS,
+  buildBranchColorMap,
+  formatHours,
+  formatMonthDay,
+  initialsOf,
+  segmentHours,
+} from "./schedule-ui";
 
 // 24 цагийн формат, 30 минутын алхамтай — native `<input type="time">`-ийн
 // browser/locale-ээс хамаарсан (заримдаа 12ц AM/PM) харагдацаас зайлсхийж,
@@ -39,6 +47,8 @@ export type ScheduleCell = {
 export type EmployeeScheduleRow = {
   id: string;
   name: string;
+  /** Албан тушаал (Role.name; isOwner бол "Админ") — нэрийн доор харуулна. */
+  roleName: string | null;
   homeBranchId: string | null;
   homeBranchName: string | null;
   cells: Record<string, ScheduleCell>;
@@ -63,6 +73,20 @@ function cellKey(userId: string, date: string): string {
   return `${userId}|${date}`;
 }
 
+/** Нүд "ажилладаг" гэж тооцох эсэх — `working=true` ч segment-гүй бол (ж: салбаргүй
+ * өвчлөх/устсан segment) бодит салбар харуулах юмгүй тул үгүй. */
+function cellHasBranches(cell: ScheduleCell | undefined): boolean {
+  return Boolean(cell?.working && cell.segments.length > 0);
+}
+
+/** "Амарна"-г ЗӨВХӨН тодорхой override (weekly/exception)-оор өдрийг амарна гэж
+ * ЗААСАН үед л харуулна — override огт байхгүй (`source === "default"`) бол
+ * "тодорхойгүй" гэж ялгаж харуулна (эс бөгөөс хувиаргүй ажилтны бүх өдөр худал
+ * "Амарна" болж дүүрдэг). */
+function cellIsExplicitOff(cell: ScheduleCell | undefined): boolean {
+  return Boolean(cell && !cell.working && cell.source !== "default");
+}
+
 type BulkTarget = { userId: string; date: string; weekday: string };
 
 export function ScheduleGrid({
@@ -73,6 +97,8 @@ export function ScheduleGrid({
   canEdit,
   todayStr,
   compact = false,
+  header,
+  toolbar,
 }: {
   dates: string[];
   weekdayLabels: Record<string, string>;
@@ -82,6 +108,11 @@ export function ScheduleGrid({
   todayStr: string;
   /** Сарын харагдац — багана олон (28-31) тул нягт, товч эсийн загвар. */
   compact?: boolean;
+  /** Хуудасны гарчгийн блок (eyebrow + h1 + тайлбар) — баруун талд нь bulk
+   * засварын товчнууд зэрэгцэн гарна (designs/Schedule Calendar). */
+  header?: ReactNode;
+  /** Навигаци/шүүлтүүрийн мөрүүд — гарчиг ба хүснэгтийн дунд. */
+  toolbar?: ReactNode;
 }) {
   const [editing, setEditing] = useState<{
     userId: string;
@@ -141,70 +172,137 @@ export function ScheduleGrid({
     return { userId, date, weekday };
   });
 
+  // ── Харагдацын тооцоо ────────────────────────────────────────────────────
+  const branchColor = buildBranchColorMap(branches);
+  const colorOf = (branchId: string | null) =>
+    (branchId ? branchColor.get(branchId) : undefined) ?? FALLBACK_BRANCH_CLASS;
+
+  // Мөр бүрийн нийт цаг/ээлжийн тоо (харагдаж буй өдрүүдээр).
+  const rowStats = new Map(
+    rows.map((r) => {
+      let hours = 0;
+      let shiftCount = 0;
+      for (const d of dates) {
+        const cell = r.cells[d];
+        if (!cellHasBranches(cell)) continue;
+        for (const seg of cell.segments) {
+          shiftCount++;
+          hours += segmentHours(seg.startTime, seg.endTime) ?? 0;
+        }
+      }
+      return [r.id, { hours, shiftCount }];
+    }),
+  );
+  const totalHours = [...rowStats.values()].reduce((n, s) => n + s.hours, 0);
+  // Өдөр бүр хэдэн ажилтан ажиллаж байгаа (толгойн мөрийн товч мэдээ).
+  const workingCountByDate = new Map(
+    dates.map((d) => [d, rows.filter((r) => cellHasBranches(r.cells[d])).length]),
+  );
+
+  const gridTemplateColumns = compact
+    ? `minmax(220px, 1fr) repeat(${dates.length}, minmax(92px, 1fr))`
+    : "minmax(260px, 1.5fr) repeat(7, minmax(126px, 1fr))";
+  const rowMinWidth = compact ? 220 + dates.length * 92 : 1142;
+
+  const cellTitle = (cell: ScheduleCell | undefined) => {
+    if (cellHasBranches(cell)) {
+      return cell!.segments
+        .map(
+          (s) =>
+            `${s.branchName}${
+              s.startTime && s.endTime
+                ? ` ${s.startTime}–${s.endTime}${s.customTime ? "" : " (автомат)"}`
+                : ""
+            }`,
+        )
+        .join(" · ");
+    }
+    return cellIsExplicitOff(cell) ? "Амарна" : "Тодорхойгүй — хувиар тохируулаагүй";
+  };
+
   return (
-    <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden flex-1 min-h-0 flex flex-col">
-      {canEdit ? (
-        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-[var(--oc-line)]">
-          <button
-            type="button"
-            onClick={() => {
-              setBulkMode((v) => !v);
-              setSelected(new Set());
-            }}
-            className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
-              bulkMode
-                ? "border-[var(--oc-accent)] text-[var(--oc-accent)] bg-[var(--oc-accent)]/10"
-                : "border-[var(--oc-line)] text-[var(--oc-muted3)] hover:text-[var(--oc-ink2)]"
-            }`}
-          >
-            {bulkMode ? "Олноор засах ✕" : "Олноор засах"}
-          </button>
-          {bulkMode ? (
-            <>
-              <span className="text-xs text-[var(--oc-muted3)]">
-                {selected.size > 0 ? `${selected.size} нүд сонгогдсон` : "Нүднүүдээ сонгоно уу"}
-              </span>
-              {selected.size > 0 ? (
+    <div className="flex flex-col gap-5">
+      {header || canEdit ? (
+        <div className="flex flex-wrap items-end justify-between gap-6">
+          <div className="min-w-0">{header}</div>
+          {canEdit ? (
+            <div className="flex flex-wrap items-center gap-2.5">
+              {bulkMode ? (
                 <>
-                  <button
-                    type="button"
-                    onClick={() => setBulkEditorOpen(true)}
-                    className="text-xs px-2.5 py-1.5 rounded-lg bg-[var(--oc-accent)] text-[var(--oc-on-accent)] font-medium hover:bg-[var(--oc-accent-hi)] transition-colors"
-                  >
-                    Тохируулах
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelected(new Set())}
-                    className="text-xs text-[var(--oc-muted3)] hover:text-[var(--oc-ink2)] transition-colors"
-                  >
-                    Сонголт цэвэрлэх
-                  </button>
+                  <span className="text-[13px] text-[var(--oc-muted2)]">
+                    {selected.size > 0 ? `${selected.size} нүд сонгогдсон` : "Нүднүүдээ сонгоно уу"}
+                  </span>
+                  {selected.size > 0 ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setBulkEditorOpen(true)}
+                        className="rounded-[10px] bg-[var(--oc-accent)] px-4 py-[9px] text-[13px] font-bold text-[var(--oc-on-accent)] transition-colors hover:bg-[var(--oc-accent-hi)]"
+                      >
+                        Тохируулах
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelected(new Set())}
+                        className="text-[13px] text-[var(--oc-muted2)] transition-colors hover:text-[var(--oc-ink)]"
+                      >
+                        Сонголт цэвэрлэх
+                      </button>
+                    </>
+                  ) : null}
                 </>
               ) : null}
-            </>
+              <button
+                type="button"
+                onClick={() => {
+                  setBulkMode((v) => !v);
+                  setSelected(new Set());
+                }}
+                aria-pressed={bulkMode}
+                className={`flex items-center gap-2 rounded-[10px] border px-3.5 py-[9px] text-[13px] font-semibold transition-colors ${
+                  bulkMode
+                    ? "border-[var(--oc-accent)] bg-[var(--oc-accent)]/10 text-[var(--oc-accent)]"
+                    : "border-[var(--oc-line)] text-[var(--oc-muted)] hover:border-[var(--oc-muted3)] hover:text-[var(--oc-ink)]"
+                }`}
+              >
+                {bulkMode ? "Олноор засах ✕" : "Олноор засах"}
+              </button>
+            </div>
           ) : null}
         </div>
       ) : null}
 
-      {rows.length === 0 ? (
-        <p className="text-sm text-[var(--oc-muted3)] py-16 text-center">
-          Ажилтан олдсонгүй.
-        </p>
-      ) : (
-        <div className="overflow-auto flex-1 min-h-0">
-          <table className={`w-full ${compact ? "min-w-[1400px]" : "min-w-[900px]"}`}>
-            <thead>
-              <tr className="border-b border-[var(--oc-line)]">
-                <th className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-4 py-2.5 sticky left-0 bg-[var(--oc-panel)]">
-                  Ажилтан
-                </th>
-                {dates.map((d) => (
-                  <th
+      {toolbar ? <div className="flex flex-col gap-3">{toolbar}</div> : null}
+
+      <div className="overflow-auto rounded-2xl border border-[var(--oc-line)] bg-[var(--oc-panel)]">
+        {rows.length === 0 ? (
+          <p className="py-16 text-center text-sm text-[var(--oc-muted3)]">Ажилтан олдсонгүй.</p>
+        ) : (
+          <div style={{ minWidth: rowMinWidth }}>
+            {/* Толгой мөр */}
+            <div
+              className="grid border-b border-[var(--oc-line)] bg-[var(--oc-panel2)]"
+              style={{ gridTemplateColumns }}
+            >
+              <div className="sticky left-0 z-10 flex items-center bg-[var(--oc-panel2)] px-[18px] py-3.5 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--oc-muted3)]">
+                Ажилтан
+              </div>
+              {dates.map((d) => {
+                const wd = weekdayOf(d);
+                const isWeekend = wd === "SAT" || wd === "SUN";
+                const isToday = d === todayStr;
+                const nameColor = isToday
+                  ? "text-[var(--oc-accent)]"
+                  : isWeekend
+                    ? "text-[var(--oc-muted3)]"
+                    : "text-[var(--oc-muted)]";
+                const short = weekdayLabels[wd] ?? wd;
+                return (
+                  <div
                     key={d}
-                    className={`text-center font-plex-mono text-[10.5px] tracking-[0.08em] font-medium ${
-                      compact ? "px-1 py-1.5" : "px-2 py-2.5"
-                    } ${d === todayStr ? "text-[var(--oc-accent)]" : "text-[var(--oc-muted3)]"}`}
+                    className={`flex flex-col gap-0.5 border-l border-[var(--oc-line2)] ${
+                      compact ? "items-center px-1 py-2" : "px-3.5 py-[11px]"
+                    }`}
                   >
                     {bulkMode ? (
                       <input
@@ -216,133 +314,181 @@ export function ScheduleGrid({
                       />
                     ) : null}
                     {compact ? (
-                      <div>{d.slice(8)}</div>
+                      <>
+                        <span className={`font-plex-mono text-[12px] font-bold ${nameColor}`}>
+                          {Number(d.slice(8))}
+                        </span>
+                        <span className="text-[10px] text-[var(--oc-muted3)]">{short.slice(0, 1)}</span>
+                      </>
                     ) : (
                       <>
-                        <div className="uppercase">{weekdayLabels[weekdayOf(d)] ?? ""}</div>
-                        <div className="text-[var(--oc-muted4)] normal-case">{d.slice(5)}</div>
+                        <div className="flex items-baseline gap-2">
+                          <span className={`text-[12px] font-extrabold uppercase tracking-[0.06em] ${nameColor}`}>
+                            {short}
+                          </span>
+                          <span className="font-plex-mono text-[11px] text-[var(--oc-muted3)]">
+                            {formatMonthDay(d)}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-[var(--oc-muted3)]">
+                          {workingCountByDate.get(d) ?? 0} ажилтан
+                        </div>
                       </>
                     )}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--oc-line)]">
-              {rows.map((row) => (
-                <tr key={row.id}>
-                  <td className="px-4 py-3 text-sm text-[var(--oc-ink)] whitespace-nowrap sticky left-0 bg-[var(--oc-panel)]">
-                    <div className="flex items-center gap-1.5">
-                      {bulkMode ? (
-                        <input
-                          type="checkbox"
-                          checked={dates.every((d) => selected.has(cellKey(row.id, d)))}
-                          onChange={() => toggleRow(row.id)}
-                          title="Энэ ажилтны бүх өдрийг сонгох"
-                          className="accent-[var(--oc-accent)]"
-                        />
-                      ) : null}
-                      <span>{row.name}</span>
-                    </div>
-                    {row.homeBranchName ? (
-                      <div className="text-[10px] text-[var(--oc-muted4)]">{row.homeBranchName}</div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Ажилтан бүрийн мөр */}
+            {rows.map((row) => {
+              const stats = rowStats.get(row.id) ?? { hours: 0, shiftCount: 0 };
+              const homeColor = colorOf(row.homeBranchId);
+              const rowAllSelected = dates.every((d) => selected.has(cellKey(row.id, d)));
+              return (
+                <div
+                  key={row.id}
+                  className="group grid border-b border-[var(--oc-line2)] transition-colors last:border-b-0 hover:bg-[var(--oc-panel2)]"
+                  style={{ gridTemplateColumns }}
+                >
+                  <div
+                    className="sticky left-0 z-10 flex min-w-0 items-center gap-3 bg-[var(--oc-panel)] px-[18px] py-3 transition-colors group-hover:bg-[var(--oc-panel2)]"
+                    title={row.homeBranchName ? `Үндсэн салбар: ${row.homeBranchName}` : undefined}
+                  >
+                    {bulkMode ? (
+                      <input
+                        type="checkbox"
+                        checked={rowAllSelected}
+                        onChange={() => toggleRow(row.id)}
+                        title="Энэ ажилтны бүх өдрийг сонгох"
+                        className="accent-[var(--oc-accent)]"
+                      />
                     ) : null}
-                  </td>
+                    <div
+                      className={`branch-avatar ${homeColor} flex h-[34px] w-[34px] flex-none items-center justify-center rounded-full text-[12px] font-extrabold`}
+                      aria-hidden
+                    >
+                      {initialsOf(row.name)}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="truncate text-[13.5px] font-bold tracking-[-0.01em] text-[var(--oc-ink)]">
+                        {row.name}
+                      </div>
+                      {row.roleName ? (
+                        <div className="truncate text-[11.5px] text-[var(--oc-muted3)]">{row.roleName}</div>
+                      ) : null}
+                    </div>
+                    <div className="ml-auto flex-none text-right">
+                      <div className="font-plex-mono text-[12px] font-medium text-[var(--oc-muted)]">
+                        {formatHours(stats.hours)}ц
+                      </div>
+                      <div className="text-[10px] text-[var(--oc-muted3)]">{stats.shiftCount} ээлж</div>
+                    </div>
+                  </div>
+
                   {dates.map((d) => {
                     const cell = row.cells[d];
-                    // `working=true` ч segment-гүй бол (ж: салбаргүй өвчлөх/устсан
-                    // segment) бодит салбар харуулах юмгүй тул "ажилладаг" гэж
-                    // тооцохгүй. "Амарна"-г ЗӨВХӨН тодорхой override (weekly/
-                    // exception)-оор өдрийг амарна гэж ЗААСАН үед л харуулна —
-                    // харин override огт байхгүй (`source === "default"`, ихэвчлэн
-                    // ажилтанд тогтмол салбар байхгүй тохиолдол) бол "тодорхойгүй"
-                    // гэдгийг "амарна"-с ялгаж харуулна (эс бөгөөс хувиаргүй
-                    // ажилтны бүх өдөр худал "Амарна" болж дүүрдэг байсан).
-                    const hasBranches = cell.working && cell.segments.length > 0;
-                    const isExplicitOff = !cell.working && cell.source !== "default";
+                    const hasBranches = cellHasBranches(cell);
+                    const isExplicitOff = cellIsExplicitOff(cell);
                     const isSelected = bulkMode && selected.has(cellKey(row.id, d));
+                    const emptyLabel = compact
+                      ? isExplicitOff
+                        ? "Ам"
+                        : canEdit
+                          ? "+"
+                          : "·"
+                      : isExplicitOff
+                        ? "Амарна"
+                        : canEdit
+                          ? "+ Ээлж"
+                          : "—";
                     return (
-                      <td key={d} className={compact ? "p-0.5 align-top" : "px-2 py-2 align-top"}>
-                        <button
-                          type="button"
-                          disabled={!canEdit}
-                          title={
-                            hasBranches
-                              ? cell.segments
-                                  .map(
-                                    (s) =>
-                                      `${s.branchName}${s.startTime && s.endTime ? ` ${s.startTime}–${s.endTime}` : ""}`,
-                                  )
-                                  .join(" · ")
-                              : isExplicitOff
-                                ? "Амарна"
-                                : "Тодорхойгүй — хувиар тохируулаагүй"
+                      <button
+                        key={d}
+                        type="button"
+                        disabled={!canEdit}
+                        title={cellTitle(cell)}
+                        aria-pressed={bulkMode ? isSelected : undefined}
+                        onClick={() => {
+                          if (!canEdit || !cell) return;
+                          if (bulkMode) {
+                            toggleCell(row.id, d);
+                            return;
                           }
-                          onClick={() => {
-                            if (!canEdit) return;
-                            if (bulkMode) {
-                              toggleCell(row.id, d);
-                              return;
-                            }
-                            setEditing({
-                              userId: row.id,
-                              employeeName: row.name,
-                              homeBranchId: row.homeBranchId,
-                              homeBranchName: row.homeBranchName,
-                              date: d,
-                              cell,
-                            });
-                          }}
-                          className={`w-full rounded-lg border text-left transition-colors ${
-                            compact ? "px-1 py-1 min-h-[28px]" : "px-2 py-1.5"
-                          } ${
-                            canEdit ? "cursor-pointer hover:border-[var(--oc-line2)]" : "cursor-default"
-                          } ${
-                            isSelected
-                              ? "border-[var(--oc-accent)] ring-2 ring-[var(--oc-accent)] bg-[var(--oc-accent)]/10"
-                              : hasBranches
-                                ? cell.source === "default"
-                                  ? "border-[var(--oc-line)] bg-[var(--oc-panel2)]"
-                                  : "border-[var(--oc-accent)]/40 bg-[var(--oc-accent)]/[0.08]"
-                                : "border-[var(--oc-line)] bg-transparent"
-                          }`}
-                        >
-                          {hasBranches ? (
-                            compact ? (
-                              <div className="text-[10px] text-[var(--oc-ink2)] truncate">
-                                {cell.segments[0]?.branchName ?? "—"}
-                                {cell.segments.length > 1 ? ` +${cell.segments.length - 1}` : ""}
-                              </div>
-                            ) : (
-                              <div className="flex flex-col gap-0.5">
-                                {cell.segments.map((seg, i) => (
-                                  <div key={i}>
-                                    <div className="text-xs text-[var(--oc-ink2)] truncate">
-                                      {seg.branchName}
-                                    </div>
-                                    {seg.startTime && seg.endTime ? (
-                                      <div className="font-plex-mono text-[10px] text-[var(--oc-muted3)]">
-                                        {seg.startTime}–{seg.endTime}
-                                      </div>
-                                    ) : null}
+                          setEditing({
+                            userId: row.id,
+                            employeeName: row.name,
+                            homeBranchId: row.homeBranchId,
+                            homeBranchName: row.homeBranchName,
+                            date: d,
+                            cell,
+                          });
+                        }}
+                        className={`group/cell flex flex-col justify-center gap-1.5 border-l border-[var(--oc-line2)] text-left ${
+                          compact ? "p-1" : "p-2"
+                        } ${canEdit ? "cursor-pointer" : "cursor-default"}`}
+                      >
+                        {hasBranches ? (
+                          cell!.segments.map((seg, i) => {
+                            const color = colorOf(seg.branchId);
+                            return (
+                              <div
+                                key={i}
+                                className={`shift-box ${color} ${isSelected ? "shift-box-selected" : ""} flex flex-col gap-0.5 rounded-[9px] transition-shadow ${
+                                  compact ? "px-1.5 py-1 pl-2" : "py-[7px] pl-[11px] pr-[10px]"
+                                }`}
+                              >
+                                <div
+                                  className={`branch-ink truncate font-bold tracking-[-0.01em] ${
+                                    compact ? "text-[10px]" : "text-[12px]"
+                                  }`}
+                                >
+                                  {seg.branchName}
+                                </div>
+                                {!compact && seg.startTime && seg.endTime ? (
+                                  <div className="font-plex-mono text-[11px] text-[var(--oc-muted2)]">
+                                    {seg.startTime}–{seg.endTime}
                                   </div>
-                                ))}
+                                ) : null}
                               </div>
-                            )
-                          ) : isExplicitOff ? (
-                            <div className="text-xs text-[var(--oc-muted4)]">Амарна</div>
-                          ) : (
-                            <div className="text-xs text-[var(--oc-muted4)]">—</div>
-                          )}
-                        </button>
-                      </td>
+                            );
+                          })
+                        ) : (
+                          <div
+                            className={`rounded-[9px] border border-dashed text-center transition-colors ${
+                              compact ? "px-1 py-1.5 text-[10px]" : "p-2.5 text-[12px]"
+                            } ${
+                              isSelected
+                                ? "border-[var(--oc-accent)] bg-[var(--oc-accent)]/10 text-[var(--oc-accent)]"
+                                : `border-[var(--oc-line)] text-[var(--oc-muted4)] ${
+                                    canEdit
+                                      ? "group-hover/cell:border-[var(--oc-accent)]/50 group-hover/cell:text-[var(--oc-accent)]"
+                                      : ""
+                                  }`
+                            }`}
+                          >
+                            {emptyLabel}
+                          </div>
+                        )}
+                      </button>
                     );
                   })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+                </div>
+              );
+            })}
+
+            {/* Хөл */}
+            <div className="flex items-center justify-between border-t border-[var(--oc-line)] bg-[var(--oc-panel2)] px-[18px] py-3.5 text-[12.5px] text-[var(--oc-muted2)]">
+              <div>{rows.length} ажилтан харагдаж байна</div>
+              <div>
+                Нийт{" "}
+                <span className="font-plex-mono text-[var(--oc-muted)]">{formatHours(totalHours)}ц</span> /{" "}
+                {compact ? "сар" : "долоо хоног"}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {editing ? (
         <ShiftEditor

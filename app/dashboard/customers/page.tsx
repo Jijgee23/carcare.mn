@@ -2,13 +2,14 @@ import { deleteCustomerAction } from "@/app/_actions/customers";
 import { Prisma } from "@/app/generated/prisma/client";
 import { ClickableRow } from "@/app/_components/clickable-row";
 import { ConfirmForm } from "@/app/_components/confirm-form";
+import { BtnLink } from "@/app/_components/landing-ops-ui";
 import { ResetFilters, SearchBox } from "@/app/_components/list-filters";
 import { Pagination } from "@/app/_components/pagination";
 import { EmptyState } from "@/app/_components/page-header";
 import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { customerLabel } from "@/lib/customers";
 import { requireUser } from "@/lib/auth";
-import { canCreate, canDelete, canView } from "@/lib/auth/roles";
+import { canCreate, canDelete, canView, hasPermission } from "@/lib/auth/roles";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { CreateCustomerButton } from "./create-customer-modal";
@@ -26,6 +27,7 @@ export default async function CustomersPage({
   if (!canView(user, "customers")) redirect("/dashboard");
   const canAdd = canCreate(user, "customers");
   const canRemove = canDelete(user, "customers");
+  const canNotify = hasPermission(user, "customers.notify");
 
   const { q = "", page: pageParam } = await searchParams;
   const where: Prisma.CustomerWhereInput = { tenantId: user.tenantId };
@@ -61,7 +63,14 @@ export default async function CustomersPage({
             Үйлчлүүлэгчдийн харилцагч мэдээлэл, түүх · {total} үйлчлүүлэгч
           </p>
         </div>
-        {canAdd ? <CreateCustomerButton label="Үйлчлүүлэгч нэмэх" /> : null}
+        <div className="flex items-center gap-2">
+          {canNotify ? (
+            <BtnLink href="/dashboard/customers/notify" variant="ghost">
+              Зар илгээх
+            </BtnLink>
+          ) : null}
+          {canAdd ? <CreateCustomerButton label="Үйлчлүүлэгч нэмэх" /> : null}
+        </div>
       </div>
 
       {total === 0 ? (

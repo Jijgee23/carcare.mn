@@ -12,14 +12,17 @@ export default async function BranchSchedulePage({ params }: { params: Promise<{
   const user = await requireUser();
   if (!canEdit(user, "branches")) redirect("/dashboard/branches");
   const { id } = await params;
-  const branch = await prisma.branch.findFirst({
-    where: { id, tenantId: user.tenantId },
-    include: {
-      schedules: true,
-      scheduleExceptions: { orderBy: { date: "asc" } },
-      scheduleSeasons: { orderBy: { startsOn: "asc" }, include: { days: true } },
-    },
-  });
+  const [branch, tenantBranchCount] = await Promise.all([
+    prisma.branch.findFirst({
+      where: { id, tenantId: user.tenantId },
+      include: {
+        schedules: true,
+        scheduleExceptions: { orderBy: { date: "asc" } },
+        scheduleSeasons: { orderBy: { startsOn: "asc" }, include: { days: true } },
+      },
+    }),
+    prisma.branch.count({ where: { tenantId: user.tenantId } }),
+  ]);
   if (!branch) notFound();
 
   const baseDays = Object.fromEntries(WEEK_DAYS.map((day) => {
@@ -70,7 +73,13 @@ export default async function BranchSchedulePage({ params }: { params: Promise<{
         </div>
         <Link href={`/dashboard/branches/${branch.id}`} className="text-sm text-[var(--oc-accent)]">← Үндсэн мэдээлэл</Link>
       </div>
-      <BranchScheduleManager branchId={branch.id} exceptions={exceptions} seasons={seasons} baseDays={baseDays} />
+      <BranchScheduleManager
+        branchId={branch.id}
+        exceptions={exceptions}
+        seasons={seasons}
+        baseDays={baseDays}
+        tenantBranchCount={tenantBranchCount}
+      />
     </div>
   );
 }

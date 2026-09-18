@@ -1,5 +1,3 @@
-import Link from "next/link";
-import { PageHeader } from "@/app/_components/page-header";
 import { businessDateKey, resolveEffectiveSchedule } from "@/lib/branch-effective-schedule";
 import { WEEK_DAYS, weekdayOfDateStr } from "@/lib/branches";
 import { requireUser } from "@/lib/auth";
@@ -13,6 +11,9 @@ import {
 } from "@/lib/employee-schedule";
 import { prisma } from "@/lib/prisma";
 import { ScheduleGrid, type EmployeeScheduleRow } from "../employees/schedule/schedule-grid";
+import { ScheduleHeader } from "../employees/schedule/schedule-header";
+import { ScheduleNav } from "../employees/schedule/schedule-nav";
+import { MonthCalendar } from "./month-calendar";
 
 export const metadata = {
   title: "Миний хувиар",
@@ -45,6 +46,8 @@ export default async function MySchedulePage({
       select: {
         firstName: true,
         lastName: true,
+        isOwner: true,
+        role: { select: { name: true } },
         branchId: true,
         branch: { select: { id: true, name: true } },
         workSchedule: {
@@ -141,6 +144,7 @@ export default async function MySchedulePage({
         {
           id: user.id,
           name: `${me.lastName} ${me.firstName}`,
+          roleName: me.isOwner ? "Админ" : (me.role?.name ?? null),
           homeBranchId: me.branchId,
           homeBranchName: me.branch?.name ?? null,
           cells,
@@ -153,65 +157,48 @@ export default async function MySchedulePage({
   const nextAnchor = view === "month" ? shiftMonth(rangeStart, 1) : shiftDays(rangeStart, 7);
   const todayAnchor = view === "month" ? firstOfMonth(todayStr) : mondayOfWeek(todayStr);
 
+  const rangeLabel =
+    view === "month" ? rangeStart.slice(0, 7) : `${dates[0]}  —  ${dates[dates.length - 1]}`;
+  const header = (
+    <ScheduleHeader
+      eyebrow="Миний хувиар"
+      title="Миний хувиар"
+      description="Таны өнөөдрийн болон долоо хоног/сарын ажлын хувиар — аль салбарт, хэдэн цагт ажиллахыг харна."
+    />
+  );
+  const nav = (
+    <ScheduleNav
+      view={view}
+      weekHref={anchorHref(view === "month" ? mondayOfWeek(anchor) : rangeStart, "week")}
+      monthHref={anchorHref(view === "week" ? firstOfMonth(anchor) : rangeStart, "month")}
+      prevHref={anchorHref(prevAnchor)}
+      todayHref={anchorHref(todayAnchor)}
+      nextHref={anchorHref(nextAnchor)}
+      rangeLabel={rangeLabel}
+    />
+  );
+  const branchList = branches.map((b) => ({ id: b.id, name: b.name }));
+
   return (
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
-      <PageHeader title="Миний хувиар" description="Таны өнөөдрийн болон долоо хоног/сарын ажлын хувиар" />
-
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        <div className="flex items-center gap-1 rounded-lg border border-[var(--oc-line)] p-0.5">
-          <Link
-            href={anchorHref(view === "month" ? mondayOfWeek(anchor) : rangeStart, "week")}
-            className={`text-sm px-3 py-1 rounded-md transition-colors ${
-              view === "week"
-                ? "bg-[var(--oc-accent)]/15 text-[var(--oc-accent)]"
-                : "text-[var(--oc-muted3)] hover:text-[var(--oc-ink2)]"
-            }`}
-          >
-            7 хоног
-          </Link>
-          <Link
-            href={anchorHref(view === "week" ? firstOfMonth(anchor) : rangeStart, "month")}
-            className={`text-sm px-3 py-1 rounded-md transition-colors ${
-              view === "month"
-                ? "bg-[var(--oc-accent)]/15 text-[var(--oc-accent)]"
-                : "text-[var(--oc-muted3)] hover:text-[var(--oc-ink2)]"
-            }`}
-          >
-            Сар
-          </Link>
+      {view === "month" ? (
+        <div className="flex flex-col gap-5">
+          {header}
+          {nav}
+          <MonthCalendar dates={dates} cells={cells} todayStr={todayStr} branches={branchList} />
         </div>
-        <Link
-          href={anchorHref(prevAnchor)}
-          className="text-sm px-3 py-1.5 rounded-lg border border-[var(--oc-line)] hover:border-[var(--oc-line2)] text-[var(--oc-ink2)] transition-colors"
-        >
-          ← Өмнөх
-        </Link>
-        <Link
-          href={anchorHref(todayAnchor)}
-          className="text-sm px-3 py-1.5 rounded-lg border border-[var(--oc-line)] hover:border-[var(--oc-line2)] text-[var(--oc-ink2)] transition-colors"
-        >
-          Өнөөдөр
-        </Link>
-        <Link
-          href={anchorHref(nextAnchor)}
-          className="text-sm px-3 py-1.5 rounded-lg border border-[var(--oc-line)] hover:border-[var(--oc-line2)] text-[var(--oc-ink2)] transition-colors"
-        >
-          Дараах →
-        </Link>
-        <span className="font-plex-mono text-xs text-[var(--oc-muted3)] ml-1">
-          {view === "month" ? rangeStart.slice(0, 7) : `${dates[0]} – ${dates[dates.length - 1]}`}
-        </span>
-      </div>
-
-      <ScheduleGrid
-        dates={dates}
-        weekdayLabels={Object.fromEntries(WEEK_DAYS.map((d) => [d.value, d.short]))}
-        rows={rows}
-        branches={branches.map((b) => ({ id: b.id, name: b.name }))}
-        canEdit={false}
-        todayStr={todayStr}
-        compact={view === "month"}
-      />
+      ) : (
+        <ScheduleGrid
+          header={header}
+          toolbar={nav}
+          dates={dates}
+          weekdayLabels={Object.fromEntries(WEEK_DAYS.map((d) => [d.value, d.short]))}
+          rows={rows}
+          branches={branchList}
+          canEdit={false}
+          todayStr={todayStr}
+        />
+      )}
     </div>
   );
 }

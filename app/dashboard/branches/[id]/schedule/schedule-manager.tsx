@@ -6,12 +6,14 @@ import { ConfirmForm } from "@/app/_components/confirm-form";
 import { Btn } from "@/app/_components/landing-ops-ui";
 import { Select } from "@/app/_components/select";
 import {
+  applyHolidayToAllBranchesAction,
   deleteBranchScheduleExceptionAction,
   deleteBranchScheduleSeasonAction,
   upsertBranchScheduleExceptionAction,
   upsertBranchScheduleSeasonAction,
   type BranchScheduleActionState,
 } from "@/app/_actions/branch-schedules";
+import type { BulkActionState } from "@/lib/bulk-action";
 import { WEEK_DAYS, type Weekday } from "@/lib/branches";
 import { ScheduleImpactPreview } from "@/app/dashboard/branches/_components/schedule-impact-preview";
 
@@ -42,12 +44,25 @@ type Props = {
   exceptions: ExceptionItem[];
   seasons: SeasonItem[];
   baseDays: Record<Weekday, { isOpen: boolean; openTime: string; closeTime: string }>;
+  /** Тухайн тенантын нийт салбарын тоо — 1-ээс их үед л "Бүх салбарт мөн
+   * тохируулах" сонголт харагдана (харах: applyHolidayToAllBranchesAction). */
+  tenantBranchCount: number;
 };
 
-export function BranchScheduleManager({ branchId, exceptions, seasons, baseDays }: Props) {
+export function BranchScheduleManager({ branchId, exceptions, seasons, baseDays, tenantBranchCount }: Props) {
   const [exceptionState, exceptionAction, exceptionPending] = useActionState<BranchScheduleActionState, FormData>(
     upsertBranchScheduleExceptionAction.bind(null, branchId), null,
   );
+  // Нэг л удаагийн өдрийг тенантын БҮХ салбарт зэрэг тохируулах сонголт —
+  // (харах: app/_actions/branch-schedules.ts-ийн applyHolidayToAllBranchesAction,
+  // энэ хэлбэрийн feature-ийг тусдаа хуудас биш яг л энд, ЭНЭ маягтад л
+  // сонголт болгож нэмэх нь илүү зөв гэж шийдсэн). Зөвхөн ШИНЭ (exceptionId
+  // хоосон) мөр нэмэх үед л ашиглана — засварлаж буй мөрийн id өөр салбарт
+  // байхгүй тул fan-out бүтэлгүйтнэ.
+  const [bulkState, bulkFormAction, bulkPending] = useActionState<BulkActionState, FormData>(
+    applyHolidayToAllBranchesAction, null,
+  );
+  const [applyAllBranches, setApplyAllBranches] = useState(false);
   const [seasonState, seasonAction, seasonPending] = useActionState<BranchScheduleActionState, FormData>(
     upsertBranchScheduleSeasonAction.bind(null, branchId), null,
   );
@@ -62,6 +77,7 @@ export function BranchScheduleManager({ branchId, exceptions, seasons, baseDays 
 
   function editException(item: ExceptionItem) {
     setException(item);
+    setApplyAllBranches(false);
     setExceptionOpen(true);
   }
 
@@ -81,21 +97,36 @@ export function BranchScheduleManager({ branchId, exceptions, seasons, baseDays 
           <Btn type="button" variant="ghost" onClick={() => { setException(newException()); setExceptionOpen(true); }}>Нэмэх</Btn>
         </div>
         {exceptionOpen ? (
-          <form action={exceptionAction} className="space-y-4 border-b border-[var(--oc-line)] pb-5 mb-5">
+          <form action={applyAllBranches ? bulkFormAction : exceptionAction} className="space-y-4 border-b border-[var(--oc-line)] pb-5 mb-5">
             <input type="hidden" name="exceptionId" value={exception.id} />
             <input type="hidden" name="confirmed" value={exceptionImpactConfirmed ? "true" : "false"} />
-            <FormError message={exceptionState?.message} />
-            {exceptionState?.impact ? (
-              <div className="space-y-2">
-                <ScheduleImpactPreview impact={exceptionState.impact} />
-                {exceptionState.needsConfirm ? (
-                  <label className="flex items-center gap-2 text-sm text-[var(--oc-ink2)]">
-                    <input type="checkbox" checked={exceptionImpactConfirmed} onChange={(e) => setExceptionImpactConfirmed(e.target.checked)} className="accent-[var(--oc-accent)]" />
-                    Дээрх богиносгол(ууд)-ыг хүлээн зөвшөөрч үргэлжлүүлэх
-                  </label>
+            {applyAllBranches ? (
+              <>
+                <FormError message={bulkState?.message} />
+                {bulkState?.errors?.length ? (
+                  <ul className="text-xs text-red-400 light:text-red-600 flex flex-col gap-0.5 max-h-32 overflow-auto">
+                    {bulkState.errors.map((e) => (
+                      <li key={e}>{e}</li>
+                    ))}
+                  </ul>
                 ) : null}
-              </div>
-            ) : null}
+              </>
+            ) : (
+              <>
+                <FormError message={exceptionState?.message} />
+                {exceptionState?.impact ? (
+                  <div className="space-y-2">
+                    <ScheduleImpactPreview impact={exceptionState.impact} />
+                    {exceptionState.needsConfirm ? (
+                      <label className="flex items-center gap-2 text-sm text-[var(--oc-ink2)]">
+                        <input type="checkbox" checked={exceptionImpactConfirmed} onChange={(e) => setExceptionImpactConfirmed(e.target.checked)} className="accent-[var(--oc-accent)]" />
+                        Дээрх богиносгол(ууд)-ыг хүлээн зөвшөөрч үргэлжлүүлэх
+                      </label>
+                    ) : null}
+                  </div>
+                ) : null}
+              </>
+            )}
             <Field label="Огноо" htmlFor="exception-date" error={exceptionState?.fieldErrors?.date}>
               <input id="exception-date" name="date" type="date" required value={exception.date} onChange={(e) => setException({ ...exception, date: e.target.value })} className="auth-input" />
             </Field>
@@ -116,8 +147,26 @@ export function BranchScheduleManager({ branchId, exceptions, seasons, baseDays 
             <Field label="Тайлбар" htmlFor="exception-label" error={exceptionState?.fieldErrors?.label}>
               <input id="exception-label" name="label" value={exception.label ?? ""} onChange={(e) => setException({ ...exception, label: e.target.value })} className="auth-input" placeholder="Наадам" />
             </Field>
+            {tenantBranchCount > 1 && !exception.id ? (
+              <label className="flex items-center gap-2 text-sm text-[var(--oc-ink2)]">
+                <input type="checkbox" checked={applyAllBranches} onChange={(e) => setApplyAllBranches(e.target.checked)} className="accent-[var(--oc-accent)]" />
+                Бүх {tenantBranchCount} салбарт мөн тохируулах
+              </label>
+            ) : null}
             <div className="flex gap-2">
-              <Btn type="submit" disabled={exceptionPending || Boolean(exceptionState?.needsConfirm && !exceptionImpactConfirmed)}>{exceptionPending ? "..." : "Хадгалах"}</Btn>
+              <Btn
+                type="submit"
+                disabled={
+                  (applyAllBranches ? bulkPending : exceptionPending) ||
+                  Boolean(!applyAllBranches && exceptionState?.needsConfirm && !exceptionImpactConfirmed)
+                }
+              >
+                {(applyAllBranches ? bulkPending : exceptionPending)
+                  ? "..."
+                  : applyAllBranches
+                    ? "Бүх салбарт хадгалах"
+                    : "Хадгалах"}
+              </Btn>
               <Btn type="button" variant="ghost" onClick={() => setExceptionOpen(false)}>Болих</Btn>
             </div>
           </form>

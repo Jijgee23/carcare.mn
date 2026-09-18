@@ -5,14 +5,21 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
-import { canCreate, canDelete, canEdit } from "@/lib/auth/roles";
+import { canCreate, canDelete, canEdit, hasPermission } from "@/lib/auth/roles";
 import { assertActiveSubscription } from "@/lib/subscription-server";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
+import { broadcastTenantPromo } from "@/lib/notifications";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { enforceCountLimit } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
 
 export type CustomerActionState = {
+  ok: boolean;
+  message?: string;
+  fieldErrors?: Record<string, string>;
+} | null;
+
+export type CustomerNotifyActionState = {
   ok: boolean;
   message?: string;
   fieldErrors?: Record<string, string>;
@@ -245,4 +252,70 @@ export async function deleteCustomerAction(formData: FormData): Promise<void> {
 
   revalidatePath("/dashboard/customers");
   revalidatePath("/dashboard");
+}
+
+// --- NOTIFY (broadcast to own customers) -----------------------------------
+
+/**
+ * Тухайн тенантын онлайн бүртгэлтэй (Account холбогдсон) бүх үйлчлүүлэгчид
+ * зар/урамслал (жишээ нь хямдрал) push мэдэгдэл илгээнэ. `customers.notify`
+ * тусгай эрхтэй хэрэглэгч л ашиглана — `customers.view`/`edit`-ээс тусдаа
+ * (харах: lib/auth/permissions.ts тайлбар).
+ */
+export async function sendCustomerBroadcastAction(
+  _prev: CustomerNotifyActionState,
+  formData: FormData,
+): Promise<CustomerNotifyActionState> {
+  const user = await requireUser();
+  if (!hasPermission(user, "customers.notify")) {
+    return { ok: false, message: "Танд үйлчлүүлэгчид зар илгээх эрх байхгүй." };
+  }
+  await assertActiveSubscription(user.tenantId);
+
+  const title = s(formData, "title");
+  const body = s(formData, "body");
+
+  const fieldErrors: Record<string, string> = {};
+  if (!title) fieldErrors.title = "Гарчиг оруулна уу.";
+  if (!body) fieldErrors.body = "Агуулга оруулна уу.";
+  if (Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors };
+
+  // Багцын хязгаар: daily_customer_notifications — "илгээх" ДАРАЛТЫН тоог
+  // хязгаарлана (хүлээн авагчийн тоог биш), тул тоологч нь тухайн өдөр бичигдсэн
+  // AuditLog-ийн "Notification" мөрүүд (send бүрт 1 мөр) байна.
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const dailyLimit = await enforceCountLimit(
+    user.tenantId,
+    PLAN_LIMIT_CODES.DAILY_CUSTOMER_NOTIFICATIONS,
+    () =>
+      prisma.auditLog.count({
+        where: { tenantId: user.tenantId, entity: "Notification", createdAt: { gte: todayStart } },
+      }),
+  );
+  if (!dailyLimit.allowed) {
+    return { ok: false, message: dailyLimit.message };
+  }
+
+  const notified = await broadcastTenantPromo({ tenantId: user.tenantId, title, body });
+
+  await logAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    entity: "Notification",
+    entityId: user.tenantId,
+    action: "OTHER",
+    summary: `Үйлчлүүлэгчид зар илгээв: "${title}" · ${notified.toLocaleString("mn-MN")} хүлээн авагч`,
+  });
+
+  if (notified === 0) {
+    return {
+      ok: true,
+      message: "Илгээгдлээ, гэхдээ онлайн бүртгэлтэй (апп/веб холбогдсон) үйлчлүүлэгч алга байна.",
+    };
+  }
+  return {
+    ok: true,
+    message: `Илгээгдлээ — ${notified.toLocaleString("mn-MN")} үйлчлүүлэгчид хүрлээ.`,
+  };
 }
