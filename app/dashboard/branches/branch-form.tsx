@@ -293,7 +293,7 @@ export function BranchForm({
         {tagOptions.length > 0 ? (
           <div className="mt-4">
             <label className="text-sm font-medium text-[var(--oc-ink2)] mb-2 block">
-              Бизнесийн төрлийн шошго{isEdit ? "" : " *"}
+              Бизнесийн төрлүүд{isEdit ? "" : " *"}
             </label>
             <div className="flex flex-wrap gap-2">
               {tagOptions.map((tag) => {

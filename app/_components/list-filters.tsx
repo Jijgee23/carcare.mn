@@ -124,6 +124,7 @@ export function FilterSelect({
   className,
   searchable = false,
   searchPlaceholder = "Хайх...",
+  allowClear = true,
 }: {
   paramName: string;
   options: Option[];
@@ -131,6 +132,9 @@ export function FilterSelect({
   className?: string;
   searchable?: boolean;
   searchPlaceholder?: string;
+  // `false` үед "Бүгд" (цэвэрлэх) мөрийг жагсаалтаас хасна — заавал нэг утга
+  // сонгогдсон байх ёстой шүүлтэд (жиш: он, "Бүх он" сонголтгүй).
+  allowClear?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -284,13 +288,15 @@ export function FilterSelect({
               />
             </div>
           ) : null}
-          <DropdownOption
-            label={placeholder}
-            active={value === ""}
-            onClick={() => pick("")}
-            muted
-          />
-          {filteredOptions.length > 0 ? (
+          {allowClear ? (
+            <DropdownOption
+              label={placeholder}
+              active={value === ""}
+              onClick={() => pick("")}
+              muted
+            />
+          ) : null}
+          {allowClear && filteredOptions.length > 0 ? (
             <div
               style={{
                 height: "1px",

@@ -1,6 +1,6 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser } from "@/lib/api";
-import { branchScopeId } from "@/lib/auth/roles";
+import { resolveWorkingBranch } from "@/lib/auth/api-branch";
 import {
   type ReportEntry,
   type TemplateSchema,
@@ -22,7 +22,9 @@ export async function GET(req: Request) {
   const filledByMe = url.searchParams.get("filledByMe") === "true";
   const { page, pageSize, skip, take } = getApiPageInfo(url.searchParams);
 
-  const scope = branchScopeId(auth.user);
+  const scopeResult = await resolveWorkingBranch(req, auth.user);
+  if (scopeResult.response) return scopeResult.response;
+  const scope = scopeResult.branchId;
   const orderAccess = orderReadWhere(auth.user);
   const where: Prisma.DiagnosticReportWhereInput = {
     tenantId: auth.user.tenantId,
@@ -98,7 +100,9 @@ export async function POST(req: Request) {
   if (!template) return jsonError(404, "Загвар олдсонгүй.");
 
   // Салбараар хязгаарлагдсан ажилтан зөвхөн өөрийн салбарт оношилгоо хийнэ.
-  const scope = branchScopeId(auth.user);
+  const scopeResult = await resolveWorkingBranch(req, auth.user);
+  if (scopeResult.response) return scopeResult.response;
+  const scope = scopeResult.branchId;
 
   let finalCustomerId = customerId;
   let finalVehicleId = vehicleId;

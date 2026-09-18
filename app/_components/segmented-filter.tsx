@@ -17,11 +17,15 @@ export function SegmentedFilter({
   paramName,
   options,
   allLabel = "Бүгд",
+  showAll = true,
   ariaLabel,
 }: {
   paramName: string;
   options: { value: string; label: string; activeClassName?: string }[];
   allLabel?: string;
+  // `false` үед "Бүгд" сонголтыг огт үзүүлэхгүй — заавал нэг утга сонгогдсон
+  // байх ёстой шүүлтэд (жиш: он, "Бүх он" сонголтгүй).
+  showAll?: boolean;
   ariaLabel?: string;
 }) {
   const router = useRouter();
@@ -41,7 +45,7 @@ export function SegmentedFilter({
     });
   }
 
-  const items = [{ value: "", label: allLabel }, ...options];
+  const items = showAll ? [{ value: "", label: allLabel }, ...options] : options;
 
   return (
     <div
@@ -80,16 +84,19 @@ export function YearChips({
   paramName = "year",
   years,
   allLabel = "Бүгд",
+  showAll = true,
 }: {
   paramName?: string;
   years: number[];
   allLabel?: string;
+  showAll?: boolean;
 }) {
   if (years.length === 0) return null;
   return (
     <SegmentedFilter
       paramName={paramName}
       allLabel={allLabel}
+      showAll={showAll}
       ariaLabel="Он"
       options={years.map((y) => ({ value: String(y), label: String(y) }))}
     />

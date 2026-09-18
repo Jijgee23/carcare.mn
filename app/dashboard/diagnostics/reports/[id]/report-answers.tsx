@@ -99,6 +99,16 @@ export function ReportAnswers({
     return ordered;
   }, [schema, data]);
 
+  // Тона тус бүрийн нийт тоо — `filterOptions`-ийн утга бүрийг өнгөөр нь
+  // нэгтгэнэ (mobile-ийн `_countByTone`-той ижил зарчим). "Төлвөөр" сегмент
+  // бүрийн шошгонд харуулна.
+  const toneCounts = useMemo(() => {
+    const counts: Record<CheckTone, number> = { good: 0, warn: 0, bad: 0 };
+    for (const o of filterOptions) counts[checkOptionTone(o.value)] += o.count;
+    return counts;
+  }, [filterOptions]);
+  const toneTotal = CHECK_TONES.reduce((sum, t) => sum + toneCounts[t], 0);
+
   // Энэ загварын check хариултууд яг өнгөний нэрсээр (Хэвийн/Анхаарах/Солих)
   // бичигдсэн бол "Хариултаар" мөр "Төлвөөр" мөртэй ялгаагүй шошготой
   // давхацна (зөрхий тоо нэмэгддэгээс өөр юу ч нэмэхгүй) — ийм үед энэ
@@ -114,14 +124,14 @@ export function ReportAnswers({
         <div className="no-print flex items-center gap-1.5 flex-wrap">
           <span className="text-xs text-[var(--oc-muted3)] mr-1">Төлвөөр:</span>
           <FilterChip
-            label="Бүгд"
+            label={`Бүгд (${toneTotal})`}
             active={tone === null}
             onClick={() => setTone(null)}
           />
           {CHECK_TONES.map((t) => (
             <FilterChip
               key={t}
-              label={CHECK_TONE_LABEL[t]}
+              label={`${CHECK_TONE_LABEL[t]} (${toneCounts[t]})`}
               tone={CHECK_TONE_ACTIVE[t]}
               active={tone === t}
               onClick={() => setTone(tone === t ? null : t)}

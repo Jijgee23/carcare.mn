@@ -1,6 +1,6 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
-import { branchScopeId } from "@/lib/auth/roles";
+import { resolveWorkingBranch } from "@/lib/auth/api-branch";
 import {
   APPOINTMENT_STATUS_TRANSITIONS,
   type AppointmentStatus,
@@ -77,7 +77,9 @@ export async function PATCH(
   if (!appt) return jsonError(404, "Цаг захиалга олдсонгүй.");
 
   // Салбараар хязгаарлагдсан ажилтан зөвхөн өөрийнхийг засна.
-  const scope = branchScopeId(auth.user);
+  const scopeResult = await resolveWorkingBranch(req, auth.user);
+  if (scopeResult.response) return scopeResult.response;
+  const scope = scopeResult.branchId;
   if (scope && appt.branchId !== scope) {
     return jsonError(403, "Зөвхөн өөрийн салбарын цаг захиалгыг удирдана.");
   }

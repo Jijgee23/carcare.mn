@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Prisma } from "@/app/generated/prisma/client";
 import { BtnLink } from "@/app/_components/landing-ops-ui";
 import { EmptyState } from "@/app/_components/empty-state";
@@ -6,17 +7,14 @@ import { requireAccount } from "@/lib/auth/account";
 import {
   DIAGNOSTIC_TYPE_BADGE,
   DIAGNOSTIC_TYPE_LABEL,
-  REPORT_SEVERITIES,
   SEVERITY_BADGE,
   SEVERITY_LABEL,
-  SEVERITY_SHORT_LABEL,
-  parseReportSeverity,
   type DiagnosticType,
   type ReportSeverity,
 } from "@/lib/diagnostics";
 import { prisma } from "@/lib/prisma";
-import { ResetFilters, SearchBox } from "@/app/_components/list-filters";
-import { SegmentedFilter, YearChips } from "@/app/_components/segmented-filter";
+import { SearchBox } from "@/app/_components/list-filters";
+import { YearChips } from "@/app/_components/segmented-filter";
 
 export const metadata = {
   title: "Оношилгооны түүх",
@@ -38,14 +36,21 @@ function formatDate(d: Date): string {
 export default async function AccountDiagnosticsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; severity?: string; year?: string }>;
+  searchParams: Promise<{ q?: string; year?: string }>;
 }) {
   const account = await requireAccount();
-  const { q: rawQuery, severity: rawSeverity, year: rawYear } = await searchParams;
+  const { q: rawQuery, year: rawYear } = await searchParams;
   const query = (rawQuery ?? "").trim();
-  const severity = parseReportSeverity(rawSeverity);
-  const parsedYear = Number.parseInt(rawYear ?? "", 10);
-  const year = Number.isInteger(parsedYear) ? parsedYear : null;
+  // "Бүх он" сонголт байхгүй — Түүхийн жилийн шүүлттэй ижил зарчим (харах:
+  // account/history/page.tsx-ийн тайлбар).
+  if (!rawYear) {
+    const params = new URLSearchParams();
+    if (rawQuery) params.set("q", rawQuery);
+    params.set("year", String(new Date().getFullYear()));
+    redirect(`/account/diagnostics?${params.toString()}`);
+  }
+  const parsedYear = Number.parseInt(rawYear, 10);
+  const year = Number.isInteger(parsedYear) ? parsedYear : new Date().getFullYear();
 
   const ownedLinks = await prisma.tenantVehicle.findMany({
     where: {
@@ -82,12 +87,9 @@ export default async function AccountDiagnosticsPage({
       ],
     });
   }
-  if (severity) filters.push({ maxSeverity: severity });
-  if (year !== null) {
-    filters.push({
-      createdAt: { gte: new Date(year, 0, 1), lt: new Date(year + 1, 0, 1) },
-    });
-  }
+  filters.push({
+    createdAt: { gte: new Date(year, 0, 1), lt: new Date(year + 1, 0, 1) },
+  });
 
   const where: Prisma.DiagnosticReportWhereInput = filters.length
     ? { ...ownershipWhere, AND: filters }
@@ -114,10 +116,10 @@ export default async function AccountDiagnosticsPage({
     select: { createdAt: true },
   });
   const availableYears = [
-    ...new Set(reportDates.map((r) => r.createdAt.getFullYear())),
+    ...new Set([year, ...reportDates.map((r) => r.createdAt.getFullYear())]),
   ].sort((a, b) => b - a);
 
-  const hasFilter = Boolean(query) || severity !== null || year !== null;
+  const hasFilter = Boolean(query);
 
   return (
     <div className="w-full flex flex-col gap-6">
@@ -133,21 +135,12 @@ export default async function AccountDiagnosticsPage({
         </BtnLink>
       </div>
 
-      {/* Шүүлтүүр — mobile-ийн Оношилгоо табтай ижил дараалал: хайлт,
-          ноцтой байдал (segmented), он. */}
+      {/* Шүүлтүүр — mobile-ийн Оношилгоо табтай ижил: хайлт + он (ноцтой
+          байдлын шүүлт хассан — доор дэлгэрэнгүй хуудсанд тона тус бүрийн
+          тоотой сегмент байгаа тул давхацна). */}
       <div className="flex items-center gap-2 flex-wrap">
         <SearchBox placeholder="Тайлан, машин, салбараар хайх" paramName="q" />
-        <SegmentedFilter
-          paramName="severity"
-          ariaLabel="Ноцтой байдал"
-          options={REPORT_SEVERITIES.map((s) => ({
-            value: s,
-            label: SEVERITY_SHORT_LABEL[s],
-            activeClassName: SEVERITY_BADGE[s],
-          }))}
-        />
-        <YearChips years={availableYears} />
-        <ResetFilters paramNames={["q", "severity", "year"]} />
+        <YearChips years={availableYears} showAll={false} />
       </div>
 
       {reports.length === 0 ? (

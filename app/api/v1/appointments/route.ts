@@ -1,6 +1,6 @@
 import { Prisma } from "@/app/generated/prisma/client";
-import { jsonOk, requireApiUser, requirePermission } from "@/lib/api";
-import { branchScopeId } from "@/lib/auth/roles";
+import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
+import { resolveWorkingBranch } from "@/lib/auth/api-branch";
 import { APPOINTMENT_STATUSES, type AppointmentStatus } from "@/lib/appointments";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
@@ -36,6 +36,20 @@ export function shapeAppointment<
   return { ...a, accountVehicle: a.accountVehicle?.vehicle ?? null };
 }
 
+/**
+ * PURE — `X-Working-Branch` (resolved, validated `scope`) болон `?branchId=`
+ * query param хоёул заасан атал өөр өөр салбар заавал "зөрчилдсөн" гэж үзнэ.
+ * `scope` null (owner эсвэл "ALL") үед хэзээ ч зөрчилдөхгүй — тэр үед л
+ * query param ганцаараа хүчинтэй шүүлт болно. Unit test-д зориулж тусад нь
+ * гаргасан (харах: tests/api-branch-routes.test.ts) — DB хамааралгүй.
+ */
+export function branchFilterConflicts(
+  scope: string | null,
+  branchIdParam: string | undefined,
+): boolean {
+  return Boolean(scope && branchIdParam && branchIdParam !== scope);
+}
+
 // GET /api/v1/appointments
 // Query: status?, date? (YYYY-MM-DD), month? (YYYY-MM), branchId?, page?, pageSize?
 // month= → returns { dates: string[] } (per-appointment YYYY-MM-DD for dot counts)
@@ -47,8 +61,30 @@ export async function GET(req: Request) {
   if (denied) return denied;
 
   const url = new URL(req.url);
-  const scope = branchScopeId(auth.user);
+  const scopeResult = await resolveWorkingBranch(req, auth.user);
+  if (scopeResult.response) return scopeResult.response;
+  const scope = scopeResult.branchId;
   const branchIdParam = url.searchParams.get("branchId")?.trim() || undefined;
+
+  // `X-Working-Branch` (→ `scope`) болон `?branchId=` query param хоёулаа
+  // салбар шүүлт зааж болно, зөрчилдвөл HEADER ялна — учир нь энэ л
+  // баталгаажсан (tenant/isActive/eligibility/roster-lock шалгасан) утга;
+  // query param ямар ч серверийн шалгалтгүйгээр клиентээс ирдэг түүхий
+  // утга. `scope` null (жишээ нь owner, эсвэл "ALL" илгээсэн) үед л
+  // query param-ыг ашиглана — энэ өөрчлөгдөөгүй.
+  //
+  // Хоёул заасан БОЛОН ЗӨРЧИЛДВӨЛ (өөр өөр салбар) query param-ыг
+  // чимээгүй үл тоомсорлохгүй, 422-оор татгалзана. Учир шалтгаан: клиент
+  // тодорхой зорилготойгоор branchId дамжуулсан бол (жишээ нь өөр таб дээр
+  // сонгосон салбарын өгөгдлийг хүсэх гэж), серверийн бодитоор буцаах өгөгдөл
+  // түүнээс өөр (header-ийн) салбарынх байх нь чимээгүй буруу үр дүн олгож,
+  // клиент кодыг тодорхой алдаа мэдэгдэлгүйгээр буруу зан төлөвт хүргэнэ.
+  // Тодорхой татгалзал нь клиентэд асуудлыг шууд илрүүлэх боломж олгоно.
+  if (branchFilterConflicts(scope, branchIdParam)) {
+    return jsonError(422, "Query параметрийн branchId нь баталгаажсан ажлын салбартай зөрчилдөж байна.", {
+      fieldErrors: { branchId: "Идэвхтэй ажлын салбараас өөр салбарын мэдээлэл хүсэх боломжгүй." },
+    });
+  }
 
   // ── Month counts mode ─────────────────────────────────────────────────────
   const monthParam = url.searchParams.get("month")?.trim();

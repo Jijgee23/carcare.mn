@@ -1,6 +1,6 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
-import { branchScopeId } from "@/lib/auth/roles";
+import { resolveWorkingBranch } from "@/lib/auth/api-branch";
 import { canAssignOrders, canEditOrder, orderReadWhere } from "@/lib/auth/order-access";
 import { logAudit } from "@/lib/audit";
 import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
@@ -77,7 +77,9 @@ export async function GET(
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
   const { id } = await ctx.params;
-  const scope = branchScopeId(auth.user);
+  const scopeResult = await resolveWorkingBranch(req, auth.user);
+  if (scopeResult.response) return scopeResult.response;
+  const scope = scopeResult.branchId;
 
   const order = await prisma.serviceOrder.findFirst({
     where: {
@@ -113,7 +115,9 @@ export async function PATCH(
   const locked = await requireActiveSubscriptionApi(auth.user);
   if (locked) return locked;
   const { id } = await ctx.params;
-  const scope = branchScopeId(auth.user);
+  const scopeResult = await resolveWorkingBranch(req, auth.user);
+  if (scopeResult.response) return scopeResult.response;
+  const scope = scopeResult.branchId;
 
   // Pre-lock existence/scope check only — status/lock state is re-validated
   // fresh, under the row lock, below (S06: this used to validate here and

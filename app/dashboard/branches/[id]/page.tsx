@@ -95,7 +95,7 @@ export default async function EditBranchPage({
   // сануулаад орхино — бусад мэдээлэл засахад нь саад болохгүй (харах:
   // app/_actions/branches.ts-ийн requireTag зөвхөн create дээр ажилладаг шийдвэр).
   if (branch.tags.length === 0)
-    missing.push("Бизнесийн төрлийн шошго сонгогдоогүй (discover-т шүүгдэхгүй)");
+    missing.push("Бизнесийн төрлүүд сонгогдоогүй (discover-т шүүгдэхгүй)");
 
   const shortId = branch.id.slice(-6).toUpperCase();
 

@@ -1,5 +1,6 @@
 import { jsonError, jsonOk, requireApiUser } from "@/lib/api";
-import { branchScopeId, canDelete } from "@/lib/auth/roles";
+import { resolveWorkingBranch } from "@/lib/auth/api-branch";
+import { canDelete } from "@/lib/auth/roles";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { canEditOrder, canViewOrder } from "@/lib/auth/order-access";
@@ -11,7 +12,9 @@ export async function GET(
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
   const { id } = await ctx.params;
-  const scope = branchScopeId(auth.user);
+  const scopeResult = await resolveWorkingBranch(req, auth.user);
+  if (scopeResult.response) return scopeResult.response;
+  const scope = scopeResult.branchId;
 
   const report = await prisma.diagnosticReport.findFirst({
     where: {
@@ -50,7 +53,9 @@ export async function DELETE(
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
   const { id } = await ctx.params;
-  const scope = branchScopeId(auth.user);
+  const scopeResult = await resolveWorkingBranch(req, auth.user);
+  if (scopeResult.response) return scopeResult.response;
+  const scope = scopeResult.branchId;
 
   const report = await prisma.diagnosticReport.findFirst({
     where: {

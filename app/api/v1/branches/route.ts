@@ -1,7 +1,24 @@
 import { jsonOk, requireApiUser } from "@/lib/api";
-import { branchScopeId } from "@/lib/auth/roles";
+import { eligibleBranchIds } from "@/lib/auth/roles";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
+import type { ApiUser } from "@/lib/auth/api-token";
+
+/**
+ * Build the tenant- and eligibility-scoped predicate used by both the list
+ * and count queries. A floating employee with no eligible IDs intentionally
+ * receives all active branches in their own tenant, matching the switchable
+ * branch endpoint's semantics.
+ */
+export function branchListWhere(user: Pick<ApiUser, "tenantId" | "isOwner" | "branchId" | "assignableBranchIds">) {
+  const eligible = user.isOwner ? [] : eligibleBranchIds(user);
+
+  return {
+    tenantId: user.tenantId,
+    isActive: true,
+    ...(!user.isOwner && eligible.length > 0 ? { id: { in: eligible } } : {}),
+  };
+}
 
 export async function GET(req: Request) {
   const auth = await requireApiUser(req);
@@ -9,12 +26,7 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const { page, pageSize, skip, take } = getApiPageInfo(url.searchParams);
-  // Салбараар хязгаарлагдсан ажилтан зөвхөн өөрийн салбараа харна.
-  const scope = branchScopeId(auth.user);
-  const where = {
-    tenantId: auth.user.tenantId,
-    ...(scope ? { id: scope } : {}),
-  };
+  const where = branchListWhere(auth.user);
 
   const [branches, total] = await Promise.all([
     prisma.branch.findMany({

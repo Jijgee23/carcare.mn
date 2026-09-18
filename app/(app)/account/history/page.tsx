@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Prisma } from "@/app/generated/prisma/client";
 import { BtnLink, Chip } from "@/app/_components/landing-ops-ui";
 import { EmptyState } from "@/app/_components/empty-state";
@@ -17,7 +18,7 @@ import {
   type PaymentStatus,
 } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
-import { FilterSelect, ResetFilters, SearchBox } from "@/app/_components/list-filters";
+import { FilterSelect, SearchBox } from "@/app/_components/list-filters";
 import { Pagination } from "@/app/_components/pagination";
 import { getPageInfo, buildMeta } from "@/lib/pagination";
 
@@ -70,12 +71,24 @@ export default async function AccountHistoryPage({
   } = await searchParams;
   const { page, pageSize, skip, take } = getPageInfo(rawPage, 20);
   const query = (rawQuery ?? "").trim();
-  const parsedYear = Number.parseInt(rawYear ?? "", 10);
-  const year = Number.isInteger(parsedYear) ? parsedYear : null;
-  // Сар зөвхөн он сонгогдсон үед л утгатай — эс бөгөөс алгасана.
+  // "Бүх он" сонголт байхгүй — үргэлж тодорхой жил сонгогдсон байна, анхны
+  // утга нь одоогийн жил (mobile-ийн HistoryController-той ижил зарчим).
+  // URL-д жилийг ЯВЦУУЛААГҮЙ бол одоогийн жилээр redirect хийж, шүүлтийн
+  // сонголт (FilterSelect, зөвхөн URL-аас уншдаг) бодит үр дүнтэй зөрөхгүй
+  // байхыг баталгаажуулна.
+  if (!rawYear) {
+    const params = new URLSearchParams();
+    if (plate) params.set("plate", plate);
+    if (rawQuery) params.set("q", rawQuery);
+    params.set("year", String(new Date().getFullYear()));
+    if (rawMonth) params.set("month", rawMonth);
+    redirect(`/account/history?${params.toString()}`);
+  }
+  const parsedYear = Number.parseInt(rawYear, 10);
+  const year = Number.isInteger(parsedYear) ? parsedYear : new Date().getFullYear();
   const parsedMonth = Number.parseInt(rawMonth ?? "", 10);
   const month =
-    year !== null && Number.isInteger(parsedMonth) && parsedMonth >= 1 && parsedMonth <= 12
+    Number.isInteger(parsedMonth) && parsedMonth >= 1 && parsedMonth <= 12
       ? parsedMonth
       : null;
 
@@ -128,7 +141,7 @@ export default async function AccountHistoryPage({
       ],
     });
   }
-  if (year !== null) {
+  {
     const range = yearRange(year, month);
     filters.push({
       OR: [
@@ -188,7 +201,7 @@ export default async function AccountHistoryPage({
       ],
     });
   }
-  if (year !== null) cancelledFilters.push({ requestedAt: yearRange(year, month) });
+  cancelledFilters.push({ requestedAt: yearRange(year, month) });
 
   const cancelledAppointments = await prisma.appointment.findMany({
     where: cancelledFilters.length
@@ -221,6 +234,7 @@ export default async function AccountHistoryPage({
   ]);
   const availableYears = [
     ...new Set([
+      year,
       ...orderDates.map((o) =>
         (o.completedAt ?? o.scheduledAt ?? o.createdAt).getFullYear(),
       ),
@@ -228,7 +242,7 @@ export default async function AccountHistoryPage({
     ]),
   ].sort((a, b) => b - a);
 
-  const hasFilter = Boolean(query) || year !== null || month !== null;
+  const hasFilter = Boolean(query) || month !== null;
 
   return (
     <div className="w-full flex flex-col gap-6">
@@ -268,13 +282,10 @@ export default async function AccountHistoryPage({
         />
         <FilterSelect
           paramName="year"
-          placeholder="Бүх он"
+          allowClear={false}
           options={availableYears.map((y) => ({ value: String(y), label: String(y) }))}
         />
-        {year !== null ? (
-          <FilterSelect paramName="month" placeholder="Бүх сар" options={MONTH_OPTIONS} />
-        ) : null}
-        <ResetFilters paramNames={["q", "year", "month"]} />
+        <FilterSelect paramName="month" placeholder="Бүх сар" options={MONTH_OPTIONS} />
       </div>
 
       {orders.length === 0 && cancelledAppointments.length === 0 ? (

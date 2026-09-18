@@ -60,6 +60,7 @@ export async function getApiUserFromRequest(req: Request) {
       isOwner: true,
       tenantId: true,
       branchId: true,
+      assignableBranchIds: true,
       role: {
         select: { id: true, name: true, permissions: true, isActive: true },
       },

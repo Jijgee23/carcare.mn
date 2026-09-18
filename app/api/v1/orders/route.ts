@@ -1,6 +1,6 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
-import { branchScopeId } from "@/lib/auth/roles";
+import { resolveWorkingBranch } from "@/lib/auth/api-branch";
 import { canAssignOrders, orderReadWhere } from "@/lib/auth/order-access";
 import { logAudit } from "@/lib/audit";
 import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
@@ -42,7 +42,9 @@ export async function GET(req: Request) {
   });
 
   // Салбараар хязгаарлагдсан ажилтан зөвхөн өөрийн салбарын захиалгыг харна.
-  const scope = branchScopeId(auth.user);
+  const scopeResult = await resolveWorkingBranch(req, auth.user);
+  if (scopeResult.response) return scopeResult.response;
+  const scope = scopeResult.branchId;
 
   const where: Prisma.ServiceOrderWhereInput = {
     tenantId: auth.user.tenantId,
@@ -107,7 +109,9 @@ export async function POST(req: Request) {
     return jsonError(422, "Хүсэлт буруу.", { fieldErrors });
 
   // Салбараар хязгаарлагдсан ажилтан зөвхөн өөрийн салбарт засварын хуудас үүсгэнэ.
-  const scope = branchScopeId(auth.user);
+  const scopeResult = await resolveWorkingBranch(req, auth.user);
+  if (scopeResult.response) return scopeResult.response;
+  const scope = scopeResult.branchId;
   if (scope && branchId !== scope) {
     return jsonError(422, "Хүсэлт буруу.", {
       fieldErrors: { branchId: "Зөвхөн өөрийн салбарт засварын хуудас үүсгэх боломжтой." },
