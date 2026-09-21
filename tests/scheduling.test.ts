@@ -898,7 +898,7 @@ test("runLockedOrderWork never reads the row when the lock query finds nothing �
   assert.equal(seenByWork, null);
 });
 
-test("changeOrderStatusAction (app/_actions/orders.ts) validates and writes through withOrderTransaction, not a separate unlocked read + prisma.$transaction", () => {
+test("changeOrderStatusAction delegates to the shared locked command, whose core owns withOrderTransaction", () => {
   const src = fs.readFileSync(
     path.join(__dirname, "..", "app", "_actions", "orders.ts"),
     "utf8",
@@ -908,71 +908,60 @@ test("changeOrderStatusAction (app/_actions/orders.ts) validates and writes thro
   const fnEnd = src.indexOf("\nexport async function reviseExpectedFinishAction", fnStart);
   assert.ok(fnEnd > fnStart, "reviseExpectedFinishAction not found after changeOrderStatusAction");
   const body = src.slice(fnStart, fnEnd);
-  assert.ok(body.includes("withOrderTransaction("), "expected withOrderTransaction call");
-  assert.ok(!body.includes("prisma.$transaction("), "must not fall back to an unlocked prisma.$transaction");
-});
-
-// S10 fix (WEB_SCHEDULING_ASSESSMENT_2026-09-10.md): reviseExpectedFinishAction
-// used to validate the past-check and the closing-cap workday lookup against
-// the stale ServiceOrder.startedAt scalar instead of the currently open
-// ACTIVE booking's real startAt. These tests inspect the source directly
-// (same approach as the S06 tests above) rather than driving the action
-// end-to-end against a real database.
-function reviseExpectedFinishActionBody(): string {
-  const src = fs.readFileSync(
-    path.join(__dirname, "..", "app", "_actions", "orders.ts"),
+  assert.ok(body.includes("changeOrderStatusCommand("), "expected shared command delegation");
+  const commandSrc = fs.readFileSync(
+    path.join(__dirname, "..", "lib", "orders", "order-commands.ts"),
     "utf8",
   );
-  const fnStart = src.indexOf("export async function reviseExpectedFinishAction");
-  assert.ok(fnStart >= 0, "reviseExpectedFinishAction not found");
+  const coreStart = commandSrc.indexOf("export async function applyOrderPatchCommand");
+  const coreEnd = commandSrc.indexOf("export async function changeOrderStatusCommand", coreStart);
+  assert.ok(coreStart >= 0 && coreEnd > coreStart, "shared patch core not found");
+  assert.ok(commandSrc.slice(coreStart, coreEnd).includes("withOrderTransaction("), "shared patch core must own the row lock");
+  assert.ok(!commandSrc.includes("prisma.$transaction("), "shared command must not use an unlocked transaction");
+});
+
+// S10 fix (WEB_SCHEDULING_ASSESSMENT_2026-09-10.md): the shared expected-finish
+// command validates against the currently open ACTIVE booking's real startAt,
+// while holding the order row lock. This source guard inspects the command
+// implementation rather than the thin web adapter.
+function reviseExpectedFinishCommandBody(): string {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "lib", "orders", "order-schedule-commands.ts"),
+    "utf8",
+  );
+  const fnStart = src.indexOf("export async function reviseExpectedFinishCommand");
+  assert.ok(fnStart >= 0, "reviseExpectedFinishCommand not found");
   // The next top-level export after it closes the function body.
-  const fnEnd = src.indexOf("\nexport async function rescheduleOrderAction", fnStart);
-  assert.ok(fnEnd > fnStart, "rescheduleOrderAction not found after reviseExpectedFinishAction");
+  const fnEnd = src.indexOf("\nexport type RescheduleOrderInput", fnStart);
+  assert.ok(fnEnd > fnStart, "RescheduleOrderInput not found after reviseExpectedFinishCommand");
   return src.slice(fnStart, fnEnd);
 }
 
-test("reviseExpectedFinishAction validates the past-check against the open ACTIVE booking's startAt, not order.startedAt", () => {
-  const body = reviseExpectedFinishActionBody();
+test("reviseExpectedFinishCommand validates the past-check against the open ACTIVE booking's startAt under the order lock", () => {
+  const body = reviseExpectedFinishCommandBody();
   assert.ok(
-    body.includes("getOpenOrderTimeBookings(prisma, order.id)"),
-    "expected a pre-check read of the open ACTIVE booking via the shared helper",
+    body.includes("withOrderTransaction("),
+    "expected the shared command to own the order row lock",
   );
   assert.ok(
-    body.includes('openBookings.find((b) => b.kind === "ACTIVE")'),
-    "expected the pre-check to pick out the open ACTIVE row specifically",
+    body.includes("getOpenOrderTimeBookings(tx, order.id)"),
+    "expected the open ACTIVE booking to be read through the transaction client",
   );
   assert.ok(
-    body.includes("activeBooking?.startAt ?? order.startedAt"),
+    body.includes('openBookings.find((booking) => booking.kind === "ACTIVE")?.startAt ?? order.startedAt'),
     "expected the ACTIVE booking's startAt to take precedence, falling back to startedAt only when no ACTIVE row is open",
   );
-  // The past-check must key off activeStartAt. (The closing-cap hard block
-  // that used to key a workday lookup off activeStartAt was removed under
-  // D-087 superseded — closing-time overrun is now a confirm-based warning,
-  // see expectedFinishNeedsScheduleWarning, not a hard reject here.)
   assert.ok(
-    body.includes("expectedFinishAt.getTime() <= activeStartAt.getTime()"),
-    "expected the past-check to compare against activeStartAt",
+    body.includes("input.expectedFinishAt.getTime() <= activeStartAt.getTime()"),
+    "expected the past-check to compare against the fresh activeStartAt",
   );
   assert.ok(
-    !body.includes("bookingDateKey(order.startedAt)"),
-    "must not key any lookup off the stale order.startedAt",
-  );
-  // The locked re-check (inside withOrderTransaction) must repeat this against
-  // a fresh read of the open bookings, not the fresh.startedAt scalar alone.
-  const lockCallIndex = body.indexOf("withOrderTransaction(");
-  assert.ok(lockCallIndex >= 0, "expected a withOrderTransaction call");
-  const postLock = body.slice(lockCallIndex);
-  assert.ok(
-    postLock.includes("getOpenOrderTimeBookings(tx, fresh.id)"),
-    "expected the locked re-check to re-read the open bookings under the lock",
+    !body.includes("getOpenOrderTimeBookings(prisma"),
+    "must not require an unlocked pre-read through the global Prisma client",
   );
   assert.ok(
-    postLock.includes("freshOpen.find((b) => b.kind === \"ACTIVE\")?.startAt ?? fresh.startedAt"),
-    "expected the locked re-check's past-check to prefer the fresh ACTIVE booking's startAt",
-  );
-  assert.ok(
-    postLock.includes("expectedFinishAt.getTime() <= freshActiveStartAt.getTime()"),
-    "expected the locked re-check's past-check to compare against freshActiveStartAt",
+    body.includes("expectedFinishNeedsWarning(tx"),
+    "expected the schedule warning to use the same transaction",
   );
 });
 
@@ -1259,7 +1248,7 @@ function rescheduleOrderActionBody(): string {
   const src = fs.readFileSync(path.join(__dirname, "..", "app", "_actions", "orders.ts"), "utf8");
   const fnStart = src.indexOf("export async function rescheduleOrderAction");
   assert.ok(fnStart >= 0, "rescheduleOrderAction not found");
-  const fnEnd = src.indexOf("\n// --- PAYMENT STATUS", fnStart);
+  const fnEnd = src.indexOf("\nexport async function deleteOrderAction", fnStart);
   assert.ok(fnEnd > fnStart, "end of rescheduleOrderAction not found");
   return src.slice(fnStart, fnEnd);
 }
@@ -1280,28 +1269,106 @@ test("Phase C/A final branching: rescheduleAppointmentAction routes a linked+SCH
   assert.ok(guardIdx < sharedCallIdx, "the non-SCHEDULED guard must be checked before calling the shared command");
 });
 
-test("Phase A final branching: rescheduleOrderAction routes a CONFIRMED-appointment-linked order through the SAME shared moveLinkedAppointmentOrder command as the appointment-side action", () => {
+test("Phase A final branching: rescheduleOrderAction uses the shared scheduling command", () => {
   const orderBody = rescheduleOrderActionBody();
-  assert.ok(orderBody.includes('order.appointment && order.appointment.status === "CONFIRMED"'), "expected a guard on the linked appointment's status");
-  assert.ok(orderBody.includes("moveLinkedAppointmentOrder("), "expected rescheduleOrderAction to call the shared linked-move command");
+  assert.ok(orderBody.includes("rescheduleOrderCommand("), "expected rescheduleOrderAction to call the shared scheduling command");
+  assert.ok(orderBody.includes('revalidatePath("/dashboard/appointments")'));
+  assert.ok(orderBody.includes('revalidatePath("/account")'));
 
   const apptSrc = fs.readFileSync(path.join(__dirname, "..", "app", "_actions", "appointments.ts"), "utf8");
   const orderSrc = fs.readFileSync(path.join(__dirname, "..", "app", "_actions", "orders.ts"), "utf8");
   assert.ok(
-    apptSrc.includes('from "@/lib/linked-reschedule";') && orderSrc.includes('from "@/lib/linked-reschedule";'),
-    "both actions must import the shared command from the same module, not reimplement it independently",
+    apptSrc.includes('from "@/lib/linked-reschedule";') && orderSrc.includes('from "@/lib/orders/order-schedule-commands";'),
+    "appointment and order actions must use the shared S14 primitive through their scheduling adapters",
   );
 });
 
-test("Phase A fallback: rescheduleOrderAction falls back to its own standalone single-entity write when there is no linked CONFIRMED appointment (walk-in order)", () => {
+test("Phase A fallback: the shared primitive permits an order-only move when the link is no longer confirmed", () => {
   const body = rescheduleOrderActionBody();
-  const branchIdx = body.indexOf('order.appointment && order.appointment.status === "CONFIRMED"');
-  assert.ok(branchIdx >= 0);
-  const afterBranch = body.slice(branchIdx);
-  assert.ok(
-    afterBranch.includes("withOrderTransaction(") && afterBranch.includes('data: { scheduledAt }'),
-    "expected the pre-existing standalone withOrderTransaction write to remain reachable as a fallback",
+  assert.ok(body.includes("rescheduleOrderCommand("));
+  const linkedSrc = fs.readFileSync(path.join(__dirname, "..", "lib", "linked-reschedule.ts"), "utf8");
+  assert.ok(linkedSrc.includes("allowUnconfirmedOrderMove"));
+});
+
+test("P1-B4 order scheduling adapters keep typed domain errors, generic unexpected errors, and required revalidation", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "app", "_actions", "orders.ts"), "utf8");
+  for (const name of ["reviseExpectedFinishAction", "rescheduleOrderAction"]) {
+    const start = src.indexOf(`export async function ${name}`);
+    const end = src.indexOf("\nexport async function ", start + 10);
+    const body = src.slice(start, end > start ? end : undefined);
+    assert.ok(body.includes("instanceof OrderScheduleCommandError"));
+    assert.ok(body.includes("return orderActionErrorResult(e)"), "authorization failures must use the shared safe classifier");
+    assert.equal(body.includes("message: e instanceof Error ? e.message"), false);
+  }
+  // D-132: the classifier moved to `lib/action-errors.ts` and is now shared with
+  // appointments.ts. orders.ts keeps only the message it can throw itself; the
+  // subscription lock is the seam's responsibility, asserted in its own test.
+  assert.ok(src.includes("knownAuthorizationMessage(e, ORDER_ACTION_KNOWN_MESSAGES)"));
+  assert.ok(src.includes("ORDER_EDIT_FORBIDDEN_MESSAGE"));
+  assert.ok(src.includes("ACTION_GENERIC_ERROR_MESSAGE"));
+  assert.equal(
+    src.includes("function knownOrderAuthorizationMessage"),
+    false,
+    "the per-file classifier must not return — callers share one seam so a throw site cannot be missed in only one of them",
   );
+  const reschedule = rescheduleOrderActionBody();
+  assert.ok(reschedule.includes('revalidatePath("/dashboard/appointments")'));
+  assert.ok(reschedule.includes('revalidatePath("/account")'));
+});
+
+test("P1-B4 staff appointment reschedule uses strict business-local parsing and safe unexpected errors", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "app", "_actions", "appointments.ts"), "utf8");
+  const start = src.indexOf("export async function rescheduleAppointmentAction");
+  const end = src.indexOf("\nexport async function ", start + 10);
+  const body = src.slice(start, end > start ? end : undefined);
+  assert.ok(body.includes("parseBusinessLocalDateTime(requestedRaw)"));
+  assert.equal(body.includes("new Date(requestedRaw)"), false);
+  assert.ok(body.includes("ACTION_GENERIC_ERROR_MESSAGE"));
+  assert.equal(body.includes("message: e instanceof Error ? e.message"), false);
+  // D-132 regression guard: the `assertStaffScope` catch classifies through the
+  // shared seam. It previously inlined a two-literal allow-list that omitted
+  // SUBSCRIPTION_LOCKED_MESSAGE, so a lapsed subscription surfaced as a generic
+  // "try again" error the user could never act on.
+  assert.ok(body.includes("knownAuthorizationMessage(e, STAFF_SCOPE_MESSAGES)"));
+  assert.equal(
+    body.includes('"Танд цаг захиалга удирдах эрх байхгүй."'),
+    false,
+    "allow-lists must reference the constants shared with the throw site, never copied literals",
+  );
+  assert.ok(body.includes("unstable_rethrow(error)"));
+  const boundaryStart = body.indexOf("try {", body.indexOf("requestedAt.getTime() < Date.now()"));
+  const appointmentRead = body.indexOf("prisma.appointment.findUnique(");
+  const boundaryCatch = body.lastIndexOf("unstable_rethrow(error)");
+  assert.ok(boundaryStart >= 0 && boundaryStart < appointmentRead && boundaryCatch > appointmentRead);
+  assert.ok(body.includes("prisma.serviceOrder.findFirst("));
+});
+
+test("D-132 the shared action-error seam owns the subscription lock, so no caller can omit it", () => {
+  const seam = fs.readFileSync(path.join(__dirname, "..", "lib", "action-errors.ts"), "utf8");
+  const fnStart = seam.indexOf("export function knownAuthorizationMessage");
+  assert.ok(fnStart >= 0, "expected the shared classifier");
+  const subscriptionCheck = seam.indexOf("SUBSCRIPTION_LOCKED_MESSAGE", fnStart);
+  const extrasCheck = seam.indexOf("extraMessages.includes", fnStart);
+  // The subscription message is matched inside the helper and BEFORE the
+  // caller-supplied list, never passed in. Making it opt-in is precisely how it
+  // went missing from the appointments allow-list in the first place.
+  assert.ok(subscriptionCheck > fnStart, "the seam must match SUBSCRIPTION_LOCKED_MESSAGE itself");
+  assert.ok(extrasCheck > subscriptionCheck, "caller extras must not be able to shadow the subscription lock");
+  assert.equal(
+    seam.includes("Таны багцын хугацаа дууссан"),
+    false,
+    "the seam must import the constant, not re-copy its text",
+  );
+
+  for (const file of ["orders.ts", "appointments.ts"]) {
+    const src = fs.readFileSync(path.join(__dirname, "..", "app", "_actions", file), "utf8");
+    assert.ok(src.includes('from "@/lib/action-errors"'), `${file} must classify through the shared seam`);
+    assert.equal(
+      src.includes("Таны багцын хугацаа дууссан"),
+      false,
+      `${file} must not copy the subscription message literal`,
+    );
+  }
 });
 
 test("moveLinkedAppointmentOrder (lib/linked-reschedule.ts) re-fetches the appointment AND order fresh, validates both statuses, and writes all three targets together", () => {
@@ -1353,13 +1420,12 @@ test("createOrderAction opens its SCHEDULED booking with an endAt derived from t
   // calendar. Every reschedule path and the one-off backfill script always
   // computed this end correctly; creation was the lone writer that did not.
   const src = fs.readFileSync(
-    path.join(__dirname, "..", "app", "_actions", "orders.ts"),
+    path.join(__dirname, "..", "lib", "orders", "order-create-command.ts"),
     "utf8",
   );
-  const fnStart = src.indexOf("export async function createOrderAction");
-  assert.ok(fnStart >= 0, "createOrderAction not found");
-  const fnEnd = src.indexOf("\nexport async function ", fnStart + 1);
-  assert.ok(fnEnd > fnStart, "expected another exported action after createOrderAction");
+  const fnStart = src.indexOf("export async function createOrderCommand");
+  assert.ok(fnStart >= 0, "createOrderCommand not found");
+  const fnEnd = src.length;
   const body = src.slice(fnStart, fnEnd);
 
   const openIdx = body.indexOf("openOrderTimeBooking(");
@@ -1379,22 +1445,19 @@ test("createOrderAction opens its SCHEDULED booking with an endAt derived from t
   // they drifted apart before.
   const estimateMatches = body.match(/estimatedDurationMinutes:\s*([A-Za-z0-9_]+)/g) ?? [];
   assert.ok(
-    estimateMatches.some((m) => m.includes("orderEstimatedDurationMinutes")),
+    estimateMatches.some((m) => m.includes("durationMinutes")),
     "expected the order's estimatedDurationMinutes to be written from the shared hoisted constant",
   );
   assert.ok(
-    openCall.includes("orderEstimatedDurationMinutes"),
+    openCall.includes("durationMinutes"),
     "expected the booking row's endAt to be derived from that same constant",
   );
 });
 
-test("moveLinkedAppointmentOrder validates hours using the shared order-schedule-validation helper, not a duplicate implementation", () => {
+test("moveLinkedAppointmentOrder validates hours inside its transaction without overlap checks", () => {
   const src = fs.readFileSync(path.join(__dirname, "..", "lib", "linked-reschedule.ts"), "utf8");
-  assert.ok(src.includes("validateScheduledOrderHours("), "expected reuse of validateScheduledOrderHours");
-  assert.ok(
-    src.includes('from "@/lib/order-schedule-validation"'),
-    "expected it to be imported from the S12 shared validation module, not reimplemented",
-  );
+  assert.ok(src.includes("scheduleHoursError("), "expected tx-scoped schedule-hours validation");
+  assert.ok(src.includes("await tx.branch.findFirst("), "expected branch settings to be read through tx");
   // D-111: the schedule-overlap check this path used to run was removed. It
   // never blocked a save and ignored slotCapacity.
   assert.ok(
@@ -1603,7 +1666,7 @@ test("S17: expire-appointments cron uses a conditional updateMany (not a blind s
   assert.ok(logAuditIdx > countCheckIdx, "expected the audit log to only run after the count check");
 });
 
-test("S17: appointment-reminders cron claims each row (conditional updateMany, count === 1) BEFORE calling sendSms, never after", () => {
+test("S17: appointment-reminders cron claims each row before DB/push notification, with failure-safe single-write semantics", () => {
   const src = fs.readFileSync(
     path.join(__dirname, "..", "app", "api", "cron", "appointment-reminders", "route.ts"),
     "utf8",
@@ -1615,16 +1678,21 @@ test("S17: appointment-reminders cron claims each row (conditional updateMany, c
   assert.ok(claimCall.includes("reminderSentAt: new Date()"), "expected the claim to set reminderSentAt");
 
   const gateIdx = src.indexOf("claim.count !== 1");
-  assert.ok(gateIdx !== -1, "expected a claim.count check gating the send");
-  const sendSmsIdx = src.indexOf("sendSms(");
-  assert.ok(sendSmsIdx !== -1, "expected a sendSms call");
+  assert.ok(gateIdx !== -1, "expected a claim.count check gating notification");
+  const notifyIdx = src.indexOf("createNotification(");
+  assert.ok(notifyIdx !== -1, "expected the current DB/push notification call");
   assert.ok(
-    claimIdx < gateIdx && gateIdx < sendSmsIdx,
-    "expected ordering: claim updateMany, then count check, then sendSms — never send before claiming",
+    claimIdx < gateIdx && gateIdx < notifyIdx,
+    "expected ordering: claim updateMany, then count check, then DB/push notification — never notify before claiming",
   );
+  assert.equal(src.includes("sendSms("), false, "the reminder contract is DB/push notification, not SMS");
+  assert.ok(src.includes("if (a.accountId)"), "expected notification failure/scope handling to remain account-gated");
+  assert.ok(src.indexOf("try {") < notifyIdx, "expected notification failures to be caught after a successful claim");
+  assert.ok(src.indexOf("catch (e)", notifyIdx) > notifyIdx, "expected a caught notification failure so the cron response remains safe");
 
-  // The old unconditional post-loop update ("mark regardless of success/failure")
-  // must be gone — there is now exactly one appointment write per row (the claim).
+  // A claimed row is never written again after notification success/failure;
+  // this prevents duplicate sends on concurrent runs and avoids a second
+  // post-notification state transition that could create retry races.
   const updateCalls = (src.match(/prisma\.appointment\.(update|updateMany)\(/g) ?? []).length;
   assert.equal(updateCalls, 1, "expected exactly one appointment write (the atomic claim), no separate post-send mark");
 });
@@ -1691,11 +1759,10 @@ test("S17 Phase B: moveLinkedAppointmentOrder (staff linked reschedule) resets r
 });
 
 test("D-087 superseded: reviseExpectedFinishAction's hard closing-time block is gone; past-check and confirm-warning remain", () => {
-  const src = fs.readFileSync(path.join(__dirname, "..", "app", "_actions", "orders.ts"), "utf8");
-  const fnStart = src.indexOf("export async function reviseExpectedFinishAction");
-  assert.ok(fnStart >= 0, "reviseExpectedFinishAction not found");
-  const fnEnd = src.indexOf("\nexport async function", fnStart + 10);
-  const body = src.slice(fnStart, fnEnd > fnStart ? fnEnd : undefined);
+  const src = fs.readFileSync(path.join(__dirname, "..", "lib", "orders", "order-schedule-commands.ts"), "utf8");
+  const fnStart = src.indexOf("export async function reviseExpectedFinishCommand");
+  assert.ok(fnStart >= 0, "reviseExpectedFinishCommand not found");
+  const body = src.slice(fnStart, src.indexOf("export type RescheduleOrderInput", fnStart));
 
   assert.ok(!body.includes("workDayCloseAt"), "expected the hard workDayCloseAt block to be removed");
   assert.ok(
@@ -1703,40 +1770,42 @@ test("D-087 superseded: reviseExpectedFinishAction's hard closing-time block is 
     "expected the old unconditional closing-time rejection message to be gone",
   );
   assert.ok(
-    body.includes("Дуусах хугацаа эхэлсэн хугацаанаас хойш байх ёстой."),
-    "expected the past-check to remain",
+    body.includes("expectedFinishAt.getTime() <= activeStartAt.getTime()"),
+    "expected the expected-finish ordering check to remain",
   );
   assert.ok(
-    body.includes("expectedFinishNeedsScheduleWarning("),
+    body.includes("expectedFinishNeedsWarning("),
     "expected the confirm-based schedule warning to still be called",
   );
-  assert.ok(body.includes('fieldErrors: { confirmNeeded: "true" }'), "expected the confirm warning to use the confirmNeeded shape");
+  assert.ok(body.includes('confirmNeeded: "true"'), "expected the confirm warning to use the confirmNeeded shape");
 });
 
-test("D-087 superseded: rescheduleOrderAction's hours check only blocks when !confirmed, using the confirmNeeded shape", () => {
-  const body = rescheduleOrderActionBody();
-  const hoursIdx = body.indexOf("validateScheduledOrderHours(");
-  assert.ok(hoursIdx >= 0, "expected a call to validateScheduledOrderHours");
-  const afterCall = body.slice(hoursIdx, hoursIdx + 500);
-  assert.ok(
-    /if\s*\(\s*hoursError\s*&&\s*!confirmed\s*\)/.test(afterCall),
-    "expected the hours check to only short-circuit when !confirmed",
-  );
-  assert.ok(afterCall.includes('fieldErrors: { confirmNeeded: "true" }'), "expected the confirmNeeded fieldErrors shape");
-  assert.ok(!/fieldErrors:\s*{\s*scheduledAt:\s*hoursError\s*}/.test(afterCall), "expected the old hard-block scheduledAt fieldErrors shape to be gone");
-});
-
-test("D-087 superseded: moveLinkedAppointmentOrder's hours check is gated by !input.confirmed, using the confirmNeeded shape", () => {
+test("D-087 superseded: shared reschedule hours check only blocks when !input.confirmed", () => {
   const src = fs.readFileSync(path.join(__dirname, "..", "lib", "linked-reschedule.ts"), "utf8");
-  const hoursIdx = src.indexOf("validateScheduledOrderHours(");
-  assert.ok(hoursIdx >= 0, "expected a call to validateScheduledOrderHours");
-  const afterCall = src.slice(hoursIdx, hoursIdx + 500);
+  const fnStart = src.indexOf("export async function moveLinkedAppointmentOrder(");
+  assert.ok(fnStart >= 0, "expected moveLinkedAppointmentOrder to exist");
+  const body = src.slice(fnStart);
+  assert.ok(body.includes("const hoursError = await scheduleHoursError("), "expected a call to scheduleHoursError");
   assert.ok(
-    /if\s*\(\s*hoursError\s*&&\s*!input\.confirmed\s*\)/.test(afterCall),
+    /if\s*\(\s*hoursError\s*&&\s*!input\.confirmed\s*\)/.test(body),
+    "expected the hours check to only short-circuit when !input.confirmed",
+  );
+  assert.ok(body.includes('{ confirmNeeded: "true" }'), "expected the confirmNeeded fieldErrors shape");
+  assert.ok(!/fieldErrors:\s*{\s*scheduledAt:\s*hoursError\s*}/.test(body), "expected the old hard-block scheduledAt fieldErrors shape to be gone");
+});
+
+test("D-087 superseded: moveLinkedAppointmentOrder's tx-scoped hours check is gated by !input.confirmed", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "lib", "linked-reschedule.ts"), "utf8");
+  const fnStart = src.indexOf("export async function moveLinkedAppointmentOrder(");
+  assert.ok(fnStart >= 0, "expected moveLinkedAppointmentOrder to exist");
+  const body = src.slice(fnStart);
+  assert.ok(body.includes("const hoursError = await scheduleHoursError("), "expected a call to scheduleHoursError");
+  assert.ok(
+    /if\s*\(\s*hoursError\s*&&\s*!input\.confirmed\s*\)/.test(body),
     "expected the hours check to only throw when !input.confirmed",
   );
-  assert.ok(afterCall.includes('{ confirmNeeded: "true" }'), "expected the confirmNeeded fieldErrors shape");
-  assert.ok(!/scheduledAt:\s*hoursError/.test(afterCall), "expected the old hard-throw scheduledAt fieldErrors shape to be gone");
+  assert.ok(body.includes('{ confirmNeeded: "true" }'), "expected the confirmNeeded fieldErrors shape");
+  assert.ok(!/scheduledAt:\s*hoursError/.test(body), "expected the old hard-throw scheduledAt fieldErrors shape to be gone");
 });
 
 test("D-087 superseded regression guard: customer-facing appointment-reservations.ts hour validation is untouched (still hard-blocks, no confirm bypass)", () => {

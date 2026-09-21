@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const ALLOWED_MIME = new Set([
@@ -35,8 +35,30 @@ const UPLOAD_ROOT = process.env.UPLOAD_DIR
  * файлын замд хөрвүүлнэ (устгах зэрэгт хэрэглэнэ).
  */
 export function resolveUploadPath(urlPath: string): string {
-  const rel = urlPath.replace(/^\/uploads\//, "");
-  return path.join(UPLOAD_ROOT, rel);
+  const prefix = "/uploads/";
+  if (!urlPath.startsWith(prefix)) {
+    throw new Error("Invalid upload path.");
+  }
+
+  let rel: string;
+  try {
+    rel = decodeURIComponent(urlPath.slice(prefix.length));
+  } catch {
+    throw new Error("Invalid upload path.");
+  }
+  if (!rel || rel.includes("\0")) throw new Error("Invalid upload path.");
+
+  const segments = rel.split(/[\\/]/);
+  if (segments.some((segment) => segment === "" || segment === "." || segment === "..")) {
+    throw new Error("Invalid upload path.");
+  }
+
+  const resolved = path.resolve(UPLOAD_ROOT, rel);
+  const root = path.resolve(UPLOAD_ROOT);
+  if (resolved === root || !resolved.startsWith(`${root}${path.sep}`)) {
+    throw new Error("Invalid upload path.");
+  }
+  return resolved;
 }
 
 export type SavedFile = {
@@ -45,14 +67,8 @@ export type SavedFile = {
   mime: string;
 };
 
-/**
- * FormData дотроос ирсэн File-г /public/uploads/<subdir>/ дотор хадгална.
- * Validation: mime, хэмжээ.
- */
-export async function saveUpload(
-  file: File,
-  subdir = "logos",
-): Promise<SavedFile> {
+/** Validate an upload without creating a directory or writing a file. */
+export function validateUpload(file: File): void {
   if (!ALLOWED_MIME.has(file.type)) {
     throw new Error("Зөвхөн PNG, JPG, WEBP, SVG зураг зөвшөөрөгдөнө.");
   }
@@ -62,11 +78,44 @@ export async function saveUpload(
   if (file.size === 0) {
     throw new Error("Хоосон файл оруулсан байна.");
   }
+}
+
+function resolveUploadSubdir(subdir: string): string {
+  const segments = subdir.split(/[\\/]/);
+  if (
+    !subdir ||
+    path.isAbsolute(subdir) ||
+    segments.some((segment) => segment === "" || segment === "." || segment === "..")
+  ) {
+    throw new Error("Invalid upload directory.");
+  }
+  const resolved = path.resolve(UPLOAD_ROOT, subdir);
+  const root = path.resolve(UPLOAD_ROOT);
+  if (resolved === root || !resolved.startsWith(`${root}${path.sep}`)) {
+    throw new Error("Invalid upload directory.");
+  }
+  return resolved;
+}
+
+/** Delete a previously-created upload URL, restricted to the upload root. */
+export async function deleteUpload(urlPath: string): Promise<void> {
+  await unlink(resolveUploadPath(urlPath));
+}
+
+/**
+ * FormData дотроос ирсэн File-г /public/uploads/<subdir>/ дотор хадгална.
+ * Validation: mime, хэмжээ.
+ */
+export async function saveUpload(
+  file: File,
+  subdir = "logos",
+): Promise<SavedFile> {
+  validateUpload(file);
 
   const ext = EXT_BY_MIME[file.type] ?? "bin";
   const name = `${randomBytes(12).toString("hex")}.${ext}`;
 
-  const targetDir = path.join(UPLOAD_ROOT, subdir);
+  const targetDir = resolveUploadSubdir(subdir);
   await mkdir(targetDir, { recursive: true });
 
   const buf = Buffer.from(await file.arrayBuffer());

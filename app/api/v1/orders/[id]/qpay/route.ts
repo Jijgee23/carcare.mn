@@ -1,176 +1,87 @@
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
-import { branchScopeId } from "@/lib/auth/roles";
-import { canEditOrder, canViewOrder } from "@/lib/auth/order-access";
+import { resolveWorkingBranch } from "@/lib/auth/api-branch";
+import { canViewOrder } from "@/lib/auth/order-access";
+import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
 import {
-  cancelOrderQPayInvoice,
-  createOrReuseOrderQPayInvoice,
-} from "@/lib/order-payments";
+  cancelOrderQPayPaymentCommand,
+  createOrderQPayInvoiceCommand,
+  OrderPaymentCommandError,
+} from "@/lib/orders/order-payment-commands";
 import { prisma } from "@/lib/prisma";
 import { TenantQPayService } from "@/lib/qpay-tenant";
 
-const STATUS_BY_REASON = {
-  already_paid: 422,
-  no_remaining: 422,
-  qpay_error: 502,
-} as const;
+function commandError(error: unknown) {
+  if (error instanceof OrderPaymentCommandError) return jsonError(error.status, error.message, { code: error.code, ...(error.fieldErrors ? { fieldErrors: error.fieldErrors } : {}) });
+  console.error("[orders/qpay] command failed", error instanceof Error ? { name: error.name } : { name: "UnknownError" });
+  return jsonError(500, "Серверийн алдаа гарлаа. Дахин оролдоно уу.");
+}
 
-/**
- * Төлбөрийн банкны deeplink `urls`-ийг буцаана. Хадгалагдсан байвал шууд,
- * үгүй бол (хуучин pending, эсвэл create-ийн хариунд ирээгүй) QPay-аас дахин
- * татаж DB-д нөхөж хадгална. Ингэснээр mobile үргэлж бүрэн urls хүлээж авна.
- */
-async function resolvePaymentUrls(
-  tenantId: string,
-  payment: { id: string; qpayInvoiceId: string | null; qpayUrls: unknown },
-): Promise<unknown[]> {
-  if (Array.isArray(payment.qpayUrls) && payment.qpayUrls.length > 0) {
-    return payment.qpayUrls;
-  }
+async function resolveUrls(tenantId: string, orderId: string, payment: { id: string; qpayInvoiceId: string | null; qpayUrls: unknown }) {
+  if (Array.isArray(payment.qpayUrls) && payment.qpayUrls.length > 0) return payment.qpayUrls;
   if (!payment.qpayInvoiceId) return [];
-
-  const urls = await TenantQPayService.getInvoiceUrls(
-    tenantId,
-    payment.qpayInvoiceId,
-  );
-  if (urls && urls.length > 0) {
-    await prisma.orderPayment.update({
-      where: { id: payment.id },
-      data: { qpayUrls: urls },
-    });
+  const urls = await TenantQPayService.getInvoiceUrls(tenantId, payment.qpayInvoiceId);
+  if (urls?.length) {
+    await prisma.orderPayment.updateMany({ where: { id: payment.id, tenantId, orderId, status: "PENDING" }, data: { qpayUrls: urls } });
     return urls;
   }
   return Array.isArray(payment.qpayUrls) ? payment.qpayUrls : [];
 }
 
-// GET — pending QPay payment info
-export async function GET(
-  req: Request,
-  ctx: { params: Promise<{ id: string }> },
-) {
+export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
-
+  const denied = requirePermission(auth.user, "payments.view");
+  if (denied) return denied;
   const { id } = await ctx.params;
-  const scope = branchScopeId(auth.user);
-
-  const order = await prisma.serviceOrder.findFirst({
-    where: {
-      id,
-      tenantId: auth.user.tenantId,
-      ...(scope ? { branchId: scope } : {}),
-    },
-    select: { id: true, assignedToId: true },
-  });
+  const scopeResult = await resolveWorkingBranch(req, auth.user);
+  if (scopeResult.response) return scopeResult.response;
+  const order = await prisma.serviceOrder.findFirst({ where: { id, tenantId: auth.user.tenantId, ...(scopeResult.branchId ? { branchId: scopeResult.branchId } : {}) }, select: { id: true, assignedToId: true } });
   if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
   if (!canViewOrder(auth.user, order)) return jsonError(403, "Танд энэ засварын хуудсыг харах эрх байхгүй.");
-
   const [qpayConfig, pending] = await Promise.all([
-    prisma.tenantQPaySettings.findUnique({
-      where: { tenantId: auth.user.tenantId },
-      select: { enabled: true },
-    }),
-    prisma.orderPayment.findFirst({
-      where: {
-        orderId: id,
-        tenantId: auth.user.tenantId,
-        status: "PENDING",
-        method: "QPAY",
-      },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        qrImage: true,
-        qrText: true,
-        amount: true,
-        qpayUrls: true,
-        qpayInvoiceId: true,
-      },
-    }),
+    prisma.tenantQPaySettings.findUnique({ where: { tenantId: auth.user.tenantId }, select: { enabled: true } }),
+    prisma.orderPayment.findFirst({ where: { tenantId: auth.user.tenantId, orderId: id, status: "PENDING", method: "QPAY" }, orderBy: { createdAt: "desc" }, select: { id: true, amount: true, qrImage: true, qrText: true, qpayUrls: true, qpayInvoiceId: true } }),
   ]);
-
-  return jsonOk({
-    qpayEnabled: Boolean(qpayConfig?.enabled),
-    pending: pending
-      ? {
-          id: pending.id,
-          qrImage: pending.qrImage,
-          qrText: pending.qrText,
-          amount: pending.amount.toString(),
-          urls: await resolvePaymentUrls(auth.user.tenantId, pending),
-        }
-      : null,
-  });
+  return jsonOk({ qpayEnabled: Boolean(qpayConfig?.enabled), pending: pending ? { id: pending.id, amount: pending.amount.toString(), qrImage: pending.qrImage, qrText: pending.qrText, urls: await resolveUrls(auth.user.tenantId, id, pending) } : null });
 }
 
-// POST — create QPay invoice
-export async function POST(
-  req: Request,
-  ctx: { params: Promise<{ id: string }> },
-) {
+export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
   const denied = requirePermission(auth.user, "payments.create");
   if (denied) return denied;
-
+  const locked = await requireActiveSubscriptionApi(auth.user);
+  if (locked) return locked;
   const { id } = await ctx.params;
-  const scope = branchScopeId(auth.user);
-
-  const order = await prisma.serviceOrder.findFirst({
-    where: {
-      id,
-      tenantId: auth.user.tenantId,
-      ...(scope ? { branchId: scope } : {}),
-    },
-    include: { customer: { select: { fullName: true, phone: true } } },
-  });
-  if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
-  if (!canEditOrder(auth.user, order)) return jsonError(403, "Танд энэ засварын хуудсыг засах эрх байхгүй.");
-
-  // Invoice үүсгэх/дахин ашиглах логик хуваалцсан цөмд шилжсэн — мөн
-  // app/_actions/order-payments.ts-ийн createOrderQPayInvoiceAction
-  // (dashboard) дуудна (харах: lib/order-payments.ts-ийн comment).
-  const result = await createOrReuseOrderQPayInvoice(auth.user.tenantId, auth.user.id, order);
-  if (!result.ok) return jsonError(STATUS_BY_REASON[result.reason], result.message);
-
-  return jsonOk({
-    payment: {
-      id: result.payment.id,
-      qrImage: result.payment.qrImage,
-      qrText: result.payment.qrText,
-      amount: result.payment.amount,
-      urls: await resolvePaymentUrls(auth.user.tenantId, result.payment),
-    },
-  });
+  const scopeResult = await resolveWorkingBranch(req, auth.user);
+  if (scopeResult.response) return scopeResult.response;
+  try {
+    const payment = await createOrderQPayInvoiceCommand({ actor: auth.user, orderId: id, scope: scopeResult.branchId });
+    return jsonOk({ payment: { id: payment.id, amount: payment.amount, qrImage: payment.qrImage, qrText: payment.qrText, urls: payment.urls } });
+  } catch (error) {
+    return commandError(error);
+  }
 }
 
-// DELETE — cancel pending QPay payment
-export async function DELETE(
-  req: Request,
-  ctx: { params: Promise<{ id: string }> },
-) {
+export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
   const denied = requirePermission(auth.user, "payments.delete");
   if (denied) return denied;
-
+  const locked = await requireActiveSubscriptionApi(auth.user);
+  if (locked) return locked;
   const { id } = await ctx.params;
-  const order = await prisma.serviceOrder.findFirst({ where: { id, tenantId: auth.user.tenantId, ...(branchScopeId(auth.user) ? { branchId: branchScopeId(auth.user)! } : {}) }, select: { assignedToId: true } });
-  if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
-  if (!canEditOrder(auth.user, order)) return jsonError(403, "Танд энэ төлбөрийг засах эрх байхгүй.");
-
+  const scopeResult = await resolveWorkingBranch(req, auth.user);
+  if (scopeResult.response) return scopeResult.response;
   let body: unknown;
+  try { body = await req.json(); } catch { return jsonError(400, "JSON body шаардлагатай."); }
+  if (body == null || typeof body !== "object" || Array.isArray(body)) return jsonError(400, "JSON object шаардлагатай.");
+  const paymentId = (body as Record<string, unknown>).paymentId;
+  if (typeof paymentId !== "string" || !paymentId.trim()) return jsonError(400, "paymentId шаардлагатай.");
   try {
-    body = await req.json();
-  } catch {
-    return jsonError(400, "JSON body шаардлагатай.");
+    const result = await cancelOrderQPayPaymentCommand({ actor: auth.user, orderId: id, paymentId: paymentId.trim(), scope: scopeResult.branchId });
+    return jsonOk({ ok: true, paymentId: result.paymentId });
+  } catch (error) {
+    return commandError(error);
   }
-  const paymentId = (body as Record<string, unknown>).paymentId as string;
-  if (!paymentId) return jsonError(400, "paymentId шаардлагатай.");
-
-  // Цуцлах логик хуваалцсан цөмд шилжсэн — мөн app/_actions/order-payments.ts-ийн
-  // cancelOrderQPayPaymentAction (dashboard) дуудна (харах:
-  // lib/order-payments.ts-ийн comment).
-  await cancelOrderQPayInvoice(auth.user.tenantId, auth.user.id, paymentId, id);
-
-  return jsonOk({ ok: true });
 }

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { before, test } from "node:test";
 
 // These route modules import `lib/auth/api-branch.ts` (for the async
@@ -75,6 +76,30 @@ test("appointments/[id]/route.ts exports PATCH", () => {
 test("diagnostics/reports/route.ts exports GET and POST", () => {
   assert.equal(typeof diagnosticsReportsRoute.GET, "function");
   assert.equal(typeof diagnosticsReportsRoute.POST, "function");
+});
+
+test("diagnostic report creation guards linked orders before report creation", async () => {
+  const source = await readFile(new URL("../app/api/v1/diagnostics/reports/route.ts", import.meta.url), "utf8");
+  const orderRead = source.indexOf("status: true");
+  const statusGuard = source.indexOf('order.status !== "IN_PROGRESS"');
+  const reportCreate = source.indexOf("prisma.diagnosticReport.create");
+  assert.ok(orderRead >= 0, "linked order read must include status");
+  assert.ok(statusGuard > orderRead, "status guard must use the linked order status");
+  assert.ok(reportCreate > statusGuard, "status guard must run before report creation");
+  assert.match(source.slice(statusGuard, reportCreate), /ORDER_STATUS_INVALID/);
+  assert.match(source, /if \(itemId\)[\s\S]*?item\.order\.status !== "IN_PROGRESS"/);
+  assert.match(source, /tenantVisibleTemplateWhere\(auth\.user\.tenantId\)/);
+  assert.match(source, /DIAGNOSTIC_TEMPLATE_MISMATCH/);
+
+  const upload = source.indexOf("collectValidatedReportData(formData, schema)");
+  const itemTransaction = source.indexOf("withOrderTransaction(");
+  const lockedCreate = source.indexOf("tx.diagnosticReport.create");
+  const lockedLink = source.indexOf("tx.serviceItem.update");
+  assert.ok(upload >= 0 && upload < itemTransaction, "file work must finish before the item transaction");
+  assert.ok(itemTransaction < lockedCreate, "item report creation must be inside the order transaction");
+  assert.ok(lockedCreate < lockedLink, "item link must follow report creation in the same transaction");
+  assert.doesNotMatch(source, /prisma\.serviceItem\.update/);
+  assert.match(source, /serviceItemTimingPatch\("COMPLETED", item\.startedAt\)/);
 });
 
 test("diagnostics/reports/[id]/route.ts exports GET and DELETE", () => {

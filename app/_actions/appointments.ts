@@ -1,10 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 import { requireAccount } from "@/lib/auth/account";
 import { requireUser } from "@/lib/auth";
 import { assertActiveSubscription } from "@/lib/subscription-server";
+import {
+  ACTION_GENERIC_ERROR_MESSAGE,
+  knownAuthorizationMessage,
+  logUnexpectedActionError,
+} from "@/lib/action-errors";
 import { canCreate, canEdit, workingBranchScopeId } from "@/lib/auth/roles";
 import { canEditOrder } from "@/lib/auth/order-access";
 import { formatWhen, resolveCustomerForAccount } from "@/lib/appointments";
@@ -30,7 +35,7 @@ import {
   moveAppointmentInTransaction,
 } from "@/lib/appointment-reservations";
 import { moveLinkedAppointmentOrder, LinkedRescheduleError } from "@/lib/linked-reschedule";
-import { bookingDateKey, bookingDayBounds } from "@/lib/booking-time";
+import { bookingDateKey, bookingDayBounds, parseBusinessLocalDateTime } from "@/lib/booking-time";
 import { resolveEffectiveSchedule } from "@/lib/branch-effective-schedule";
 import { branchScheduleForDateSelect } from "@/lib/branch-effective-schedule-server";
 import { timeToMinutes } from "@/lib/branches";
@@ -296,7 +301,7 @@ export async function rescheduleAppointmentByAccount(
   const requestedRaw = s(formData, "requestedAt");
   if (!id || !requestedRaw) return { ok: false, message: "Буруу хүсэлт." };
 
-  const requestedAt = new Date(requestedRaw);
+  const requestedAt = parseBusinessLocalDateTime(requestedRaw);
   if (!Number.isFinite(requestedAt.getTime())) {
     return { ok: false, fieldErrors: { requestedAt: "Огноо буруу." } };
   }
@@ -505,17 +510,31 @@ export async function registerAppointmentByStaff(
  * "Tenant context тохируулагдаагүй" алдаа шидэгдэнэ (харах: lib/prisma.ts).
  * Тиймээс энэ функц context тохируулахгүй, зөвхөн аль хэдийн resolve
  * хийсэн `user`-ийг branchId-тэй нь харьцуулж шалгана.
+ *
+ * D-132: the two messages below are named constants, and `STAFF_SCOPE_MESSAGES`
+ * is the allow-list a sanitizing caller hands to `knownAuthorizationMessage`.
+ * Keeping it adjacent to the throws means adding a throw without listing it is
+ * visible in one screen. `assertActiveSubscription` also throws out of here;
+ * that message is handled unconditionally by the shared seam, never listed.
  */
+const STAFF_SCOPE_FORBIDDEN_MESSAGE = "Танд цаг захиалга удирдах эрх байхгүй.";
+const STAFF_SCOPE_WRONG_BRANCH_MESSAGE = "Зөвхөн өөрийн салбарын цаг захиалгыг удирдана.";
+
+const STAFF_SCOPE_MESSAGES = [
+  STAFF_SCOPE_FORBIDDEN_MESSAGE,
+  STAFF_SCOPE_WRONG_BRANCH_MESSAGE,
+] as const;
+
 async function assertStaffScope(
   user: Awaited<ReturnType<typeof requireUser>>,
   branchId?: string,
 ) {
   if (!canEdit(user, "appointments")) {
-    throw new Error("Танд цаг захиалга удирдах эрх байхгүй.");
+    throw new Error(STAFF_SCOPE_FORBIDDEN_MESSAGE);
   }
   const scope = workingBranchScopeId(user);
   if (scope && branchId && branchId !== scope) {
-    throw new Error("Зөвхөн өөрийн салбарын цаг захиалгыг удирдана.");
+    throw new Error(STAFF_SCOPE_WRONG_BRANCH_MESSAGE);
   }
   await assertActiveSubscription(user.tenantId);
 }
@@ -1007,7 +1026,7 @@ export async function rescheduleAppointmentAction(
   const confirmed = s(formData, "confirmed") === "true";
   if (!id || !requestedRaw) return { ok: false, message: "Буруу хүсэлт." };
 
-  const requestedAt = new Date(requestedRaw);
+  const requestedAt = parseBusinessLocalDateTime(requestedRaw);
   if (!Number.isFinite(requestedAt.getTime())) {
     return { ok: false, fieldErrors: { requestedAt: "Огноо буруу." } };
   }
@@ -1015,11 +1034,17 @@ export async function rescheduleAppointmentAction(
     return { ok: false, fieldErrors: { requestedAt: "Өнгөрсөн цаг сонгох боломжгүй." } };
   }
 
+  try {
   let user;
   try {
     user = await requireUser();
   } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+    // Pre-existing hazard, deliberately left as-is: `requireUser()` signals an
+    // unauthenticated or deactivated user by *throwing* NEXT_REDIRECT, which
+    // this catch swallows, so the login redirect never happens. All seven
+    // `requireUser()` catches in this file do it; fixing them is its own task.
+    logUnexpectedActionError("appointments:reschedule-auth", e);
+    return { ok: false, message: ACTION_GENERIC_ERROR_MESSAGE };
   }
 
   const appt = await prisma.appointment.findUnique({
@@ -1041,7 +1066,10 @@ export async function rescheduleAppointmentAction(
   try {
     await assertStaffScope(user, appt.branchId);
   } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+    const known = knownAuthorizationMessage(e, STAFF_SCOPE_MESSAGES);
+    if (known) return { ok: false, message: known };
+    logUnexpectedActionError("appointments:reschedule-scope", e);
+    return { ok: false, message: ACTION_GENERIC_ERROR_MESSAGE };
   }
   if (user.tenantId !== appt.tenantId) {
     return { ok: false, message: "Танд энэ цагийг удирдах эрх байхгүй." };
@@ -1076,7 +1104,12 @@ export async function rescheduleAppointmentAction(
         orderId: appt.serviceOrderId,
         newTime: requestedAt,
         confirmed,
+        actor: user,
+        scope: workingBranchScopeId(user),
       });
+      if (!moved.appointmentId) {
+        return { ok: false, message: "Холбогдсон цаг захиалга олдсонгүй." };
+      }
       if (appt.accountId) {
         try {
           await createNotification({
@@ -1098,10 +1131,14 @@ export async function rescheduleAppointmentAction(
       if (e instanceof LinkedRescheduleError) {
         return { ok: false, message: e.message, fieldErrors: e.fieldErrors };
       }
-      return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+      const known = knownAuthorizationMessage(e);
+      if (known) return { ok: false, message: known };
+      logUnexpectedActionError("appointments:reschedule-linked", e);
+      return { ok: false, message: ACTION_GENERIC_ERROR_MESSAGE };
     }
   }
 
+  try {
   const requestedDateStr = bookingDateKey(requestedAt);
   const requestedDay = bookingDayBounds(requestedDateStr);
 
@@ -1183,6 +1220,18 @@ export async function rescheduleAppointmentAction(
   revalidatePath("/dashboard/appointments/calendar");
   revalidatePath("/account");
   return { ok: true, message: "Цаг шилжлээ." };
+  } catch (error) {
+    if (error instanceof ReservationError) return { ok: false, message: error.message };
+    const known = knownAuthorizationMessage(error);
+    if (known) return { ok: false, message: known };
+    logUnexpectedActionError("appointments:reschedule", error);
+    return { ok: false, message: ACTION_GENERIC_ERROR_MESSAGE };
+  }
+  } catch (error) {
+    unstable_rethrow(error);
+    logUnexpectedActionError("appointments:reschedule-boundary", error);
+    return { ok: false, message: ACTION_GENERIC_ERROR_MESSAGE };
+  }
 }
 
 // Үйлчлүүлэгч биечлэн ирснийг тэмдэглэнэ (arrivedAt) — ажил эхэлсэн гэсэн үг

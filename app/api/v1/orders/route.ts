@@ -1,14 +1,15 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
 import { resolveWorkingBranch } from "@/lib/auth/api-branch";
-import { canAssignOrders, orderReadWhere } from "@/lib/auth/order-access";
-import { logAudit } from "@/lib/audit";
+import { orderReadWhere } from "@/lib/auth/order-access";
 import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
-import type { OrderStatus } from "@/lib/orders";
-import { nextOrderNumber } from "@/lib/order-number";
-import { buildMeta, getApiPageInfo } from "@/lib/pagination";
-import { prisma, withBookingTransaction, type PrismaTransactionClient } from "@/lib/prisma";
-import { openOrderTimeBooking } from "@/lib/order-time-booking";
+import { buildMeta } from "@/lib/pagination";
+import { prisma } from "@/lib/prisma";
+import { OrderCommandError } from "@/lib/orders/order-commands";
+import { createOrderCommand } from "@/lib/orders/order-create-command";
+import { parseCreateOrderBody } from "@/lib/orders/order-create-request";
+import { buildOrderListWhere, parseOrderListQuery } from "@/lib/orders/order-list-query";
+import { summarizeOrderProgress } from "@/lib/orders/order-progress";
 
 const ORDER_SELECT = {
   id: true,
@@ -18,6 +19,8 @@ const ORDER_SELECT = {
   scheduledAt: true,
   startedAt: true,
   completedAt: true,
+  expectedFinishAt: true,
+  estimatedDurationMinutes: true,
   totalAmount: true,
   paidAmount: true,
   notes: true,
@@ -28,44 +31,45 @@ const ORDER_SELECT = {
   assignedTo: { select: { id: true, firstName: true, lastName: true } },
 } satisfies Prisma.ServiceOrderSelect;
 
+const ORDER_LIST_SELECT = {
+  ...ORDER_SELECT,
+  items: { select: { kind: true, status: true } },
+} satisfies Prisma.ServiceOrderSelect;
+
 export async function GET(req: Request) {
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
 
   const url = new URL(req.url);
-  const status = url.searchParams.get("status")?.trim() || undefined;
-  const branchId = url.searchParams.get("branchId")?.trim() || undefined;
-  const vehicleId = url.searchParams.get("vehicleId")?.trim() || undefined;
-  const customerId = url.searchParams.get("customerId")?.trim() || undefined;
-  const { page, pageSize, skip, take } = getApiPageInfo(url.searchParams, {
-    maxSize: 100,
-  });
+  const parsed = parseOrderListQuery(url.searchParams);
+  if (!parsed.ok) return jsonError(400, parsed.message, { field: parsed.field });
 
   // Салбараар хязгаарлагдсан ажилтан зөвхөн өөрийн салбарын захиалгыг харна.
   const scopeResult = await resolveWorkingBranch(req, auth.user);
   if (scopeResult.response) return scopeResult.response;
-  const scope = scopeResult.branchId;
-
-  const where: Prisma.ServiceOrderWhereInput = {
+  const where = buildOrderListWhere(parsed.value, {
     tenantId: auth.user.tenantId,
-    ...(status && { status: status as OrderStatus }),
-    ...(scope ? { branchId: scope } : branchId ? { branchId } : {}),
-    ...(vehicleId && { vehicleId }),
-    ...(customerId && { customerId }),
-    ...orderReadWhere(auth.user),
-  };
+    workingBranchId: scopeResult.branchId,
+    readWhere: orderReadWhere(auth.user),
+  });
 
   const [orders, total] = await Promise.all([
     prisma.serviceOrder.findMany({
       where,
-      orderBy: { createdAt: "desc" },
-      skip,
-      take,
-      select: ORDER_SELECT,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      skip: parsed.value.skip,
+      take: parsed.value.take,
+      select: ORDER_LIST_SELECT,
     }),
     prisma.serviceOrder.count({ where }),
   ]);
-  return jsonOk({ orders, pagination: buildMeta(total, page, pageSize) });
+  return jsonOk({
+    orders: orders.map(({ items, ...order }) => ({
+      ...order,
+      progress: summarizeOrderProgress(items),
+    })),
+    pagination: buildMeta(total, parsed.value.page, parsed.value.pageSize),
+  });
 }
 
 export async function POST(req: Request) {
@@ -83,136 +87,48 @@ export async function POST(req: Request) {
     return jsonError(400, "JSON body шаардлагатай.");
   }
 
-  const b = body as Record<string, unknown>;
-  const branchId = typeof b.branchId === "string" ? b.branchId.trim() : "";
-  const customerId = typeof b.customerId === "string" ? b.customerId.trim() : "";
-  const vehicleId = typeof b.vehicleId === "string" ? b.vehicleId.trim() : "";
-  const assignedToId =
-    typeof b.assignedToId === "string" ? b.assignedToId.trim() || null : null;
-  const canAssign = canAssignOrders(auth.user);
-  if (!canAssign && assignedToId && assignedToId !== auth.user.id) {
-    return jsonError(403, "Та зөвхөн өөрийгөө хариуцагчаар оноож болно.");
+  const parsed = parseCreateOrderBody(body);
+  if (!parsed.ok) {
+    return jsonError(parsed.status, parsed.message, parsed.fieldErrors ? { fieldErrors: parsed.fieldErrors } : undefined);
   }
-  const effectiveAssignedToId = canAssign ? assignedToId : auth.user.id;
-  const scheduledAt =
-    typeof b.scheduledAt === "string" && b.scheduledAt
-      ? new Date(b.scheduledAt)
-      : null;
-  const notes =
-    typeof b.notes === "string" ? b.notes.trim() || null : null;
+  const { branchId, customerId, vehicleId, assignedToId, scheduledAt, notes, appointmentId, estimatedDurationMinutes } =
+    parsed.value;
 
-  const fieldErrors: Record<string, string> = {};
-  if (!branchId) fieldErrors.branchId = "Салбар сонгоно уу.";
-  if (!customerId) fieldErrors.customerId = "Үйлчлүүлэгчээ сонгоно уу.";
-  if (!vehicleId) fieldErrors.vehicleId = "Машинаа сонгоно уу.";
-  if (Object.keys(fieldErrors).length)
-    return jsonError(422, "Хүсэлт буруу.", { fieldErrors });
+  if (assignedToId) {
+    const assignDenied = requirePermission(auth.user, "orders.assign");
+    if (assignDenied) return assignDenied;
+  }
 
-  // Салбараар хязгаарлагдсан ажилтан зөвхөн өөрийн салбарт засварын хуудас үүсгэнэ.
   const scopeResult = await resolveWorkingBranch(req, auth.user);
   if (scopeResult.response) return scopeResult.response;
-  const scope = scopeResult.branchId;
-  if (scope && branchId !== scope) {
-    return jsonError(422, "Хүсэлт буруу.", {
-      fieldErrors: { branchId: "Зөвхөн өөрийн салбарт засварын хуудас үүсгэх боломжтой." },
-    });
-  }
 
-  const [branch, customer, vehicle] = await Promise.all([
-    prisma.branch.findFirst({
-      where: { id: branchId, tenantId: auth.user.tenantId },
-    }),
-    prisma.customer.findFirst({
-      where: { id: customerId, tenantId: auth.user.tenantId },
-    }),
-    prisma.tenantVehicle.findUnique({
-      where: {
-        tenantId_vehicleId: { tenantId: auth.user.tenantId, vehicleId },
-      },
-      select: { id: true, isPostpaid: true },
-    }),
-  ]);
-
-  if (!branch)
-    return jsonError(422, "Хүсэлт буруу.", {
-      fieldErrors: { branchId: "Салбар олдсонгүй." },
+  try {
+    const created = await createOrderCommand({
+      tenantId: auth.user.tenantId,
+      actorId: auth.user.id,
+      branchId,
+      customerId,
+      vehicleId,
+      assignedToId,
+      scheduledAt,
+      notes,
+      appointmentId,
+      estimatedDurationMinutes,
+      workingBranchId: scopeResult.branchId,
     });
-  if (!customer)
-    return jsonError(422, "Хүсэлт буруу.", {
-      fieldErrors: { customerId: "Үйлчлүүлэгч олдсонгүй." },
+    const order = await prisma.serviceOrder.findFirst({
+      where: { id: created.id, tenantId: auth.user.tenantId },
+      select: ORDER_SELECT,
     });
-  if (!vehicle)
-    return jsonError(422, "Хүсэлт буруу.", {
-      fieldErrors: { vehicleId: "Машин олдсонгүй." },
-    });
-
-  // Дугаарыг хамгийн өндөр дугаар дээр нэмж үүсгэнэ (count ашиглавал устгасан
-  // захиалгын улмаас давхцаж P2002 өгнө). Зэрэгцээ үүсгэлтэд давхцвал 3 удаа
-  // дахин оролдоно.
-  let order: Prisma.ServiceOrderGetPayload<{
-    select: typeof ORDER_SELECT;
-  }> | null = null;
-  for (let attempt = 0; attempt < 3 && !order; attempt++) {
-    try {
-      order = await withBookingTransaction(auth.user.tenantId, async (tx) => {
-        const number = await nextOrderNumber(tx, auth.user.tenantId);
-        // withBookingTransaction uses the base Prisma client (raw locking on
-        // one connection) — bridge to the extended-client alias the shared
-        // booking helper expects, same as createOrderAction (orders.ts).
-        const scopedTx = tx as unknown as PrismaTransactionClient;
-        const created = await tx.serviceOrder.create({
-          data: {
-            number,
-            tenantId: auth.user.tenantId,
-            branchId,
-            customerId,
-            vehicleId,
-            isPostpaid: vehicle.isPostpaid,
-            assignedToId: effectiveAssignedToId,
-            ...(scheduledAt && { scheduledAt }),
-            ...(notes && { notes }),
-          },
-          select: ORDER_SELECT,
-        });
-        // S04: every order starts life as an open SCHEDULED booking, mirroring
-        // createOrderAction (app/_actions/orders.ts) — otherwise an
-        // API-created order has no OrderTimeBooking row for the interval
-        // resolver to read until its first status transition.
-        await openOrderTimeBooking(scopedTx, {
-          tenantId: auth.user.tenantId,
-          orderId: created.id,
-          branchId,
-          kind: "SCHEDULED",
-          startAt: scheduledAt ?? new Date(),
-          endAt: null,
-          createdById: auth.user.id,
-        });
-        return created;
+    if (!order) return jsonError(500, "Захиалга үүссэн боловч буцааж уншиж чадсангүй.");
+    return jsonOk({ order }, { status: 201 });
+  } catch (error) {
+    if (error instanceof OrderCommandError) {
+      return jsonError(error.status, error.message, {
+        code: error.code,
+        ...(error.fieldErrors ? { fieldErrors: error.fieldErrors } : {}),
       });
-    } catch (e) {
-      if (
-        e instanceof Prisma.PrismaClientKnownRequestError &&
-        e.code === "P2002"
-      ) {
-        continue; // дугаар давхцсан — дахин оролдоно
-      }
-      throw e;
     }
+    return jsonError(500, "Серверийн алдаа гарлаа. Дахин оролдоно уу.");
   }
-
-  if (!order) {
-    return jsonError(500, "Захиалгын дугаар үүсгэж чадсангүй. Дахин оролдоно уу.");
-  }
-
-  await logAudit({
-    tenantId: auth.user.tenantId,
-    userId: auth.user.id,
-    entity: "ServiceOrder",
-    entityId: order.id,
-    action: "CREATE",
-    summary: "Засварын хуудас үүсгэсэн",
-    after: { branchId, customerId, vehicleId, assignedToId: effectiveAssignedToId, scheduledAt: scheduledAt?.toISOString() ?? null },
-  });
-
-  return jsonOk({ order }, { status: 201 });
 }

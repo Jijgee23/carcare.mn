@@ -1,10 +1,15 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
-import { logAudit } from "@/lib/audit";
+import { resolveWorkingBranch } from "@/lib/auth/api-branch";
 import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
-import { branchScopeId } from "@/lib/auth/roles";
-import { canEditOrder } from "@/lib/auth/order-access";
-import type { PaymentStatus } from "@/lib/orders";
+import {
+  createOrderPaymentCommand,
+  isOrderPaymentMethod,
+  notifyOrderPaymentReceived,
+  OrderPaymentCommandError,
+  parseOrderPaymentAmount,
+  reverseAllOrderPaymentsCommand,
+} from "@/lib/orders/order-payment-commands";
 import { prisma } from "@/lib/prisma";
 
 const ORDER_DETAIL_SELECT = {
@@ -16,126 +21,83 @@ const ORDER_DETAIL_SELECT = {
   startedAt: true,
   completedAt: true,
   paidAt: true,
+  expectedFinishAt: true,
+  estimatedDurationMinutes: true,
   totalAmount: true,
   paidAmount: true,
   notes: true,
   createdAt: true,
   updatedAt: true,
   customer: { select: { id: true, fullName: true, phone: true, email: true } },
-  vehicle: {
-    select: {
-      id: true,
-      plate: true,
-      make: true,
-      model: true,
-      year: true,
-      vin: true,
-      mileage: true,
-    },
-  },
+  vehicle: { select: { id: true, plate: true, make: true, model: true, year: true, vin: true, mileage: true } },
   branch: { select: { id: true, name: true } },
   assignedTo: { select: { id: true, firstName: true, lastName: true } },
   items: {
     orderBy: { createdAt: "asc" as const },
-    select: {
-      id: true,
-      kind: true,
-      description: true,
-      quantity: true,
-      unitPrice: true,
-      total: true,
-      serviceId: true,
-    },
+    select: { id: true, kind: true, description: true, quantity: true, unitPrice: true, total: true, serviceId: true, status: true },
   },
   reports: {
     orderBy: { createdAt: "desc" as const },
-    select: {
-      id: true,
-      createdAt: true,
-      template: { select: { id: true, name: true, type: true } },
-    },
+    select: { id: true, createdAt: true, template: { select: { id: true, name: true, type: true } } },
   },
 } satisfies Prisma.ServiceOrderSelect;
 
-export async function PATCH(
-  req: Request,
-  ctx: { params: Promise<{ id: string }> },
-) {
+function commandError(error: unknown) {
+  if (error instanceof OrderPaymentCommandError) return jsonError(error.status, error.message, { code: error.code, ...(error.fieldErrors ? { fieldErrors: error.fieldErrors } : {}) });
+  console.error("[orders/payment-legacy] command failed", error instanceof Error ? { name: error.name } : { name: "UnknownError" });
+  return jsonError(500, "Серверийн алдаа гарлаа. Дахин оролдоно уу.");
+}
+
+/**
+ * Compatibility adapter only. It deliberately cannot write ServiceOrder's
+ * scalar payment fields: a PAID transition is represented by an OrderPayment
+ * ledger row and the aggregate is recomputed by the shared command.
+ */
+export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
-  const denied = requirePermission(auth.user, "payments.edit");
-  if (denied) return denied;
   const locked = await requireActiveSubscriptionApi(auth.user);
   if (locked) return locked;
-
-  const { id } = await ctx.params;
-  const scope = branchScopeId(auth.user);
-
-  const order = await prisma.serviceOrder.findFirst({
-    where: {
-      id,
-      tenantId: auth.user.tenantId,
-      ...(scope ? { branchId: scope } : {}),
-    },
-    select: { id: true, totalAmount: true, paymentStatus: true, assignedToId: true },
-  });
-  if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
-  if (!canEditOrder(auth.user, order)) return jsonError(403, "Танд энэ төлбөрийг засах эрх байхгүй.");
-
   let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return jsonError(400, "JSON body шаардлагатай.");
-  }
-
-  // "Хагас" (PARTIAL) төлөвийг энд ГАРААР зарлахгүй — зөвхөн бодит
-  // (арга/дүнгээр бүртгэгдсэн) төлбөрүүдээс автоматаар тооцогдоно (харах:
-  // app/_actions/order-payments.ts recordOrderPaymentAction/reverseOrderPaymentAction).
+  try { body = await req.json(); } catch { return jsonError(400, "JSON body шаардлагатай."); }
+  if (body == null || typeof body !== "object" || Array.isArray(body)) return jsonError(400, "JSON object шаардлагатай.");
   const b = body as Record<string, unknown>;
-  const next = b.paymentStatus as string;
-  if (next !== "PAID" && next !== "UNPAID") {
-    return jsonError(422, "Төлбөрийн төлөв буруу.");
+  if (b.paymentStatus !== "PAID" && b.paymentStatus !== "PARTIAL" && b.paymentStatus !== "UNPAID") return jsonError(422, "Шууд төлбөрийн төлөв өөрчлөх боломжгүй. /payments endpoint-ийг ашиглана уу.");
+  const requiredPermission = b.paymentStatus === "UNPAID" ? "payments.delete" : "payments.create";
+  const denied = requirePermission(auth.user, requiredPermission);
+  if (denied) return denied;
+  const { id } = await ctx.params;
+  const scopeResult = await resolveWorkingBranch(req, auth.user);
+  if (scopeResult.response) return scopeResult.response;
+  if (b.paymentStatus === "UNPAID") {
+    try {
+      await reverseAllOrderPaymentsCommand({ actor: auth.user, orderId: id, scope: scopeResult.branchId });
+      const order = await prisma.serviceOrder.findFirst({ where: { id, tenantId: auth.user.tenantId, ...(scopeResult.branchId ? { branchId: scopeResult.branchId } : {}) }, select: ORDER_DETAIL_SELECT });
+      if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
+      return jsonOk({ order });
+    } catch (error) {
+      return commandError(error);
+    }
   }
-
-  const updates: Prisma.ServiceOrderUpdateInput = {
-    paymentStatus: next as PaymentStatus,
-  };
-
-  if (next === "PAID") {
-    updates.paidAt = new Date();
-    updates.paidAmount = order.totalAmount ?? new Prisma.Decimal(0);
-  } else {
-    updates.paidAt = null;
-    updates.paidAmount = null;
-  }
-
-  const paidAmountStr =
-    updates.paidAmount instanceof Prisma.Decimal
-      ? updates.paidAmount.toString()
-      : null;
-
-  const updated = await prisma.$transaction(async (tx) => {
-    const o = await tx.serviceOrder.update({
-      where: { id },
-      data: updates,
+  const method = b.method === undefined ? "OTHER" : b.method;
+  if (!isOrderPaymentMethod(method)) return jsonError(422, "Төлбөрийн арга буруу.", { fieldErrors: { method: "Төлбөрийн арга буруу." } });
+  // The old Flutter adapter sends a JSON number. Convert its canonical
+  // decimal text immediately; all validation and arithmetic still happen with
+  // Prisma.Decimal in the shared command (never with a JS float).
+  const legacyAmount = typeof b.amount === "number" && Number.isFinite(b.amount) ? String(b.amount) : b.amount;
+  const amount = b.amount === undefined ? null : parseOrderPaymentAmount(legacyAmount);
+  if (b.amount !== undefined && !amount) return jsonError(422, "Дүнг зөв оруулна уу.", { fieldErrors: { amount: "Дүнг зөв оруулна уу." } });
+  if (b.paymentStatus === "PARTIAL" && !amount) return jsonError(422, "Хагас төлбөрт дүн шаардлагатай.", { fieldErrors: { amount: "Дүн оруулна уу." } });
+  try {
+    const result = await createOrderPaymentCommand({ actor: auth.user, orderId: id, method, amount, scope: scopeResult.branchId });
+    await notifyOrderPaymentReceived({ tenantId: auth.user.tenantId, orderId: result.orderId, amount: result.payment.amount.toString(), accountId: result.accountId, appointmentId: result.appointmentId });
+    const order = await prisma.serviceOrder.findFirst({
+      where: { id, tenantId: auth.user.tenantId, ...(scopeResult.branchId ? { branchId: scopeResult.branchId } : {}) },
       select: ORDER_DETAIL_SELECT,
     });
-    await logAudit(
-      {
-        tenantId: auth.user.tenantId,
-        userId: auth.user.id,
-        entity: "ServiceOrder",
-        entityId: id,
-        action: "PAYMENT_CHANGE",
-        summary: `${order.paymentStatus} → ${next}${paidAmountStr ? ` (${paidAmountStr})` : ""}`,
-        before: { paymentStatus: order.paymentStatus },
-        after: { paymentStatus: next, paidAmount: paidAmountStr },
-      },
-      tx,
-    );
-    return o;
-  });
-
-  return jsonOk({ order: updated });
+    if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
+    return jsonOk({ order, paymentId: result.payment.id });
+  } catch (error) {
+    return commandError(error);
+  }
 }

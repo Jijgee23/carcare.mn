@@ -10,6 +10,7 @@
  */
 
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
+import { Prisma } from "@/app/generated/prisma/client";
 
 const QPAY_URL =
   process.env.QPAY_MERCHANT_URL ?? "https://merchant.qpay.mn/v2/";
@@ -61,6 +62,18 @@ export type QPayCheckResult =
       paidAt: Date | null;
       paidAmount: number;
       underpaidAmount: number | null;
+      paymentType: string | null;
+    }
+  | { error: string };
+
+/** Exact decimal result used by tenant order payments. */
+export type QPayExactCheckResult =
+  | {
+      paid: boolean;
+      paymentId: string | null;
+      paidAt: Date | null;
+      paidAmount: string;
+      underpaidAmount: string | null;
       paymentType: string | null;
     }
   | { error: string };
@@ -276,6 +289,20 @@ export function createQPayClient<Id, Settings extends QPayTokenFields = QPayToke
     invoiceId: string,
     expectedAmount?: number,
   ): Promise<QPayCheckResult> {
+    const result = await checkPaymentExact(id, invoiceId, expectedAmount === undefined ? undefined : String(expectedAmount));
+    if ("error" in result) return result;
+    return {
+      ...result,
+      paidAmount: Number(result.paidAmount),
+      underpaidAmount: result.underpaidAmount === null ? null : Number(result.underpaidAmount),
+    };
+  }
+
+  async function checkPaymentExact(
+    id: Id,
+    invoiceId: string,
+    expectedAmount?: string,
+  ): Promise<QPayExactCheckResult> {
     if (!invoiceId) return { error: "invoice_id шаардлагатай." };
     const tokenResult = await getAccessToken(id);
     if ("error" in tokenResult) return { error: tokenResult.error };
@@ -296,24 +323,50 @@ export function createQPayClient<Id, Settings extends QPayTokenFields = QPayToke
 
     const data = (await res.json()) as QPayCheckResponse;
     const paidRow = data.rows?.find((r) => r.payment_status === "PAID") ?? null;
-    const paidAmount = parseFloat(String(data.paid_amount ?? 0)) || 0;
+    const paidAmountText = String(data.paid_amount ?? "0").trim();
+    if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(paidAmountText)) {
+      return { error: "QPay буруу төлөгдсөн дүн буцаалаа." };
+    }
+    let paidAmount: Prisma.Decimal;
+    try {
+      paidAmount = new Prisma.Decimal(paidAmountText);
+    } catch {
+      return { error: "QPay буруу төлөгдсөн дүн буцаалаа." };
+    }
+    if (!paidAmount.isFinite() || paidAmount.lt(0)) {
+      return { error: "QPay буруу төлөгдсөн дүн буцаалаа." };
+    }
+    let expected: Prisma.Decimal | undefined;
+    if (expectedAmount !== undefined) {
+      if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(expectedAmount)) {
+        return { error: "QPay хүлээгдэж буй дүн буруу байна." };
+      }
+      try {
+        expected = new Prisma.Decimal(expectedAmount);
+      } catch {
+        return { error: "QPay хүлээгдэж буй дүн буруу байна." };
+      }
+      if (!expected.isFinite() || expected.lt(0)) {
+        return { error: "QPay хүлээгдэж буй дүн буруу байна." };
+      }
+    }
 
     // Бүтэн эсэхийг ЭНД (core түвшинд) дуудагч талд БҮГД өөрсдөө давхар
     // шалгах шаардлагагүй болгож нэгтгэсэн — expectedAmount өгөгдсөн бол
     // ашиглана.
     const fullyPaid =
       Boolean(paidRow) &&
-      (expectedAmount === undefined || paidAmount >= expectedAmount);
+      (expected === undefined || paidAmount.gte(expected));
     const underpaidAmount =
-      !fullyPaid && expectedAmount !== undefined && paidAmount > 0
-        ? paidAmount
+      !fullyPaid && expected !== undefined && paidAmount.gt(0)
+        ? paidAmount.toString()
         : null;
 
     return {
       paid: fullyPaid,
       paymentId: paidRow?.payment_id ?? null,
       paidAt: paidRow?.payment_date ? new Date(paidRow.payment_date) : null,
-      paidAmount,
+      paidAmount: paidAmount.toString(),
       underpaidAmount,
       paymentType: paidRow?.payment_type ?? paidRow?.transaction_type ?? null,
     };
@@ -367,6 +420,7 @@ export function createQPayClient<Id, Settings extends QPayTokenFields = QPayToke
     createInvoice,
     getInvoiceUrls,
     checkPayment,
+    checkPaymentExact,
     cancelPayment: (id: Id, paymentId: string, note?: string) =>
       deletePayment(id, "cancel", paymentId, note),
     refundPayment: (id: Id, paymentId: string, note?: string) =>

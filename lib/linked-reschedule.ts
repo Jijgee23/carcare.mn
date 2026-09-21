@@ -27,17 +27,22 @@
  */
 import type { AppointmentStatus, OrderStatus } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
-import {
-  getBranchSlotMinutes,
-  validateScheduledOrderHours,
-} from "@/lib/order-schedule-validation";
+import { DEFAULT_SLOT_MINUTES } from "@/lib/appointment-slots";
+import { bookingDateKey, bookingDayBounds } from "@/lib/booking-time";
+import { resolveEffectiveSchedule } from "@/lib/branch-effective-schedule";
+import { branchScheduleForDateSelect } from "@/lib/branch-effective-schedule-server";
+import { timeToMinutes } from "@/lib/branches";
+import { canEditOrder } from "@/lib/auth/order-access";
 import { updateOpenOrderTimeBookingSchedule, withOrderTransaction } from "@/lib/order-time-booking";
 import type { PrismaTransactionClient } from "@/lib/prisma";
+import type { OrderCommandActor, OrderCommandScope } from "@/lib/orders/order-commands";
 
 export class LinkedRescheduleError extends Error {
   constructor(
     message: string,
     public fieldErrors?: Record<string, string>,
+    public readonly status = 422,
+    public readonly code = "LINKED_RESCHEDULE_REJECTED",
   ) {
     super(message);
   }
@@ -51,10 +56,17 @@ export type MoveLinkedAppointmentOrderInput = {
   newTime: Date;
   /** Skip the soft schedule-conflict check (staff already confirmed once). */
   confirmed?: boolean;
+  /** Order-side callers provide these so authorization is checked after the order lock. */
+  actor?: OrderCommandActor;
+  scope?: OrderCommandScope;
+  /** Order-side rescheduling preserves legacy order-only behavior if a linked appointment is no longer confirmed. */
+  allowUnconfirmedOrderMove?: boolean;
 };
 
 export type MoveLinkedAppointmentOrderResult = {
-  appointmentId: string;
+  appointmentId: string | null;
+  appointmentAccountId: string | null;
+  appointmentStatus: AppointmentStatus | null;
   orderId: string;
   branchId: string;
   previousRequestedAt: Date;
@@ -66,14 +78,40 @@ type LockedOrder = {
   id: string;
   branchId: string;
   status: OrderStatus;
+  assignedToId: string | null;
   scheduledAt: Date | null;
   estimatedDurationMinutes: number | null;
   appointment: { id: string } | null;
 };
 
+async function scheduleHoursError(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  branchId: string,
+  scheduledAt: Date,
+  durationMinutes: number,
+): Promise<string | null> {
+  const dateStr = bookingDateKey(scheduledAt);
+  const branch = await tx.branch.findFirst({
+    where: { id: branchId, tenantId, isActive: true },
+    select: { slotMinutes: true, ...branchScheduleForDateSelect(dateStr) },
+  });
+  if (!branch) return "Салбар олдсонгүй.";
+  const schedule = resolveEffectiveSchedule({ dateStr, branch });
+  const open = timeToMinutes(schedule.openTime);
+  const close = timeToMinutes(schedule.closeTime);
+  const startMinutes = Math.floor((scheduledAt.getTime() - bookingDayBounds(dateStr).start.getTime()) / 60000);
+  if (!schedule.open || open == null || close == null || startMinutes < open || startMinutes + durationMinutes > close) {
+    return "Товлосон ажиллах цагийн гадуур байна.";
+  }
+  return null;
+}
+
 type LockedAppointment = {
   id: string;
+  branchId: string;
   status: AppointmentStatus;
+  accountId: string | null;
   requestedAt: Date;
   estimatedDurationMinutes: number | null;
   serviceOrderId: string | null;
@@ -114,18 +152,27 @@ export async function moveLinkedAppointmentOrder(
       status: true,
       scheduledAt: true,
       estimatedDurationMinutes: true,
+      assignedToId: true,
       appointment: { select: { id: true } },
     },
     async (tx, orderRaw) => {
       const order = orderRaw as LockedOrder | null;
-      if (!order) throw new LinkedRescheduleError("Захиалга олдсонгүй.");
+      if (!order) throw new LinkedRescheduleError("Захиалга олдсонгүй.", undefined, 404, "ORDER_NOT_FOUND");
+      if (input.actor) {
+        if (input.scope != null && order.branchId !== input.scope) {
+          throw new LinkedRescheduleError("Зөвшөөрөгдсөн салбарын захиалга биш.", undefined, 404, "ORDER_OUT_OF_SCOPE");
+        }
+        if (!canEditOrder(input.actor, order)) {
+          throw new LinkedRescheduleError("Танд энэ захиалгыг засах эрх байхгүй.", undefined, 403, "ORDER_EDIT_FORBIDDEN");
+        }
+      }
       if (order.status !== "SCHEDULED") {
         throw new LinkedRescheduleError(
           "Зөвхөн эхлээгүй (товлогдсон) захиалгын огноог энд шилжүүлнэ.",
+          undefined,
+          422,
+          "ORDER_STATUS_INVALID",
         );
-      }
-      if (!order.appointment) {
-        throw new LinkedRescheduleError("Холбогдсон цаг захиалга алга.");
       }
 
       // Second lock: the Appointment row itself, so a concurrent change to it
@@ -135,39 +182,63 @@ export async function moveLinkedAppointmentOrder(
       const rawTx = tx as unknown as {
         $queryRaw: <R = unknown>(strings: TemplateStringsArray, ...values: unknown[]) => Promise<R>;
       };
+      if (input.newTime.getTime() < Date.now()) {
+        throw new LinkedRescheduleError("Өнгөрсөн цаг сонгох боломжгүй.", { scheduledAt: "Өнгөрсөн цаг сонгох боломжгүй." }, 422, "PAST_TIME");
+      }
+      // Always discover and lock the current linked appointment by its fresh
+      // serviceOrderId relation. The initial nested relation can be stale (or
+      // null while another writer links an appointment), so it must not decide
+      // whether the appointment row is locked or whether it is CONFIRMED.
       const lockedAppt = await rawTx.$queryRaw<{ id: string }[]>`
-        SELECT id FROM "Appointment" WHERE id = ${order.appointment.id} AND "tenantId" = ${input.tenantId} FOR UPDATE
+        SELECT id FROM "Appointment"
+        WHERE "tenantId" = ${input.tenantId} AND "serviceOrderId" = ${order.id}
+        FOR UPDATE
       `;
-      if (!lockedAppt.length) throw new LinkedRescheduleError("Цаг захиалга олдсонгүй.");
+      const appointmentId = lockedAppt[0]?.id ?? null;
+      if (order.appointment && !appointmentId && !input.allowUnconfirmedOrderMove) {
+        throw new LinkedRescheduleError("Цаг захиалга олдсонгүй.", undefined, 404, "APPOINTMENT_NOT_FOUND");
+      }
 
-      const apptRaw = await tx.appointment.findFirst({
-        where: { id: order.appointment.id, tenantId: input.tenantId },
+      const apptRaw = appointmentId ? await tx.appointment.findFirst({
+        where: { id: appointmentId, tenantId: input.tenantId },
         select: {
           id: true,
+          branchId: true,
           status: true,
+          accountId: true,
           requestedAt: true,
           estimatedDurationMinutes: true,
           serviceOrderId: true,
         },
-      });
+      }) : null;
       const appt = apptRaw as LockedAppointment | null;
-      if (!appt) throw new LinkedRescheduleError("Цаг захиалга олдсонгүй.");
-      if (appt.serviceOrderId !== order.id) {
+      if (appointmentId && !appt) throw new LinkedRescheduleError("Цаг захиалга олдсонгүй.", undefined, 404, "APPOINTMENT_NOT_FOUND");
+      if (appt && appt.serviceOrderId !== order.id) {
         // Link changed underneath us — treat as a stale-state conflict.
-        throw new LinkedRescheduleError("Холбоос өөрчлөгдсөн байна. Дахин оролдоно уу.");
+        throw new LinkedRescheduleError("Холбоос өөрчлөгдсөн байна. Дахин оролдоно уу.", undefined, 409, "STALE_LINK");
       }
-      if (appt.status !== "CONFIRMED") {
-        throw new LinkedRescheduleError("Зөвхөн баталгаажсан цагийг энд шилжүүлнэ.");
+      if (appt && appt.status !== "CONFIRMED" && !input.allowUnconfirmedOrderMove) {
+        throw new LinkedRescheduleError("Зөвхөн баталгаажсан цагийг энд шилжүүлнэ.", undefined, 422, "APPOINTMENT_STATUS_INVALID");
+      }
+      if (appt && appt.branchId !== order.branchId) {
+        throw new LinkedRescheduleError("Холбоосын салбар өөрчлөгдсөн байна. Дахин оролдоно уу.", undefined, 409, "STALE_LINK");
+      }
+      if (appt && input.scope != null && appt.branchId !== input.scope) {
+        throw new LinkedRescheduleError("Зөвшөөрөгдсөн салбарын цаг захиалга биш.", undefined, 404, "ORDER_OUT_OF_SCOPE");
       }
 
       const durationMinutes =
         order.estimatedDurationMinutes ??
-        appt.estimatedDurationMinutes ??
-        (await getBranchSlotMinutes(input.tenantId, order.branchId));
+        (appt?.status === "CONFIRMED" ? appt.estimatedDurationMinutes : null) ??
+        (await tx.branch.findFirst({
+          where: { id: order.branchId, tenantId: input.tenantId },
+          select: { slotMinutes: true },
+        }))?.slotMinutes ?? DEFAULT_SLOT_MINUTES;
 
       // D-111 removed the schedule-overlap check that used to follow this one,
       // so working hours is now the only confirmable warning on this path.
-      const hoursError = await validateScheduledOrderHours(
+      const hoursError = await scheduleHoursError(
+        tx as PrismaTransactionClient,
         input.tenantId,
         order.branchId,
         input.newTime,
@@ -179,15 +250,17 @@ export async function moveLinkedAppointmentOrder(
         throw new LinkedRescheduleError(
           `${hoursError} Үргэлжлүүлэхийн тулд дахин "Хадгалах" дарна уу.`,
           { confirmNeeded: "true" },
+          409,
+          "CONFIRMATION_REQUIRED",
         );
       }
 
       const endAt = new Date(input.newTime.getTime() + durationMinutes * 60000);
 
-      const previousRequestedAt = appt.requestedAt;
       const previousScheduledAt = order.scheduledAt;
+      const previousRequestedAt = appt?.requestedAt ?? previousScheduledAt ?? input.newTime;
 
-      await tx.appointment.update({
+      if (appt?.status === "CONFIRMED") await tx.appointment.update({
         where: { id: appt.id },
         // S17 Phase B: reset reminderSentAt so the appointment-reminders cron
         // picks this appointment back up for its new time (same fix as
@@ -217,7 +290,7 @@ export async function moveLinkedAppointmentOrder(
         },
         tx,
       );
-      await logAudit(
+      if (appt?.status === "CONFIRMED") await logAudit(
         {
           tenantId: input.tenantId,
           userId: input.userId,
@@ -233,10 +306,12 @@ export async function moveLinkedAppointmentOrder(
       );
 
       return {
-        appointmentId: appt.id,
+        appointmentId: appt?.id ?? null,
+        appointmentAccountId: appt?.accountId ?? null,
+        appointmentStatus: appt?.status ?? null,
         orderId: order.id,
         branchId: order.branchId,
-        previousRequestedAt,
+        previousRequestedAt: appt?.requestedAt ?? previousScheduledAt ?? input.newTime,
         previousScheduledAt,
         newTime: input.newTime,
       };

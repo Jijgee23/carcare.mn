@@ -12,7 +12,10 @@ import {
   type TemplateSchema,
   validateReportData,
 } from "@/lib/diagnostics";
-import { collectReportData } from "@/lib/diagnostics-server";
+import {
+  collectValidatedReportData,
+  commitWithReportUploadCleanup,
+} from "@/lib/diagnostics-server";
 import { canFillDiagnostics, isOrderLocked, type OrderStatus } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
 import { canEditOrder } from "@/lib/auth/order-access";
@@ -161,9 +164,9 @@ export async function createReportAction(
 
   const schema = template.schema as unknown as TemplateSchema;
 
-  let collected: Awaited<ReturnType<typeof collectReportData>>;
+  let collected: Awaited<ReturnType<typeof collectValidatedReportData>>;
   try {
-    collected = await collectReportData(formData, schema);
+    collected = await collectValidatedReportData(formData, schema);
   } catch (e) {
     return {
       ok: false,
@@ -191,42 +194,47 @@ export async function createReportAction(
 
   let reportId: string;
   try {
-    const created = await prisma.diagnosticReport.create({
-      data: {
-        templateVersion: template.version,
-        data: validated,
-        maxSeverity,
-        signatureUrl: collected.signatureUrl,
-        mileageAtReport: mileageVal,
-        notes: notes || null,
-        tenantId: user.tenantId,
-        templateId: template.id,
-        orderId: orderId || null,
-        customerId,
-        vehicleId,
-        branchId,
-        filledById: user.id,
+    const created = await commitWithReportUploadCleanup(
+      collected.uploadedPaths,
+      async () => {
+        const report = await prisma.diagnosticReport.create({
+          data: {
+            templateVersion: template.version,
+            data: validated,
+            maxSeverity,
+            signatureUrl: collected.signatureUrl,
+            mileageAtReport: mileageVal,
+            notes: notes || null,
+            tenantId: user.tenantId,
+            templateId: template.id,
+            orderId: orderId || null,
+            customerId,
+            vehicleId,
+            branchId,
+            filledById: user.id,
+          },
+          select: { id: true },
+        });
+
+        if (itemId) {
+          await prisma.serviceItem.update({
+            where: { id: itemId },
+            data: {
+              diagnosticReportId: report.id,
+              status: "COMPLETED",
+              completedAt: new Date(),
+            },
+          });
+        }
+        return report;
       },
-      select: { id: true },
-    });
+    );
     reportId = created.id;
   } catch (e) {
     return {
       ok: false,
       message: e instanceof Error ? e.message : "Хадгалахад алдаа гарлаа.",
     };
-  }
-
-  // Захиалгын аль ServiceItem(kind=DIAGNOSTIC) мөрийг энэ тайлан гүйцээж
-  // байгааг заасан бол тухайн мөрийг тайлантай холбож, дууссан гэж тооцно.
-  if (itemId) {
-    await prisma.serviceItem.update({
-      where: { id: itemId },
-      // Оношилгооны мөр IN_PROGRESS-ыг алгасаад шууд PENDING→COMPLETED
-      // болдог тул `startedAt` хоосон үлдэнэ — "хугацаа хэмжигдээгүй" гэж
-      // дундаж тооцооноос автоматаар хасагдана (харах: serviceItemTimingPatch).
-      data: { diagnosticReportId: reportId, status: "COMPLETED", completedAt: new Date() },
-    });
   }
 
   await logAudit({

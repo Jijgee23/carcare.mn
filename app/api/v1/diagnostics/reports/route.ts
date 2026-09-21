@@ -4,12 +4,19 @@ import { resolveWorkingBranch } from "@/lib/auth/api-branch";
 import {
   type ReportEntry,
   type TemplateSchema,
+  tenantVisibleTemplateWhere,
   validateReportData,
 } from "@/lib/diagnostics";
-import { collectReportData } from "@/lib/diagnostics-server";
+import {
+  collectValidatedReportData,
+  commitWithReportUploadCleanup,
+  ReportDataValidationError,
+} from "@/lib/diagnostics-server";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 import { canEditOrder, orderReadWhere } from "@/lib/auth/order-access";
+import { withOrderTransaction } from "@/lib/order-time-booking";
+import { serviceItemTimingPatch } from "@/lib/orders";
 
 export async function GET(req: Request) {
   const auth = await requireApiUser(req);
@@ -94,7 +101,12 @@ export async function POST(req: Request) {
   if (!templateId) return jsonError(422, "templateId шаардлагатай.");
 
   const template = await prisma.diagnosticTemplate.findFirst({
-    where: { id: templateId, tenantId: auth.user.tenantId, isActive: true },
+    where: {
+      AND: [
+        { id: templateId, isActive: true },
+        tenantVisibleTemplateWhere(auth.user.tenantId),
+      ],
+    },
     select: { id: true, version: true, schema: true },
   });
   if (!template) return jsonError(404, "Загвар олдсонгүй.");
@@ -107,8 +119,57 @@ export async function POST(req: Request) {
   let finalCustomerId = customerId;
   let finalVehicleId = vehicleId;
   let finalBranchId = branchId;
+  let linkedOrderId = orderId || null;
 
-  if (orderId) {
+  if (itemId) {
+    // This preflight read only infers the parent order and avoids doing
+    // upload work for an obviously invalid request. The authoritative item
+    // and order checks happen again under the parent order lock below.
+    const item = await prisma.serviceItem.findFirst({
+      where: {
+        id: itemId,
+        ...(orderId ? { orderId } : {}),
+        kind: "DIAGNOSTIC",
+        order: {
+          tenantId: auth.user.tenantId,
+          ...(scope ? { branchId: scope } : {}),
+        },
+      },
+      select: {
+        diagnosticTemplateId: true,
+        order: {
+          select: {
+            id: true,
+            status: true,
+            customerId: true,
+            vehicleId: true,
+            branchId: true,
+            assignedToId: true,
+          },
+        },
+      },
+    });
+    if (!item) {
+      return jsonError(422, "Оношилгооны мөр олдсонгүй эсвэл аль хэдийн бөглөгдсөн байна.");
+    }
+    if (item.diagnosticTemplateId !== template.id) {
+      return jsonError(422, "Оношилгооны мөрийн загвартай тохирох загвар сонгоно уу.", {
+        code: "DIAGNOSTIC_TEMPLATE_MISMATCH",
+      });
+    }
+    if (!canEditOrder(auth.user, item.order)) {
+      return jsonError(403, "Танд энэ засварын хуудсанд оношилгоо бөглөх эрх байхгүй.");
+    }
+    if (item.order.status !== "IN_PROGRESS") {
+      return jsonError(422, "Оношилгооны тайланг зөвхөн ажиллаж буй захиалгад бүртгэнэ үү.", {
+        code: "ORDER_STATUS_INVALID",
+      });
+    }
+    linkedOrderId = item.order.id;
+    finalCustomerId = item.order.customerId;
+    finalVehicleId = item.order.vehicleId;
+    finalBranchId = item.order.branchId;
+  } else if (orderId) {
     const order = await prisma.serviceOrder.findFirst({
       where: {
         id: orderId,
@@ -119,33 +180,21 @@ export async function POST(req: Request) {
         customerId: true,
         vehicleId: true,
         branchId: true,
+        status: true,
         assignedToId: true,
       },
     });
     if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
     if (!canEditOrder(auth.user, order)) return jsonError(403, "Танд энэ засварын хуудсанд оношилгоо бөглөх эрх байхгүй.");
+    if (order.status !== "IN_PROGRESS") {
+      return jsonError(422, "Оношилгооны тайланг зөвхөн ажиллаж буй захиалгад бүртгэнэ үү.", {
+        code: "ORDER_STATUS_INVALID",
+      });
+    }
     finalCustomerId = order.customerId;
     finalVehicleId = order.vehicleId;
     finalBranchId = order.branchId;
 
-    if (itemId) {
-      const item = await prisma.serviceItem.findFirst({
-        where: {
-          id: itemId,
-          orderId,
-          kind: "DIAGNOSTIC",
-          status: { not: "CANCELLED" },
-          diagnosticReportId: null,
-        },
-        select: { id: true },
-      });
-      if (!item) {
-        return jsonError(
-          422,
-          "Оношилгооны мөр олдсонгүй эсвэл аль хэдийн бөглөгдсөн байна.",
-        );
-      }
-    }
   }
 
   if (!finalCustomerId || !finalVehicleId || !finalBranchId) {
@@ -182,10 +231,13 @@ export async function POST(req: Request) {
 
   const schema = template.schema as unknown as TemplateSchema;
 
-  let collected: Awaited<ReturnType<typeof collectReportData>>;
+  let collected: Awaited<ReturnType<typeof collectValidatedReportData>>;
   try {
-    collected = await collectReportData(formData, schema);
+    collected = await collectValidatedReportData(formData, schema);
   } catch (e) {
+    if (e instanceof ReportDataValidationError) {
+      return jsonError(422, e.message);
+    }
     return jsonError(
       400,
       e instanceof Error ? e.message : "Файл хадгалахад алдаа.",
@@ -205,40 +257,134 @@ export async function POST(req: Request) {
       ? Math.floor(mileage)
       : null;
 
-  const report = await prisma.diagnosticReport.create({
-    data: {
-      templateVersion: template.version,
-      data: validated,
-      signatureUrl: collected.signatureUrl,
-      mileageAtReport: mileageVal,
-      notes: notes || null,
-      tenantId: auth.user.tenantId,
-      templateId: template.id,
-      orderId: orderId || null,
-      customerId: finalCustomerId,
-      vehicleId: finalVehicleId,
-      branchId: finalBranchId,
-      filledById: auth.user.id,
-    },
-    select: {
-      id: true,
-      createdAt: true,
-      templateVersion: true,
-      orderId: true,
-      customerId: true,
-      vehicleId: true,
-      branchId: true,
-    },
-  });
-
-  // Захиалгын аль ServiceItem(kind=DIAGNOSTIC) мөрийг энэ тайлан гүйцээж
-  // байгааг заасан бол тухайн мөрийг тайлантай холбож, дууссан гэж тооцно.
   if (itemId) {
-    await prisma.serviceItem.update({
-      where: { id: itemId },
-      data: { diagnosticReportId: report.id, status: "COMPLETED" },
-    });
+    // The upload deliberately happened before this transaction. Everything
+    // that decides whether an item can be completed, and both writes that
+    // complete it, must be serialized by the parent order lock.
+    return commitWithReportUploadCleanup(
+      collected.uploadedPaths,
+      () =>
+        withOrderTransaction(
+          auth.user.tenantId,
+          linkedOrderId!,
+          {
+            id: true,
+            customerId: true,
+            vehicleId: true,
+            branchId: true,
+            status: true,
+            assignedToId: true,
+          },
+          async (tx, rawOrder) => {
+        const order = rawOrder as {
+          id: string;
+          customerId: string;
+          vehicleId: string;
+          branchId: string;
+          status: string;
+          assignedToId: string | null;
+        } | null;
+        if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
+        if (scope && order.branchId !== scope) {
+          return jsonError(403, "Зөвхөн өөрийн салбарт оношилгоо бүртгэх боломжтой.");
+        }
+        if (!canEditOrder(auth.user, order)) {
+          return jsonError(403, "Танд энэ засварын хуудсанд оношилгоо бөглөх эрх байхгүй.");
+        }
+        if (order.status !== "IN_PROGRESS") {
+          return jsonError(422, "Оношилгооны тайланг зөвхөн ажиллаж буй захиалгад бүртгэнэ үү.", {
+            code: "ORDER_STATUS_INVALID",
+          });
+        }
+
+        const item = await tx.serviceItem.findFirst({
+          where: {
+            id: itemId,
+            orderId: order.id,
+            kind: "DIAGNOSTIC",
+            status: { not: "CANCELLED" },
+            diagnosticReportId: null,
+          },
+          select: { id: true, diagnosticTemplateId: true, startedAt: true },
+        });
+        if (!item) {
+          return jsonError(422, "Оношилгооны мөр олдсонгүй эсвэл аль хэдийн бөглөгдсөн байна.");
+        }
+        if (item.diagnosticTemplateId !== template.id) {
+          return jsonError(422, "Оношилгооны мөрийн загвартай тохирох загвар сонгоно уу.", {
+            code: "DIAGNOSTIC_TEMPLATE_MISMATCH",
+          });
+        }
+
+        const report = await tx.diagnosticReport.create({
+          data: {
+            templateVersion: template.version,
+            data: validated,
+            signatureUrl: collected.signatureUrl,
+            mileageAtReport: mileageVal,
+            notes: notes || null,
+            tenantId: auth.user.tenantId,
+            templateId: template.id,
+            orderId: order.id,
+            customerId: order.customerId,
+            vehicleId: order.vehicleId,
+            branchId: order.branchId,
+            filledById: auth.user.id,
+          },
+          select: {
+            id: true,
+            createdAt: true,
+            templateVersion: true,
+            orderId: true,
+            customerId: true,
+            vehicleId: true,
+            branchId: true,
+          },
+        });
+        await tx.serviceItem.update({
+          where: { id: item.id },
+          data: {
+            diagnosticReportId: report.id,
+            status: "COMPLETED",
+            ...serviceItemTimingPatch("COMPLETED", item.startedAt),
+          },
+        });
+        return jsonOk({ report }, { status: 201 });
+          },
+        ),
+      (result) => result instanceof Response ? result.ok : true,
+    );
   }
+
+  const report = await commitWithReportUploadCleanup(
+    collected.uploadedPaths,
+    () =>
+      prisma.diagnosticReport.create({
+        data: {
+          templateVersion: template.version,
+          data: validated,
+          signatureUrl: collected.signatureUrl,
+          mileageAtReport: mileageVal,
+          notes: notes || null,
+          tenantId: auth.user.tenantId,
+          templateId: template.id,
+          orderId: linkedOrderId,
+          customerId: finalCustomerId,
+          vehicleId: finalVehicleId,
+          branchId: finalBranchId,
+          filledById: auth.user.id,
+        },
+        select: {
+          id: true,
+          createdAt: true,
+          templateVersion: true,
+          orderId: true,
+          customerId: true,
+          vehicleId: true,
+          branchId: true,
+        },
+      }),
+  );
 
   return jsonOk({ report }, { status: 201 });
 }

@@ -40,5 +40,17 @@ export function parseBusinessLocalDateTime(raw: string): Date {
   const m = LOCAL_DATETIME_RE.exec(raw.trim());
   if (!m) return new Date(NaN);
   const [, dateStr, hh, mm, ss] = m;
-  return new Date(`${dateStr}T${hh}:${mm}:${ss ?? "00"}+08:00`);
+  const hour = Number(hh);
+  const minute = Number(mm);
+  const second = Number(ss ?? "00");
+  if (hour > 23 || minute > 59 || second > 59) return new Date(NaN);
+  const candidate = new Date(`${dateStr}T${hh}:${mm}:${ss ?? "00"}+08:00`);
+  try {
+    const start = bookingDayBounds(dateStr).start;
+    const offset = candidate.getTime() - start.getTime();
+    if (!Number.isFinite(offset) || offset < 0 || offset >= 24 * 60 * 60 * 1000) return new Date(NaN);
+  } catch {
+    return new Date(NaN);
+  }
+  return candidate;
 }

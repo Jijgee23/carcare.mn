@@ -1,99 +1,211 @@
 import {
+  isItemVisible,
   itemPositions,
   positionedKey,
   type ReportEntry,
   type TemplateItem,
   type TemplateSchema,
+  validateReportData,
 } from "@/lib/diagnostics";
-import { saveUpload } from "@/lib/storage";
+import {
+  deleteUpload,
+  saveUpload,
+  validateUpload,
+  type SavedFile,
+} from "@/lib/storage";
 
-/**
- * FormData (multipart) дотроос тайлангийн утга/файлуудыг гаргаж, зургийг
- * /public/uploads/diagnostics дотор хадгалан, URL-уудыг буцаана.
- *
- * Field-ийн форматууд:
- *   data[<itemId>][value]      — текст/тоо/check (radio утга)
- *   data[<itemId>][note]       — тайлбар
- *   photos[<itemId>][]         — File (давхар)
- *   signatures[<itemId>]       — File (1ш)
- *   signature                  — тайлангийн ерөнхий гарын үсэг (File)
- */
-export async function collectReportData(
+export type UploadStore = {
+  validateUpload: (file: File) => void;
+  saveUpload: (file: File, subdir: string) => Promise<SavedFile>;
+  deleteUpload: (urlPath: string) => Promise<void>;
+};
+
+export class ReportDataValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ReportDataValidationError";
+  }
+}
+
+const defaultStore: UploadStore = { validateUpload, saveUpload, deleteUpload };
+
+type PendingFile = {
+  file: File;
+  fieldId: string;
+  kind: "photo" | "signature";
+};
+
+/** Collect and validate the whole request before the first upload write. */
+export async function collectValidatedReportData(
   fd: FormData,
   schema: TemplateSchema,
+  store: UploadStore = defaultStore,
 ): Promise<{
   data: Record<string, ReportEntry>;
   signatureUrl: string | null;
+  uploadedPaths: string[];
 }> {
   const data: Record<string, ReportEntry> = {};
+  const pending: PendingFile[] = [];
 
   for (const section of schema.sections) {
     for (const item of section.items) {
       const positions = itemPositions(item);
       if (positions) {
-        // Байрлал тус бүрд нийлмэл түлхүүрээр (`<itemId>@<code>`) уншина.
-        for (const pos of positions) {
-          const key = positionedKey(item.id, pos.code);
-          data[key] = await collectEntry(fd, item, key);
+        for (const position of positions) {
+          collectDraftEntry(
+            fd,
+            item,
+            positionedKey(item.id, position.code),
+            data,
+            pending,
+          );
         }
       } else {
-        data[item.id] = await collectEntry(fd, item, item.id);
+        collectDraftEntry(fd, item, item.id, data, pending);
       }
     }
   }
 
-  let signatureUrl: string | null = null;
-  const sig = fd.get("signature");
-  if (sig instanceof File && sig.size > 0) {
-    const saved = await saveUpload(sig, "diagnostics/signatures");
-    signatureUrl = saved.path;
+  const signatureValue = fd.get("signature");
+  const overallSignature =
+    signatureValue instanceof File && signatureValue.size > 0
+      ? signatureValue
+      : null;
+  if (overallSignature) {
+    pending.push({ file: overallSignature, fieldId: "signature", kind: "signature" });
   }
 
-  return { data, signatureUrl };
+  // Required/scalar/visibility validation must finish before any file work.
+  try {
+    validateReportData(schema, data);
+  } catch (error) {
+    throw new ReportDataValidationError(
+      error instanceof Error ? error.message : "Бөглөлт буруу.",
+    );
+  }
+
+  // Validate every relevant file before the first save.
+  for (const upload of pending) store.validateUpload(upload.file);
+
+  // Pending markers exist only to let required-file validation pass. Remove
+  // them before materialising the real paths below.
+  for (const upload of pending) {
+    if (upload.fieldId === "signature") continue;
+    const entry = data[upload.fieldId];
+    if (!entry) continue;
+    if (upload.kind === "photo") entry.photos = [];
+    else delete entry.value;
+  }
+
+  const uploadedPaths: string[] = [];
+  try {
+    for (const upload of pending) {
+      const saved = await store.saveUpload(
+        upload.file,
+        upload.kind === "signature" ? "diagnostics/signatures" : "diagnostics",
+      );
+      uploadedPaths.push(saved.path);
+      if (upload.kind === "photo") {
+        const entry = data[upload.fieldId] ?? {};
+        entry.photos = [...(entry.photos ?? []), saved.path];
+        data[upload.fieldId] = entry;
+      } else if (upload.fieldId !== "signature") {
+        const entry = data[upload.fieldId] ?? {};
+        entry.value = saved.path;
+        data[upload.fieldId] = entry;
+      }
+    }
+  } catch (error) {
+    await bestEffortDelete(uploadedPaths, store.deleteUpload);
+    throw error;
+  }
+
+  const signatureIndex = pending.findIndex(
+    (upload) => upload.fieldId === "signature",
+  );
+  return {
+    data,
+    signatureUrl:
+      signatureIndex >= 0 ? uploadedPaths[signatureIndex] ?? null : null,
+    uploadedPaths,
+  };
 }
 
-// Нэг талбарын (item эсвэл байрлал-түлхүүрийн) утга/файл/тэмдэглэлийг уншина.
-// `fieldId` нь энгийн item-д `item.id`, байрлалтай item-д `<itemId>@<code>`.
-async function collectEntry(
+/** Compensate request-owned uploads for commit exceptions and non-successes. */
+export async function commitWithReportUploadCleanup<Result>(
+  uploadedPaths: string[],
+  commit: () => Promise<Result>,
+  isSuccess: (result: Result) => boolean = defaultCommitSuccess,
+  remove: (urlPath: string) => Promise<void> = deleteUpload,
+): Promise<Result> {
+  try {
+    const result = await commit();
+    if (isSuccess(result)) return result;
+    await bestEffortDelete(uploadedPaths, remove);
+    return result;
+  } catch (error) {
+    await bestEffortDelete(uploadedPaths, remove);
+    throw error;
+  }
+}
+
+function defaultCommitSuccess(result: unknown): boolean {
+  return result instanceof Response ? result.ok : true;
+}
+
+async function bestEffortDelete(
+  paths: string[],
+  remove: (urlPath: string) => Promise<void>,
+): Promise<void> {
+  for (const uploadPath of paths) {
+    try {
+      await remove(uploadPath);
+    } catch {
+      // Cleanup must never mask the primary result or exception.
+    }
+  }
+}
+
+function collectDraftEntry(
   fd: FormData,
   item: TemplateItem,
   fieldId: string,
-): Promise<ReportEntry> {
+  data: Record<string, ReportEntry>,
+  pending: PendingFile[],
+): void {
+  if (!isItemVisible(item, data)) return;
   const entry: ReportEntry = {};
-  const valueKey = `data[${fieldId}][value]`;
-  const noteKey = `data[${fieldId}][note]`;
-  const photoKey = `photos[${fieldId}]`;
-  const sigKey = `signatures[${fieldId}]`;
+  const value = fd.get(`data[${fieldId}][value]`);
 
   if (item.type === "text" || item.type === "check") {
-    const v = fd.get(valueKey);
-    if (typeof v === "string" && v.trim()) entry.value = v.trim();
+    if (typeof value === "string" && value.trim()) entry.value = value.trim();
   } else if (item.type === "number") {
-    const v = fd.get(valueKey);
-    if (typeof v === "string" && v.trim()) {
-      const n = Number(v);
-      if (!Number.isNaN(n)) entry.value = n;
+    if (typeof value === "string" && value.trim()) {
+      const number = Number(value);
+      if (!Number.isNaN(number)) entry.value = number;
     }
   } else if (item.type === "photo") {
-    const files = fd.getAll(photoKey);
-    const urls: string[] = [];
-    for (const f of files) {
-      if (f instanceof File && f.size > 0) {
-        const saved = await saveUpload(f, "diagnostics");
-        urls.push(saved.path);
-      }
+    const files = nonEmptyFiles(fd.getAll(`photos[${fieldId}]`));
+    if (files.length) {
+      entry.photos = files.map(() => "__pending_upload__");
+      for (const file of files) pending.push({ file, fieldId, kind: "photo" });
     }
-    if (urls.length > 0) entry.photos = urls;
   } else if (item.type === "signature") {
-    const f = fd.get(sigKey);
-    if (f instanceof File && f.size > 0) {
-      const saved = await saveUpload(f, "diagnostics/signatures");
-      entry.value = saved.path;
+    const file = fd.get(`signatures[${fieldId}]`);
+    if (file instanceof File && file.size > 0) {
+      entry.value = "__pending_upload__";
+      pending.push({ file, fieldId, kind: "signature" });
     }
   }
 
-  const note = fd.get(noteKey);
+  const note = fd.get(`data[${fieldId}][note]`);
   if (typeof note === "string" && note.trim()) entry.note = note.trim();
+  data[fieldId] = entry;
+}
 
-  return entry;
+function nonEmptyFiles(values: FormDataEntryValue[]): File[] {
+  return values.filter(
+    (value): value is File => value instanceof File && value.size > 0,
+  );
 }

@@ -16,6 +16,7 @@ export type {
   QPayInvoiceCreated,
   QPayPaymentStatus,
   QPayCheckResponse,
+  QPayExactCheckResult,
 } from "@/lib/qpay-core";
 
 type TenantQPaySettingsFields = QPayTokenFields & { enabled: boolean };
@@ -54,6 +55,11 @@ export const TenantQPayService = {
   getInvoiceUrls: (tenantId: string, invoiceId: string) =>
     client.getInvoiceUrls(tenantId, invoiceId),
 
+  /** Legacy number-shaped adapter for the pre-ledger order payment worker. */
   checkPayment: (tenantId: string, invoiceId: string, expectedAmount?: number) =>
     client.checkPayment(tenantId, invoiceId, expectedAmount),
+
+  /** Exact decimal result for ledger-backed order payment confirmation. */
+  checkPaymentExact: (tenantId: string, invoiceId: string, expectedAmount?: string) =>
+    client.checkPaymentExact(tenantId, invoiceId, expectedAmount),
 };

@@ -8,15 +8,24 @@
 // blocked a save and ignored `slotCapacity`, so it warned about overlaps that
 // the branch had room for. What remains here is working hours, which is a
 // real constraint that still hard-blocks.
+//
+// D-123 Cycle 2: both exports take the Prisma client to read through as
+// their first, required parameter instead of reaching for the module-level
+// global `prisma` client. See CLUSTER-2-CONTRACT.md — the caller decides
+// which client/transaction snapshot this reads through (e.g. the booking
+// transaction's `tx` when called from inside one), and this module must have
+// no runtime access to a global client of its own. `PrismaTransactionClient`
+// is imported type-only, so this file has no value import of `@/lib/prisma`.
 
 import { DEFAULT_SLOT_MINUTES } from "@/lib/appointment-slots";
 import { bookingDateKey, bookingDayBounds } from "@/lib/booking-time";
 import { resolveEffectiveSchedule } from "@/lib/branch-effective-schedule";
 import { branchScheduleForDateSelect } from "@/lib/branch-effective-schedule-server";
 import { timeToMinutes } from "@/lib/branches";
-import { prisma } from "@/lib/prisma";
+import type { PrismaTransactionClient } from "@/lib/prisma";
 
 export async function validateScheduledOrderHours(
+  client: PrismaTransactionClient,
   tenantId: string,
   branchId: string,
   scheduledAt: Date | null,
@@ -25,7 +34,7 @@ export async function validateScheduledOrderHours(
   if (!scheduledAt) return null;
   if (!Number.isFinite(scheduledAt.getTime())) return "Товлосон огноо буруу.";
   const dateStr = bookingDateKey(scheduledAt);
-  const branch = await prisma.branch.findFirst({
+  const branch = await client.branch.findFirst({
     where: { id: branchId, tenantId, isActive: true },
     select: { ...branchScheduleForDateSelect(dateStr) },
   });
@@ -41,8 +50,12 @@ export async function validateScheduledOrderHours(
   return null;
 }
 
-export async function getBranchSlotMinutes(tenantId: string, branchId: string): Promise<number> {
-  const branch = await prisma.branch.findFirst({
+export async function getBranchSlotMinutes(
+  client: PrismaTransactionClient,
+  tenantId: string,
+  branchId: string,
+): Promise<number> {
+  const branch = await client.branch.findFirst({
     where: { id: branchId, tenantId },
     select: { slotMinutes: true },
   });

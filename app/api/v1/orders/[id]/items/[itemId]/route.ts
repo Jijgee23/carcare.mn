@@ -1,340 +1,91 @@
-import { Prisma } from "@/app/generated/prisma/client";
-import {
-  jsonError,
-  jsonOk,
-  requireApiUser,
-  requirePermission,
-} from "@/lib/api";
-import { logAudit } from "@/lib/audit";
-import { branchScopeId } from "@/lib/auth/roles";
+import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
+import { resolveWorkingBranch } from "@/lib/auth/api-branch";
 import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
+import { ItemKind } from "@/app/generated/prisma/client";
 import {
-  ITEM_KINDS,
-  isOrderLocked,
-  isServiceItemCancellable,
-  type ItemKind,
-  type OrderStatus,
-  type ServiceItemStatus,
-} from "@/lib/orders";
-import { prisma } from "@/lib/prisma";
-import {
-  canEditOrder,
-  canChangeOrderItemStatus,
-  canChangeOrderItemPrice,
-} from "@/lib/auth/order-access";
+  cancelOrderItemCommand,
+  ORDER_ITEM_PATCH_KEYS,
+  parseOrderItemDecimal,
+  patchOrderItemCommand,
+  updateOrderItemCommand,
+} from "@/lib/orders/order-item-commands";
+import { OrderCommandError } from "@/lib/orders/order-commands";
+import type { ServiceItemStatus } from "@/lib/orders";
 
-const MAX_QUANTITY = new Prisma.Decimal(1_000_000);
-const MAX_UNIT_PRICE = new Prisma.Decimal(1_000_000_000);
-const MAX_TOTAL = new Prisma.Decimal("9999999999.99");
-class StockError extends Error {}
-
-function parseDecimal(v: unknown): Prisma.Decimal | null {
-  const str =
-    typeof v === "number" ? String(v) : typeof v === "string" ? v.trim() : "";
-  if (!str) return null;
-  let d: Prisma.Decimal;
-  try {
-    d = new Prisma.Decimal(str);
-  } catch {
-    return null;
-  }
-  if (!d.isFinite() || d.lt(0)) return null;
-  return d;
+function commandError(error: unknown): Response {
+  if (error instanceof OrderCommandError) return jsonError(error.status, error.message, { code: error.code, fieldErrors: error.fieldErrors });
+  console.error("[orders/items/item] command failed", error instanceof Error ? { name: error.name } : { name: "UnknownError" });
+  return jsonError(500, "Үйлдлийг гүйцэтгэх боломжгүй байна.");
 }
 
-// ─── PATCH — мөр засах ────────────────────────────────────────────────────────
-
-export async function PATCH(
-  req: Request,
-  ctx: { params: Promise<{ id: string; itemId: string }> },
-) {
+async function authForItem(req: Request) {
   const auth = await requireApiUser(req);
-  if (auth.response) return auth.response;
-  const denied = requirePermission(auth.user, "orders.edit");
-  if (denied && !auth.user.role?.permissions.includes("orders.editOwn")) return denied;
+  if (auth.response) return { auth, response: auth.response, scope: null } as const;
   const locked = await requireActiveSubscriptionApi(auth.user);
-  if (locked) return locked;
+  if (locked) return { auth, response: locked, scope: null } as const;
+  const scopeResult = await resolveWorkingBranch(req, auth.user);
+  if (scopeResult.response) return { auth, response: scopeResult.response, scope: null } as const;
+  return { auth, response: null, scope: scopeResult.branchId } as const;
+}
 
-  const tenantId = auth.user.tenantId;
-  const { id, itemId } = await ctx.params;
-  const scope = branchScopeId(auth.user);
-
-  const order = await prisma.serviceOrder.findFirst({
-    where: { id, tenantId, ...(scope ? { branchId: scope } : {}) },
-    select: { id: true, status: true, assignedToId: true },
-  });
-  if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
-  if (!canEditOrder(auth.user, order)) return jsonError(403, "Танд энэ засварын хуудсыг засах эрх байхгүй.");
-  if (isOrderLocked(order.status as OrderStatus)) {
-    return jsonError(422, "Дууссан эсвэл цуцлагдсан засварын хуудасны мөрийг засах боломжгүй.");
-  }
-
-  const item = await prisma.serviceItem.findFirst({
-    where: { id: itemId, orderId: order.id },
-    select: {
-      id: true,
-      kind: true,
-      description: true,
-      quantity: true,
-      unitPrice: true,
-      serviceId: true,
-      status: true,
-      service: { select: { type: true, stock: true } },
-    },
-  });
-  if (!item) return jsonError(404, "Мөр олдсонгүй.");
-  if (item.status === "CANCELLED") {
-    return jsonError(422, "Цуцлагдсан мөрийг засах боломжгүй.");
-  }
-
+export async function PATCH(req: Request, ctx: { params: Promise<{ id: string; itemId: string }> }) {
+  const { auth, response, scope } = await authForItem(req);
+  if (response) return response;
   let body: unknown;
+  try { body = await req.json(); } catch { return jsonError(400, "JSON body шаардлагатай."); }
+  if (body == null || typeof body !== "object" || Array.isArray(body)) return jsonError(400, "JSON object шаардлагатай.");
+  const b = body as Record<string, unknown>;
+  const keys = Object.keys(b);
+  const unknownKeys = keys.filter((key) => !(ORDER_ITEM_PATCH_KEYS as readonly string[]).includes(key));
+  if (keys.length === 0) return jsonError(400, "Мөрийн PATCH-д өөрчлөх талбар шаардлагатай.", { code: "ITEM_PATCH_EMPTY" });
+  if (unknownKeys.length > 0) return jsonError(400, "Мөрийн PATCH-д дэмжигдээгүй талбар байна.", { code: "ITEM_PATCH_FIELDS_INVALID" });
+  const { id, itemId } = await ctx.params;
   try {
-    body = await req.json();
-  } catch {
-    return jsonError(400, "JSON body шаардлагатай.");
-  }
-  const b = (body ?? {}) as Record<string, unknown>;
-  if (b.status !== undefined && !canChangeOrderItemStatus(auth.user, order)) {
-    return jsonError(403, "Танд үйлчилгээний мөрийн явц өөрчлөх эрх байхгүй.");
-  }
-  // Мөрийн үнэ (unitPrice) өөрчлөх нь тусгай `orders.itemPrice` эрх шаарддаг —
-  // шинэ мөр нэмэхэд (POST /items) хамаарахгүй, зөвхөн АЛЬ ХЭДИЙН нэмэгдсэн
-  // мөрийг дараа засварлахад (энэ PATCH).
-  if (b.unitPrice !== undefined && !canChangeOrderItemPrice(auth.user, order)) {
-    return jsonError(403, "Танд үйлчилгээний мөрийн үнэ өөрчлөх эрх байхгүй.");
-  }
-
-  const kind =
-    typeof b.kind === "string" && b.kind.trim()
-      ? (b.kind.trim() as ItemKind)
-      : item.kind;
-  const description =
-    typeof b.description === "string" && b.description.trim()
-      ? b.description.trim()
-      : item.description;
-  const newQuantity =
-    b.quantity !== undefined ? parseDecimal(b.quantity) : item.quantity;
-  const newUnitPrice =
-    b.unitPrice !== undefined ? parseDecimal(b.unitPrice) : item.unitPrice;
-
-  const fieldErrors: Record<string, string> = {};
-  if (!(ITEM_KINDS as readonly string[]).includes(kind))
-    fieldErrors.kind = "Мөрийн төрөл буруу.";
-  if (!description) fieldErrors.description = "Тайлбар оруулна уу.";
-  if (!newQuantity || newQuantity.lte(0)) fieldErrors.quantity = "Тоо хэмжээ буруу.";
-  else if (newQuantity.gt(MAX_QUANTITY)) fieldErrors.quantity = "Тоо хэмжээ хэт их.";
-  if (!newUnitPrice) fieldErrors.unitPrice = "Үнэ буруу.";
-  else if (newUnitPrice.gt(MAX_UNIT_PRICE)) fieldErrors.unitPrice = "Үнэ хэт их.";
-  if (Object.keys(fieldErrors).length)
-    return jsonError(422, "Хүсэлт буруу.", { fieldErrors });
-
-  const newTotal = newQuantity!.times(newUnitPrice!);
-  if (newTotal.gt(MAX_TOTAL))
-    return jsonError(422, "Хүсэлт буруу.", { fieldErrors: { unitPrice: "Нийт дүн хэт их." } });
-
-  const isGoods = Boolean(item.serviceId && item.service?.type === "GOODS");
-  const qtyDelta = isGoods ? newQuantity!.minus(item.quantity) : null;
-
-  let updatedItem;
-  try {
-    updatedItem = await prisma.$transaction(async (tx) => {
-      const updated = await tx.serviceItem.update({
-        where: { id: item.id },
-        data: {
-          kind,
-          description,
-          quantity: newQuantity!,
-          unitPrice: newUnitPrice!,
-          total: newTotal,
-        },
-        select: {
-          id: true,
-          kind: true,
-          description: true,
-          quantity: true,
-          unitPrice: true,
-          total: true,
-          serviceId: true,
-          status: true,
-        },
-      });
-
-      await logAudit(
-        {
-          tenantId,
-          userId: auth.user.id,
-          entity: "ServiceOrder",
-          entityId: order.id,
-          action: "ITEM_UPDATED",
-          summary: `${kind} · ${description} × ${newQuantity!.toString()} @ ${newUnitPrice!.toString()}`,
-          before: {
-            kind: item.kind,
-            description: item.description,
-            quantity: item.quantity.toString(),
-            unitPrice: item.unitPrice.toString(),
-          },
-          after: {
-            kind,
-            description,
-            quantity: newQuantity!.toString(),
-            unitPrice: newUnitPrice!.toString(),
-            total: newTotal.toString(),
-          },
-        },
-        tx,
-      );
-
-      if (isGoods && item.serviceId && qtyDelta && !qtyDelta.isZero()) {
-        const svcAfter = await tx.service.update({
-          where: { id: item.serviceId },
-          data: { stock: { decrement: qtyDelta } },
-          select: { stock: true },
-        });
-        if (svcAfter.stock != null && svcAfter.stock.lt(0)) throw new StockError();
-        await logAudit(
-          {
-            tenantId,
-            userId: auth.user.id,
-            entity: "Service",
-            entityId: item.serviceId,
-            action: "STOCK_CHANGE",
-            summary: `${qtyDelta.gt(0) ? "-" : "+"}${qtyDelta.abs().toString()} (засварын хуудас засварласан)`,
-            after: { delta: qtyDelta.toString(), reason: "ORDER_ITEM_UPDATE" },
-          },
-          tx,
-        );
-      }
-
-      const items = await tx.serviceItem.findMany({
-        where: { orderId: order.id, status: { not: "CANCELLED" } },
-        select: { total: true },
-      });
-      const orderTotal = items.reduce(
-        (acc, it) => acc.plus(it.total),
-        new Prisma.Decimal(0),
-      );
-      await tx.serviceOrder.update({
-        where: { id: order.id },
-        data: { totalAmount: orderTotal },
-      });
-
-      return updated;
-    });
-  } catch (e) {
-    if (e instanceof StockError) {
-      return jsonError(422, "Хүсэлт буруу.", {
-        fieldErrors: { quantity: "Үлдэгдэл хүрэхгүй байна." },
-      });
+    const hasStatus = b.status !== undefined;
+    const hasPrice = b.unitPrice !== undefined;
+    const hasEditableFields = ["kind", "description", "quantity"].some((key) => b[key] !== undefined);
+    if (hasEditableFields) {
+      const denied = requirePermission(auth.user, "orders.edit");
+      if (denied && !auth.user.role?.permissions.includes("orders.editOwn")) return denied;
     }
-    throw e;
+    if (hasStatus) {
+      const denied = requirePermission(auth.user, "orders.itemStatus");
+      if (denied) return denied;
+      if (typeof b.status !== "string" || !["PENDING", "IN_PROGRESS", "COMPLETED"].includes(b.status)) return jsonError(422, "Мөрийн явц буруу.");
+    }
+    let unitPrice: ReturnType<typeof parseOrderItemDecimal> = null;
+    if (hasPrice) {
+      const denied = requirePermission(auth.user, "orders.itemPrice");
+      if (denied) return denied;
+      unitPrice = parseOrderItemDecimal(b.unitPrice, 2);
+      if (!unitPrice) return jsonError(422, "Хүсэлт буруу.", { fieldErrors: { unitPrice: "Үнэ буруу." } });
+    }
+    if (hasEditableFields || hasStatus || hasPrice) {
+      const kind = b.kind === undefined ? undefined : typeof b.kind === "string" ? b.kind.trim() as ItemKind : "" as ItemKind;
+      const description = b.description === undefined ? undefined : typeof b.description === "string" ? b.description.trim() : "";
+      const quantity = b.quantity === undefined ? undefined : parseOrderItemDecimal(b.quantity, 3);
+      if (b.quantity !== undefined && !quantity) return jsonError(422, "Хүсэлт буруу.", { fieldErrors: { quantity: "Тоо хэмжээ буруу." } });
+      const nextStatus = hasStatus ? b.status as Exclude<ServiceItemStatus, "CANCELLED"> : undefined;
+      const updatedItem = await patchOrderItemCommand({ actor: auth.user, orderId: id, itemId, kind, description, quantity: quantity ?? undefined, unitPrice: unitPrice ?? undefined, nextStatus, scope });
+      return jsonOk({ item: updatedItem });
+    }
+    const updatedItem = await updateOrderItemCommand({ actor: auth.user, orderId: id, itemId, scope });
+    return jsonOk({ item: updatedItem });
+  } catch (error) {
+    return commandError(error);
   }
-
-  return jsonOk({ item: updatedItem });
 }
 
-// ─── DELETE — мөр цуцлах (УСТГАХГҮЙ, түүхийг хадгална) ────────────────────────
-
-export async function DELETE(
-  req: Request,
-  ctx: { params: Promise<{ id: string; itemId: string }> },
-) {
-  const auth = await requireApiUser(req);
-  if (auth.response) return auth.response;
+export async function DELETE(req: Request, ctx: { params: Promise<{ id: string; itemId: string }> }) {
+  const { auth, response, scope } = await authForItem(req);
+  if (response) return response;
   const denied = requirePermission(auth.user, "orders.edit");
   if (denied && !auth.user.role?.permissions.includes("orders.editOwn")) return denied;
-  const locked = await requireActiveSubscriptionApi(auth.user);
-  if (locked) return locked;
-
-  const tenantId = auth.user.tenantId;
   const { id, itemId } = await ctx.params;
-  const scope = branchScopeId(auth.user);
-
-  const order = await prisma.serviceOrder.findFirst({
-    where: { id, tenantId, ...(scope ? { branchId: scope } : {}) },
-    select: { id: true, status: true, assignedToId: true },
-  });
-  if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
-  if (!canEditOrder(auth.user, order)) return jsonError(403, "Танд энэ засварын хуудсыг засах эрх байхгүй.");
-  if (isOrderLocked(order.status as OrderStatus)) {
-    return jsonError(422, "Дууссан эсвэл цуцлагдсан засварын хуудасны мөрийг цуцлах боломжгүй.");
+  try {
+    const result = await cancelOrderItemCommand({ actor: auth.user, orderId: id, itemId, scope });
+    return jsonOk({ ok: true, ...result });
+  } catch (error) {
+    return commandError(error);
   }
-
-  const item = await prisma.serviceItem.findFirst({
-    where: { id: itemId, orderId: order.id },
-    select: {
-      id: true,
-      serviceId: true,
-      quantity: true,
-      status: true,
-      service: { select: { type: true } },
-    },
-  });
-  if (!item) return jsonError(404, "Мөр олдсонгүй.");
-  if (!isServiceItemCancellable(item.status as ServiceItemStatus)) {
-    return jsonError(422, "Энэ мөрийг цуцлах боломжгүй.");
-  }
-
-  const restoreStock = Boolean(item.serviceId && item.service?.type === "GOODS");
-
-  await prisma.$transaction(async (tx) => {
-    await tx.serviceItem.update({
-      where: { id: item.id },
-      data: {
-        status: "CANCELLED",
-        cancelledAt: new Date(),
-        cancelledById: auth.user.id,
-      },
-    });
-
-    await logAudit(
-      {
-        tenantId,
-        userId: auth.user.id,
-        entity: "ServiceOrder",
-        entityId: order.id,
-        action: "ITEM_CANCELLED",
-        summary: `cancelled item ${item.id}`,
-        before: {
-          itemId: item.id,
-          serviceId: item.serviceId,
-          quantity: item.quantity.toString(),
-        },
-      },
-      tx,
-    );
-
-    if (restoreStock && item.serviceId) {
-      await tx.service.update({
-        where: { id: item.serviceId },
-        data: { stock: { increment: item.quantity } },
-      });
-      await logAudit(
-        {
-          tenantId,
-          userId: auth.user.id,
-          entity: "Service",
-          entityId: item.serviceId,
-          action: "STOCK_CHANGE",
-          summary: `+${item.quantity.toString()} (мөр цуцалсан)`,
-          after: { delta: `+${item.quantity.toString()}`, reason: "ORDER_ITEM_CANCEL" },
-        },
-        tx,
-      );
-    }
-
-    const items = await tx.serviceItem.findMany({
-      where: { orderId: order.id, status: { not: "CANCELLED" } },
-      select: { total: true },
-    });
-    const newTotal = items.reduce(
-      (acc, it) => acc.plus(it.total),
-      new Prisma.Decimal(0),
-    );
-    await tx.serviceOrder.update({
-      where: { id: order.id },
-      data: { totalAmount: newTotal },
-    });
-  });
-
-  return jsonOk({ ok: true });
 }
