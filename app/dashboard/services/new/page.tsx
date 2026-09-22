@@ -46,7 +46,7 @@ export default async function NewServicePage({
     : "/dashboard/services";
 
   return (
-    <div className="p-4 sm:p-6 max-w-4xl">
+    <div className="p-4 sm:p-6 max-w-full w-full">
       <nav className="flex items-center gap-1.5 text-[13px] text-[var(--oc-muted3)] mb-3">
         <Link href={backHref} className="hover:text-[var(--oc-accent-hi)] transition-colors">
           {fixedType ? SERVICE_KIND_LABEL[fixedType] : "Үйлчилгээ"}

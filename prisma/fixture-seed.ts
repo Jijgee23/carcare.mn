@@ -544,10 +544,6 @@ export async function seedFixtureData(db: SeedDb) {
     const account = accounts[i % accounts.length];
     account.vehicleIds.push(id);
     await db.accountVehicle.upsert({ where: { accountId_vehicleId: { accountId: account.id, vehicleId: id } }, update: {}, create: { id: `seed-account-vehicle-${i + 1}`, accountId: account.id, vehicleId: id } });
-    if (i % 4 === 0) {
-      const oldPlate = `${String(7000 + i)}УБХ`;
-      await db.vehiclePlateHistory.upsert({ where: { id: `seed-plate-history-${i + 1}` }, update: { plate: oldPlate, changedAt: daysFrom(SEED_DATE, -180, 12) }, create: { id: `seed-plate-history-${i + 1}`, vehicleId: id, plate: oldPlate, changedAt: daysFrom(SEED_DATE, -180, 12) } });
-    }
   }
 
   const customersByTenant = new Map<string, string[]>();

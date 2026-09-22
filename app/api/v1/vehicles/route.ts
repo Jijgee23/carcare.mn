@@ -4,7 +4,11 @@ import { logAudit } from "@/lib/audit";
 import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
-import { resolveVehicle } from "@/lib/vehicles";
+import {
+  normalizePlate,
+  ownerFromCustomer,
+  resolveVehicleForOwner,
+} from "@/lib/vehicles";
 
 export async function GET(req: Request) {
   const auth = await requireApiUser(req);
@@ -125,16 +129,35 @@ export async function POST(req: Request) {
       });
   }
 
+  // Эзэн сонгоогүй үед ижил дугаартай ЭЗЭНГҮЙ бүртгэл энэ tenant-д байвал
+  // мөр үржүүлэхгүй, түүнийг буцаана.
+  const unownedExisting = customerIdStr
+    ? null
+    : await prisma.tenantVehicle.findFirst({
+        where: {
+          tenantId: auth.user.tenantId,
+          customerId: null,
+          vehicle: { plate: normalizePlate(plateStr) },
+        },
+        select: { vehicleId: true },
+      });
+
   const vehicle = await prisma.$transaction(async (tx) => {
-    const v = await resolveVehicle(tx, {
-      plate: plateStr,
-      vin: vinStr || null,
-      make: makeStr,
-      model: modelStr,
-      year: yearNum,
-      mileage: mileageNum,
-    });
-    await tx.tenantVehicle.upsert({
+    // Vehicle = эзэмшигчийн бүртгэл: Customer-ийн account/утсаар ижил эзний
+    // мөрийг тааруулна, өөр эзний ижил дугаартай мөр байвал шинээр үүсгэнэ.
+    const owner = await ownerFromCustomer(tx, auth.user.tenantId, customerIdStr);
+    const v = unownedExisting
+      ? { id: unownedExisting.vehicleId }
+      : await resolveVehicleForOwner(tx, {
+          plate: plateStr,
+          vin: vinStr || null,
+          make: makeStr,
+          model: modelStr,
+          year: yearNum,
+          mileage: mileageNum,
+          owner,
+        });
+    const link = await tx.tenantVehicle.upsert({
       where: {
         tenantId_vehicleId: {
           tenantId: auth.user.tenantId,
@@ -146,8 +169,16 @@ export async function POST(req: Request) {
         vehicleId: v.id,
         customerId: customerIdStr,
       },
-      update: customerIdStr ? { customerId: customerIdStr } : {},
+      // Байгаа эзнийг дарж бичихгүй (түүх шилжихгүй).
+      update: {},
+      select: { id: true, customerId: true },
     });
+    if (customerIdStr && !link.customerId) {
+      await tx.tenantVehicle.update({
+        where: { id: link.id },
+        data: { customerId: customerIdStr },
+      });
+    }
     const full = await tx.vehicle.findUniqueOrThrow({
       where: { id: v.id },
       select: {

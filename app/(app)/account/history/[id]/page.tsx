@@ -16,6 +16,7 @@ import {
   type PaymentStatus,
 } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
+import { customerOwnershipFilters } from "@/lib/vehicles";
 import {
   DIAGNOSTIC_TYPE_BADGE,
   DIAGNOSTIC_TYPE_LABEL,
@@ -57,30 +58,13 @@ export default async function AccountHistoryDetailPage({
   const account = await requireAccount();
   const { id } = await params;
 
-  // Эзэмшлийн машинууд (баталгаажсан холбоос) — түүхийн жагсаалттай ижил логик.
-  const ownedLinks = await prisma.tenantVehicle.findMany({
-    where: {
-      OR: [
-        { customer: { accountId: account.id } },
-        { customer: { phone: { endsWith: account.phone } } },
-      ],
-    },
-    select: { vehicleId: true },
-    distinct: ["vehicleId"],
-  });
-  const ownedVehicleIds = ownedLinks.map((l) => l.vehicleId);
 
   // Зөвшөөрөл: захиалга нь account-тай холбоотой Customer-ийнх ЭСВЭЛ эзэмшлийн
   // машины захиалга байх ёстой. Өөр хэрэглэгчийн захиалгыг харах боломжгүй.
   const order = await prisma.serviceOrder.findFirst({
     where: {
       id,
-      OR: [
-        { customer: { accountId: account.id } },
-        ...(ownedVehicleIds.length
-          ? [{ vehicleId: { in: ownedVehicleIds } }]
-          : []),
-      ],
+      OR: customerOwnershipFilters(account.id, account.phone),
     },
     select: {
       number: true,

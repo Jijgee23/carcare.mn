@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import {
   recordOrderPaymentAction,
   reverseOrderPaymentAction,
@@ -12,7 +12,9 @@ import {
   ORDER_PAYMENT_METHOD_BADGE,
   ORDER_PAYMENT_METHOD_LABEL,
   ORDER_PAYMENT_STATUS_LABEL,
+  formatPriceInput,
   formatTugrik,
+  liveFormatPriceInput,
 } from "@/lib/orders";
 
 // Захиалгын мөрд plain string-ээр дамжина (Decimal/Date биш).
@@ -61,6 +63,17 @@ export function OrderPaymentsList({
 
   const remainingNum = Number.parseFloat(remaining);
   const hasRemaining = Number.isFinite(remainingNum) && remainingNum > 0;
+
+  // Дүнг ажлын мөрийн үнийн талбартай ижил мянгатын таслалтай ("150,000")
+  // бичүүлнэ — сервер тал (parseOrderPaymentAmount) таслалыг өөрөө цэвэрлэнэ.
+  // Амжилттай бүртгэсний дараа талбарыг хоослоно (effect биш — render үед
+  // өмнөх action state-тэй харьцуулж тохируулах React-ийн зөвлөсөн хэв маяг).
+  const [amount, setAmount] = useState("");
+  const [seenState, setSeenState] = useState(state);
+  if (state !== seenState) {
+    setSeenState(state);
+    if (state?.ok) setAmount("");
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -130,14 +143,22 @@ export function OrderPaymentsList({
                 </option>
               ))}
             </select>
-            <input
-              type="text"
-              inputMode="decimal"
-              name="amount"
-              required
-              placeholder={`0 / ${remaining}`}
-              className="compact-input flex-1"
-            />
+            <div className="relative flex-1 min-w-0">
+              <input
+                type="text"
+                inputMode="decimal"
+                name="amount"
+                required
+                value={amount}
+                onChange={(e) => setAmount(liveFormatPriceInput(e.target.value))}
+                onBlur={(e) => setAmount(formatPriceInput(e.target.value))}
+                placeholder={`Үлдэгдэл ${formatPriceInput(remaining)}`}
+                className="compact-input w-full pr-6 text-right tabular-nums"
+              />
+              <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-[var(--oc-muted3)]">
+                ₮
+              </span>
+            </div>
           </div>
           <Btn type="submit" size="md" disabled={pending}>
             {pending ? "Бүртгэж..." : "Төлбөр бүртгэх"}

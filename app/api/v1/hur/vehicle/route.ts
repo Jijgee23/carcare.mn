@@ -26,10 +26,13 @@ export async function GET(req: Request) {
   const plate = url.searchParams.get("plate")?.trim() ?? "";
   if (!plate) return jsonError(400, "Улсын дугаар шаардлагатай.");
 
-  // Системд аль хэдийн бүртгэлтэй бол HUR дуудалгүй шууд ашиглана.
+  // Системд аль хэдийн бүртгэлтэй бол HUR дуудалгүй шууд ашиглана. Ижил
+  // дугаартай мөр олон байж болно (эзэн тус бүрт) — техник шинж ижил тул
+  // хамгийн сүүлд шинэчлэгдсэнийг авна.
   const canonPlate = normalizePlate(plate);
-  const existing = await prisma.vehicle.findUnique({
+  const existing = await prisma.vehicle.findFirst({
     where: { plate: canonPlate },
+    orderBy: { updatedAt: "desc" },
   });
   if (existing) {
     return jsonOk({

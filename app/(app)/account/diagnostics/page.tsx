@@ -13,6 +13,7 @@ import {
   type ReportSeverity,
 } from "@/lib/diagnostics";
 import { prisma } from "@/lib/prisma";
+import { customerOwnershipFilters } from "@/lib/vehicles";
 import { SearchBox } from "@/app/_components/list-filters";
 import { YearChips } from "@/app/_components/segmented-filter";
 
@@ -52,25 +53,9 @@ export default async function AccountDiagnosticsPage({
   const parsedYear = Number.parseInt(rawYear, 10);
   const year = Number.isInteger(parsedYear) ? parsedYear : new Date().getFullYear();
 
-  const ownedLinks = await prisma.tenantVehicle.findMany({
-    where: {
-      OR: [
-        { customer: { accountId: account.id } },
-        { customer: { phone: { endsWith: account.phone } } },
-      ],
-    },
-    select: { vehicleId: true },
-    distinct: ["vehicleId"],
-  });
-  const ownedVehicleIds = ownedLinks.map((l) => l.vehicleId);
 
   const ownershipWhere: Prisma.DiagnosticReportWhereInput = {
-    OR: [
-      { customer: { accountId: account.id } },
-      ...(ownedVehicleIds.length
-        ? [{ vehicleId: { in: ownedVehicleIds } }]
-        : []),
-    ],
+    OR: customerOwnershipFilters(account.id, account.phone),
   };
 
   // Шүүлтүүр — mobile-ийн Оношилгоо табтай ижил: текст хайлт (загвар, машин,

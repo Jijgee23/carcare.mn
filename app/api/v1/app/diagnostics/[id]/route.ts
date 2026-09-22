@@ -1,7 +1,7 @@
 import { jsonError, jsonOk } from "@/lib/api";
 import { getApiAccountFromRequest } from "@/lib/auth/account-api-token";
 import { prisma } from "@/lib/prisma";
-import { ownedVehicleIdsForAccount } from "@/lib/vehicles";
+import { customerOwnershipFilters } from "@/lib/vehicles";
 
 // GET /api/v1/app/diagnostics/[id] — нэг оношилгооны тайлангийн БҮРЭН бөглөлт
 // (template.schema-тай хамт, апп талд шууд харуулахад зориулав). Зөвшөөрөл:
@@ -15,17 +15,11 @@ export async function GET(
   if (!account) return jsonError(401, "Нэвтрэх шаардлагатай.");
 
   const { id } = await ctx.params;
-  const ownedVehicleIds = await ownedVehicleIdsForAccount(account.id, account.phone);
 
   const report = await prisma.diagnosticReport.findFirst({
     where: {
       id,
-      OR: [
-        { customer: { accountId: account.id } },
-        ...(ownedVehicleIds.length
-          ? [{ vehicleId: { in: ownedVehicleIds } }]
-          : []),
-      ],
+      OR: customerOwnershipFilters(account.id, account.phone),
     },
     select: {
       id: true,

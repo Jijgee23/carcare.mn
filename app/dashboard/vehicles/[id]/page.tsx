@@ -44,7 +44,7 @@ export default async function VehicleDetailPage({
   const { id } = await params;
 
   // id = global vehicleId. Тенантын link-ээр дамжуулж ачаална (харьяалал link дээр).
-  const [link, customers, orders, appointments, plateHistory] = await Promise.all([
+  const [link, customers, orders, appointments, reportCount] = await Promise.all([
     prisma.tenantVehicle.findUnique({
       where: {
         tenantId_vehicleId: { tenantId: user.tenantId, vehicleId: id },
@@ -86,16 +86,17 @@ export default async function VehicleDetailPage({
         category: { select: { name: true } },
       },
     }),
-    // Энэ машины дугаар өмнө нь солигдсон эсэх.
-    prisma.vehiclePlateHistory.findMany({
-      where: { vehicleId: id },
-      orderBy: { changedAt: "desc" },
-      select: { id: true, plate: true, changedAt: true },
+    // Оношилгооны тайлан байгаа эсэх — эзэн солих хоригийн нэг хэсэг.
+    prisma.diagnosticReport.count({
+      where: { tenantId: user.tenantId, vehicleId: id },
     }),
   ]);
 
   if (!link) notFound();
   const vehicle = link.vehicle;
+  // Засварын түүхтэй машины эзнийг солих боломжгүй (updateVehicleAction-тай
+  // ижил шалгуур) — form дээр урьдчилан хаана.
+  const ownerLocked = orders.length > 0 || reportCount > 0;
 
   return (
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
@@ -147,6 +148,7 @@ export default async function VehicleDetailPage({
               isPostpaid: link.isPostpaid,
             }}
             customers={customers}
+            ownerLocked={ownerLocked}
           />
         </div>
 
@@ -268,30 +270,6 @@ export default async function VehicleDetailPage({
             )}
           </section>
         </div>
-
-        {plateHistory.length > 0 ? (
-          <section className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--oc-line)]">
-              <h2 className="font-semibold text-[var(--oc-ink)] text-sm">Дугаарын түүх</h2>
-              <span className="font-plex-mono text-xs text-[var(--oc-muted3)]">{plateHistory.length}</span>
-            </div>
-            <ul className="divide-y divide-[var(--oc-line)]">
-              {plateHistory.map((h) => (
-                <li
-                  key={h.id}
-                  className="flex items-center justify-between gap-3 px-5 py-3.5"
-                >
-                  <span className="font-plex-mono text-sm text-[var(--oc-muted2)]">
-                    {h.plate}
-                  </span>
-                  <span className="font-plex-mono text-xs text-[var(--oc-muted3)] tabular-nums">
-                    {fmtDate(h.changedAt)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
       </div>
     </div>
   );

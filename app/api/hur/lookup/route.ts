@@ -34,41 +34,23 @@ export async function GET(req: Request) {
     );
   }
 
-  // Системд аль хэдийн бүртгэлтэй бол HUR дуудалгүй шууд ашиглана.
+  // Системд аль хэдийн бүртгэлтэй бол HUR дуудалгүй шууд ашиглана. Ижил
+  // дугаартай мөр олон байж болно (эзэн тус бүрт) — техник шинж ижил тул
+  // хамгийн сүүлд шинэчлэгдсэнийг авна.
   const canonPlate = normalizePlate(plate);
-  const existing = await prisma.vehicle.findUnique({
+  const existing = await prisma.vehicle.findFirst({
     where: { plate: canonPlate },
+    orderBy: { updatedAt: "desc" },
   });
   if (existing) {
-    // Энэ tenant-д аль хэдийн бүртгэлтэй бол form дээр анхааруулна.
-    const link = await prisma.tenantVehicle.findUnique({
-      where: {
-        tenantId_vehicleId: {
-          tenantId: session.tenantId,
-          vehicleId: existing.id,
-        },
-      },
-      select: { id: true },
+    // Энэ tenant-д ижил дугаартай бүртгэл байвал form дээр МЭДЭЭЛНЭ (хаахгүй —
+    // өөр эзэн бол шинээр бүртгэх нь зөв). Эзний мэдээлэл зөвхөн ӨӨРИЙН
+    // tenant-ийн холбоосоос: өөр tenant-ийн үйлчлүүлэгчийн PII задруулахгүй.
+    const ownerLink = await prisma.tenantVehicle.findFirst({
+      where: { tenantId: session.tenantId, vehicle: { plate: canonPlate } },
+      orderBy: { updatedAt: "desc" },
+      select: { customer: { select: { fullName: true, phone: true } } },
     });
-    // Эзний мэдээлэл: эхлээд өөрийн tenant-ийн холбоос, үгүй бол өөр tenant-ийн
-    // хамгийн сүүлийн эзэн (бүртгэхэд эзэнтэй нь хамт авчрахад ашиглагдана).
-    const ownerSelect = {
-      customer: { select: { fullName: true, phone: true } },
-    } as const;
-    const ownerLink =
-      (await prisma.tenantVehicle.findFirst({
-        where: {
-          vehicleId: existing.id,
-          tenantId: session.tenantId,
-          customerId: { not: null },
-        },
-        select: ownerSelect,
-      })) ??
-      (await prisma.tenantVehicle.findFirst({
-        where: { vehicleId: existing.id, customerId: { not: null } },
-        orderBy: { updatedAt: "desc" },
-        select: ownerSelect,
-      }));
     const owner = ownerLink?.customer
       ? {
           firstName: ownerLink.customer.fullName || null,
@@ -82,7 +64,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       vehicle: { ...vehicleToLookupInfo(existing), owner },
       source: "global",
-      registered: Boolean(link),
+      registered: Boolean(ownerLink),
     });
   }
 

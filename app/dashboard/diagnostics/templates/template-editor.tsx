@@ -24,6 +24,7 @@ import {
   type TemplateSchema,
   type TemplateSection,
 } from "@/lib/diagnostics";
+import { formatPriceInput, liveFormatPriceInput } from "@/lib/orders";
 import { TemplatePreview } from "./template-preview";
 
 export const TEMPLATE_EDITOR_FORM_ID = "template-editor-form";
@@ -133,6 +134,9 @@ export function TemplateEditor({
   const [description, setDescription] = useState(initial?.description ?? "");
   const [type, setType] = useState<DiagnosticType>(initial?.type ?? "INTAKE");
   const [categoryId, setCategoryId] = useState(initial?.categoryId ?? "");
+  const [price, setPrice] = useState(
+    initial?.price ? formatPriceInput(initial.price) : "",
+  );
   const [isActive, setIsActive] = useState(initial?.isActive ?? true);
 
   // Идэвхтэй ангилал + одоо сонгогдсон (идэвхгүй болсон ч хадгалагдсаныг харуулна).
@@ -327,14 +331,17 @@ export function TemplateEditor({
             error={fe.price}
             className="max-w-xs"
           >
+            {/* Мянгатын таслалтай ("25,000") — сервер тал parseDecimal таслалыг цэвэрлэнэ. */}
             <input
               id="price"
               name="price"
               type="text"
               inputMode="decimal"
-              defaultValue={initial?.price ?? ""}
-              className={`auth-input ${fe.price ? "border-red-500/50" : ""}`}
-              placeholder="25000"
+              value={price}
+              onChange={(e) => setPrice(liveFormatPriceInput(e.target.value))}
+              onBlur={(e) => setPrice(formatPriceInput(e.target.value))}
+              className={`auth-input tabular-nums ${fe.price ? "border-red-500/50" : ""}`}
+              placeholder="25,000"
             />
           </Field>
           <Field

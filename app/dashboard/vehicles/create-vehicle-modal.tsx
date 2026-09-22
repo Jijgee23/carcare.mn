@@ -253,7 +253,9 @@ function CreateVehicleForm({
 
   const normalizedWheel = hurInfo ? normalizeWheelPosition(hurInfo.wheelPosition) : null;
   const ownerKind = hurInfo?.owner ? ownerKindFromRegnum(hurInfo.owner.regnum) : null;
-  const canSubmit = Boolean(hurInfo) && !alreadyRegistered && Boolean(customerId);
+  // Ижил дугаартай машин бүртгэлд байгаа ч өөр эзэнд шинээр бүртгэж болно —
+  // анхааруулга л харуулна, хаахгүй.
+  const canSubmit = Boolean(hurInfo) && Boolean(customerId);
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
@@ -308,7 +310,8 @@ function CreateVehicleForm({
 
       {alreadyRegistered ? (
         <div className="rounded-[10px] border border-[var(--oc-warn)]/30 bg-[var(--oc-warn)]/10 px-4 py-3 text-xs text-[var(--oc-warn)]">
-          Энэ улсын дугаартай машин танай бүртгэлд аль хэдийн байна.{" "}
+          Танай бүртгэлд ижил дугаартай машин байна. Өөр эзэн бол шинээр
+          бүртгэж болно — түүх өмнөх эзэнд үлдэнэ.{" "}
           <Link
             href={`/dashboard/vehicles?q=${encodeURIComponent(trimmedPlate)}`}
             className="underline hover:no-underline"

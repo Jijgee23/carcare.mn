@@ -422,19 +422,24 @@ model Customer {
 
 // --- Vehicle --------------------------------------------------------------
 
-// Global "hub" — нэг физик машин = НЭГ мөр (бүх tenant хооронд дундын).
-// Зөвхөн машины бие даасан/тогтмол шинжийг (HUR-аас) хадгална. Харьяалал
-// (эзэмшигч) болон tenant-ийн context нь [[TenantVehicle]] дээр. Засварын
-// түүх (ServiceOrder/DiagnosticReport/Appointment) энэ мөр рүү шууд холбогдох
-// бөгөөд тус бүр өөрийн `tenantId`-аар scope хийгдэнэ — dashboard tenant
-// хооронд харагдахгүй; cross-tenant түүх зөвхөн машины эзэн (Account)-д.
+// "Нэг эзэмшигчийн нэг машины бүртгэл" — глобал (tenant-гүй) мөр. Ижил эзэн
+// (account/утас тохирсон) олон tenant-д үйлчлүүлсэн ч НЭГ мөр хэвээр
+// (`resolveVehicleForOwner`), харин машин зарагдаж ШИНЭ эзэн бүртгэхэд —
+// дугаар солигдсон эсэхээс үл хамааран — ШИНЭ мөр үүснэ. Тиймээс `plate`,
+// `vin` глобал давтагдашгүй БИШ: ижил физик машин хэд хэдэн эзэмшлийн мөртэй
+// байж болно. Засварын түүх (ServiceOrder/DiagnosticReport/Appointment) мөр
+// рүү холбогдох тул өмнөх эзний түүх өмнөх мөрөнд үлдэж, шинэ эзэнд харагдахгүй.
+// Улсын дугаар бүртгэсний дараа ХӨДӨЛШГҮЙ (ажилтан ч, хэрэглэгч ч засахгүй) —
+// буруу бол устгаж дахин бүртгэнэ. Харьяалал (эзэмшигч) болон tenant-ийн
+// context нь [[TenantVehicle]] дээр; тус бүр өөрийн `tenantId`-аар scope
+// хийгдэнэ — dashboard tenant хооронд харагдахгүй; cross-tenant түүх зөвхөн
+// машины эзэн (Account)-д.
 model Vehicle {
   id            String  @id @default(cuid())
-  // Жинхэнэ identity (cabinNumber). Байвал хайлт/нэгтгэлд тэргүүлнэ.
-  vin           String? @unique
-  // Одоогийн улсын дугаар. Дугаар өөр машинд шилжвэл `resolveVehicle` хуучин
-  // эзнээс нь салгана — тиймээс глобал давтагдашгүй.
-  plate         String  @unique
+  // Арлын дугаар (cabinNumber). Эзэмшлийн мөр бүрт давхардаж болно.
+  vin           String?
+  // Улсын дугаар (канон: normalizePlate). Бүртгэсний дараа солигдохгүй.
+  plate         String
   make          String
   model         String
   year          Int?
@@ -456,30 +461,16 @@ model Vehicle {
   serviceOrders     ServiceOrder[]
   diagnosticReports DiagnosticReport[]
   appointments      Appointment[]
-  plateHistory      VehiclePlateHistory[]
+
+  @@index([plate])
+  @@index([vin])
 }
 
-// --- VehiclePlateHistory (улсын дугаар солигдсон түүх) --------------------
-// `resolveVehicle`-д машины дугаар солигдохыг илрүүлэх бүрд (VIN таарсан ч
-// одоо байгаа дугаараас өөр, эсвэл дугаар нь өөр машинд шилжиж tombstone
-// хийгдэх үед) хуучин дугаарыг энд бичиж үлдээнэ — ирээдүйд аудит/маргаан
-// шийдвэрлэхэд хэрэг болно.
-model VehiclePlateHistory {
-  id String @id @default(cuid())
-
-  vehicleId String
-  vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-
-  plate     String // солигдохоос өмнөх дугаар
-  changedAt DateTime @default(now())
-
-  @@index([vehicleId, changedAt])
-}
-
-// --- TenantVehicle (tenant ↔ global Vehicle холбоо) ----------------------
+// --- TenantVehicle (tenant ↔ Vehicle холбоо) ------------------------------
 // Tenant бүрийн "өөрийн харагдац": тухайн байгууллагад энэ машин хэний (Customer)
-// эзэмшил вэ, тэмдэглэл г.м. Нэг машин олон tenant-д өөр эзэнтэй байж болох тул
-// харьяалал нь global Vehicle дээр БИШ, энд хадгалагдана.
+// эзэмшил вэ, тэмдэглэл г.м. Харьяалал нь Vehicle дээр БИШ, энд хадгалагдана.
+// `customerId` нэгэнт тавигдсан бол дарж бичигдэхгүй (`ensureTenantVehicle`) —
+// эзэн солигдвол түүх шилжихгүй, шинэ эзэнд шинэ Vehicle мөр бүртгэнэ.
 model TenantVehicle {
   id String @id @default(cuid())
 

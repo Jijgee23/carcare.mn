@@ -33,20 +33,17 @@ export async function GET(req: Request) {
     );
   }
 
-  // Системд аль хэдийн бүртгэлтэй бол HUR дуудалгүй шууд ашиглана.
+  // Системд аль хэдийн бүртгэлтэй бол HUR дуудалгүй шууд ашиглана. Ижил
+  // дугаартай мөр олон байж болно (эзэн тус бүрт) — сүүлд шинэчлэгдсэнийг авна.
   const canonPlate = normalizePlate(plate);
-  const existing = await prisma.vehicle.findUnique({
+  const existing = await prisma.vehicle.findFirst({
     where: { plate: canonPlate },
+    orderBy: { updatedAt: "desc" },
   });
   if (existing) {
-    // Хэрэглэгчийн өөрийн гаражид аль хэдийн байвал анхааруулна.
-    const link = await prisma.accountVehicle.findUnique({
-      where: {
-        accountId_vehicleId: {
-          accountId: account.id,
-          vehicleId: existing.id,
-        },
-      },
+    // Хэрэглэгчийн өөрийн гаражид ижил дугаартай машин байвал анхааруулна.
+    const link = await prisma.accountVehicle.findFirst({
+      where: { accountId: account.id, vehicle: { plate: canonPlate } },
       select: { id: true },
     });
     return NextResponse.json({

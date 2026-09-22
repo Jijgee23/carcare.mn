@@ -97,8 +97,8 @@ export default async function EditServicePage({
         </p>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-5">
-        <div className="lg:col-span-3 rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-4 sm:p-5">
+      <div className="grid gap-6 lg:grid-cols-3 items-start">
+        <div className="lg:col-span-2 rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-4 sm:p-5">
           <h2 className="font-semibold text-[var(--oc-ink)] mb-4">Мэдээлэл</h2>
           <ServiceForm
             categories={categories}
@@ -122,7 +122,7 @@ export default async function EditServicePage({
           />
         </div>
 
-        <div className="lg:col-span-2 flex flex-col gap-4">
+        <div className="flex flex-col gap-4">
           <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-4 sm:p-5">
             <div className="font-plex-mono text-[10.5px] uppercase tracking-[0.1em] text-[var(--oc-muted3)]">
               {isGoods ? "Одоогийн үлдэгдэл" : "Үнэ"}

@@ -8,7 +8,7 @@ import {
   APPOINTMENT_STATUS_LABEL,
 } from "@/lib/appointments";
 import { requireAccount } from "@/lib/auth/account";
-import { normalizePlate } from "@/lib/vehicles";
+import { customerOwnershipFilters, normalizePlate } from "@/lib/vehicles";
 import {
   ORDER_STATUS_BADGE,
   ORDER_STATUS_LABEL,
@@ -92,38 +92,18 @@ export default async function AccountHistoryPage({
       ? parsedMonth
       : null;
 
-  // Энэ account-ийн БАТАЛГААЖСАН эзэмшлийн машинууд: аль нэг байгууллагад
-  // account-той холбоотой Customer-т бүртгэлтэй TenantVehicle (утсаар
-  // баталгаажсан холбоос). AccountVehicle нь өөрөө claim хийдэг тул эзэмшлийн
-  // нотолгоо БОЛОХГҮЙ — зөвхөн энэ баталгаатай холбоосыг ашиглана.
-  const ownedLinks = await prisma.tenantVehicle.findMany({
-    where: {
-      OR: [
-        { customer: { accountId: account.id } },
-        { customer: { phone: { endsWith: account.phone } } },
-      ],
-    },
-    select: { vehicleId: true },
-    distinct: ["vehicleId"],
-  });
-  const ownedVehicleIds = ownedLinks.map((l) => l.vehicleId);
-
-  // Cross-tenant түүх: эзэмшлийн машины БҮХ байгууллага дахь захиалга, мөн
-  // account-той холбоотой Customer-ийн захиалга (хуучин зан төлөвтэй нийцүүлэв).
-  // Машин нэг байгууллагад өөр (холбогдоогүй) Customer дээр бүртгэгдсэн ч,
-  // эзэмшил нь өөр газар баталгаажсан бол түүх энд нэгдэж харагдана.
+  // Cross-tenant түүх — гэхдээ ЗӨВХӨН энэ эзний: захиалгын Customer нь
+  // account-той (accountId эсвэл утсаар) холбоотой байх ёстой. Машин-аар
+  // (vehicleId) нэмж багтаахгүй — ижил машины өмнөх эзний захиалга харагдахгүй
+  // (Vehicle = эзэмшигчийн бүртгэл; хуучин олон эзэнтэй мөр дээр ч хамгаална).
+  // AccountVehicle нь өөрөө claim хийдэг тул эзэмшлийн нотолгоо БОЛОХГҮЙ.
   // Түүх дууссан AND цуцлагдсан ажлыг харуулна (D-085) — SCHEDULED/IN_PROGRESS
   // хараахан идэвхтэй, /account (Миний захиалгууд) дээр харагдана.
   // Төлбөрийн төлөв энд шүүлт биш: төлөгдөөгүй ч дууссан ажил энд харагдана.
   // Эзэмшлийн нөхцөл — дор дахин ашиглагдана (боломжит онуудыг тооцоход).
   const ownershipWhere: Prisma.ServiceOrderWhereInput = {
     status: { in: ["COMPLETED", "CANCELLED"] },
-    OR: [
-      { customer: { accountId: account.id } },
-      ...(ownedVehicleIds.length
-        ? [{ vehicleId: { in: ownedVehicleIds } }]
-        : []),
-    ],
+    OR: customerOwnershipFilters(account.id, account.phone),
   };
 
   // Текст хайлт (mobile-ийн Түүх табтай ижил талбарууд: байгууллага, салбар,

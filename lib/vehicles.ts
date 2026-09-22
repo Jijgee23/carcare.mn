@@ -1,8 +1,21 @@
 import type { Prisma } from "@/app/generated/prisma/client";
+import { normalizePhone } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
 import type { PrismaTransactionClient } from "@/lib/prisma";
 
 type Client = PrismaTransactionClient;
+
+/**
+ * Утсаар тааруулах нөхцөл — DB-д хадгалагдсан дугаар өөр форматтай (+976…)
+ * байж болзошгүй тул яг тэнцүү ЭСВЭЛ төгсгөл тохирохыг хоёуланг нь шалгана
+ * (lib/appointments.ts resolveCustomerForAccount-тай ижил зарчим).
+ * Хоосон/хүчингүй утас → null (endsWith:"" бүхэнд таарах тул ХЭЗЭЭ Ч үүсгэхгүй).
+ */
+function phoneMatch(phone: string | null | undefined): Prisma.StringFilter[] | null {
+  const canon = normalizePhone(phone);
+  if (!canon) return null;
+  return [{ equals: canon }, { endsWith: canon }];
+}
 
 /**
  * Account-ийн БАТАЛГААЖСАН эзэмшлийн машины ID-үүд (cross-tenant) —
@@ -16,19 +29,34 @@ export async function ownedVehicleIdsForAccount(
   phone: string,
 ): Promise<string[]> {
   const links = await prisma.tenantVehicle.findMany({
-    where: {
-      OR: [
-        { customer: { accountId } },
-        { customer: { phone: { endsWith: phone } } },
-      ],
-    },
+    where: { OR: customerOwnershipFilters(accountId, phone) },
     select: { vehicleId: true },
     distinct: ["vehicleId"],
   });
   return links.map((l) => l.vehicleId);
 }
 
-// Global Vehicle-д бичигдэх машины бие даасан/тогтмол шинж (харьяалал биш).
+/**
+ * "Энэ Customer энэ account-ийнх" гэх OR нөхцөлүүд — `customer` relation-тай
+ * дурын модель (TenantVehicle, ServiceOrder, DiagnosticReport, Appointment)
+ * дээр ашиглана. Засварын түүх зөвхөн эзэнд харагдах дүрэм: захиалга/тайлан
+ * нь account-той холбоотой (accountId эсвэл утас) Customer-ийнх байх ёстой.
+ * Ингэснээр хуучин (миграцаар салгаагүй) олон эзэнтэй Vehicle мөр дээр ч өөр
+ * эзний захиалга харагдахгүй.
+ */
+export function customerOwnershipFilters(
+  accountId: string,
+  phone: string | null | undefined,
+): { customer: Prisma.CustomerWhereInput }[] {
+  const or: { customer: Prisma.CustomerWhereInput }[] = [
+    { customer: { accountId } },
+  ];
+  const pm = phoneMatch(phone);
+  if (pm) or.push(...pm.map((phone) => ({ customer: { phone } })));
+  return or;
+}
+
+// Vehicle-д бичигдэх машины бие даасан/тогтмол шинж (харьяалал биш).
 export type VehicleAttrs = {
   make: string;
   model: string;
@@ -53,8 +81,8 @@ const PLATE_LATIN_TO_CYRILLIC: Record<string, string> = {
 
 /**
  * Улсын дугаарын канон формат: том үсэг, зай/тэмдэгтгүй, латин төстэй үсгийг
- * кирилл болгоно. Global Vehicle-ийн давхардлыг таслах гол түлхүүр тул бүх
- * бүртгэл/хайлт үүгээр нормчлогдох ёстой.
+ * кирилл болгоно. Ижил эзний мөрийг тааруулах, HUR prefill хайх гол түлхүүр
+ * тул бүх бүртгэл/хайлт үүгээр нормчлогдох ёстой.
  */
 export function normalizePlate(p: string): string {
   return p
@@ -103,7 +131,7 @@ export function normalizeVin(v: string | null | undefined): string | null {
 }
 
 // Олдсон машины хоосон талбарыг шинэ мэдээллээр баяжуулна (байгаа утгыг
-// дарж бичихгүй); plate-г одоогийн утга руу, mileage-г илүү ихээр шинэчилнэ.
+// дарж бичихгүй); mileage-г илүү ихээр шинэчилнэ. plate-г ХӨНДӨХГҮЙ.
 function enrichData(
   existing: {
     vin: string | null;
@@ -116,7 +144,6 @@ function enrichData(
     ownerRegnum: string | null;
     mileage: number | null;
   },
-  plate: string,
   vin: string | null,
   attrs: VehicleAttrs,
 ): Prisma.VehicleUpdateInput {
@@ -127,7 +154,6 @@ function enrichData(
       ? Math.max(existing.mileage ?? 0, attrs.mileage)
       : existing.mileage;
   return {
-    plate,
     vin: existing.vin ?? vin,
     year: pick(existing.year, attrs.year),
     fuelType: pick(existing.fuelType, attrs.fuelType),
@@ -140,87 +166,130 @@ function enrichData(
   };
 }
 
-/** Дугаар солигдохоос өмнөх утгыг VehiclePlateHistory-д бичнэ. */
-async function recordPlateChange(
-  client: Client,
-  vehicleId: string,
-  oldPlate: string,
-): Promise<void> {
-  await client.vehiclePlateHistory.create({
-    data: { vehicleId, plate: oldPlate },
-  });
+/**
+ * Машины эзэмшигч — Vehicle мөрийг "хэнийх" гэж тааруулах түлхүүрүүд.
+ *  - tenantId + customerId: ажилтан tenant-ийнхаа Customer-т бүртгэж байна.
+ *  - accountId / phone: хэрэглэгчийн app account, эсвэл Customer-ийн
+ *    account холбоос/утас (cross-tenant ижил эзнийг таних).
+ */
+export type VehicleOwner = {
+  tenantId?: string | null;
+  customerId?: string | null;
+  accountId?: string | null;
+  phone?: string | null;
+};
+
+/**
+ * Эзэмшигчийн дугаараар нь бүртгэлтэй Vehicle мөрийг тааруулах WHERE.
+ * Тохирох дараалал (аль нэг нь таарвал хангалттай):
+ *  1. Энэ tenant-д яг энэ Customer-т link-тэй.
+ *  2. accountId: AccountVehicle эсвэл Customer.accountId тэнцүү.
+ *  3. Утас: Account.phone / Customer.phone тохирох — гэхдээ ЗӨВХӨН account
+ *     холбоосгүй талд (хоёулаа accountId-тай байгаад зөрвөл өөр хүн).
+ * Хоосон/null утгаар нөхцөл ХЭЗЭЭ Ч үүсгэхгүй (`accountId: null` бүх walk-in-д,
+ * `endsWith: ""` бүхэнд таарна).
+ * Энэ tenant-д ӨӨР (null биш) Customer-т link-тэй мөрийг хасна — тэр мөр өөр
+ * эзний бүртгэл; түүн рүү холбовол захиалгын форм "машин сонгосон
+ * үйлчлүүлэгчийнх биш" гэж мухардана.
+ */
+function ownerMatchWhere(
+  plate: string,
+  owner: VehicleOwner,
+): Prisma.VehicleWhereInput | null {
+  const or: Prisma.VehicleWhereInput[] = [];
+  const tenantId = owner.tenantId || null;
+  const customerId = owner.customerId || null;
+  const accountId = owner.accountId || null;
+  const pm = phoneMatch(owner.phone);
+
+  if (tenantId && customerId) {
+    or.push({ tenantLinks: { some: { tenantId, customerId } } });
+  }
+  if (accountId) {
+    or.push({ accountLinks: { some: { accountId } } });
+    or.push({ tenantLinks: { some: { customer: { accountId } } } });
+  }
+  if (pm) {
+    for (const phone of pm) {
+      // Account-той эзэн: account холбоосгүй Customer-ийг л утсаар тааруулна;
+      // account холбоотой Customer-ийг accountId-аар дээр шалгасан.
+      or.push({
+        tenantLinks: {
+          some: {
+            customer: accountId ? { phone, accountId: null } : { phone },
+          },
+        },
+      });
+      // Account-гүй эзэн (tenant Customer): утас нь тохирсон Account-ийн
+      // өөрөө нэмсэн машин. Account-той бол accountId-аар аль хэдийн шалгасан.
+      if (!accountId) {
+        or.push({ accountLinks: { some: { account: { phone } } } });
+      }
+    }
+  }
+  if (or.length === 0) return null;
+
+  const where: Prisma.VehicleWhereInput = { plate, OR: or };
+  if (tenantId) {
+    where.NOT = {
+      tenantLinks: {
+        some: {
+          tenantId,
+          customerId: { not: null },
+          ...(customerId ? { NOT: { customerId } } : {}),
+        },
+      },
+    };
+  }
+  return where;
 }
 
 /**
- * Global Vehicle-ийг VIN (тэргүүлэх) эсвэл plate-ээр олж/үүсгэнэ.
+ * Эзэмшигчийн Vehicle мөрийг олж эсвэл шинээр үүсгэнэ.
  *
- *  - VIN байвал эхлээд VIN-ээр хайна (жинхэнэ identity).
- *  - Эс бөгөөс plate-ээр хайна.
- *  - Plate нь өөр VIN-тэй машинд бүртгэлтэй бол (дугаар шилжсэн) хуучин машинаас
- *    plate-ийг чөлөөлж (tombstone), шинэ машин үүсгэнэ.
- *  - Олдсон бол хоосон талбарыг баяжуулна.
+ *  - Ижил дугаартай, ИЖИЛ эзэнд (ownerMatchWhere) бүртгэлтэй мөр байвал түүнийг
+ *    буцааж хоосон талбарыг баяжуулна (plate хөндөхгүй).
+ *  - Олдохгүй, эсвэл `owner` байхгүй (эзэнгүй бүртгэл) бол ШИНЭ мөр үүсгэнэ —
+ *    ижил дугаартай өөр эзний мөр байсан ч хамаагүй (машин зарагдсан гэж үзнэ;
+ *    түүх өмнөх мөрөнд үлдэнэ).
  *
- * Транзакц client дамжуулж дуудах нь зөв — TenantVehicle link-тэй нэг атомт
- * үйлдэл болгоно.
+ * Транзакц client дамжуулж дуудах нь зөв — TenantVehicle/AccountVehicle link-тэй
+ * нэг атомт үйлдэл болгоно.
  */
-export async function resolveVehicle(
+export async function resolveVehicleForOwner(
   client: Client,
-  input: { plate: string } & VehicleAttrs,
-): Promise<{ id: string }> {
+  input: { plate: string; owner: VehicleOwner | null } & VehicleAttrs,
+): Promise<{ id: string; created: boolean }> {
   const plate = normalizePlate(input.plate);
   const vin = normalizeVin(input.vin);
   const attrs = input;
 
-  const fullSelect = {
-    id: true,
-    plate: true,
-    vin: true,
-    year: true,
-    fuelType: true,
-    wheelPosition: true,
-    colorName: true,
-    capacity: true,
-    purpose: true,
-    ownerRegnum: true,
-    mileage: true,
-  } as const;
-
-  // 1) VIN-ээр
-  let existing = vin
-    ? await client.vehicle.findUnique({ where: { vin }, select: fullSelect })
+  const where = input.owner ? ownerMatchWhere(plate, input.owner) : null;
+  const existing = where
+    ? await client.vehicle.findFirst({
+        where,
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          vin: true,
+          year: true,
+          fuelType: true,
+          wheelPosition: true,
+          colorName: true,
+          capacity: true,
+          purpose: true,
+          ownerRegnum: true,
+          mileage: true,
+        },
+      })
     : null;
 
-  // 2) Plate-ээр
-  if (!existing) {
-    const byPlate = await client.vehicle.findUnique({
-      where: { plate },
-      select: fullSelect,
-    });
-    if (byPlate) {
-      if (vin && byPlate.vin && byPlate.vin !== vin) {
-        // Дугаар өөр машинд шилжсэн — хуучин эзнээс plate-ийг чөлөөлнө.
-        // Тэмдэглэхээс өмнө хуучин дугаарыг нь түүхэнд хадгална.
-        await recordPlateChange(client, byPlate.id, byPlate.plate);
-        await client.vehicle.update({
-          where: { id: byPlate.id },
-          data: { plate: `${plate}#OLD-${byPlate.id.slice(-6)}` },
-        });
-      } else {
-        existing = byPlate;
-      }
-    }
-  }
-
   if (existing) {
-    if (existing.plate !== plate) {
-      // VIN-ээр олдсон ч дугаар өөр — тухайн машины дугаар шинэчлэгдэж байна.
-      await recordPlateChange(client, existing.id, existing.plate);
-    }
     await client.vehicle.update({
       where: { id: existing.id },
-      data: enrichData(existing, plate, vin, attrs),
+      data: enrichData(existing, vin, attrs),
     });
-    return { id: existing.id };
+    return { id: existing.id, created: false };
   }
 
   const created = await client.vehicle.create({
@@ -240,40 +309,51 @@ export async function resolveVehicle(
     },
     select: { id: true },
   });
-  return { id: created.id };
+  return { id: created.id, created: true };
 }
 
 /**
- * Tenant ↔ Vehicle link-ийг олж/үүсгэнэ. customerId өгөгдсөн бол шинэчилнэ
- * (харьяалал tenant бүрт өөр).
+ * Tenant Customer-ийн эзэмшигч түлхүүрүүдийг уншина (resolveVehicleForOwner-д
+ * дамжуулахад). Customer энэ tenant-д байхгүй бол null.
+ */
+export async function ownerFromCustomer(
+  client: Client,
+  tenantId: string,
+  customerId: string | null | undefined,
+): Promise<VehicleOwner | null> {
+  if (!customerId) return null;
+  const c = await client.customer.findFirst({
+    where: { id: customerId, tenantId },
+    select: { id: true, accountId: true, phone: true },
+  });
+  if (!c) return null;
+  return { tenantId, customerId: c.id, accountId: c.accountId, phone: c.phone };
+}
+
+/**
+ * Tenant ↔ Vehicle link-ийг олж/үүсгэнэ. customerId-г ЗӨВХӨН link-д эзэн
+ * байхгүй үед тавина — байгаа эзнийг дарж бичихгүй (эзэн солигдвол засварын
+ * түүх шинэ хүнд шилжих ёсгүй; шинэ эзэнд шинэ Vehicle мөр бүртгэнэ).
+ * Буцаах `customerId` = link-ийн БОДИТ эзэн (дамжуулснаас өөр байж болно).
  */
 export async function ensureTenantVehicle(
   client: Client,
   input: { tenantId: string; vehicleId: string; customerId?: string | null },
-): Promise<{ id: string }> {
+): Promise<{ id: string; customerId: string | null }> {
   const { tenantId, vehicleId } = input;
   const customerId = input.customerId ?? null;
-  return client.tenantVehicle.upsert({
+  const link = await client.tenantVehicle.upsert({
     where: { tenantId_vehicleId: { tenantId, vehicleId } },
     create: { tenantId, vehicleId, customerId },
-    update: customerId ? { customerId } : {},
-    select: { id: true },
+    update: {},
+    select: { id: true, customerId: true },
   });
-}
-
-/**
- * Global Vehicle resolve + tenant link-ийг нэг дор. Захиалга/оношилгоо/цаг
- * захиалга баталгаажуулах урсгалд тохиромжтой. Транзакц дотор дуудна.
- */
-export async function upsertTenantVehicle(
-  client: Client,
-  input: { tenantId: string; customerId?: string | null; plate: string } & VehicleAttrs,
-): Promise<{ vehicleId: string; linkId: string }> {
-  const vehicle = await resolveVehicle(client, input);
-  const link = await ensureTenantVehicle(client, {
-    tenantId: input.tenantId,
-    vehicleId: vehicle.id,
-    customerId: input.customerId,
-  });
-  return { vehicleId: vehicle.id, linkId: link.id };
+  if (customerId && !link.customerId) {
+    await client.tenantVehicle.update({
+      where: { id: link.id },
+      data: { customerId },
+    });
+    return { id: link.id, customerId };
+  }
+  return link;
 }

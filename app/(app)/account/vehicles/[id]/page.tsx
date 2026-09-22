@@ -16,6 +16,7 @@ import {
   type PaymentStatus,
 } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
+import { customerOwnershipFilters } from "@/lib/vehicles";
 import { RefreshHurButton } from "./refresh-hur-button";
 
 export const metadata = { title: "Машины дэлгэрэнгүй" };
@@ -82,10 +83,14 @@ export default async function AccountVehiclePage({
   });
   if (!vehicle) notFound();
 
-  // Бүх tenant дамнасан түүх (эзэмшигчид нээлттэй — Phase 3 шийдвэр).
+  // Бүх tenant дамнасан түүх (эзэмшигчид нээлттэй — Phase 3 шийдвэр), гэхдээ
+  // ЗӨВХӨН энэ эзний: захиалгын Customer нь account-той (accountId/утас)
+  // холбоотой байх ёстой. Vehicle мөр эзэн тус бүрт тусдаа болсон ч хуучин
+  // (миграцаар салгаагүй) олон эзэнтэй мөр дээр өмнөх эзний түүх харагдахгүй.
+  const owned = customerOwnershipFilters(account.id, account.phone);
   const [orders, appointments] = await Promise.all([
     prisma.serviceOrder.findMany({
-      where: { vehicleId: id },
+      where: { vehicleId: id, OR: owned },
       orderBy: { createdAt: "desc" },
       take: 100,
       select: {
@@ -103,7 +108,7 @@ export default async function AccountVehiclePage({
       },
     }),
     prisma.appointment.findMany({
-      where: { vehicleId: id },
+      where: { vehicleId: id, OR: [{ accountId: account.id }, ...owned] },
       orderBy: { requestedAt: "desc" },
       take: 100,
       select: {

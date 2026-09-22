@@ -2,13 +2,16 @@ import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk } from "@/lib/api";
 import { getApiAccountFromRequest } from "@/lib/auth/account-api-token";
 import { prisma } from "@/lib/prisma";
-import { resolveVehicle } from "@/lib/vehicles";
+import { customerOwnershipFilters, resolveVehicleForOwner } from "@/lib/vehicles";
 
 // GET /api/v1/app/vehicles — миний машинууд (auth).
 export async function GET(req: Request) {
   const account = await getApiAccountFromRequest(req);
   if (!account) return jsonError(401, "Нэвтрэх шаардлагатай.");
 
+  // Тоолуур зөвхөн энэ эзний (account/утсаар холбоотой Customer) захиалга —
+  // хуучин олон эзэнтэй мөр дээр өмнөх эзний ажил тоологдохгүй.
+  const owned = customerOwnershipFilters(account.id, account.phone);
   const links = await prisma.accountVehicle.findMany({
     where: { accountId: account.id },
     orderBy: { createdAt: "desc" },
@@ -28,8 +31,8 @@ export async function GET(req: Request) {
           purpose: true,
           _count: {
             select: {
-              serviceOrders: { where: { status: "COMPLETED" } },
-              diagnosticReports: true,
+              serviceOrders: { where: { status: "COMPLETED", OR: owned } },
+              diagnosticReports: { where: { OR: owned } },
             },
           },
         },
@@ -110,7 +113,10 @@ export async function POST(req: Request) {
 
   try {
     const vehicle = await prisma.$transaction(async (tx) => {
-      const v = await resolveVehicle(tx, {
+      // Vehicle = эзэмшигчийн бүртгэл: энэ account (эсвэл утсаар нь холбогдсон
+      // tenant Customer)-ийн мөрийг тааруулна; өөр эзний ижил дугаартай мөр
+      // байвал шинээр үүсгэнэ — өмнөх эзний түүх энд харагдахгүй.
+      const v = await resolveVehicleForOwner(tx, {
         plate,
         vin: vin || null,
         make,
@@ -121,6 +127,7 @@ export async function POST(req: Request) {
         colorName: colorName || null,
         capacity,
         purpose: purpose || null,
+        owner: { accountId: account.id, phone: account.phone },
       });
       const link = await tx.accountVehicle.create({
         data: { accountId: account.id, vehicleId: v.id },
@@ -165,8 +172,9 @@ export async function POST(req: Request) {
     });
     return jsonOk({ vehicle }, { status: 201 });
   } catch (e) {
+    // plate unique биш болсон тул P2002 зөвхөн AccountVehicle давхардалд буудна.
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      return jsonError(409, "Энэ дугаар аль хэдийн бүртгэгдсэн.");
+      return jsonError(409, "Энэ машин таны жагсаалтад аль хэдийн байна.");
     }
     return jsonError(500, "Машин нэмэхэд алдаа гарлаа.");
   }

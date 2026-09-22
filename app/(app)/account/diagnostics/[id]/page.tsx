@@ -15,7 +15,7 @@ import {
   emptySchema,
 } from "@/lib/diagnostics";
 import { prisma } from "@/lib/prisma";
-import { ownedVehicleIdsForAccount } from "@/lib/vehicles";
+import { customerOwnershipFilters } from "@/lib/vehicles";
 
 export const metadata = {
   title: "Оношилгооны тайлан",
@@ -36,17 +36,11 @@ export default async function AccountDiagnosticDetailPage({
 }) {
   const account = await requireAccount();
   const { id } = await params;
-  const ownedVehicleIds = await ownedVehicleIdsForAccount(account.id, account.phone);
 
   const report = await prisma.diagnosticReport.findFirst({
     where: {
       id,
-      OR: [
-        { customer: { accountId: account.id } },
-        ...(ownedVehicleIds.length
-          ? [{ vehicleId: { in: ownedVehicleIds } }]
-          : []),
-      ],
+      OR: customerOwnershipFilters(account.id, account.phone),
     },
     select: {
       id: true,

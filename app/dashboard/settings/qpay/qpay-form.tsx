@@ -18,7 +18,8 @@ type Initial = {
   hasPassword: boolean;
 };
 
-const FIELD_MW = "max-w-sm";
+// Талбарууд grid нүдээ дүүргэнэ (өмнө max-w-sm — хуудас "суга" харагддаг байв).
+const FIELD_MW = "min-w-0";
 
 export function TenantQPayForm({ initial }: { initial: Initial | null }) {
   const [state, formAction, pending] = useActionState<
@@ -48,7 +49,7 @@ export function TenantQPayForm({ initial }: { initial: Initial | null }) {
         message={state?.message && !state.ok ? state.message : undefined}
       />
 
-      <div className="grid gap-3.5 sm:grid-cols-2">
+      <div className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
         <Field
           label="Username"
           htmlFor="qp-username"
@@ -137,7 +138,7 @@ export function TenantQPayForm({ initial }: { initial: Initial | null }) {
         </Field>
       </div>
 
-      <label className="flex items-start gap-3 p-3.5 rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel2)] cursor-pointer hover:border-[var(--oc-line2)] max-w-md">
+      <label className="flex items-start gap-3 p-3.5 rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel2)] cursor-pointer hover:border-[var(--oc-line2)]">
         <input
           type="checkbox"
           name="enabled"
@@ -158,16 +159,15 @@ export function TenantQPayForm({ initial }: { initial: Initial | null }) {
     </form>
 
     <div className="flex gap-2 pt-3 border-t border-[var(--oc-line2)]">
-      <Btn type="submit" form="qpay-form" disabled={pending} className="flex-1">
+      <Btn type="submit" form="qpay-form" disabled={pending}>
         {pending ? "..." : "Хадгалах"}
       </Btn>
       {isConfigured ? (
         <ConfirmForm
           action={deleteTenantQPayAction}
-          className="flex-1"
           message="QPay тохиргоог устгах уу?"
         >
-          <Btn type="submit" variant="danger" className="w-full">
+          <Btn type="submit" variant="danger">
             Тохиргоог устгах
           </Btn>
         </ConfirmForm>

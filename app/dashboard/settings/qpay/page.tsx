@@ -21,7 +21,7 @@ export default async function TenantQPayPage() {
         </p>
       </div>
 
-      <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-5 sm:p-6 max-w-3xl">
+      <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] p-4 sm:p-5">
         <TenantQPayForm
           initial={
             settings

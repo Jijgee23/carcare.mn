@@ -3,7 +3,7 @@ import { jsonError, jsonOk } from "@/lib/api";
 import { getApiAccountFromRequest } from "@/lib/auth/account-api-token";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
-import { ownedVehicleIdsForAccount } from "@/lib/vehicles";
+import { customerOwnershipFilters } from "@/lib/vehicles";
 import { bookingDateKey, bookingDayBounds } from "@/lib/booking-time";
 
 // GET /api/v1/app/diagnostics — миний оношилгооны тайлангуудын жагсаалт (auth,
@@ -36,16 +36,13 @@ export async function GET(req: Request) {
     return jsonError(400, "Он буруу байна.");
   }
 
-  const ownedVehicleIds = await ownedVehicleIdsForAccount(account.id, account.phone);
+  // Түүх зөвхөн эзэнд: тайлангийн Customer нь энэ account-той (accountId эсвэл
+  // утсаар) холбоотой байх ёстой. Машин-аар (vehicleId) нэмж багтаахгүй —
+  // ижил машины өмнөх эзний тайлан харагдахгүй. vehicleId шүүлт нь өөрийн
+  // тайлан дотроо л ажиллана.
+  const owned = customerOwnershipFilters(account.id, account.phone);
 
-  const where: Prisma.DiagnosticReportWhereInput = {
-    OR: [
-      { customer: { accountId: account.id } },
-      ...(ownedVehicleIds.length
-        ? [{ vehicleId: { in: ownedVehicleIds } }]
-        : []),
-    ],
-  };
+  const where: Prisma.DiagnosticReportWhereInput = { OR: owned };
   if (vehicleIdFilter) where.vehicleId = vehicleIdFilter;
   if (severity) where.maxSeverity = severity as "GOOD" | "WARN" | "BAD";
   if (year) {
@@ -72,12 +69,7 @@ export async function GET(req: Request) {
   }
 
   const facetRows = await prisma.diagnosticReport.findMany({
-    where: {
-      OR: [
-        { customer: { accountId: account.id } },
-        ...(ownedVehicleIds.length ? [{ vehicleId: { in: ownedVehicleIds } }] : []),
-      ],
-    },
+    where: { OR: owned },
     select: { createdAt: true },
   });
   const availableYears = [...new Set(facetRows.map((r) => Number(bookingDateKey(r.createdAt).slice(0, 4))))].sort(

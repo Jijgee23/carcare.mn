@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
-import Script from "next/script";
 import "./globals.css";
 
 const geist = Geist({
@@ -8,6 +7,13 @@ const geist = Geist({
   subsets: ["latin", "cyrillic"],
   display: "swap",
 });
+
+// <html>-д `light` class болон хумигдсан sidebar-ийн өргөнийг localStorage-оос
+// уншаад тавьдаг богино script. Өөрчлөгдвөл src (data: URL) өөрчлөгдөж React
+// шинэ resource гэж үзнэ.
+const THEME_INIT_CODE =
+  "(function(){try{if(localStorage.getItem('theme')==='light')document.documentElement.classList.add('light');if(localStorage.getItem('carcare:sidebar:collapsed')==='1')document.documentElement.style.setProperty('--sidebar-w','4.5rem')}catch(e){}})()";
+const THEME_INIT_SRC = `data:text/javascript,${encodeURIComponent(THEME_INIT_CODE)}`;
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://carservice.mn"),
@@ -67,16 +73,17 @@ export default function RootLayout({
       >
         {/* Theme болон sidebar-ийн хумигдсан төлөвийг paint-аас өмнө тогтооно —
             дараа нь "flash" (буруу өнгө/өргөнөөс гэнэт шилжих) гарахгүй.
-            `next/script`-ийн `beforeInteractive` — түүхий `<script>` тег шууд
-            JSX-д бичвэл (client transition/redirect үед) React "script tag
-            never executed on client" гэж анхааруулдаг тул үүгээр зайлсхийнэ. */}
-        <Script
-          id="theme-init"
-          strategy="beforeInteractive"
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{if(localStorage.getItem('theme')==='light')document.documentElement.classList.add('light');if(localStorage.getItem('carcare:sidebar:collapsed')==='1')document.documentElement.style.setProperty('--sidebar-w','4.5rem')}catch(e){}})()`,
-          }}
-        />
+
+            Яагаад `async` + `data:` URL вэ? React 19 нь `<script async src>`-ийг
+            "hoistable resource" гэж үзнэ: SSR-д <head>-д хойшлуулж бичдэг, client
+            дээр root layout дахин mount хийгдсэн ч (top-level redirect boundary,
+            hydration recovery) DOM-д байгаа тег-ийг src-ээр олж дахин ашигладаг.
+            Харин inline `<script>` (мөн next/script-ийн beforeInteractive — тэр ч
+            бас түүхий <script> тег гаргадаг) client mount бүрт React-ийн
+            "Encountered a script tag while rendering React component"
+            анхааруулгыг өгдөг. data: URL нь сүлжээний хүсэлтгүй тул шууд
+            бэлэн болж, ердийн inline script-тэй адил CSS ачаалахаас өмнө ажиллана. */}
+        <script async src={THEME_INIT_SRC} />
         {children}
       </body>
     </html>

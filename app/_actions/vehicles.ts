@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canEdit } from "@/lib/auth/roles";
@@ -11,7 +10,11 @@ import { normalizeWheelPosition } from "@/lib/hur_service";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { enforceCountLimit } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
-import { normalizePlate, normalizeVin, resolveVehicle } from "@/lib/vehicles";
+import {
+  normalizePlate,
+  ownerFromCustomer,
+  resolveVehicleForOwner,
+} from "@/lib/vehicles";
 
 export type VehicleActionState = {
   ok: boolean;
@@ -21,6 +24,21 @@ export type VehicleActionState = {
 
 // Машин аль хэдийн ЭНЭ tenant-д бүртгэлтэй болохыг транзакц дотроос дохиоллох.
 class VehicleAlreadyInTenant extends Error {}
+
+/**
+ * Энэ tenant-д тухайн машинтай холбоотой засварын хуудас/оношилгоо байгаа эсэх.
+ * Устгах болон эзэн солихыг хориглох нэг ижил шалгуур.
+ */
+async function vehicleHasHistory(
+  tenantId: string,
+  vehicleId: string,
+): Promise<boolean> {
+  const [orderCount, reportCount] = await Promise.all([
+    prisma.serviceOrder.count({ where: { tenantId, vehicleId } }),
+    prisma.diagnosticReport.count({ where: { tenantId, vehicleId } }),
+  ]);
+  return orderCount > 0 || reportCount > 0;
+}
 
 function s(fd: FormData, key: string): string {
   const v = fd.get(key);
@@ -174,108 +192,66 @@ export async function createVehicleAction(
     return { ok: false, message: limit.message };
   }
 
-  const { customerId: selectedCustomerId, isPostpaid, ...attrs } = data;
+  const { customerId, isPostpaid, ...attrs } = data;
 
-  // Эзэн сонгоогүй бөгөөд машин өөр tenant-д эзэнтэй бүртгэлтэй бол эзнийг нь
-  // хамт авчирна: энэ tenant-д утас/account-аар нь байвал холбоно, үгүй бол
-  // (план хязгаар зөвшөөрвөл) шинээр үүсгэнэ.
-  let customerId = selectedCustomerId;
-  let importOwner: {
-    fullName: string;
-    phone: string;
-    email: string | null;
-    accountId: string | null;
-  } | null = null;
-  if (!customerId) {
-    const vin = normalizeVin(data.vin);
-    const existingVehicle =
-      (vin
-        ? await prisma.vehicle.findUnique({ where: { vin }, select: { id: true } })
-        : null) ??
-      (await prisma.vehicle.findUnique({
-        where: { plate: normalizePlate(data.plate) },
-        select: { id: true },
-      }));
-    if (existingVehicle) {
-      const otherLink = await prisma.tenantVehicle.findFirst({
-        where: {
-          vehicleId: existingVehicle.id,
-          tenantId: { not: user.tenantId },
-          customerId: { not: null },
-        },
-        orderBy: { updatedAt: "desc" },
-        select: {
-          customer: {
-            select: { fullName: true, phone: true, email: true, accountId: true },
-          },
-        },
-      });
-      const src = otherLink?.customer;
-      if (src) {
-        const dup = await prisma.customer.findFirst({
-          where: {
-            tenantId: user.tenantId,
-            OR: [
-              { phone: src.phone },
-              ...(src.accountId ? [{ accountId: src.accountId }] : []),
-            ],
-          },
-          select: { id: true },
-        });
-        if (dup) {
-          customerId = dup.id;
-        } else {
-          const custLimit = await enforceCountLimit(
-            user.tenantId,
-            PLAN_LIMIT_CODES.MAX_CUSTOMERS,
-            () => prisma.customer.count({ where: { tenantId: user.tenantId } }),
-          );
-          if (custLimit.allowed) importOwner = src;
-        }
-      }
-    }
+  // Vehicle = эзэмшигчийн бүртгэл: сонгосон Customer-ийн account/утсаар ижил
+  // эзний мөрийг тааруулна; өөр эзний ижил дугаартай мөр байсан ч ШИНЭ мөр
+  // үүсгэнэ (машин зарагдсан — түүх өмнөх эзэнд үлдэнэ). Өөр tenant-аас эзэн
+  // "импортлох" байхгүй: дугаар эзнийг тодорхойлохгүй.
+  const canonPlate = normalizePlate(data.plate);
+
+  // Давхардал: энэ tenant-д ижил дугаартай машин ЯГ энэ Customer-т (эсвэл
+  // эзэн сонгоогүй бол эзэнгүй) аль хэдийн бүртгэлтэй бол дахин үүсгэхгүй.
+  const duplicate = await prisma.tenantVehicle.findFirst({
+    where: {
+      tenantId: user.tenantId,
+      customerId: customerId ?? null,
+      vehicle: { plate: canonPlate },
+    },
+    select: { id: true },
+  });
+  if (duplicate) {
+    return {
+      ok: false,
+      fieldErrors: {
+        plate: customerId
+          ? "Энэ үйлчлүүлэгчид ийм дугаартай машин аль хэдийн бүртгэлтэй байна."
+          : "Энэ улсын дугаартай эзэнгүй машин аль хэдийн бүртгэлтэй байна.",
+      },
+    };
   }
 
   let vehicleId: string;
-  let importedCustomerId: string | null = null;
   try {
-    const result = await prisma.$transaction(async (tx) => {
-      const vehicle = await resolveVehicle(tx, attrs);
+    vehicleId = await prisma.$transaction(async (tx) => {
+      const owner = await ownerFromCustomer(tx, user.tenantId, customerId);
+      const vehicle = await resolveVehicleForOwner(tx, { ...attrs, owner });
       const existing = await tx.tenantVehicle.findUnique({
         where: {
           tenantId_vehicleId: { tenantId: user.tenantId, vehicleId: vehicle.id },
         },
-        select: { id: true },
+        select: { id: true, customerId: true },
       });
-      if (existing) throw new VehicleAlreadyInTenant();
-      let linkCustomerId = customerId;
-      let createdCustomerId: string | null = null;
-      if (!linkCustomerId && importOwner) {
-        const created = await tx.customer.create({
-          data: {
-            tenantId: user.tenantId,
-            fullName: importOwner.fullName,
-            phone: importOwner.phone,
-            email: importOwner.email,
-            accountId: importOwner.accountId,
-          },
-          select: { id: true },
+      if (existing) {
+        // Ижил эзний мөр энэ tenant-д ЭЗЭНГҮЙ link-тэй байсан бол эзнийг нь
+        // тавьж "өөриймшүүлнэ"; эзэнтэй бол давхардал.
+        if (existing.customerId || !customerId) throw new VehicleAlreadyInTenant();
+        await tx.tenantVehicle.update({
+          where: { id: existing.id },
+          data: { customerId, isPostpaid },
         });
-        linkCustomerId = created.id;
-        createdCustomerId = created.id;
+        return vehicle.id;
       }
       await tx.tenantVehicle.create({
         data: {
           tenantId: user.tenantId,
           vehicleId: vehicle.id,
-          customerId: linkCustomerId,
+          customerId,
           isPostpaid,
         },
       });
-      return { vehicleId: vehicle.id, createdCustomerId };
+      return vehicle.id;
     });
-    vehicleId = result.vehicleId;
-    importedCustomerId = result.createdCustomerId;
   } catch (e) {
     if (e instanceof VehicleAlreadyInTenant) {
       return {
@@ -301,20 +277,7 @@ export async function createVehicleAction(
     after: data,
   });
 
-  // Өөр tenant-аас эзнийг нь хамт авчирсан бол audit-д бүртгэнэ.
-  if (importedCustomerId && importOwner) {
-    await logAudit({
-      tenantId: user.tenantId,
-      userId: user.id,
-      entity: "Customer",
-      entityId: importedCustomerId,
-      action: "CREATE",
-      summary: `${importOwner.fullName || importOwner.phone} · машины эзнээр автоматаар үүссэн (${data.plate})`,
-      after: { fullName: importOwner.fullName, phone: importOwner.phone },
-    });
-  }
-
-  const finalCustomerId = customerId ?? importedCustomerId;
+  const finalCustomerId = customerId;
   revalidatePath("/dashboard/vehicles");
   revalidatePath("/dashboard/customers");
   if (finalCustomerId) {
@@ -346,12 +309,15 @@ export async function updateVehicleAction(
     return { ok: false, fieldErrors: errors };
   }
 
-  const { customerId, isPostpaid, ...attrs } = data;
+  // Улсын дугаар бүртгэсний дараа ХӨДӨЛШГҮЙ — form-оос ирсэн plate-г үл тоож
+  // (readOnly input хэвээр submit хийгдэнэ) зөвхөн бусад шинжийг шинэчилнэ.
+  const { customerId, isPostpaid, plate: _plate, ...attrs } = data;
+  void _plate;
 
-  // id = global vehicleId. Тенантад бүртгэлтэй (link байгаа) эсэхийг шалгана.
+  // id = vehicleId. Тенантад бүртгэлтэй (link байгаа) эсэхийг шалгана.
   const link = await prisma.tenantVehicle.findUnique({
     where: { tenantId_vehicleId: { tenantId: user.tenantId, vehicleId: id } },
-    select: { id: true },
+    select: { id: true, customerId: true },
   });
   if (!link) return { ok: false, message: "Машин олдсонгүй." };
 
@@ -365,9 +331,21 @@ export async function updateVehicleAction(
     }
   }
 
+  // Эзэн солих = засварын түүх өөр хүнд шилжих. Энэ tenant-д тухайн машинтай
+  // захиалга/оношилгоо байвал зөвшөөрөхгүй — шинэ эзэн бол шинээр бүртгэнэ.
+  if ((customerId ?? null) !== link.customerId && (await vehicleHasHistory(user.tenantId, id))) {
+    return {
+      ok: false,
+      fieldErrors: {
+        customerId:
+          "Засварын түүхтэй машины эзнийг солих боломжгүй — шинэ эзэн бол машиныг шинээр бүртгэнэ.",
+      },
+    };
+  }
+
   try {
     await prisma.$transaction(async (tx) => {
-      // Global Vehicle-ийн бие даасан шинжийг шинэчилнэ (бүх tenant-д нийтлэг).
+      // Машины бие даасан шинжийг шинэчилнэ (plate-гүй).
       await tx.vehicle.update({ where: { id }, data: attrs });
       // Харьяалал, дараа төлбөрт төлөвийг зөвхөн энэ tenant-ийн link дээр шинэчилнэ.
       await tx.tenantVehicle.update({
@@ -376,14 +354,6 @@ export async function updateVehicleAction(
       });
     });
   } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      return {
-        ok: false,
-        fieldErrors: {
-          plate: "Энэ улсын дугаартай өөр машин аль хэдийн бүртгэгдсэн байна.",
-        },
-      };
-    }
     return {
       ok: false,
       message: e instanceof Error ? e.message : "Шинэчлэх явцад алдаа гарлаа.",
@@ -424,15 +394,7 @@ export async function deleteVehicleAction(formData: FormData): Promise<void> {
   });
 
   // Энэ tenant-д тус машинтай холбоотой захиалга/оношилгоо байвал хасахгүй.
-  const [orderCount, reportCount] = await Promise.all([
-    prisma.serviceOrder.count({
-      where: { tenantId: user.tenantId, vehicleId: id },
-    }),
-    prisma.diagnosticReport.count({
-      where: { tenantId: user.tenantId, vehicleId: id },
-    }),
-  ]);
-  if (orderCount > 0 || reportCount > 0) {
+  if (await vehicleHasHistory(user.tenantId, id)) {
     throw new Error(
       "Энэ машинтай холбоотой засварын хуудас байгаа тул устгах боломжгүй.",
     );

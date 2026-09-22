@@ -6,6 +6,146 @@ CARCARE.MN — Хөгжүүлэлтийн түүх (Dev history)
 
 
 ------------------------------------------------------------------------
+2026-09-21  ·  суурь commit 84a7131 (Expand staff order API and extract shared order commands)
+------------------------------------------------------------------------
+
+QPay тохиргоо — layout дүүргэлт; Профайл — төхөөрөмжийн түүх хуудаслалттай
+------------------------------------------------------------------------
+- settings/qpay/page.tsx + qpay-form.tsx: панелийн `max-w-3xl`, талбарын `max-w-sm`,
+  toggle-ийн `max-w-md` хязгааруудыг хасав; 4 талбар `sm:2 / xl:4` багана; Хадгалах/
+  Устгах товч `flex-1` сунахаа больж ердийн өргөнтэй.
+- profile/page.tsx: "Нэвтэрсэн төхөөрөмжүүд" — өмнө сүүлийн 50 session татаж
+  түүхээс 10-ыг л харуулдаг байв. Одоо идэвхтэй нэвтрэлтийг бүгдийг, түүхийг DB
+  талд хуудаслаж (`?devicesPage=N`, 10 мөр, `getPageInfo`/`buildMeta` + `Pagination`
+  компонент, `pageParam="devicesPage"`) харуулна; түүхийн гарчигт нийт тоо.
+  `splitSessions` энэ хуудсанд хэрэггүй болов (where нөхцөлөөр DB-д салгана).
+  tsc/eslint цэвэр.
+
+
+Үйлчилгээ / сэлбэг бараа бүртгэх, засах хуудас — layout дүүргэлт
+------------------------------------------------------------------------
+- service-form.tsx: талбар бүрийн `max-w-xs` → `min-w-0` (grid нүдээ дүүргэнэ);
+  төрлийн карт grid `max-w-3xl`, тогтсон төрлийн хайрцаг `max-w-lg`, тайлбар
+  `max-w-2xl` хязгааруудыг хасав; "Сануулга давтамж" тусдаа мөрөөс үндсэн grid-д
+  оруулав; grid `sm:2 / lg:3 / 2xl:4` багана.
+- services/new/page.tsx: контейнер `max-w-4xl` → бүтэн өргөн (`max-w-full w-full`,
+  машины хуудастай ижил).
+- services/[id]/page.tsx: `lg:grid-cols-5` (3/2) → `lg:grid-cols-3` (2/1),
+  `items-start` — форм илүү өргөн, баруун картууд сунахгүй.
+  tsc/eslint цэвэр.
+
+
+Үйлчилгээ / сэлбэг бараа / оношилгооны загварын үнийн талбар — мөнгөний формат
+------------------------------------------------------------------------
+- app/dashboard/services/service-form.tsx: "Үнэ (₮)" / "Борлуулах үнэ (₮)" ба
+  "Өртөг үнэ (₮)" (сэлбэг бараа) талбарууд `liveFormatPriceInput`/`formatPriceInput`-ээр
+  мянгатын таслалтай ("45,000"); засах үед анхны утга форматтай ачаална;
+  placeholder "45,000"/"32,000". Үлдэгдэл/хугацааны decimal талбар хөндөгдөөгүй.
+- app/dashboard/diagnostics/templates/template-editor.tsx: "Үнэ (₮)" талбар
+  uncontrolled defaultValue → controlled state, ижил формат (tenant + system admin
+  редактор хоёулаа энэ компонент). Сервер тал (services/diagnostic-templates/
+  system-diagnostic-templates parseDecimal) таслал, зайг аль хэдийн цэвэрлэдэг тул
+  өөрчлөлтгүй. tsc/eslint цэвэр.
+
+
+Захиалгын дэлгэрэнгүй — төлбөр бүртгэх дүнгийн талбарын мөнгөний формат
+------------------------------------------------------------------------
+- app/dashboard/orders/[id]/order-payments-list.tsx: дүнгийн input-ийг ажлын
+  мөрийн үнийн талбартай ижил болгов — бичих үед `liveFormatPriceInput`
+  ("150,000"), blur дээр `formatPriceInput`, баруун талд ₮ тэмдэг, баруун
+  зэрэгцүүлэлт + tabular-nums; placeholder "Үлдэгдэл 150,000" (өмнө нь
+  "0 / 150000.00" гэж форматгүй харагддаг байв). Амжилттай бүртгэсний дараа
+  талбар хоосорно (effect биш, render үед өмнөх action state-тэй харьцуулах —
+  react-hooks/set-state-in-effect дүрэм). Сервер тал `parseOrderPaymentAmount`
+  таслал/зайг аль хэдийн цэвэрлэдэг тул өөрчлөлт хэрэггүй. tsc/eslint цэвэр.
+
+
+Vehicle = эзэмшигчийн бүртгэл — дугаар засахгүй, plate unique биш, түүх өмнөх эзэнд
+------------------------------------------------------------------------
+Шийдвэр: улсын дугаарыг хэрэглэгч ч, ажилтан ч засахгүй (бүртгэсний дараа
+хөдөлшгүй; буруу бол устгаж дахин бүртгэнэ). Машин зарагдвал шинэ эзэн
+шинээр бүртгэнэ (дугаар солигдсон эсэх хамаагүй) → ШИНЭ Vehicle мөр; өмнөх
+эзний засварын түүх хуучин мөрөнд үлдэж шинэ эзэнд огт харагдахгүй. Тиймээс
+Vehicle "глобал hub" биш, "нэг эзэмшигчийн нэг машины бүртгэл" болов.
+
+- prisma/schema.prisma: `Vehicle.plate`, `Vehicle.vin` @unique → @@index;
+  `VehiclePlateHistory` модель хасав. Миграц 20260921090000_vehicle_per_owner:
+  unique index устгаж энгийн индекс, `#OLD-` tombstone дугааруудыг жинхэнэ
+  утгад сэргээж (split_part), VehiclePlateHistory хүснэгт DROP. Legacy "нэг
+  мөр олон эзэн" мөрүүдийг салгаагүй (жинхэнэ эзнийг мэдэх аргагүй) — оронд
+  нь app талын түүхийн query-г Customer эзэмшлээр хамгаалав (доор).
+- lib/vehicles.ts: `resolveVehicle` → `resolveVehicleForOwner(client, {plate,
+  attrs, owner})`. VIN-first хайлт, tombstone салбар, plate history бичилт
+  устгав. Ижил дугаартай мөрийг ЗӨВХӨН ижил эзэнд тааруулна: (1) энэ tenant-д
+  яг энэ Customer-т link-тэй, (2) accountId (AccountVehicle / Customer.accountId),
+  (3) утас (normalizePhone; equals+endsWith) — account холбоосгүй талд л.
+  Хоосон/null утгаар нөхцөл үүсгэхгүй; энэ tenant-д ӨӨР эзэнтэй link-тэй
+  мөрийг хасна. Owner null → үргэлж шинэ мөр. `ensureTenantVehicle` байгаа
+  customerId-г дарж бичихгүй (null үед л тавина), бодит эзнийг буцаана.
+  `ownerFromCustomer`, `customerOwnershipFilters` (customer relation OR)
+  helper. `upsertTenantVehicle` (дуудагчгүй) хасав.
+- Дуудагчид owner дамжуулна: app/_actions/vehicles.ts (create — "өөр
+  tenant-аас эзэн импортлох" блок хасав; давхардал = ижил tenant+plate+ижил
+  customer; ижил эзний мөр энэ tenant-д эзэнгүй link-тэй бол өөриймшүүлнэ),
+  quick-create.ts (link-ийн бодит customerId буцаана), api/v1/vehicles POST
+  (эзэнгүй үед ижил tenant+plate эзэнгүй мөрийг дахин ашиглана; upsert эзэн
+  дарахгүй), api/v1/app/vehicles POST + account-vehicles.ts (owner = account).
+  Цаг баталгаажуулах (appointments.ts, api/v1/appointments/[id]): link өөр
+  эзэнтэй бол appointment.vehicleId null үлдээнэ (мухардлаас сэргийлнэ).
+- Дугаар засахыг хаах: updateVehicleAction plate-г үл тоох (readOnly input
+  submit хэвээр), vehicle-form.tsx edit горимд plate readOnly + hint. Эзэн
+  солих: энэ tenant-д захиалга/оношилгоотой бол хориглоно (`vehicleHasHistory`
+  — delete guard-тай ижил); form-д `ownerLocked` prop → Select disabled + hint.
+  dashboard/vehicles/[id]: "Дугаарын түүх" карт хасав.
+- HUR prefill 4 route: findUnique(plate) → findFirst(orderBy updatedAt desc).
+  api/hur/lookup: `registered` = энэ tenant-д ижил plate link байгаа эсэх
+  (мэдээлнэ, хаахгүй); өөр tenant-ийн эзний нэр/утас буцаах блок хасав (PII).
+  create-vehicle-modal canSubmit-аас `!alreadyRegistered` хасав; банн текст
+  "өөр эзэн бол шинээр бүртгэж болно". Хуучирсан P2002 handler-ууд: plate
+  мессеж хасав; app талын AccountVehicle давхардал → "таны жагсаалтад байна".
+- App түүх зөвхөн эзэнд (legacy олон эзэнтэй мөр ч хамгаалагдана): account/
+  vehicles/[id], history/, history/[id], diagnostics/, diagnostics/[id] хуудас
+  + api/v1/app/orders(+[id]), diagnostics(+[id]), vehicles (_count) — `vehicleId
+  in owned` нөхцөлийг `customerOwnershipFilters(accountId, phone)`-ээр сольж
+  захиалга/тайлан нь account-той холбоотой Customer-ийнх байхыг шаардана.
+  diagnostic-reports.ts: машин сонгосон customer-ийнх эсэхийг шалгана
+  (order-create-references-тэй ижил).
+- fixture-seed: plateHistory seed хасав.
+Баталгаажуулалт: prisma migrate dev локал OK (tombstone 0, индекс шинэ,
+хүснэгт алга); tsc/eslint цэвэр (tests/diagnostic-report-atomicity.test.ts-ийн
+байхгүй модулийн алдаа урьд байсан); DB дээр rollback транзакцад 10 сценари
+скрипт PASS (ижил утастай account/өөр tenant customer → нэг мөр; өөр
+утас/өөр customer → шинэ мөр; ensureTenantVehicle эзэн дарахгүй; хоосон
+owner → шинэ мөр; P-ийн захиалга X-д харагдаж Y-д харагдахгүй).
+
+
+Root layout theme-init script — React "script tag" анхааруулга (bug fix)
+------------------------------------------------------------------------
+Dev overlay: "Encountered a script tag while rendering React component…
+app/layout.tsx (73:9) @ RootLayout". Шалтгаан: React 19 энэ анхааруулгыг
+зөвхөн client дээр <script> элементийг ШИНЭЭР үүсгэх (createElement) үед
+өгдөг — hydration үед өгдөггүй. Тиймээс root layout client талд дахин
+mount хийгдэж байна гэсэн үг (Next-ийн top-level RedirectBoundary redirect
+барихдаа бүх мод-ыг null → дахин render хийдэг; эсвэл hydration
+mismatch-ийн recovery). next/script-ийн `beforeInteractive` (app dir) ч
+мөн түүхий <script> тег (`__next_s.push`) render хийдэг тул анхааруулгаас
+хамгаалдаггүй байсан; дээр нь inline код нь Next runtime chunk ачаалсны
+дараа л ажилладаг (app-bootstrap → loadScriptsInSequence) — flash эрсдэл
+өндөр байв.
+
+- app/layout.tsx: next/script хассан. Оронд нь `<script async src={data: URL}>`
+  — React 19 "hoistable resource": Fizz SSR-д <head> preamble-д бичдэг
+  (react-dom/server smoke test-ээр батлав), client дээр root remount болсон
+  ч `script[async][src=…]`-ээр DOM-оос олж дахин ашигладаг → createElement
+  байхгүй → анхааруулга гарахгүй, код дахин ажиллахгүй. data: URL сүлжээний
+  хүсэлтгүй тул CSS ачаалахаас өмнө ажиллана (flash-гүй).
+  Баталгаажуулалт: tsc цэвэр (tests/diagnostic-report-atomicity.test.ts-ийн
+  урьд байсан missing module алдаа л үлдсэн, холбоогүй), eslint цэвэр.
+- Тэмдэглэл: анхааруулга алга болсон ч root remount-ын шалтгаан (hydration
+  алдаа байвал) тусад нь шалгах нь зүйтэй — dev overlay-д өөр алдаа
+  хамт гарч байсан эсэхийг харах.
+
+------------------------------------------------------------------------
 2026-09-10  ·  суурь commit d983188 (branch swap)
 ------------------------------------------------------------------------
 

@@ -78,11 +78,14 @@ export function VehicleForm({
   customers,
   defaultCustomerId,
   backHref = "/dashboard/vehicles",
+  ownerLocked = false,
 }: {
   initial?: Initial;
   customers: Customer[];
   defaultCustomerId?: string;
   backHref?: string;
+  /** Энэ tenant-д засварын түүхтэй → эзэмшигч солих боломжгүй. */
+  ownerLocked?: boolean;
 }) {
   const isEdit = Boolean(initial?.id);
   const action = isEdit
@@ -240,12 +243,25 @@ export function VehicleForm({
       <FormError message={state?.message} />
 
       <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        <Field label="Эзэмшигч" htmlFor="customerId" error={fe.customerId} className={FIELD_MW}>
+        <Field
+          label="Эзэмшигч"
+          htmlFor="customerId"
+          hint={
+            ownerLocked
+              ? "Засварын түүхтэй тул эзэн солигдохгүй — шинэ эзэн бол шинээр бүртгэнэ."
+              : undefined
+          }
+          error={fe.customerId}
+          className={FIELD_MW}
+        >
+          {/* Түүхтэй машины эзнийг солих = түүх өөр хүнд шилжих → хориглоно.
+              Select утгаа hidden input-аар дамжуулдаг тул disabled ч submit хийгдэнэ. */}
           <Select
             id="customerId"
             name="customerId"
             value={customerId}
             onChange={setCustomerId}
+            disabled={ownerLocked}
             error={fe.customerId}
             options={customers.map((c) => ({
               value: c.id,
@@ -259,11 +275,13 @@ export function VehicleForm({
           label="Улсын дугаар"
           htmlFor="plate"
           hint={
-            hurLoading
-              ? "HUR-аас татаж байна..."
-              : isValidPlate
-                ? "Зөв · мэдээлэл татна"
-                : "Жишээ: 1234УБА"
+            isEdit
+              ? "Дугаар засагдахгүй. Буруу бол устгаад дахин бүртгэнэ."
+              : hurLoading
+                ? "HUR-аас татаж байна..."
+                : isValidPlate
+                  ? "Зөв · мэдээлэл татна"
+                  : "Жишээ: 1234УБА"
           }
           error={
             fe.plate ??
@@ -274,6 +292,8 @@ export function VehicleForm({
           className={FIELD_MW}
         >
           <div className="relative">
+            {/* Засах горимд дугаар ХӨДӨЛШГҮЙ (readOnly — form-д submit хийгдэх
+                хэвээр, сервер үл тоодог). Шинэ эзэн бол шинээр бүртгэнэ. */}
             <input
               id="plate"
               name="plate"
@@ -281,9 +301,10 @@ export function VehicleForm({
               required
               maxLength={7}
               value={plate}
+              readOnly={isEdit}
               onChange={(e) => setPlate(e.target.value.toUpperCase())}
               aria-invalid={showFormatError || Boolean(fe.plate)}
-              className={`auth-input uppercase pr-10 ${fe.plate || showFormatError
+              className={`auth-input uppercase pr-10 ${isEdit ? "opacity-70 cursor-not-allowed" : ""} ${fe.plate || showFormatError
                   ? "border-red-500/50"
                   : isValidPlate
                     ? "border-emerald-500/40"
@@ -513,8 +534,8 @@ export function VehicleForm({
 
       {alreadyRegistered ? (
         <div className="rounded-[10px] border border-[var(--oc-warn)]/30 bg-[var(--oc-warn)]/10 px-4 py-3 text-xs text-[var(--oc-warn)] max-w-3xl">
-          Энэ улсын дугаартай машин танай бүртгэлд аль хэдийн байна — дахин
-          үүсгэх боломжгүй.{" "}
+          Танай бүртгэлд ижил дугаартай машин байна. Өөр эзэн бол шинээр
+          бүртгэж болно — түүх өмнөх эзэнд үлдэнэ.{" "}
           <Link
             href={`/dashboard/vehicles?q=${encodeURIComponent(trimmedPlate)}`}
             className="underline hover:no-underline"

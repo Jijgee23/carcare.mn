@@ -5,7 +5,7 @@ import { Prisma } from "@/app/generated/prisma/client";
 import { requireAccount } from "@/lib/auth/account";
 import { prisma } from "@/lib/prisma";
 import { refreshVehicleFieldsFromHur } from "@/lib/vehicle-hur-refresh";
-import { resolveVehicle } from "@/lib/vehicles";
+import { resolveVehicleForOwner } from "@/lib/vehicles";
 
 export type CreatedAccountVehicle = {
   id: string; // AccountVehicle link id
@@ -75,9 +75,10 @@ export async function quickCreateAccountVehicle(input: {
   if (Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors };
 
   try {
-    // global Vehicle-ийг resolve хийж, account-той нимгэн link үүсгэнэ.
+    // Энэ эзний Vehicle мөрийг resolve хийж (өөр эзний ижил дугаартай мөр
+    // байвал шинээр), account-той нимгэн link үүсгэнэ.
     const v = await prisma.$transaction(async (tx) => {
-      const vehicle = await resolveVehicle(tx, {
+      const vehicle = await resolveVehicleForOwner(tx, {
         plate,
         vin: vin || null,
         make,
@@ -88,6 +89,7 @@ export async function quickCreateAccountVehicle(input: {
         colorName: colorName || null,
         capacity,
         purpose: purpose || null,
+        owner: { accountId: account.id, phone: account.phone },
       });
       const link = await tx.accountVehicle.create({
         data: { accountId: account.id, vehicleId: vehicle.id },
@@ -102,8 +104,9 @@ export async function quickCreateAccountVehicle(input: {
     revalidatePath("/account");
     return { ok: true, vehicle: v };
   } catch (e) {
+    // plate unique биш болсон тул P2002 зөвхөн AccountVehicle давхардалд буудна.
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      return { ok: false, fieldErrors: { plate: "Энэ дугаар аль хэдийн бүртгэгдсэн." } };
+      return { ok: false, fieldErrors: { plate: "Энэ машин таны жагсаалтад аль хэдийн байна." } };
     }
     return {
       ok: false,

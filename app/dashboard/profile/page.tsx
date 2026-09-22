@@ -6,7 +6,9 @@ import { Btn, Chip } from "@/app/_components/landing-ops-ui";
 import { ConfirmForm } from "@/app/_components/confirm-form";
 import { getSession, requireUser } from "@/lib/auth";
 import { userRoleLabel } from "@/lib/auth/roles";
-import { deviceLabel, splitSessions } from "@/lib/auth/user-session";
+import { deviceLabel } from "@/lib/auth/user-session";
+import { Pagination } from "@/app/_components/pagination";
+import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 import { PasswordForm } from "./password-form";
 import { ProfileForm } from "./profile-form";
@@ -15,33 +17,65 @@ export const metadata = {
   title: "Профайл",
 };
 
-export default async function ProfilePage() {
+// Төхөөрөмжийн түүхийн хуудаслалт (идэвхтэй нэвтрэлт цөөн тул бүгдийг харуулна).
+const DEVICE_HISTORY_PAGE_SIZE = 10;
+const DEVICE_PAGE_PARAM = "devicesPage";
+
+export default async function ProfilePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const user = await requireUser();
+  const sp = await searchParams;
   const initials =
     ((user.firstName[0] ?? "") + (user.lastName[0] ?? "")).toUpperCase();
 
   const session = await getSession();
   const currentSid = session?.sid ?? null;
-  const allSessions = await prisma.userSession.findMany({
-    where: { userId: user.id },
-    orderBy: { lastSeenAt: "desc" },
-    take: 50,
-    select: {
-      id: true,
-      userAgent: true,
-      ip: true,
-      createdAt: true,
-      lastSeenAt: true,
-      expiresAt: true,
-      revokedAt: true,
-    },
-  });
-  const {
-    active: activeSessions,
-    ended,
-    otherActiveCount,
-  } = splitSessions(allSessions, currentSid);
-  const endedSessions = ended.slice(0, 10);
+  const now = new Date();
+  const sessionSelect = {
+    id: true,
+    userAgent: true,
+    ip: true,
+    createdAt: true,
+    lastSeenAt: true,
+    expiresAt: true,
+    revokedAt: true,
+  } as const;
+  // Идэвхтэй: гараагүй бөгөөд хугацаа дуусаагүй. Түүх: гарсан ЭСВЭЛ дууссан —
+  // DB талд хуудаслана (өмнө сүүлийн 50-аас 10-ыг л харуулдаг байв).
+  const activeWhere = { userId: user.id, revokedAt: null, expiresAt: { gt: now } };
+  const endedWhere = {
+    userId: user.id,
+    OR: [{ revokedAt: { not: null } }, { expiresAt: { lte: now } }],
+  };
+  const { page: endedPageRaw, skip, take } = getPageInfo(
+    sp[DEVICE_PAGE_PARAM],
+    DEVICE_HISTORY_PAGE_SIZE,
+  );
+  const [activeSessions, endedSessions, endedTotal] = await Promise.all([
+    prisma.userSession.findMany({
+      where: activeWhere,
+      orderBy: { lastSeenAt: "desc" },
+      select: sessionSelect,
+    }),
+    prisma.userSession.findMany({
+      where: endedWhere,
+      orderBy: { lastSeenAt: "desc" },
+      skip,
+      take,
+      select: sessionSelect,
+    }),
+    prisma.userSession.count({ where: endedWhere }),
+  ]);
+  const otherActiveCount = activeSessions.filter((s) => s.id !== currentSid).length;
+  const endedMeta = buildMeta(endedTotal, endedPageRaw, DEVICE_HISTORY_PAGE_SIZE);
+  // Pagination линкэнд бусад query-г хадгална (зөвхөн string утгууд).
+  const pageParams: Record<string, string> = {};
+  for (const [k, v] of Object.entries(sp)) {
+    if (typeof v === "string") pageParams[k] = v;
+  }
 
   return (
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
@@ -191,10 +225,11 @@ export default async function ProfilePage() {
               })}
             </div>
 
-            {endedSessions.length > 0 ? (
-              <div className="mt-5">
+            {endedTotal > 0 ? (
+              <div className="mt-5" id="devices-history">
                 <h3 className="font-plex-mono text-[10.5px] font-medium text-[var(--oc-muted3)] uppercase tracking-[0.1em] mb-2">
                   Түүх
+                  <span className="ml-1.5 text-[var(--oc-muted4)] tabular-nums">{endedTotal}</span>
                 </h3>
                 <div className="flex flex-col gap-1.5">
                   {endedSessions.map((s) => (
@@ -212,6 +247,14 @@ export default async function ProfilePage() {
                     </div>
                   ))}
                 </div>
+                <Pagination
+                  page={endedMeta.page}
+                  totalPages={endedMeta.totalPages}
+                  total={endedTotal}
+                  params={pageParams}
+                  pageParam={DEVICE_PAGE_PARAM}
+                  className="!px-1 mt-2"
+                />
               </div>
             ) : null}
           </SectionCard>

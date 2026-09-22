@@ -1,4 +1,3 @@
-import { Prisma } from "@/app/generated/prisma/client";
 import { HurService, normalizeWheelPosition } from "@/lib/hur_service";
 import { prisma } from "@/lib/prisma";
 
@@ -98,12 +97,6 @@ export async function refreshVehicleFieldsFromHur(
       },
     };
   } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      return {
-        ok: false,
-        message: "HUR-аас ирсэн VIN өөр машинд аль хэдийн бүртгэгдсэн байна.",
-      };
-    }
     return {
       ok: false,
       message: e instanceof Error ? e.message : "Шинэчлэх явцад алдаа гарлаа.",

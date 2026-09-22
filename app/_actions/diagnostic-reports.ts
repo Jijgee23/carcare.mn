@@ -151,7 +151,7 @@ export async function createReportAction(
       where: {
         tenantId_vehicleId: { tenantId: user.tenantId, vehicleId },
       },
-      select: { id: true },
+      select: { id: true, customerId: true },
     }),
     prisma.branch.findFirst({
       where: { id: branchId, tenantId: user.tenantId },
@@ -159,6 +159,11 @@ export async function createReportAction(
     }),
   ]);
   if (!cust || !veh || !br) {
+    return { ok: false, message: "Сонгосон мэдээлэл буруу." };
+  }
+  // Машин өөр үйлчлүүлэгчийнх бол тайлан тэр эзний түүхэнд орох тул хориглоно
+  // (захиалга үүсгэхтэй ижил шалгуур — order-create-references.ts).
+  if (veh.customerId !== customerId) {
     return { ok: false, message: "Сонгосон мэдээлэл буруу." };
   }
 

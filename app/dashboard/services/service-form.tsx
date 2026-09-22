@@ -9,6 +9,7 @@ import {
 import { Field, FormError } from "@/app/_components/auth-shell";
 import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
 import { Select } from "@/app/_components/select";
+import { formatPriceInput, liveFormatPriceInput } from "@/lib/orders";
 import {
   SERVICE_KINDS,
   SERVICE_KIND_DESCRIPTION,
@@ -50,7 +51,9 @@ export type UnitOption = {
 
 export const SERVICE_FORM_ID = "service-form";
 
-const FIELD_MW = "max-w-xs";
+// Талбарууд grid нүдээ бүрэн дүүргэнэ (өмнө max-w-xs байсан тул хуудас "суга"
+// харагддаг байв). min-w-0 — Select/input нүднээс халихгүй.
+const FIELD_MW = "min-w-0";
 
 export function ServiceForm({
   initial,
@@ -94,8 +97,14 @@ export function ServiceForm({
   // Controlled — action амжилтгүй болсон үед утгууд цэвэрлэгдэхгүй
   const [name, setName] = useState(initial?.name ?? "");
   const [code, setCode] = useState(initial?.code ?? "");
-  const [price, setPrice] = useState(initial?.price ?? "");
-  const [costPrice, setCostPrice] = useState(initial?.costPrice ?? "");
+  // Мөнгөн дүнг мянгатын таслалтай ("45,000") бичүүлнэ — засварын хуудасны
+  // үнийн талбартай ижил; сервер тал (parseDecimal) таслалыг цэвэрлэнэ.
+  const [price, setPrice] = useState(
+    initial?.price ? formatPriceInput(initial.price) : "",
+  );
+  const [costPrice, setCostPrice] = useState(
+    initial?.costPrice ? formatPriceInput(initial.costPrice) : "",
+  );
   const [stock, setStock] = useState(initial?.stock ?? "0");
   const [durationValue, setDurationValue] = useState(
     initial?.durationValue ?? "",
@@ -128,7 +137,7 @@ export function ServiceForm({
         {isEdit || fixedType ? (
           <>
             <input type="hidden" name="type" value={type} />
-            <div className="px-3 py-2 rounded-lg bg-[var(--oc-panel2)] border border-[var(--oc-line)] text-sm text-[var(--oc-ink2)] max-w-lg">
+            <div className="px-3 py-2 rounded-lg bg-[var(--oc-panel2)] border border-[var(--oc-line)] text-sm text-[var(--oc-ink2)]">
               {SERVICE_KIND_LABEL[type]}
               <span className="text-[var(--oc-muted3)] ml-2">
                 · {SERVICE_KIND_DESCRIPTION[type]}
@@ -136,7 +145,7 @@ export function ServiceForm({
             </div>
           </>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 max-w-3xl">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             {SERVICE_KINDS.map((k) => (
               <label
                 key={k}
@@ -168,7 +177,7 @@ export function ServiceForm({
         )}
       </Field>
 
-      <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
         <Field
           label="Ангилал"
           htmlFor="categoryId"
@@ -271,9 +280,10 @@ export function ServiceForm({
             inputMode="decimal"
             required
             value={price}
-            onChange={(e) => setPrice(e.target.value)}
-            className={`auth-input ${fe.price ? "border-red-500/50" : ""}`}
-            placeholder="45000"
+            onChange={(e) => setPrice(liveFormatPriceInput(e.target.value))}
+            onBlur={(e) => setPrice(formatPriceInput(e.target.value))}
+            className={`auth-input tabular-nums ${fe.price ? "border-red-500/50" : ""}`}
+            placeholder="45,000"
           />
         </Field>
 
@@ -292,9 +302,10 @@ export function ServiceForm({
                 type="text"
                 inputMode="decimal"
                 value={costPrice}
-                onChange={(e) => setCostPrice(e.target.value)}
-                className={`auth-input ${fe.costPrice ? "border-red-500/50" : ""}`}
-                placeholder="32000"
+                onChange={(e) => setCostPrice(liveFormatPriceInput(e.target.value))}
+                onBlur={(e) => setCostPrice(formatPriceInput(e.target.value))}
+                className={`auth-input tabular-nums ${fe.costPrice ? "border-red-500/50" : ""}`}
+                placeholder="32,000"
               />
             </Field>
             {!isEdit ? (
@@ -361,9 +372,7 @@ export function ServiceForm({
             </Field>
           </>
         )}
-      </div>
 
-      <div className="flex flex-wrap gap-4">
         <Field
           label="Сануулга давтамж"
           htmlFor="reminderIntervalMonths"
@@ -387,7 +396,7 @@ export function ServiceForm({
         </Field>
       </div>
 
-      <Field label="Тайлбар" htmlFor="description" hint="заавал биш" className="max-w-2xl">
+      <Field label="Тайлбар" htmlFor="description" hint="заавал биш">
         <textarea
           id="description"
           name="description"

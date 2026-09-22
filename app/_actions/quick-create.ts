@@ -9,7 +9,11 @@ import { assertActiveSubscription } from "@/lib/subscription-server";
 import { normalizeWheelPosition } from "@/lib/hur_service";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
-import { ensureTenantVehicle, resolveVehicle } from "@/lib/vehicles";
+import {
+  ensureTenantVehicle,
+  ownerFromCustomer,
+  resolveVehicleForOwner,
+} from "@/lib/vehicles";
 
 // Захиалга үүсгэх явцад үйлчлүүлэгч / машин шинээр бүртгэх — хуудас сольж redirect
 // хийхгүй, шинээр үүсгэсэн бичлэгийг буцаана.
@@ -214,7 +218,10 @@ export async function quickCreateVehicleAction(input: {
   };
   try {
     created = await prisma.$transaction(async (tx) => {
-      const v = await resolveVehicle(tx, {
+      // Vehicle = эзэмшигчийн бүртгэл: сонгосон Customer-ийн мөрийг тааруулна,
+      // өөр эзний ижил дугаартай мөр байвал шинээр үүсгэнэ.
+      const owner = await ownerFromCustomer(tx, user.tenantId, customerId);
+      const v = await resolveVehicleForOwner(tx, {
         plate,
         vin,
         make,
@@ -222,8 +229,11 @@ export async function quickCreateVehicleAction(input: {
         year,
         fuelType,
         wheelPosition,
+        owner,
       });
-      await ensureTenantVehicle(tx, {
+      // Link-ийн БОДИТ эзнийг буцаана (ensureTenantVehicle байгаа эзнийг дарж
+      // бичихгүй) — захиалгын форм үүгээр шалгадаг.
+      const link = await ensureTenantVehicle(tx, {
         tenantId: user.tenantId,
         vehicleId: v.id,
         customerId,
@@ -232,14 +242,15 @@ export async function quickCreateVehicleAction(input: {
         where: { id: v.id },
         select: { id: true, plate: true, make: true, model: true },
       });
-      // Машин өмнө нь бүртгэлтэй байсан бол link-ийн одоогийн төлөвийг авна.
-      const link = await tx.tenantVehicle.findUnique({
-        where: {
-          tenantId_vehicleId: { tenantId: user.tenantId, vehicleId: v.id },
-        },
+      const linkState = await tx.tenantVehicle.findUnique({
+        where: { id: link.id },
         select: { isPostpaid: true },
       });
-      return { ...full, customerId, isPostpaid: link?.isPostpaid ?? false };
+      return {
+        ...full,
+        customerId: link.customerId,
+        isPostpaid: linkState?.isPostpaid ?? false,
+      };
     });
   } catch (e) {
     return {

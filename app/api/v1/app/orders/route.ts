@@ -3,7 +3,7 @@ import { jsonError, jsonOk } from "@/lib/api";
 import { getApiAccountFromRequest } from "@/lib/auth/account-api-token";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
-import { ownedVehicleIdsForAccount } from "@/lib/vehicles";
+import { customerOwnershipFilters } from "@/lib/vehicles";
 import { bookingDateKey, bookingDayBounds } from "@/lib/booking-time";
 
 // `month` заавал биш, зөвхөн `year`-той хамт нарийвчлал нэмнэ (1-12) —
@@ -56,9 +56,11 @@ export async function GET(req: Request) {
     }
   }
 
-  // Эзэмшлийн машинууд (баталгаажсан холбоос) — account/history веб хуудастай
-  // ижил зарчим (харах: lib/vehicles.ts ownedVehicleIdsForAccount).
-  const ownedVehicleIds = await ownedVehicleIdsForAccount(account.id, account.phone);
+  // Түүх зөвхөн эзэнд: захиалгын Customer нь энэ account-той (accountId эсвэл
+  // утсаар) холбоотой байх ёстой — account/history веб хуудастай ижил зарчим.
+  // Машин-аар (vehicleId) нэмж багтаахгүй: ижил машины өмнөх эзний захиалга
+  // харагдахгүй. vehicleId шүүлт нь өөрийн захиалга дотроо л ажиллана.
+  const owned = customerOwnershipFilters(account.id, account.phone);
 
   const where: Prisma.ServiceOrderWhereInput = {
     // Дууссан AND цуцлагдсан ажлыг харуулна (D-085) — SCHEDULED/IN_PROGRESS
@@ -66,12 +68,7 @@ export async function GET(req: Request) {
     // Төлбөрийн төлөв нэмэлт шүүлт биш: төлөгдөөгүй ч дууссан ажил энд
     // харагдана (chip нь unpaid/partial/paid-г тусад нь харуулна).
     status: { in: ["COMPLETED", "CANCELLED"] },
-    OR: [
-      { customer: { accountId: account.id } },
-      ...(ownedVehicleIds.length
-        ? [{ vehicleId: { in: ownedVehicleIds } }]
-        : []),
-    ],
+    OR: owned,
   };
   if (vehicleIdFilter) where.vehicleId = vehicleIdFilter;
   if (year) {
@@ -119,10 +116,7 @@ export async function GET(req: Request) {
   const facetOrders = await prisma.serviceOrder.findMany({
     where: {
       status: { in: ["COMPLETED", "CANCELLED"] },
-      OR: [
-        { customer: { accountId: account.id } },
-        ...(ownedVehicleIds.length ? [{ vehicleId: { in: ownedVehicleIds } }] : []),
-      ],
+      OR: owned,
     },
     select: { completedAt: true },
   });

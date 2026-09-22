@@ -789,14 +789,17 @@ export async function confirmAppointment(
         account,
       );
       // Хэрэглэгч машинаа сонгосон бол тенантад TenantVehicle link үүсгэнэ.
+      // Link энэ tenant-д ӨӨР эзэнтэй байсан бол (хуучин олон эзэнтэй мөр)
+      // эзнийг дарж бичихгүй, машиныг ч цагт холбохгүй — ажилтан захиалга
+      // үүсгэхдээ энэ Customer-т машин сонгоно/шинээр бүртгэнэ.
       let vehicleId: string | null = null;
       if (accountVehicle) {
-        vehicleId = accountVehicle.vehicleId;
-        await ensureTenantVehicle(tx, {
+        const link = await ensureTenantVehicle(tx, {
           tenantId: appt.tenantId,
-          vehicleId,
+          vehicleId: accountVehicle.vehicleId,
           customerId,
         });
+        vehicleId = link.customerId === customerId ? accountVehicle.vehicleId : null;
       }
       await tx.appointment.update({
         where: { id: appt.id },
