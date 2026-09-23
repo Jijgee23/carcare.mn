@@ -129,8 +129,12 @@ async function requestFeeCheckout(
   });
 
   if ("error" in inv) {
-    await prisma.appointment.update({
-      where: { id: appointmentId },
+    // A concurrent caller may already have persisted a successful invoice.
+    // Never clear that winner when this provider call loses or returns an
+    // error; QPay requires sender_invoice_no to be unique, so this is the
+    // bounded no-schema race guard available to the current model.
+    await prisma.appointment.updateMany({
+      where: { id: appointmentId, feeQpayInvoiceId: null, payment: { is: null } },
       data: {
         feeAmount: amount,
         feeCurrency: BOOKING_FEE_CURRENCY,
@@ -143,8 +147,8 @@ async function requestFeeCheckout(
     return { ok: false, required: true, error: inv.error };
   }
 
-  await prisma.appointment.update({
-    where: { id: appointmentId },
+  const persisted = await prisma.appointment.updateMany({
+    where: { id: appointmentId, feeQpayInvoiceId: null, payment: { is: null } },
     data: {
       feeAmount: amount,
       feeCurrency: BOOKING_FEE_CURRENCY,
@@ -154,6 +158,12 @@ async function requestFeeCheckout(
       feeQpayUrls: inv.urls ?? Prisma.JsonNull,
     },
   });
+  if (persisted.count !== 1) {
+    // Another request won the local claim while this provider call was in
+    // flight. Treat the operation as idempotently satisfied; the persisted
+    // row is the source of truth for the caller's next read.
+    return { ok: true, required: true };
+  }
   return { ok: true, required: true };
 }
 
@@ -219,13 +229,21 @@ export async function retryAppointmentFeeCheckout(
       accountId: true,
       tenant: { select: { name: true } },
       payment: { select: { id: true } },
+      feeQpayInvoiceId: true,
     },
   });
   if (!appt || !appt.accountId) {
     return { ok: false, required: true, error: "Онлайн цаг захиалга олдсонгүй." };
   }
   if (appt.payment) return { ok: true, required: true }; // аль хэдийн төлөгдсөн
+  if (appt.feeQpayInvoiceId) return { ok: true, required: true };
 
+  // There is no separate persisted checkout-claim column in the current
+  // schema. Do not hold a database row lock across QPay I/O: if the provider
+  // succeeds and the transaction then rolls back, QPay has an invoice that
+  // the database cannot name. QPay's unique sender_invoice_no (the
+  // appointment id) plus requestFeeCheckout's conditional writes keep this
+  // bounded and preserve a successful concurrent writer.
   return requestFeeCheckout(
     appt.id,
     appt.accountId,

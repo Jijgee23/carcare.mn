@@ -1235,13 +1235,26 @@ test("branch schedule mutation actions require confirmed=true past a clipped-onl
 // source directly, matching the established style for this file's other
 // lock/branching checks (see the S06/S10/S12 tests above) rather than driving
 // the actions end-to-end against a real database.
-function rescheduleAppointmentActionBody(): string {
-  const src = fs.readFileSync(path.join(__dirname, "..", "app", "_actions", "appointments.ts"), "utf8");
-  const fnStart = src.indexOf("export async function rescheduleAppointmentAction");
-  assert.ok(fnStart >= 0, "rescheduleAppointmentAction not found");
-  const fnEnd = src.indexOf("\nexport async function markAppointmentArrived", fnStart);
-  assert.ok(fnEnd > fnStart, "markAppointmentArrived not found after rescheduleAppointmentAction");
-  return src.slice(fnStart, fnEnd);
+// P2-B1 moved the reschedule mechanism into the command module, so the reader
+// that sliced it out of the action body has no callers left. Removed rather
+// than kept dead — the command reader below replaces it.
+
+// P2-B1 moved the staff reschedule *mechanism* out of the action and into
+// lib/appointments/appointment-commands.ts, leaving the action as a thin
+// adapter. The guards below therefore read whichever file now owns the
+// behavior each one is protecting: the command for the linked-order branching
+// and the database reads, the action for parsing, revalidation and the error
+// seam. Every original assertion is preserved — none was relaxed to
+// accommodate the move.
+function rescheduleAppointmentCommandBody(): string {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "lib", "appointments", "appointment-commands.ts"),
+    "utf8",
+  );
+  const fnStart = src.indexOf("export async function rescheduleAppointmentCommand");
+  assert.ok(fnStart >= 0, "rescheduleAppointmentCommand not found");
+  const fnEnd = src.indexOf("\nexport async function ", fnStart + 10);
+  return src.slice(fnStart, fnEnd > fnStart ? fnEnd : undefined);
 }
 
 function rescheduleOrderActionBody(): string {
@@ -1254,7 +1267,7 @@ function rescheduleOrderActionBody(): string {
 }
 
 test("Phase C/A final branching: rescheduleAppointmentAction routes a linked+SCHEDULED order through the shared moveLinkedAppointmentOrder command, and still refuses any other linked-order state", () => {
-  const body = rescheduleAppointmentActionBody();
+  const body = rescheduleAppointmentCommandBody();
   assert.ok(body.includes("serviceOrderId: true"), "expected the select to fetch serviceOrderId");
   assert.ok(body.includes("serviceOrder: { select: { id: true, status: true } }"), "expected the select to fetch the linked order's status");
   assert.ok(body.includes("moveLinkedAppointmentOrder("), "expected a call into the shared linked-move command");
@@ -1275,11 +1288,23 @@ test("Phase A final branching: rescheduleOrderAction uses the shared scheduling 
   assert.ok(orderBody.includes('revalidatePath("/dashboard/appointments")'));
   assert.ok(orderBody.includes('revalidatePath("/account")'));
 
+  // P2-B1: the appointment side reaches the shared S14 primitive through its
+  // command module rather than from the action file directly. The requirement
+  // is unchanged — exactly one primitive, reached through an adapter — so the
+  // assertion follows the import to where it now lives.
+  const apptCommandSrc = fs.readFileSync(
+    path.join(__dirname, "..", "lib", "appointments", "appointment-commands.ts"),
+    "utf8",
+  );
   const apptSrc = fs.readFileSync(path.join(__dirname, "..", "app", "_actions", "appointments.ts"), "utf8");
   const orderSrc = fs.readFileSync(path.join(__dirname, "..", "app", "_actions", "orders.ts"), "utf8");
   assert.ok(
-    apptSrc.includes('from "@/lib/linked-reschedule";') && orderSrc.includes('from "@/lib/orders/order-schedule-commands";'),
+    apptCommandSrc.includes('from "@/lib/linked-reschedule";') && orderSrc.includes('from "@/lib/orders/order-schedule-commands";'),
     "appointment and order actions must use the shared S14 primitive through their scheduling adapters",
+  );
+  assert.ok(
+    !apptSrc.includes('from "@/lib/linked-reschedule";'),
+    "the action must not reach past its command module to the linked-move primitive",
   );
 });
 
@@ -1329,18 +1354,36 @@ test("P1-B4 staff appointment reschedule uses strict business-local parsing and 
   // shared seam. It previously inlined a two-literal allow-list that omitted
   // SUBSCRIPTION_LOCKED_MESSAGE, so a lapsed subscription surfaced as a generic
   // "try again" error the user could never act on.
-  assert.ok(body.includes("knownAuthorizationMessage(e, STAFF_SCOPE_MESSAGES)"));
+  // P2-B1 renamed the catch binding from `e` to `error`; the requirement is the
+  // classifier call, not the identifier, so match either binding rather than
+  // pinning a variable name the refactor is free to change.
+  assert.ok(
+    body.includes("knownAuthorizationMessage(e, STAFF_SCOPE_MESSAGES)") ||
+      body.includes("knownAuthorizationMessage(error, STAFF_SCOPE_MESSAGES)"),
+    "the catch must classify through the shared seam with STAFF_SCOPE_MESSAGES",
+  );
   assert.equal(
     body.includes('"Танд цаг захиалга удирдах эрх байхгүй."'),
     false,
     "allow-lists must reference the constants shared with the throw site, never copied literals",
   );
   assert.ok(body.includes("unstable_rethrow(error)"));
+  // P2-B1: the database reads moved into the command, so the "every read sits
+  // inside the error boundary" check now spans the adapter's try block and the
+  // command it calls. The guarantee is identical: no appointment or linked
+  // order read can escape the boundary and surface a raw error to the user.
   const boundaryStart = body.indexOf("try {", body.indexOf("requestedAt.getTime() < Date.now()"));
-  const appointmentRead = body.indexOf("prisma.appointment.findUnique(");
+  const commandCall = body.indexOf("rescheduleAppointmentCommand(");
   const boundaryCatch = body.lastIndexOf("unstable_rethrow(error)");
-  assert.ok(boundaryStart >= 0 && boundaryStart < appointmentRead && boundaryCatch > appointmentRead);
-  assert.ok(body.includes("prisma.serviceOrder.findFirst("));
+  assert.ok(boundaryStart >= 0 && boundaryStart < commandCall && boundaryCatch > commandCall);
+  assert.equal(
+    body.includes("prisma."),
+    false,
+    "the adapter must not read the database directly — the command owns every read",
+  );
+  const command = rescheduleAppointmentCommandBody();
+  assert.ok(command.includes("prisma.appointment.findUnique("));
+  assert.ok(command.includes("prisma.serviceOrder.findFirst("));
 });
 
 test("D-132 the shared action-error seam owns the subscription lock, so no caller can omit it", () => {
@@ -1581,18 +1624,37 @@ test("resolvePublicAvailability checks tenant.suspended, acceptsOnlineBooking, a
 });
 
 test("resolvePublicAvailability hard-rejects a foreign/inactive category id instead of silently defaulting its duration", () => {
+  // P2-B10: category eligibility now lives once, in the shared
+  // `computeBranchDayAvailability` (lib/appointments/day-availability.ts),
+  // which both `resolvePublicAvailability` and the staff slot route call —
+  // see that module's own behavioral tests for proof it actually rejects.
+  // This test now only proves resolvePublicAvailability delegates instead of
+  // re-expressing the rule inline.
   const src = fs.readFileSync(path.join(__dirname, "..", "lib", "public-availability.ts"), "utf8");
+  const sharedSrc = fs.readFileSync(
+    path.join(__dirname, "..", "lib", "appointments", "day-availability.ts"),
+    "utf8",
+  );
+  assert.ok(
+    src.includes('from "@/lib/appointments/day-availability"') &&
+      src.includes("computeBranchDayAvailability("),
+    "expected resolvePublicAvailability to delegate to the shared computeBranchDayAvailability",
+  );
+  assert.ok(
+    !src.includes("prisma.category.findMany"),
+    "expected no duplicated inline category eligibility query left in resolvePublicAvailability",
+  );
   assert.match(
-    src,
+    sharedSrc,
     /category\.findMany\(\{\s*where:\s*\{\s*id:\s*\{\s*in:\s*categoryIds\s*\},\s*tenantId:\s*branch\.tenantId,\s*isActive:\s*true,/,
     "expected category eligibility to be scoped by tenantId + isActive, mirroring reserveAppointmentInTransaction",
   );
   assert.ok(
-    src.includes("branches: { some: { id: branch.id } }") && src.includes("branches: { none: {} } }"),
+    sharedSrc.includes("branches: { some: { id: branch.id } }") && sharedSrc.includes("branches: { none: {} } }"),
     "expected the branch-assigned-or-global category eligibility rule to match lib/appointment-reservations.ts",
   );
   assert.ok(
-    src.includes("eligible.length !== categoryIds.length"),
+    sharedSrc.includes("eligible.length !== categoryIds.length"),
     "expected a hard length-mismatch check (400-equivalent rejection), not a silent DEFAULT_CATEGORY_DURATION_MINUTES fallback",
   );
 });

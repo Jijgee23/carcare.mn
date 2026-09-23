@@ -17,6 +17,7 @@ import {
   type PaymentStatus,
 } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
+import { getVehicleHistory, isOwnerLocked } from "@/lib/vehicles/vehicle-history";
 import { VEHICLE_FORM_ID, VehicleForm } from "../vehicle-form";
 
 export const metadata = {
@@ -44,7 +45,7 @@ export default async function VehicleDetailPage({
   const { id } = await params;
 
   // id = global vehicleId. Тенантын link-ээр дамжуулж ачаална (харьяалал link дээр).
-  const [link, customers, orders, appointments, reportCount] = await Promise.all([
+  const [link, customers, history] = await Promise.all([
     prisma.tenantVehicle.findUnique({
       where: {
         tenantId_vehicleId: { tenantId: user.tenantId, vehicleId: id },
@@ -56,47 +57,18 @@ export default async function VehicleDetailPage({
       orderBy: { fullName: "asc" },
       select: { id: true, fullName: true, phone: true },
     }),
-    // Энэ машины ЭНЭ tenant дахь захиалгууд (дэлгэрэнгүй рүү линктэй).
-    prisma.serviceOrder.findMany({
-      where: { tenantId: user.tenantId, vehicleId: id },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        number: true,
-        status: true,
-        paymentStatus: true,
-        scheduledAt: true,
-        completedAt: true,
-        createdAt: true,
-        totalAmount: true,
-        branch: { select: { name: true } },
-        _count: { select: { items: true } },
-      },
-    }),
-    // Энэ машины цаг захиалгын түүх.
-    prisma.appointment.findMany({
-      where: { tenantId: user.tenantId, vehicleId: id },
-      orderBy: { requestedAt: "desc" },
-      select: {
-        id: true,
-        status: true,
-        requestedAt: true,
-        note: true,
-        branch: { select: { name: true } },
-        category: { select: { name: true } },
-      },
-    }),
-    // Оношилгооны тайлан байгаа эсэх — эзэн солих хоригийн нэг хэсэг.
-    prisma.diagnosticReport.count({
-      where: { tenantId: user.tenantId, vehicleId: id },
-    }),
+    // Захиалга, цаг захиалгын түүх, оношилгооны тайлангийн тоо — DM-05-ийн
+    // дагуу нэг л газар (lib/vehicles/vehicle-history.ts), энэ хуудас болон
+    // /api/v1/vehicles/[id]/history route хоёулаа ижилхэн дуудна.
+    getVehicleHistory(user.tenantId, id),
   ]);
 
   if (!link) notFound();
   const vehicle = link.vehicle;
+  const { orders, appointments } = history;
   // Засварын түүхтэй машины эзнийг солих боломжгүй (updateVehicleAction-тай
   // ижил шалгуур) — form дээр урьдчилан хаана.
-  const ownerLocked = orders.length > 0 || reportCount > 0;
+  const ownerLocked = isOwnerLocked(history);
 
   return (
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">
@@ -197,13 +169,13 @@ export default async function VehicleDetailPage({
                             </span>
                           </div>
                           <div className="text-xs text-[var(--oc-muted3)] mt-1 tabular-nums">
-                            {fmtDate(when)} · {o.branch.name} · {o._count.items}{" "}
+                            {fmtDate(when)} · {o.branch.name} · {o.itemCount}{" "}
                             мөр
                           </div>
                         </div>
                         <div className="text-right shrink-0">
                           <div className="font-plex-mono text-sm font-semibold text-[var(--oc-ink)] tabular-nums">
-                            {formatTugrik(o.totalAmount?.toString() ?? null)}
+                            {formatTugrik(o.totalAmount)}
                           </div>
                           <div className="text-xs text-[var(--oc-muted3)]">
                             {

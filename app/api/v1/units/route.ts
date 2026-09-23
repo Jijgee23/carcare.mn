@@ -1,4 +1,4 @@
-import { jsonError, jsonOk, requireApiUser } from "@/lib/api";
+import { jsonError, jsonForbidden, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 
@@ -8,6 +8,10 @@ const SELECT = { id: true, name: true, code: true, isActive: true, createdAt: tr
 export async function GET(req: Request) {
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
+  // Unit-д өөрийн permission code байхгүй тул `services.view`-ээр хамгаална
+  // (P4-B0b) — жагсаалт зөвхөн үйлчилгээний сонголтын picker-т ашиглагдана.
+  const denied = requirePermission(auth.user, "services.view");
+  if (denied) return denied;
 
   const url = new URL(req.url);
   const all = url.searchParams.get("all") === "true";
@@ -25,6 +29,9 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
+  // Unit-д permission code байхгүй тул вэб дашбоардын `authorizeOwner()`-ийг
+  // (app/_actions/units.ts) яг таг дуурайлган зөвхөн эзэмшигчид зөвшөөрнө.
+  if (!auth.user.isOwner) return jsonForbidden();
 
   const body = await req.json().catch(() => null);
   if (!body) return jsonError(400, "Буруу өгөгдөл");

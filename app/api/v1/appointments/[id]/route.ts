@@ -1,15 +1,18 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
 import { resolveWorkingBranch } from "@/lib/auth/api-branch";
+import { APPOINTMENT_STATUS_TRANSITIONS, type AppointmentStatus } from "@/lib/appointments";
+import { SUBSCRIPTION_LOCKED_MESSAGE } from "@/lib/subscription";
+import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
 import {
-  APPOINTMENT_STATUS_TRANSITIONS,
-  type AppointmentStatus,
-  resolveCustomerForAccount,
-} from "@/lib/appointments";
+  AppointmentCommandError,
+  STAFF_SCOPE_MESSAGES,
+  confirmAppointmentCommand,
+  rejectAppointmentCommand,
+  markAppointmentNoShowCommand,
+} from "@/lib/appointments/appointment-commands";
 import { logAudit } from "@/lib/audit";
-import { createNotification } from "@/lib/notifications";
 import { prisma } from "@/lib/prisma";
-import { ensureTenantVehicle } from "@/lib/vehicles";
 
 // AccountVehicle нь global Vehicle руу заадаг болсон тул хариунд хуучин хэлбэрээр
 // (accountVehicle: { plate, make, model } | null) тэгшлэн буцаана.
@@ -40,6 +43,30 @@ const APPT_SELECT = {
   serviceOrder: { select: { id: true, number: true } },
 } satisfies Prisma.AppointmentSelect;
 
+/**
+ * CONFIRMED/REJECTED/NO_SHOW all delegate to the same P2-B1 commands the
+ * named lifecycle routes (`[id]/confirm`, `reject`, `no-show`) call — see the
+ * Phase 2 invariant in TENANT_MOBILE_SLICES.md: PATCH is an adapter over
+ * those commands, never a second transition path. A command's rejection is
+ * forwarded faithfully (same status/code), not re-coded.
+ */
+function commandErrorResponse(error: unknown) {
+  if (error instanceof AppointmentCommandError) {
+    return jsonError(error.status, error.message, {
+      code: error.code,
+      ...(error.fieldErrors ? { fieldErrors: error.fieldErrors } : {}),
+    });
+  }
+  if (error instanceof Error && (STAFF_SCOPE_MESSAGES as readonly string[]).includes(error.message)) {
+    return jsonError(403, error.message);
+  }
+  if (error instanceof Error && error.message === SUBSCRIPTION_LOCKED_MESSAGE) {
+    return jsonError(403, error.message, { code: "SUBSCRIPTION_EXPIRED" });
+  }
+  console.error("[appointments/patch]", error instanceof Error ? error.name : "UnknownError");
+  return jsonError(500, "Серверийн алдаа гарлаа. Дахин оролдоно уу.");
+}
+
 // PATCH /api/v1/appointments/[id]
 // Body: { status: AppointmentStatus }
 // Permission: appointments.edit
@@ -66,6 +93,13 @@ export async function PATCH(
       ? ((body as { status: string }).status as AppointmentStatus)
       : null;
   if (!newStatus) return jsonError(400, "status шаардлагатай.");
+
+  // PATCH still owns the legacy CONFIRMED -> CANCELLED adapter. Keep its
+  // subscription gate aligned with the named mutation commands; otherwise a
+  // locked tenant could cancel appointments through this one remaining inline
+  // write path.
+  const locked = await requireActiveSubscriptionApi(auth.user);
+  if (locked) return locked;
 
   const appt = await prisma.appointment.findFirst({
     where: { id, tenantId: auth.user.tenantId },
@@ -99,68 +133,53 @@ export async function PATCH(
     if (!appt.account) {
       return jsonError(400, "Онлайн бус захиалгыг энэ замаар баталгаажуулах боломжгүй.");
     }
-    const account = appt.account;
-    await prisma.$transaction(async (tx) => {
-      const customerId = await resolveCustomerForAccount(
-        tx,
-        appt.tenantId,
-        account,
-      );
-      // Link энэ tenant-д ӨӨР эзэнтэй байсан бол (хуучин олон эзэнтэй мөр)
-      // эзнийг дарж бичихгүй, машиныг ч цагт холбохгүй — ажилтан захиалга
-      // үүсгэхдээ энэ Customer-т машин сонгоно/шинээр бүртгэнэ.
-      let vehicleId: string | null = null;
-      if (appt.accountVehicle) {
-        const link = await ensureTenantVehicle(tx, {
-          tenantId: appt.tenantId,
-          vehicleId: appt.accountVehicle.vehicleId,
-          customerId,
-        });
-        vehicleId =
-          link.customerId === customerId ? appt.accountVehicle.vehicleId : null;
-      }
-      await tx.appointment.update({
-        where: { id: appt.id },
-        data: {
-          status: "CONFIRMED",
-          customerId,
-          vehicleId,
-          respondedAt: new Date(),
-          respondedById: auth.user.id,
-        },
-      });
-      await logAudit(
-        {
-          tenantId: appt.tenantId,
-          userId: auth.user.id,
-          branchId: appt.branchId,
-          entity: "Appointment",
-          entityId: appt.id,
-          action: "STATUS_CHANGE",
-          summary: "Цаг баталгаажуулсан (мобайл)",
-          after: { status: "CONFIRMED", customerId, vehicleId },
-        },
-        tx,
-      );
-    });
     try {
-      await createNotification({
-        type: "appointment_confirmed",
-        recipient: { accountId: account.id },
-        input: { appointmentId: appt.id },
+      await confirmAppointmentCommand({
+        actor: { ...auth.user, workingBranchId: scope ?? undefined },
+        appointmentId: appt.id,
       });
-    } catch (e) {
-      console.warn("[notify] confirmAppointment (mobile):", e);
+    } catch (error) {
+      return commandErrorResponse(error);
+    }
+  } else if (newStatus === "REJECTED") {
+    try {
+      await rejectAppointmentCommand({
+        actor: { ...auth.user, workingBranchId: scope ?? undefined },
+        appointmentId: appt.id,
+      });
+    } catch (error) {
+      return commandErrorResponse(error);
+    }
+  } else if (newStatus === "NO_SHOW") {
+    try {
+      await markAppointmentNoShowCommand({
+        actor: { ...auth.user, workingBranchId: scope ?? undefined },
+        appointmentId: appt.id,
+      });
+    } catch (error) {
+      return commandErrorResponse(error);
     }
   } else {
-    await prisma.appointment.update({
-      where: { id: appt.id },
+    // Одоогоор зөвхөн CANCELLED (CONFIRMED -> CANCELLED) энд ирнэ. Үүнд
+    // зориулсан P2-B1 command алга тул хуучин шууд бичих логикоо хэвээр
+    // үлдээв — энэ нь named lifecycle route-той давхцахгүй (тийм route
+    // байхгүй тул зэрэгцээ шилжилтийн зам биш).
+    const cancelled = await prisma.appointment.updateMany({
+      where: {
+        id: appt.id,
+        tenantId: appt.tenantId,
+        status: appt.status,
+        branchId: appt.branchId,
+      },
       data: {
         status: newStatus,
         respondedAt: new Date(),
         respondedById: auth.user.id,
       },
     });
+    if (cancelled.count !== 1) {
+      return jsonError(409, `${appt.status} → ${newStatus} шилжилт боломжгүй.`);
+    }
     await logAudit({
       tenantId: appt.tenantId,
       userId: auth.user.id,
@@ -171,18 +190,6 @@ export async function PATCH(
       summary: `Цаг → ${newStatus} (мобайл)`,
       after: { status: newStatus },
     });
-    // Онлайн захиалга татгалзсан бол хэрэглэгчид мэдэгдэнэ.
-    if (newStatus === "REJECTED" && appt.account) {
-      try {
-        await createNotification({
-          type: "appointment_rejected",
-          recipient: { accountId: appt.account.id },
-          input: { appointmentId: appt.id },
-        });
-      } catch (e) {
-        console.warn("[notify] rejectAppointment (mobile):", e);
-      }
-    }
   }
 
   const updated = await prisma.appointment.findUnique({

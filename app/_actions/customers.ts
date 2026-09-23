@@ -2,16 +2,20 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { Prisma } from "@/app/generated/prisma/client";
-import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canEdit, hasPermission } from "@/lib/auth/roles";
 import { assertActiveSubscription } from "@/lib/subscription-server";
-import { isValidPhone, normalizePhone } from "@/lib/phone";
-import { broadcastTenantPromo } from "@/lib/notifications";
-import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
-import { enforceCountLimit } from "@/lib/plan-limits-server";
-import { prisma } from "@/lib/prisma";
+import {
+  CustomerCommandError,
+  createCustomerCommand,
+  deleteCustomerCommand,
+  updateCustomerCommand,
+  type CustomerCommandInput,
+} from "@/lib/customers/customer-commands";
+import {
+  CustomerBroadcastError,
+  sendCustomerBroadcast,
+} from "@/lib/customers/customer-broadcast";
 
 export type CustomerActionState = {
   ok: boolean;
@@ -30,8 +34,13 @@ function s(fd: FormData, key: string): string {
   return typeof v === "string" ? v.trim() : "";
 }
 
-function isEmail(v: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+function formInput(fd: FormData): CustomerCommandInput {
+  return {
+    fullName: s(fd, "fullName"),
+    phone: s(fd, "phone"),
+    email: s(fd, "email") || null,
+    note: s(fd, "note") || null,
+  };
 }
 
 async function authorize(action: "create" | "edit" | "delete") {
@@ -49,31 +58,6 @@ async function authorize(action: "create" | "edit" | "delete") {
   return user;
 }
 
-function validate(fd: FormData) {
-  const fullName = s(fd, "fullName");
-  const phone = s(fd, "phone");
-  const email = s(fd, "email");
-  const note = s(fd, "note");
-  const errors: Record<string, string> = {};
-
-  // Зөвхөн утас заавал. Овог нэр заавал биш — хоосон бол "" хадгална.
-  if (!phone) errors.phone = "Утасны дугаар оруулна уу.";
-  else if (!isValidPhone(phone))
-    errors.phone = "Утасны дугаар 8 оронтой тоо байх ёстой.";
-  if (email && !isEmail(email)) errors.email = "Имэйл хаяг буруу.";
-
-  return {
-    data: {
-      fullName,
-      // Канон 8 оронтой хэлбэрт хадгална (Account-той утсаар холбогддог).
-      phone: normalizePhone(phone) ?? phone,
-      email: email || null,
-      note: note || null,
-    },
-    errors,
-  };
-}
-
 export async function createCustomerAction(
   _prev: CustomerActionState,
   formData: FormData,
@@ -85,84 +69,23 @@ export async function createCustomerAction(
     return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
   }
 
-  const { data, errors } = validate(formData);
-  if (Object.keys(errors).length > 0) {
-    return { ok: false, fieldErrors: errors };
-  }
-
-  // Багцын хязгаар: max_customers
-  const limit = await enforceCountLimit(
-    user.tenantId,
-    PLAN_LIMIT_CODES.MAX_CUSTOMERS,
-    () => prisma.customer.count({ where: { tenantId: user.tenantId } }),
-  );
-  if (!limit.allowed) {
-    return { ok: false, message: limit.message };
-  }
-
-  // Утасны дугаараар онлайн Account олж, байвал холбоно — quick-create.ts-ийн
-  // adил шалтгаанаар (2026-09-08: ажилтны шууд бүртгэсэн үйлчлүүлэгч
-  // харилцагчийн апп/веб-д хожим захиалгаа харахгүй байсан).
-  const account = await prisma.account.findUnique({
-    where: { phone: data.phone },
-    select: { id: true },
-  });
-
-  if (account) {
-    const existingForAccount = await prisma.customer.findUnique({
-      where: { tenantId_accountId: { tenantId: user.tenantId, accountId: account.id } },
-      select: { id: true },
-    });
-    if (existingForAccount) {
-      redirect(`/dashboard/customers/${existingForAccount.id}`);
-    }
-  }
-
-  let created;
+  let result;
   try {
-    const unclaimed = account
-      ? await prisma.customer.findFirst({
-          where: { tenantId: user.tenantId, phone: data.phone, accountId: null },
-          select: { id: true },
-        })
-      : null;
-
-    created = unclaimed
-      ? await prisma.customer.update({
-          where: { id: unclaimed.id },
-          data: { ...data, fullName: data.fullName || undefined, accountId: account!.id },
-          select: { id: true },
-        })
-      : await prisma.customer.create({
-          data: { ...data, tenantId: user.tenantId, accountId: account?.id ?? null },
-          select: { id: true },
-        });
+    result = await createCustomerCommand({
+      actor: user,
+      data: formInput(formData),
+    });
   } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      return {
-        ok: false,
-        fieldErrors: { phone: "Энэ утасны дугаартай үйлчлүүлэгч аль хэдийн бүртгэлтэй байна." },
-      };
+    if (e instanceof CustomerCommandError) {
+      if (e.fieldErrors) return { ok: false, fieldErrors: e.fieldErrors };
+      return { ok: false, message: e.message };
     }
-    return {
-      ok: false,
-      message: e instanceof Error ? e.message : "Үүсгэх явцад алдаа гарлаа.",
-    };
+    throw e;
   }
-
-  await logAudit({
-    tenantId: user.tenantId,
-    userId: user.id,
-    entity: "Customer",
-    entityId: created.id,
-    action: "CREATE",
-    summary: data.fullName || data.phone,
-    after: data,
-  });
 
   revalidatePath("/dashboard/customers");
   revalidatePath("/dashboard");
-  redirect(`/dashboard/customers/${created.id}`);
+  redirect(`/dashboard/customers/${result.customer.id}`);
 }
 
 export async function updateCustomerAction(
@@ -177,41 +100,15 @@ export async function updateCustomerAction(
     return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
   }
 
-  const { data, errors } = validate(formData);
-  if (Object.keys(errors).length > 0) {
-    return { ok: false, fieldErrors: errors };
-  }
-
   try {
-    const updated = await prisma.customer.updateMany({
-      where: { id, tenantId: user.tenantId },
-      data,
-    });
-    if (updated.count === 0) {
-      return { ok: false, message: "Үйлчлүүлэгч олдсонгүй." };
-    }
+    await updateCustomerCommand({ actor: user, customerId: id, data: formInput(formData) });
   } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      return {
-        ok: false,
-        fieldErrors: { phone: "Энэ утасны дугаартай үйлчлүүлэгч аль хэдийн бүртгэлтэй байна." },
-      };
+    if (e instanceof CustomerCommandError) {
+      if (e.fieldErrors) return { ok: false, fieldErrors: e.fieldErrors };
+      return { ok: false, message: e.message };
     }
-    return {
-      ok: false,
-      message: e instanceof Error ? e.message : "Шинэчлэх явцад алдаа гарлаа.",
-    };
+    throw e;
   }
-
-  await logAudit({
-    tenantId: user.tenantId,
-    userId: user.id,
-    entity: "Customer",
-    entityId: id,
-    action: "UPDATE",
-    summary: data.fullName || data.phone,
-    after: data,
-  });
 
   revalidatePath("/dashboard/customers");
   revalidatePath(`/dashboard/customers/${id}`);
@@ -223,32 +120,14 @@ export async function deleteCustomerAction(formData: FormData): Promise<void> {
   const id = s(formData, "id");
   if (!id) return;
 
-  const target = await prisma.customer.findFirst({
-    where: { id, tenantId: user.tenantId },
-    select: { fullName: true },
-  });
-
   try {
-    await prisma.customer.delete({
-      where: { id, tenantId: user.tenantId },
-    });
+    await deleteCustomerCommand({ actor: user, customerId: id });
   } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") {
-      throw new Error(
-        "Энэ үйлчлүүлэгчтэй холбоотой засварын хуудас байгаа тул устгах боломжгүй.",
-      );
+    if (e instanceof CustomerCommandError) {
+      throw new Error(e.message);
     }
     throw e;
   }
-
-  await logAudit({
-    tenantId: user.tenantId,
-    userId: user.id,
-    entity: "Customer",
-    entityId: id,
-    action: "DELETE",
-    summary: target?.fullName,
-  });
 
   revalidatePath("/dashboard/customers");
   revalidatePath("/dashboard");
@@ -280,33 +159,22 @@ export async function sendCustomerBroadcastAction(
   if (!body) fieldErrors.body = "Агуулга оруулна уу.";
   if (Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors };
 
-  // Багцын хязгаар: daily_customer_notifications — "илгээх" ДАРАЛТЫН тоог
-  // хязгаарлана (хүлээн авагчийн тоог биш), тул тоологч нь тухайн өдөр бичигдсэн
-  // AuditLog-ийн "Notification" мөрүүд (send бүрт 1 мөр) байна.
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const dailyLimit = await enforceCountLimit(
-    user.tenantId,
-    PLAN_LIMIT_CODES.DAILY_CUSTOMER_NOTIFICATIONS,
-    () =>
-      prisma.auditLog.count({
-        where: { tenantId: user.tenantId, entity: "Notification", createdAt: { gte: todayStart } },
-      }),
-  );
-  if (!dailyLimit.allowed) {
-    return { ok: false, message: dailyLimit.message };
+  // P3-B7: канон "daily limit → broadcastTenantPromo → audit" дараалал
+  // `lib/customers/customer-broadcast.ts`-д нэгдсэн — энэ action зөвхөн
+  // thin adapter. Зан төлөв (мессеж, 0 хүлээн авагчийн тохиолдол) хэвээр.
+  let notified: number;
+  try {
+    const result = await sendCustomerBroadcast({
+      actor: user,
+      data: { title, body },
+    });
+    notified = result.notified;
+  } catch (e) {
+    if (e instanceof CustomerBroadcastError) {
+      return { ok: false, message: e.message };
+    }
+    throw e;
   }
-
-  const notified = await broadcastTenantPromo({ tenantId: user.tenantId, title, body });
-
-  await logAudit({
-    tenantId: user.tenantId,
-    userId: user.id,
-    entity: "Notification",
-    entityId: user.tenantId,
-    action: "OTHER",
-    summary: `Үйлчлүүлэгчид зар илгээв: "${title}" · ${notified.toLocaleString("mn-MN")} хүлээн авагч`,
-  });
 
   if (notified === 0) {
     return {

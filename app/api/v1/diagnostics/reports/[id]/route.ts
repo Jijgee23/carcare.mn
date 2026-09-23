@@ -1,4 +1,4 @@
-import { jsonError, jsonOk, requireApiUser } from "@/lib/api";
+import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
 import { resolveWorkingBranch } from "@/lib/auth/api-branch";
 import { canDelete } from "@/lib/auth/roles";
 import { logAudit } from "@/lib/audit";
@@ -11,6 +11,8 @@ export async function GET(
 ) {
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
+  const denied = requirePermission(auth.user, "diagnostics.view");
+  if (denied) return denied;
   const { id } = await ctx.params;
   const scopeResult = await resolveWorkingBranch(req, auth.user);
   if (scopeResult.response) return scopeResult.response;
@@ -72,7 +74,23 @@ export async function DELETE(
   if (!allowed) return jsonError(403, "Танд устгах эрх байхгүй.");
   if (report.order && !canEditOrder(auth.user, report.order)) return jsonError(403, "Танд энэ тайланг устгах эрх байхгүй.");
 
-  await prisma.diagnosticReport.delete({ where: { id: report.id } });
+  // Энэ тайланг гүйцээж байсан ServiceItem-ийг олж, тайлан устгагдсаны дараа
+  // (FK-ийн SET NULL-аар diagnosticReportId нь автоматаар хоослогдоно) статусыг
+  // нь бөглөх хүлээгдэж буй болгож буцаана — mirrors deleteReportAction.
+  const linkedItem = await prisma.serviceItem.findUnique({
+    where: { diagnosticReportId: report.id },
+    select: { id: true },
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.diagnosticReport.delete({ where: { id: report.id } });
+    if (linkedItem) {
+      await tx.serviceItem.update({
+        where: { id: linkedItem.id },
+        data: { status: "PENDING", startedAt: null, completedAt: null },
+      });
+    }
+  });
 
   await logAudit({
     tenantId: auth.user.tenantId,

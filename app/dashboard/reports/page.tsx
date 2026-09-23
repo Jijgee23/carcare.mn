@@ -2,6 +2,7 @@ import Link from "next/link";
 import { DatePicker } from "@/app/_components/date-picker";
 import { Btn, StatCell, StatGrid, TabLink, btnClass } from "@/app/_components/landing-ops-ui";
 import { requireUser } from "@/lib/auth";
+import { workingBranchScopeId } from "@/lib/auth/roles";
 import { formatDuration } from "@/lib/category-duration";
 import { ITEM_KIND_BADGE, ORDER_STATUS_BADGE, formatTugrik } from "@/lib/orders";
 import { IncomeChart } from "../income-chart";
@@ -68,7 +69,7 @@ export default async function ReportsPage({
   const range: Range = parseRange(params);
   const activeKey = activeQuickKey(params);
 
-  const data = await loadReportData(user, range);
+  const data = await loadReportData(user, range, workingBranchScopeId(user));
   const {
     totalRevenue,
     completedCount,

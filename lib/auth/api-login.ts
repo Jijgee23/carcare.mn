@@ -47,15 +47,21 @@ export async function buildApiLoginResponse(
   user: ApiLoginUser,
   req: Request,
 ): Promise<Record<string, unknown>> {
+  const { userAgent, ip } = requestMeta(req);
+  // D-180: the refresh token is issued first so its id can be embedded in
+  // the access token as `refreshTokenId` (`rtid` claim) below.
+  const {
+    id: refreshTokenId,
+    token: refreshToken,
+    expiresAt: refreshExpiresAt,
+  } = await issueRefreshToken({ userId: user.id, userAgent, ip });
+
   const accessToken = await signApiToken({
     userId: user.id,
     tenantId: user.tenantId,
     isOwner: user.isOwner,
+    refreshTokenId,
   });
-
-  const { userAgent, ip } = requestMeta(req);
-  const { token: refreshToken, expiresAt: refreshExpiresAt } =
-    await issueRefreshToken({ userId: user.id, userAgent, ip });
 
   return {
     accessToken,

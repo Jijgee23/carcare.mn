@@ -4,6 +4,17 @@ import { resolveWorkingBranch } from "@/lib/auth/api-branch";
 import { APPOINTMENT_STATUSES, type AppointmentStatus } from "@/lib/appointments";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
+import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
+import {
+  AppointmentCommandError,
+  type AppointmentCommandActor,
+} from "@/lib/appointments/appointment-commands";
+import { registerAppointmentByStaffCommand } from "@/lib/appointments/appointment-create-command";
+import { parseCreateAppointmentBody } from "@/lib/appointments/appointment-create-request";
+import {
+  appointmentSearchWhere,
+  parseAppointmentListQuery,
+} from "@/lib/appointments/appointment-list-query";
 
 const APPT_SELECT = {
   id: true,
@@ -120,6 +131,8 @@ export async function GET(req: Request) {
   const { page, pageSize, skip, take } = getApiPageInfo(url.searchParams, {
     maxSize: 100,
   });
+  const { q } = parseAppointmentListQuery(url.searchParams);
+  const searchOr = appointmentSearchWhere(q);
 
   const where: Prisma.AppointmentWhereInput = {
     tenantId: auth.user.tenantId,
@@ -129,6 +142,7 @@ export async function GET(req: Request) {
       : branchIdParam
         ? { branchId: branchIdParam }
         : {}),
+    ...(searchOr ? { OR: searchOr } : {}),
   };
 
   if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
@@ -156,4 +170,71 @@ export async function GET(req: Request) {
     appointments: items.map(shapeAppointment),
     pagination: buildMeta(total, page, pageSize),
   });
+}
+
+// POST /api/v1/appointments — Staff phone-in registration.
+// Delegates to the shared P2-B1 command (registerAppointmentByStaffCommand),
+// which itself runs reserveAppointment inside a row-locked transaction — the
+// only place capacity/hours/branch/customer existence are actually enforced.
+// Permission: appointments.create
+export async function POST(req: Request) {
+  const auth = await requireApiUser(req);
+  if (auth.response) return auth.response;
+  const denied = requirePermission(auth.user, "appointments.create");
+  if (denied) return denied;
+  const locked = await requireActiveSubscriptionApi(auth.user);
+  if (locked) return locked;
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return jsonError(400, "JSON body шаардлагатай.");
+  }
+
+  const parsed = parseCreateAppointmentBody(body);
+  if (!parsed.ok) {
+    return jsonError(parsed.status, parsed.message, parsed.fieldErrors ? { fieldErrors: parsed.fieldErrors } : undefined);
+  }
+  const { branchId, customerId, requestedAt, note, categoryIds, confirmed } = parsed.value;
+
+  const scopeResult = await resolveWorkingBranch(req, auth.user);
+  if (scopeResult.response) return scopeResult.response;
+
+  // `registerAppointmentByStaffCommand` enforces scope via
+  // `workingBranchScopeId(actor)`, which — per its own doc comment — reads
+  // `actor.workingBranchId` (the web-session field). For a token-based API
+  // actor that field does not otherwise exist, so the resolved header scope
+  // is threaded through explicitly here; `null` (owner / "ALL") leaves it
+  // unset, matching workingBranchScopeId's own null-means-unscoped contract.
+  const actor: AppointmentCommandActor = {
+    ...auth.user,
+    ...(scopeResult.branchId ? { workingBranchId: scopeResult.branchId } : {}),
+  };
+
+  try {
+    const created = await registerAppointmentByStaffCommand({
+      actor,
+      branchId,
+      customerId,
+      requestedAt,
+      note,
+      categoryIds,
+      confirmed,
+    });
+    const appointment = await prisma.appointment.findFirst({
+      where: { id: created.appointmentId, tenantId: auth.user.tenantId },
+      select: APPT_SELECT,
+    });
+    if (!appointment) return jsonError(500, "Цаг захиалга үүссэн боловч буцааж уншиж чадсангүй.");
+    return jsonOk({ appointment: shapeAppointment(appointment) }, { status: 201 });
+  } catch (error) {
+    if (error instanceof AppointmentCommandError) {
+      return jsonError(error.status, error.message, {
+        code: error.code,
+        ...(error.fieldErrors ? { fieldErrors: error.fieldErrors } : {}),
+      });
+    }
+    return jsonError(500, "Серверийн алдаа гарлаа. Дахин оролдоно уу.");
+  }
 }

@@ -1,27 +1,29 @@
-import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
-import { logAudit } from "@/lib/audit";
-import { normalizePhone } from "@/lib/phone";
 import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
-import { buildMeta, getApiPageInfo } from "@/lib/pagination";
+import { buildMeta } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
+import { CustomerCommandError, createCustomerCommand } from "@/lib/customers/customer-commands";
+import {
+  buildCustomerListWhere,
+  parseCustomerListQuery,
+} from "@/lib/customers/customer-list-query";
 
 export async function GET(req: Request) {
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
+  const denied = requirePermission(auth.user, "customers.view");
+  if (denied) return denied;
 
   const url = new URL(req.url);
-  const q = url.searchParams.get("q")?.trim() ?? "";
-  const { page, pageSize, skip, take } = getApiPageInfo(url.searchParams);
+  const parsed = parseCustomerListQuery(url.searchParams);
+  if (!parsed.ok) return jsonError(400, parsed.message, { field: parsed.field });
+  const query = parsed.value;
+  const { page, pageSize, skip, take } = query;
 
-  const where: Prisma.CustomerWhereInput = { tenantId: auth.user.tenantId };
-  if (q) {
-    where.OR = [
-      { fullName: { contains: q, mode: "insensitive" } },
-      { phone: { contains: q } },
-      { email: { contains: q, mode: "insensitive" } },
-    ];
-  }
+  // P3-B6: канон where-builder — `lib/customers/customer-list-query.ts`.
+  // Order нь энэ route-ийн хуучин зан төлөв (fullName asc) хэвээр — query
+  // contract-ийн нэг хэсэг биш, дуудагч тус бүр өөрийн order-ийг тогтооно.
+  const where = buildCustomerListWhere(query, { tenantId: auth.user.tenantId });
 
   const [customers, total] = await Promise.all([
     prisma.customer.findMany({
@@ -63,58 +65,34 @@ export async function POST(req: Request) {
   }
   const { fullName, phone, email, note } = body as Record<string, unknown>;
 
-  const nameStr = typeof fullName === "string" ? fullName.trim() : "";
-  const phoneStr = typeof phone === "string" ? phone.trim() : "";
-  const emailStr = typeof email === "string" ? email.trim() : "";
-  const noteStr = typeof note === "string" ? note.trim() : "";
-
-  // Account ↔ Customer тааралт утсаар түлхүүрлэгддэг тул канон 8 оронтой
-  // форматаар хадгална (dashboard action-тай ижил).
-  const canonicalPhone = normalizePhone(phoneStr);
-  const fieldErrors: Record<string, string> = {};
-  // Зөвхөн утас заавал. Овог нэр заавал биш.
-  if (!phoneStr) fieldErrors.phone = "Утас шаардлагатай.";
-  else if (!canonicalPhone)
-    fieldErrors.phone = "Утасны дугаар 8 оронтой тоо байх ёстой.";
-  if (Object.keys(fieldErrors).length > 0) {
-    return jsonError(422, "Хүсэлт буруу.", { fieldErrors });
-  }
-
-  let customer;
+  // P3-B1: канон command — validate/normalise, MAX_CUSTOMERS quota болон
+  // Account-claim (Account утсаар олдвол холбогдох/нэхэмжлэх) бүгд
+  // `lib/customers/customer-commands.ts`-д нэгдсэн. Энэ route урьд нь
+  // Account-claim алгасдаг байсан (веб dashboard action-аас өөр зан) — энэ
+  // нь тайлбарласан, зориудаар нэгтгэсэн зан төлөв өөрчлөлт.
+  let result;
   try {
-    customer = await prisma.customer.create({
+    result = await createCustomerCommand({
+      actor: auth.user,
+      // Энэ route урьд нь MAX_CUSTOMERS шалгадаггүй байсан. Хязгаарыг хаана
+      // хэрэгжүүлэх нь нээлттэй шийдвэр тул хуучин зан төлөв хэвээр
+      // (2026-09-22) — `COWORK.md` Inbox.
       data: {
-        tenantId: auth.user.tenantId,
-        fullName: nameStr,
-        phone: canonicalPhone!,
-        email: emailStr || null,
-        note: noteStr || null,
-      },
-      select: {
-        id: true,
-        fullName: true,
-        phone: true,
-        email: true,
-        note: true,
-        createdAt: true,
+        fullName: typeof fullName === "string" ? fullName : "",
+        phone: typeof phone === "string" ? phone : "",
+        email: typeof email === "string" ? email : null,
+        note: typeof note === "string" ? note : null,
       },
     });
   } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      return jsonError(409, "Энэ утасны дугаартай харилцагч аль хэдийн бүртгэлтэй байна.");
+    if (e instanceof CustomerCommandError) {
+      if (e.fieldErrors) return jsonError(e.status, e.message, { fieldErrors: e.fieldErrors });
+      return jsonError(e.status, e.message);
     }
     throw e;
   }
 
-  await logAudit({
-    tenantId: auth.user.tenantId,
-    userId: auth.user.id,
-    entity: "Customer",
-    entityId: customer.id,
-    action: "CREATE",
-    summary: customer.fullName || customer.phone,
-    after: { fullName: customer.fullName, phone: customer.phone, email: customer.email },
-  });
-
-  return jsonOk({ customer }, { status: 201 });
+  // Шинээр үүсгэсэн бол 201; Account-claim-аар олдсон/нэхэмжилсэн бол 200 —
+  // энэ route урьд нь claim хийдэггүй байсан тул "created бус" гарц шинэ.
+  return jsonOk({ customer: result.customer }, { status: result.outcome === "created" ? 201 : 200 });
 }

@@ -1,5 +1,4 @@
 import { deleteCustomerAction } from "@/app/_actions/customers";
-import { Prisma } from "@/app/generated/prisma/client";
 import { ClickableRow } from "@/app/_components/clickable-row";
 import { ConfirmForm } from "@/app/_components/confirm-form";
 import { BtnLink } from "@/app/_components/landing-ops-ui";
@@ -8,6 +7,7 @@ import { Pagination } from "@/app/_components/pagination";
 import { EmptyState } from "@/app/_components/page-header";
 import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { customerLabel } from "@/lib/customers";
+import { buildCustomerListWhere } from "@/lib/customers/customer-list-query";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canView, hasPermission } from "@/lib/auth/roles";
 import { redirect } from "next/navigation";
@@ -30,16 +30,15 @@ export default async function CustomersPage({
   const canNotify = hasPermission(user, "customers.notify");
 
   const { q = "", page: pageParam } = await searchParams;
-  const where: Prisma.CustomerWhereInput = { tenantId: user.tenantId };
-  if (q) {
-    where.OR = [
-      { fullName: { contains: q, mode: "insensitive" } },
-      { phone: { contains: q } },
-      { email: { contains: q, mode: "insensitive" } },
-    ];
-  }
-
   const { page, pageSize, skip, take } = getPageInfo(pageParam);
+  // P3-B6: канон where-builder — `lib/customers/customer-list-query.ts`.
+  // Хайлтын талбарууд (fullName/phone/email) энэ хуудасны хуучин зан
+  // төлөвтэй яг адил хэвээр; зөвхөн `q`-г дамжуулна, page/pageSize нь энд
+  // тусад нь (`getPageInfo`-оор) удирддаг тул query-д хэрэггүй.
+  const where = buildCustomerListWhere(
+    { q: q || undefined, page, pageSize, skip, take },
+    { tenantId: user.tenantId },
+  );
   const [customers, total] = await Promise.all([
     prisma.customer.findMany({
       where,

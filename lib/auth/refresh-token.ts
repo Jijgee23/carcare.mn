@@ -26,12 +26,12 @@ export type IssueRefreshOptions = {
 
 export async function issueRefreshToken(
   opts: IssueRefreshOptions,
-): Promise<{ token: string; expiresAt: Date }> {
+): Promise<{ id: string; token: string; expiresAt: Date }> {
   const raw = generateRaw();
   const tokenHash = hashToken(raw);
   const expiresAt = new Date(Date.now() + REFRESH_TOKEN_MAX_AGE_SECONDS * 1000);
 
-  await prisma.refreshToken.create({
+  const row = await prisma.refreshToken.create({
     data: {
       tokenHash,
       userId: opts.userId,
@@ -39,9 +39,10 @@ export async function issueRefreshToken(
       ip: opts.ip ?? null,
       expiresAt,
     },
+    select: { id: true },
   });
 
-  return { token: raw, expiresAt };
+  return { id: row.id, token: raw, expiresAt };
 }
 
 /**
@@ -55,7 +56,7 @@ export async function rotateRefreshToken(
   rawToken: string,
   opts: { userAgent?: string | null; ip?: string | null } = {},
 ): Promise<
-  | { ok: true; token: string; expiresAt: Date; userId: string }
+  | { ok: true; id: string; token: string; expiresAt: Date; userId: string }
   | { ok: false; reason: "invalid" | "expired" | "reused" }
 > {
   const tokenHash = hashToken(rawToken);
@@ -66,9 +67,17 @@ export async function rotateRefreshToken(
       userId: true,
       expiresAt: true,
       revokedAt: true,
+      replacedById: true,
     },
   });
   if (!existing) return { ok: false, reason: "invalid" };
+
+  // Зориуд revoke-олсон (logout, revoke-others, нууц үг солих — D-179) token
+  // нь хулгайн шинж биш: зөвхөн энэ token-ыг хүчингүй гэж үзнэ. Үгүй бол
+  // хэрэглэгчийн үлдээсэн төхөөрөмж ч гарна.
+  if (existing.revokedAt && !existing.replacedById) {
+    return { ok: false, reason: "invalid" };
+  }
 
   if (existing.revokedAt) {
     // Хуучин revoke-олсон token хэрэглэгдсэн — энэ хэрэглэгчийн бүх token-ыг revoke
@@ -90,7 +99,7 @@ export async function rotateRefreshToken(
   );
 
   // Хуучнаа revoke + шинийг үүсгэх атомт
-  await prisma.$transaction(async (tx) => {
+  const newId = await prisma.$transaction(async (tx) => {
     const newRow = await tx.refreshToken.create({
       data: {
         tokenHash: newHash,
@@ -109,10 +118,12 @@ export async function rotateRefreshToken(
         replacedById: newRow.id,
       },
     });
+    return newRow.id;
   });
 
   return {
     ok: true,
+    id: newId,
     token: newRaw,
     expiresAt: newExpiresAt,
     userId: existing.userId,

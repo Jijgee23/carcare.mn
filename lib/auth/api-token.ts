@@ -9,6 +9,12 @@ export type ApiTokenPayload = {
   userId: string;
   tenantId: string;
   isOwner: boolean;
+  // D-180: the RefreshToken.id this access token was issued/rotated
+  // alongside — never the raw token or its hash. Optional/nullable so
+  // tokens signed before this claim existed keep verifying (backward
+  // compatible); `getApiUserFromRequest` exposes it as
+  // `refreshTokenId: string | null`.
+  refreshTokenId?: string | null;
 };
 
 const client = createJwtSession<ApiTokenPayload>({
@@ -21,6 +27,8 @@ const client = createJwtSession<ApiTokenPayload>({
       userId: payload.userId as string,
       tenantId: payload.tenantId as string,
       isOwner: Boolean(payload.isOwner),
+      refreshTokenId:
+        typeof payload.refreshTokenId === "string" ? payload.refreshTokenId : null,
     };
   },
 });
@@ -67,5 +75,6 @@ export async function getApiUserFromRequest(req: Request) {
     },
   });
   if (!user) return null;
-  return user;
+  // D-180: nullable for tokens signed before this claim existed.
+  return { ...user, refreshTokenId: payload.refreshTokenId ?? null };
 }

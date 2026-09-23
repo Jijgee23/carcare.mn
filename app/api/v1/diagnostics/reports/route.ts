@@ -1,7 +1,8 @@
 import { Prisma } from "@/app/generated/prisma/client";
-import { jsonError, jsonOk, requireApiUser } from "@/lib/api";
+import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
 import { resolveWorkingBranch } from "@/lib/auth/api-branch";
 import {
+  computeReportSeverity,
   type ReportEntry,
   type TemplateSchema,
   tenantVisibleTemplateWhere,
@@ -16,11 +17,13 @@ import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 import { canEditOrder, orderReadWhere } from "@/lib/auth/order-access";
 import { withOrderTransaction } from "@/lib/order-time-booking";
-import { serviceItemTimingPatch } from "@/lib/orders";
+import { canFillDiagnostics, isOrderLocked, serviceItemTimingPatch, type OrderStatus } from "@/lib/orders";
 
 export async function GET(req: Request) {
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
+  const denied = requirePermission(auth.user, "diagnostics.view");
+  if (denied) return denied;
 
   const url = new URL(req.url);
   const vehicleId = url.searchParams.get("vehicleId")?.trim();
@@ -77,6 +80,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
+  const denied = requirePermission(auth.user, "diagnostics.create");
+  if (denied) return denied;
 
   // Multipart form-data — зураг хавсаргахын тулд
   let formData: FormData;
@@ -160,7 +165,13 @@ export async function POST(req: Request) {
     if (!canEditOrder(auth.user, item.order)) {
       return jsonError(403, "Танд энэ засварын хуудсанд оношилгоо бөглөх эрх байхгүй.");
     }
-    if (item.order.status !== "IN_PROGRESS") {
+    const itemOrderStatus = item.order.status as OrderStatus;
+    if (isOrderLocked(itemOrderStatus)) {
+      return jsonError(422, "Дууссан / цуцлагдсан захиалгад оношилгоо бөглөх боломжгүй.", {
+        code: "ORDER_LOCKED",
+      });
+    }
+    if (!canFillDiagnostics(itemOrderStatus)) {
       return jsonError(422, "Оношилгооны тайланг зөвхөн ажиллаж буй захиалгад бүртгэнэ үү.", {
         code: "ORDER_STATUS_INVALID",
       });
@@ -186,7 +197,13 @@ export async function POST(req: Request) {
     });
     if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
     if (!canEditOrder(auth.user, order)) return jsonError(403, "Танд энэ засварын хуудсанд оношилгоо бөглөх эрх байхгүй.");
-    if (order.status !== "IN_PROGRESS") {
+    const orderStatus = order.status as OrderStatus;
+    if (isOrderLocked(orderStatus)) {
+      return jsonError(422, "Дууссан / цуцлагдсан захиалгад оношилгоо бөглөх боломжгүй.", {
+        code: "ORDER_LOCKED",
+      });
+    }
+    if (!canFillDiagnostics(orderStatus)) {
       return jsonError(422, "Оношилгооны тайланг зөвхөн ажиллаж буй захиалгад бүртгэнэ үү.", {
         code: "ORDER_STATUS_INVALID",
       });
@@ -291,7 +308,13 @@ export async function POST(req: Request) {
         if (!canEditOrder(auth.user, order)) {
           return jsonError(403, "Танд энэ засварын хуудсанд оношилгоо бөглөх эрх байхгүй.");
         }
-        if (order.status !== "IN_PROGRESS") {
+        const txOrderStatus = order.status as OrderStatus;
+        if (isOrderLocked(txOrderStatus)) {
+          return jsonError(422, "Дууссан / цуцлагдсан захиалгад оношилгоо бөглөх боломжгүй.", {
+            code: "ORDER_LOCKED",
+          });
+        }
+        if (!canFillDiagnostics(txOrderStatus)) {
           return jsonError(422, "Оношилгооны тайланг зөвхөн ажиллаж буй захиалгад бүртгэнэ үү.", {
             code: "ORDER_STATUS_INVALID",
           });
@@ -320,6 +343,7 @@ export async function POST(req: Request) {
           data: {
             templateVersion: template.version,
             data: validated,
+            maxSeverity: computeReportSeverity(schema, validated),
             signatureUrl: collected.signatureUrl,
             mileageAtReport: mileageVal,
             notes: notes || null,
@@ -363,6 +387,7 @@ export async function POST(req: Request) {
         data: {
           templateVersion: template.version,
           data: validated,
+          maxSeverity: computeReportSeverity(schema, validated),
           signatureUrl: collected.signatureUrl,
           mileageAtReport: mileageVal,
           notes: notes || null,

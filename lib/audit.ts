@@ -1,21 +1,27 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { prisma, type PrismaTransactionClient } from "./prisma";
 
-export type AuditAction =
-  | "CREATE"
-  | "UPDATE"
-  | "DELETE"
-  | "STATUS_CHANGE"
-  | "PAYMENT_CHANGE"
-  | "STOCK_CHANGE"
-  | "ITEM_ADDED"
-  | "ITEM_REMOVED"
-  | "ITEM_UPDATED"
-  | "ITEM_CANCELLED"
-  | "ITEM_STATUS_CHANGE"
-  | "LOGIN"
-  | "LOGOUT"
-  | "OTHER";
+// P7-B1 — `ACTION_TYPES` mirrors `AuditAction` as a value (the type alone
+// can't be iterated) so `GET /api/v1/audit` can return it as a vocab list
+// for filter chips, same idea as `ENTITY_TYPES` below.
+export const ACTION_TYPES = [
+  "CREATE",
+  "UPDATE",
+  "DELETE",
+  "STATUS_CHANGE",
+  "PAYMENT_CHANGE",
+  "STOCK_CHANGE",
+  "ITEM_ADDED",
+  "ITEM_REMOVED",
+  "ITEM_UPDATED",
+  "ITEM_CANCELLED",
+  "ITEM_STATUS_CHANGE",
+  "LOGIN",
+  "LOGOUT",
+  "OTHER",
+] as const;
+
+export type AuditAction = (typeof ACTION_TYPES)[number];
 
 // DB enum биш (уян хатан байлгах зорилготой) ч typo-г compile үед барихын тулд
 // TypeScript const — шинэ entity нэмэхдээ энд нэмнэ (audit хуудасны ENTITY_LABEL

@@ -1,8 +1,6 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
-import { userRoleLabel, workingBranchScopeId } from "@/lib/auth/roles";
-import { prisma } from "@/lib/prisma";
-import { Prisma } from "@/app/generated/prisma/client";
+import { userRoleLabel } from "@/lib/auth/roles";
 import {
   ORDER_STATUS_BADGE,
   ORDER_STATUS_LABEL,
@@ -13,21 +11,13 @@ import { DatePicker } from "@/app/_components/date-picker";
 import { Sparkline } from "@/app/_components/sparkline";
 import { IncomeBarChart } from "./income-bar-chart";
 import { PlanUsageRing } from "./plan-usage-ring";
-import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
-import { getLimitsMap } from "@/lib/plan-limits-server";
-import { type Trend, dailyTrend } from "./trend";
-import {
-  INCOME_QUICK_RANGES,
-  type IncomeRangeKey,
-  buildIncomeSeries,
-  resolveIncomeRange,
-} from "./income-range";
+import { type Trend, loadOverviewData } from "@/lib/overview";
+import { INCOME_QUICK_RANGES, type IncomeRangeKey } from "./income-range";
 import {
   PLAN_LABEL,
   SUBSCRIPTION_STATUS_BADGE,
   SUBSCRIPTION_STATUS_LABEL,
   formatDaysLeft,
-  resolveActiveSubscription,
 } from "@/lib/subscription";
 
 export const metadata = {
@@ -46,169 +36,33 @@ export default async function DashboardPage({
   const user = await requireUser();
 
   const params = await searchParams;
-  const incomeRange = resolveIncomeRange(params);
 
-  // 14-day window for the stat-card trend sparklines.
-  const now = new Date();
-  const trendStart = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() - 13,
-  );
-  const recentWhere = {
-    tenantId: user.tenantId,
-    createdAt: { gte: trendStart },
-  };
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-  // Салбараар хязгаарлагдсан ажилтны хувьд захиалга/орлогын тоог салбараар нь шүүнэ.
-  const scopeBranchId = workingBranchScopeId(user);
-  const orderBranchFilter = scopeBranchId ? { branchId: scopeBranchId } : {};
-
-  const [
+  const {
+    incomeRange,
     branchCount,
     employeeCount,
     customerCount,
     vehicleCount,
     openOrderCount,
     completedThisMonth,
-    incomeOrders,
-    subscriptions,
-    orderDates,
-    completedDates,
-    customerDates,
-    vehicleDates,
-    branchDates,
-    employeeDates,
+    activeSub,
     recentlyUpdatedOrders,
     postpaidVehicleCount,
-    postpaidSums,
+    receivable,
     todayOrderCount,
     planLimits,
-  ] = await Promise.all([
-    prisma.branch.count({ where: { tenantId: user.tenantId } }),
-    prisma.user.count({ where: { tenantId: user.tenantId } }),
-    prisma.customer.count({ where: { tenantId: user.tenantId } }),
-    prisma.tenantVehicle.count({ where: { tenantId: user.tenantId } }),
-    prisma.serviceOrder.count({
-      where: {
-        tenantId: user.tenantId,
-        ...orderBranchFilter,
-        status: { in: ["SCHEDULED", "IN_PROGRESS"] },
-      },
-    }),
-    prisma.serviceOrder.count({
-      where: {
-        tenantId: user.tenantId,
-        ...orderBranchFilter,
-        status: "COMPLETED",
-        completedAt: {
-          gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-        },
-      },
-    }),
-    prisma.serviceOrder.findMany({
-      where: {
-        tenantId: user.tenantId,
-        ...orderBranchFilter,
-        status: "COMPLETED",
-        completedAt: { gte: incomeRange.fetchFrom, lte: incomeRange.to },
-      },
-      select: { completedAt: true, totalAmount: true },
-    }),
-    prisma.subscription.findMany({
-      where: { tenantId: user.tenantId },
-      orderBy: { startsAt: "desc" },
-      select: {
-        id: true,
-        plan: true,
-        status: true,
-        startsAt: true,
-        endsAt: true,
-      },
-    }),
-    prisma.serviceOrder.findMany({
-      where: { ...recentWhere, ...orderBranchFilter },
-      select: { createdAt: true },
-    }),
-    prisma.serviceOrder.findMany({
-      where: {
-        tenantId: user.tenantId,
-        ...orderBranchFilter,
-        status: "COMPLETED",
-        completedAt: { gte: trendStart },
-      },
-      select: { completedAt: true },
-    }),
-    prisma.customer.findMany({
-      where: recentWhere,
-      select: { createdAt: true },
-    }),
-    prisma.tenantVehicle.findMany({
-      where: recentWhere,
-      select: { createdAt: true },
-    }),
-    prisma.branch.findMany({
-      where: recentWhere,
-      select: { createdAt: true },
-    }),
-    prisma.user.findMany({
-      where: recentWhere,
-      select: { createdAt: true },
-    }),
-    prisma.serviceOrder.findMany({
-      where: { tenantId: user.tenantId, ...orderBranchFilter },
-      orderBy: { updatedAt: "desc" },
-      take: 5,
-      select: {
-        id: true,
-        number: true,
-        status: true,
-        updatedAt: true,
-        customer: { select: { fullName: true } },
-        vehicle: { select: { plate: true } },
-        items: { select: { status: true, kind: true } },
-      },
-    }),
-    prisma.tenantVehicle.count({
-      where: { tenantId: user.tenantId, isPostpaid: true },
-    }),
-    prisma.serviceOrder.aggregate({
-      where: {
-        tenantId: user.tenantId,
-        ...orderBranchFilter,
-        isPostpaid: true,
-        status: { not: "CANCELLED" },
-      },
-      _sum: { totalAmount: true, paidAmount: true },
-    }),
-    prisma.serviceOrder.count({
-      where: { tenantId: user.tenantId, createdAt: { gte: todayStart } },
-    }),
-    getLimitsMap(user.tenant.plan, [
-      PLAN_LIMIT_CODES.DAILY_ORDERS,
-      PLAN_LIMIT_CODES.MAX_VEHICLES,
-      PLAN_LIMIT_CODES.MAX_USERS,
-      PLAN_LIMIT_CODES.MAX_BRANCHES,
-    ]),
-  ]);
-  const activeSub = resolveActiveSubscription(subscriptions);
-
-  // Дараа төлбөрт (гэрээт) машинуудын төлөгдөөгүй үлдэгдэл — авлага.
-  const receivable = new Prisma.Decimal(
-    postpaidSums._sum.totalAmount ?? 0,
-  ).minus(new Prisma.Decimal(postpaidSums._sum.paidAmount ?? 0));
-
-  const income = buildIncomeSeries(incomeOrders, incomeRange);
+    income,
+    orderTrend,
+    completedTrend,
+    customerTrend,
+    vehicleTrend,
+    branchTrend,
+    employeeTrend,
+  } = await loadOverviewData(
+    { ...user, tenantPlan: user.tenant.plan },
+    params,
+  );
   const incomeUp = income.changePct == null ? true : income.changePct >= 0;
-
-  // Per-card growth/decline trends.
-  const orderTrend = dailyTrend(orderDates.map((o) => o.createdAt));
-  const completedTrend = dailyTrend(completedDates.map((o) => o.completedAt));
-  const customerTrend = dailyTrend(customerDates.map((c) => c.createdAt));
-  const vehicleTrend = dailyTrend(vehicleDates.map((v) => v.createdAt));
-  const branchTrend = dailyTrend(branchDates.map((b) => b.createdAt));
-  const employeeTrend = dailyTrend(employeeDates.map((e) => e.createdAt));
 
   // Статистик карт хэдэн ширхэг байгаагаас хамааруулж xl цонхон дээр яг тэр
   // тоогоор багана үүсгэнэ — ингэснээр (Авлага карт нэмэгдсэн ч) бүгд нэг

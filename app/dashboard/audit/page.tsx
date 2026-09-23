@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { Prisma } from "@/app/generated/prisma/client";
 import { Chip, type ChipTone } from "@/app/_components/landing-ops-ui";
 import {
   FilterSelect,
@@ -11,6 +10,12 @@ import { Pagination } from "@/app/_components/pagination";
 import { requireUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/auth/roles";
 import { type EntityType } from "@/lib/audit";
+import {
+  AUDIT_PAGE_SIZE,
+  auditPagination,
+  buildAuditWhere,
+  parseAuditPage,
+} from "@/lib/audit-query";
 import { prisma } from "@/lib/prisma";
 
 export const metadata = {
@@ -78,8 +83,6 @@ const ENTITY_OPTIONS = Object.entries(ENTITY_LABEL).map(([value, label]) => ({
   label,
 }));
 
-const PAGE_SIZE = 50;
-
 function entityHref(entity: string, entityId: string): string | null {
   switch (entity) {
     case "ServiceOrder":
@@ -131,25 +134,17 @@ export default async function AuditLogPage({
     userId = "",
     page: pageStr = "1",
   } = await searchParams;
-  const page = Math.max(1, Number.parseInt(pageStr, 10) || 1);
+  const page = parseAuditPage(pageStr);
 
-  const where: Prisma.AuditLogWhereInput = { tenantId: me.tenantId };
-  if (action) where.action = action as Prisma.EnumAuditActionFilter["equals"];
-  if (entity) where.entity = entity;
-  if (userId) where.userId = userId;
-  if (q) {
-    where.OR = [
-      { summary: { contains: q, mode: "insensitive" } },
-      { entityId: { contains: q } },
-    ];
-  }
+  const where = buildAuditWhere(me.tenantId, { q, action, entity, userId });
+  const { skip, take } = auditPagination(page);
 
   const [logs, total, users] = await Promise.all([
     prisma.auditLog.findMany({
       where,
       orderBy: { createdAt: "desc" },
-      take: PAGE_SIZE,
-      skip: (page - 1) * PAGE_SIZE,
+      take,
+      skip,
       include: {
         user: { select: { firstName: true, lastName: true, email: true } },
       },
@@ -162,7 +157,7 @@ export default async function AuditLogPage({
     }),
   ]);
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(total / AUDIT_PAGE_SIZE));
 
   return (
     <div className="p-4 sm:p-6 max-w-full flex-1 flex flex-col min-h-0 w-full">

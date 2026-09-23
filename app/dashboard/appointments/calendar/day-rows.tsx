@@ -26,16 +26,12 @@ import {
   APPOINTMENT_BOOKING_PAYMENT_LABEL,
   appointmentBookingPaymentStatus,
 } from "@/lib/appointment-payment-status";
+import {
+  selectAppointmentIntervals,
+  SCHEDULE_ISSUE_LABEL,
+} from "@/lib/appointments/calendar-selection";
 
-export const SCHEDULE_ISSUE_LABEL: Record<ScheduleIssue["reason"], string> = {
-  "missing-estimate": "Тооцоолсон хугацаа дутуу",
-  "unknown-occupancy": "Ажлын байрны эзэмшил тодорхойгүй",
-  "missing-order": "Холбогдсон захиалга олдсонгүй",
-  "linked-order-not-occupying": "Холбогдсон захиалга ажлын байр эзлэхгүй байна",
-  "missing-start": "Эхэлсэн цаг тэмдэглэгдээгүй",
-  "invalid-interval": "Хугацааны муж буруу",
-  "payment-expired": "Хураамж төлөгдөөгүй тул хугацаа дууссан",
-};
+export { SCHEDULE_ISSUE_LABEL };
 
 export function appointmentDisplayName(a: BranchScheduleAppointmentRow): string {
   return customerLabel({
@@ -129,32 +125,19 @@ export function buildDayRows(
   // үүсгэсний дараа яг энэ хуудас руу буцаах боломж олгоно.
   returnTo?: string,
 ): { rows: DayRow[]; issues: ScheduleIssue[] } {
-  const appointmentById = new Map(schedule.appointments.map((a) => [a.id, a]));
-  // `buildBranchSchedule` suppresses a booked appointment's OWN interval once
-  // its linked order contributes a visible occupancy interval (avoids double-
-  // counting the same job for capacity/overlap purposes) — correct there, but
-  // this appointments-only day view then had NOTHING to render for it (the
-  // order-source interval that replaced it is filtered out below). Resolve
-  // those back to the appointment they represent instead of losing the row.
-  const appointmentByOrderId = new Map(
-    schedule.appointments
-      .filter((a) => a.serviceOrderId)
-      .map((a) => [a.serviceOrderId as string, a]),
-  );
-
-  const appointmentIntervals = schedule.intervals.filter(
-    (row) => row.source === "appointment" || appointmentByOrderId.has(row.id),
-  );
+  // Selection rule (which interval rows belong to this appointments-only
+  // view, and resolving an order-sourced interval back to the appointment it
+  // represents) lives in `lib/appointments/calendar-selection.ts`, shared
+  // with the API/mobile day model — see that module's doc comment.
+  const { rows: selectedRows, issueBySourceId } = selectAppointmentIntervals({
+    intervals: schedule.intervals,
+    issues: schedule.issues,
+    appointments: schedule.appointments,
+  });
   const issues = schedule.issues.filter((issue) => issue.source === "appointment");
-  const issueBySourceId = new Map(issues.map((issue) => [`appointment:${issue.id}`, issue]));
 
-  const rows: DayRow[] = appointmentIntervals
-    .sort((a, b) => a.startMs - b.startMs)
-    .map((row) => {
-      const appt =
-        row.source === "appointment"
-          ? appointmentById.get(row.id)
-          : appointmentByOrderId.get(row.id);
+  const rows: DayRow[] = selectedRows.map((row) => {
+      const appt = row.appt;
       const issue = appt ? issueBySourceId.get(`appointment:${appt.id}`) : undefined;
       const name = appt ? appointmentDisplayName(appt) : "—";
       const statusLabel = appt ? APPOINTMENT_STATUS_LABEL[appt.status] : "";

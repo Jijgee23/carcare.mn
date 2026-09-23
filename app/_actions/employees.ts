@@ -7,8 +7,17 @@ import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canEdit } from "@/lib/auth/roles";
 import { assertActiveSubscription } from "@/lib/subscription-server";
-import { type BulkActionState, parseIdsJson } from "@/lib/bulk-action";
-import { isValidPhone, normalizePhone } from "@/lib/phone";
+import type { BulkActionState } from "@/lib/bulk-action";
+import {
+  bulkUpdateEmployeeRoleBranch,
+  createEmployee,
+  deleteEmployee,
+  prepareCreateEmployee,
+  resetEmployeePassword,
+  toggleEmployeeActive,
+  updateEmployee,
+} from "@/lib/employees/core";
+import type { EmployeeActor } from "@/lib/employees/types";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { enforceCountLimit } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
@@ -19,16 +28,7 @@ export type EmployeeActionState = {
   fieldErrors?: Record<string, string>;
 } | null;
 
-function s(fd: FormData, key: string): string {
-  const v = fd.get(key);
-  return typeof v === "string" ? v.trim() : "";
-}
-
-function isEmail(v: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-}
-
-async function authorize(action: "create" | "edit" | "delete") {
+async function authorize(action: "create" | "edit" | "delete"): Promise<EmployeeActor> {
   const user = await requireUser();
   const ok =
     action === "create"
@@ -43,178 +43,23 @@ async function authorize(action: "create" | "edit" | "delete") {
   return user;
 }
 
-type Validated = {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  roleId: string | null;
-  branchId: string | null;
-  // Үндсэн салбараас гадна энэ ажилтныг захиалгад хариуцагчаар сонгож болох
-  // нэмэлт салбарууд (олон салбарт дамжиж ажилладаг мастер).
-  assignableBranchIds: string[];
-  isActive: boolean;
-  activeUntil: Date | null;
-};
-
-function validateCommon(
-  fd: FormData,
-  opts?: { requireRole?: boolean },
-): {
-  data: Validated;
-  errors: Record<string, string>;
-} {
-  const requireRole = opts?.requireRole ?? true;
-  const firstName = s(fd, "firstName");
-  const lastName = s(fd, "lastName");
-  // Нэвтрэх үед имэйлийг lowercase хийдэг тул хадгалахдаа ч мөн адил болгоно —
-  // эс бол том үсэгтэй хадгалсан ажилтан нэвтэрч чадахгүй / давхцал танигдахгүй.
-  const email = s(fd, "email").toLowerCase();
-  const phone = s(fd, "phone");
-  const roleId = s(fd, "roleId");
-  const branchIdRaw = s(fd, "branchId");
-  // Нэмэлт салбарууд — үндсэн салбараа давхардуулж сонгосон бол хасна.
-  const assignableBranchIds = [...new Set(fd.getAll("assignableBranchIds"))]
-    .filter((v): v is string => typeof v === "string" && v.length > 0)
-    .filter((v) => v !== branchIdRaw);
-  const isActive = fd.get("isActive") !== "off"; // default true
-  const activeUntilRaw = s(fd, "activeUntil");
-
-  const errors: Record<string, string> = {};
-  if (!lastName) errors.lastName = "Овгоо оруулна уу.";
-  if (!firstName) errors.firstName = "Нэрээ оруулна уу.";
-  if (!isEmail(email)) errors.email = "Имэйл хаяг буруу.";
-  if (!phone) errors.phone = "Утасны дугаар оруулна уу.";
-  else if (!isValidPhone(phone))
-    errors.phone = "Утасны дугаар 8 оронтой тоо байх ёстой.";
-  if (requireRole && !roleId) errors.roleId = "Үүрэг сонгоно уу.";
-
-  let activeUntil: Date | null = null;
-  if (activeUntilRaw) {
-    const d = new Date(activeUntilRaw);
-    if (!Number.isFinite(d.getTime())) {
-      errors.activeUntil = "Огноо буруу.";
-    } else {
-      activeUntil = d;
-    }
-  }
-
-  return {
-    data: {
-      firstName,
-      lastName,
-      email,
-      // Канон 8 оронтой хэлбэрт хадгална (давхцал шалгахад тогтвортой байх).
-      phone: normalizePhone(phone) ?? phone,
-      roleId: roleId || null,
-      branchId: branchIdRaw || null,
-      assignableBranchIds,
-      isActive,
-      activeUntil,
-    },
-    errors,
-  };
-}
-
-/**
- * P2002 (давхцал) гарсан үед ЯГ аль unique талбар давхцсаныг тогтооно.
- *
- * `e.meta.target`-д найдаж болохгүй: pg драйвер адаптер нь PostgreSQL-ийн
- * `error.detail` ("Key (phone)=(...) ...")-ыг англи хэлний regex-ээр задалдаг
- * тул серверийн `lc_messages` англи биш бол талбарын нэр олдохгүй →
- * `meta.target` undefined болж буруу талбарт (имэйл) алдаа заадаг байсан.
- * Иймд утас/имэйл аль аль нь өөр хэрэглэгчид байгаа эсэхийг шууд лавлана.
- * Утас, имэйл хоёул глобал unique тул tenant-аар шүүхгүй.
- */
-async function duplicateUserFields(
-  email: string,
-  phone: string,
-  excludeUserId?: string,
-): Promise<{ phone: boolean; email: boolean }> {
-  const not = excludeUserId ? { id: { not: excludeUserId } } : {};
-  const [phoneTaken, emailTaken] = await Promise.all([
-    prisma.user.findFirst({ where: { phone, ...not }, select: { id: true } }),
-    prisma.user.findFirst({ where: { email, ...not }, select: { id: true } }),
-  ]);
-  return { phone: Boolean(phoneTaken), email: Boolean(emailTaken) };
-}
-
-// Илгээсэн id-үүдээс зөвхөн тухайн tenant-д хамаарах салбаруудыг л үлдээнэ
-// (checkbox жагсаалт сервэрээс өөрөө tenant-ийн салбаруудаас бүрддэг тул энэ нь
-// зөвхөн хуучирсан/зохиомол хүсэлтээс хамгаалах defense-in-depth шүүлт).
-async function filterOwnBranchIds(
-  tenantId: string,
-  branchIds: string[],
-): Promise<string[]> {
-  if (branchIds.length === 0) return [];
-  const owned = await prisma.branch.findMany({
-    where: { tenantId, isActive: true, id: { in: branchIds } },
-    select: { id: true },
-  });
-  const ownedSet = new Set(owned.map((b) => b.id));
-  return branchIds.filter((id) => ownedSet.has(id));
-}
-
-async function ensureRoleBelongsToTenant(
-  tenantId: string,
-  roleId: string,
-): Promise<{ ok: boolean; name?: string }> {
-  const role = await prisma.role.findFirst({
-    where: { id: roleId, tenantId },
-    select: { id: true, name: true, isActive: true },
-  });
-  if (!role || !role.isActive) return { ok: false };
-  return { ok: true, name: role.name };
-}
-
 // --- CREATE ---------------------------------------------------------------
 
 export async function createEmployeeAction(
   _prev: EmployeeActionState,
   formData: FormData,
 ): Promise<EmployeeActionState> {
-  let user;
+  let user: EmployeeActor;
   try {
     user = await authorize("create");
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
   }
 
-  // Зөвхөн одоо байгаа админ (isOwner) шинэ хэрэглэгчийг мөн адил бүх
-  // эрхтэй админаар үүсгэж болно — энгийн ажилтан бол (canCreate эрхтэй ч)
-  // энэ flag-ийг үл тоомсорлоно, аюулгүй байдлын үүднээс.
-  const wantsOwner = user.isOwner && s(formData, "isOwner") === "on";
-
-  const { data, errors } = validateCommon(formData, { requireRole: !wantsOwner });
-  // Нууц үгийг админ тавихгүй — ажилтан анх удаа нэвтрэхдээ OTP-ээр өөрөө
-  // үүсгэнэ (verified=false → идэвхжүүлэх урсгал).
-  if (Object.keys(errors).length > 0) {
-    return { ok: false, fieldErrors: errors };
+  const prep = await prepareCreateEmployee(prisma, user, formData);
+  if (!prep.ok) {
+    return { ok: false, fieldErrors: prep.fieldErrors };
   }
-
-  if (wantsOwner) {
-    // Админ өөрөө permission системээс дээгүүр тул тусад нь Role хэрэггүй.
-    data.roleId = null;
-  } else if (data.roleId) {
-    const r = await ensureRoleBelongsToTenant(user.tenantId, data.roleId);
-    if (!r.ok) {
-      return { ok: false, fieldErrors: { roleId: "Үүрэг олдсонгүй эсвэл идэвхгүй байна." } };
-    }
-  }
-
-  if (data.branchId) {
-    const branch = await prisma.branch.findFirst({
-      where: { id: data.branchId, tenantId: user.tenantId },
-      select: { id: true },
-    });
-    if (!branch) {
-      return { ok: false, fieldErrors: { branchId: "Салбар олдсонгүй." } };
-    }
-  }
-  data.assignableBranchIds = await filterOwnBranchIds(
-    user.tenantId,
-    data.assignableBranchIds,
-  );
 
   // Багцын хязгаар: max_users
   const limit = await enforceCountLimit(
@@ -226,60 +71,21 @@ export async function createEmployeeAction(
     return { ok: false, message: limit.message };
   }
 
-  let created;
-  try {
-    created = await prisma.user.create({
-      data: {
-        firstName: data.firstName,
-        lastName: data.lastName,
-        email: data.email,
-        phone: data.phone,
-        roleId: data.roleId,
-        isOwner: wantsOwner,
-        // Нууц үггүй, баталгаажаагүй — ажилтан анхны нэвтрэлтэд өөрөө үүсгэнэ.
-        passwordHash: null,
-        verified: false,
-        tenantId: user.tenantId,
-        branchId: data.branchId,
-        assignableBranchIds: data.assignableBranchIds,
-        isActive: data.isActive,
-        activeUntil: data.activeUntil,
-      },
-      select: { id: true, role: { select: { name: true } } },
-    });
-  } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      const dup = await duplicateUserFields(data.email, data.phone);
-      const fe: Record<string, string> = {};
-      if (dup.phone) fe.phone = "Энэ утасны дугаар аль хэдийн бүртгэгдсэн байна.";
-      if (dup.email) fe.email = "Энэ имэйл хаяг аль хэдийн бүртгэгдсэн байна.";
-      if (!fe.phone && !fe.email) {
-        fe.phone = "Энэ утас эсвэл имэйл аль хэдийн бүртгэгдсэн байна.";
-      }
-      return { ok: false, fieldErrors: fe };
-    }
-    return {
-      ok: false,
-      message: e instanceof Error ? e.message : "Үүсгэх явцад алдаа гарлаа.",
-    };
+  const result = await createEmployee(prisma, user, prep.data, prep.wantsOwner);
+  if (!result.ok) {
+    return result.fieldErrors
+      ? { ok: false, fieldErrors: result.fieldErrors }
+      : { ok: false, message: result.error };
   }
 
   await logAudit({
     tenantId: user.tenantId,
     userId: user.id,
     entity: "User",
-    entityId: created.id,
+    entityId: result.id,
     action: "CREATE",
-    summary: `${data.lastName} ${data.firstName} · ${wantsOwner ? "Админ" : (created.role?.name ?? "—")}`,
-    after: {
-      firstName: data.firstName,
-      lastName: data.lastName,
-      email: data.email,
-      roleId: data.roleId,
-      isOwner: wantsOwner,
-      branchId: data.branchId,
-      assignableBranchIds: data.assignableBranchIds,
-    },
+    summary: result.summary,
+    after: result.after as Prisma.InputJsonValue,
   });
 
   revalidatePath("/dashboard/employees");
@@ -294,88 +100,18 @@ export async function updateEmployeeAction(
   _prev: EmployeeActionState,
   formData: FormData,
 ): Promise<EmployeeActionState> {
-  let me;
+  let me: EmployeeActor;
   try {
     me = await authorize("edit");
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
   }
 
-  const { data, errors } = validateCommon(formData);
-  // Админ нууц үг өөрчлөхгүй — ажилтан өөрөө "Нууц үг сэргээх" урсгалаар солино.
-  if (Object.keys(errors).length > 0) {
-    return { ok: false, fieldErrors: errors };
-  }
-
-  const target = await prisma.user.findFirst({
-    where: { id, tenantId: me.tenantId },
-    include: { role: { select: { id: true, name: true } } },
-  });
-  if (!target) return { ok: false, message: "Ажилтан олдсонгүй." };
-
-  // OWNER (тенант админ)-ын үүрэг солих, эсвэл хасах боломжгүй.
-  if (target.isOwner) {
-    return {
-      ok: false,
-      fieldErrors: {
-        roleId: "Тенант админы үүргийг өөрчилж болохгүй.",
-      },
-    };
-  }
-
-  if (data.roleId) {
-    const r = await ensureRoleBelongsToTenant(me.tenantId, data.roleId);
-    if (!r.ok) {
-      return { ok: false, fieldErrors: { roleId: "Үүрэг олдсонгүй эсвэл идэвхгүй байна." } };
-    }
-  }
-
-  if (data.branchId) {
-    const branch = await prisma.branch.findFirst({
-      where: { id: data.branchId, tenantId: me.tenantId },
-      select: { id: true },
-    });
-    if (!branch) {
-      return { ok: false, fieldErrors: { branchId: "Салбар олдсонгүй." } };
-    }
-  }
-  data.assignableBranchIds = await filterOwnBranchIds(
-    me.tenantId,
-    data.assignableBranchIds,
-  );
-
-  let updated;
-  try {
-    updated = await prisma.user.update({
-      where: { id: target.id },
-      data: {
-        firstName: data.firstName,
-        lastName: data.lastName,
-        email: data.email,
-        phone: data.phone,
-        roleId: data.roleId,
-        branchId: data.branchId,
-        assignableBranchIds: data.assignableBranchIds,
-        isActive: data.isActive,
-        activeUntil: data.activeUntil,
-      },
-      select: { id: true, role: { select: { name: true } } },
-    });
-  } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      const dup = await duplicateUserFields(data.email, data.phone, target.id);
-      const fe: Record<string, string> = {};
-      if (dup.phone) fe.phone = "Энэ утас өөр хэрэглэгчид ашиглагдсан байна.";
-      if (dup.email) fe.email = "Энэ имэйл өөр хэрэглэгчид ашиглагдсан байна.";
-      if (!fe.phone && !fe.email) {
-        fe.phone = "Энэ утас эсвэл имэйл өөр хэрэглэгчид ашиглагдсан байна.";
-      }
-      return { ok: false, fieldErrors: fe };
-    }
-    return {
-      ok: false,
-      message: e instanceof Error ? e.message : "Шинэчлэх явцад алдаа гарлаа.",
-    };
+  const result = await updateEmployee(prisma, me, id, formData);
+  if (!result.ok) {
+    return result.fieldErrors
+      ? { ok: false, fieldErrors: result.fieldErrors }
+      : { ok: false, message: result.error };
   }
 
   await logAudit({
@@ -384,23 +120,9 @@ export async function updateEmployeeAction(
     entity: "User",
     entityId: id,
     action: "UPDATE",
-    summary: `${data.lastName} ${data.firstName} · ${updated.role?.name ?? "—"}`,
-    before: {
-      firstName: target.firstName,
-      lastName: target.lastName,
-      email: target.email,
-      roleId: target.roleId,
-      branchId: target.branchId,
-      assignableBranchIds: target.assignableBranchIds,
-    },
-    after: {
-      firstName: data.firstName,
-      lastName: data.lastName,
-      email: data.email,
-      roleId: data.roleId,
-      branchId: data.branchId,
-      assignableBranchIds: data.assignableBranchIds,
-    },
+    summary: result.summary,
+    before: result.before as Prisma.InputJsonValue,
+    after: result.after as Prisma.InputJsonValue,
   });
 
   revalidatePath("/dashboard/employees");
@@ -410,214 +132,72 @@ export async function updateEmployeeAction(
 
 // --- BULK UPDATE (role / main branch) --------------------------------------
 
-// Жагсаалтаас олноор сонгож үүрэг болон/эсвэл үндсэн салбарыг зэрэг солих
-// (харах: bulkChangeServiceCategoryAction app/_actions/services.ts — адил
-// all-or-nothing БИШ загвар: мөр бүр тусдаа боловсруулагдана). Аль нэг
-// талбарыг л сонгосон ч болно (заавал хоёуланг зэрэг сонгох албагүй).
 export async function bulkUpdateEmployeeRoleBranchAction(
   _prev: BulkActionState,
   formData: FormData,
 ): Promise<BulkActionState> {
-  let user;
+  let user: EmployeeActor;
   try {
     user = await authorize("edit");
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
   }
 
-  const roleId = s(formData, "roleId");
-  const branchId = s(formData, "branchId");
-  if (!roleId && !branchId) {
-    return { ok: false, message: "Үүрэг эсвэл салбарын аль нэгийг сонгоно уу." };
-  }
+  const result = await bulkUpdateEmployeeRoleBranch(prisma, user, formData);
 
-  let roleName = "";
-  if (roleId) {
-    const r = await ensureRoleBelongsToTenant(user.tenantId, roleId);
-    if (!r.ok) return { ok: false, message: "Сонгосон үүрэг олдсонгүй эсвэл идэвхгүй байна." };
-    roleName = r.name ?? "";
-  }
-
-  let branchName = "";
-  if (branchId) {
-    const branch = await prisma.branch.findFirst({
-      where: { id: branchId, tenantId: user.tenantId },
-      select: { name: true },
-    });
-    if (!branch) return { ok: false, message: "Сонгосон салбар олдсонгүй." };
-    branchName = branch.name;
-  }
-
-  const ids = parseIdsJson(s(formData, "employeeIdsJson"));
-  if (ids.length === 0) return { ok: false, message: "Дор хаяж нэг ажилтан сонгоно уу." };
-
-  const employees = await prisma.user.findMany({
-    where: { id: { in: ids }, tenantId: user.tenantId },
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      isOwner: true,
-      roleId: true,
-      branchId: true,
-    },
-  });
-  const byId = new Map(employees.map((e) => [e.id, e]));
-
-  const changeSummary =
-    [roleName && `үүрэг: ${roleName}`, branchName && `салбар: ${branchName}`]
-      .filter(Boolean)
-      .join(", ");
-
-  let succeeded = 0;
-  const errors: string[] = [];
-  for (const id of ids) {
-    const emp = byId.get(id);
-    const label = emp ? `${emp.lastName} ${emp.firstName}` : id;
-    try {
-      if (!emp) throw new Error("Олдсонгүй.");
-      // OWNER (тенант админ)-ын үүрэг/салбарыг олноор ч сольж болохгүй —
-      // updateEmployeeAction-тэй ижил дүрэм.
-      if (emp.isOwner) throw new Error("Тенант админыг өөрчлөх боломжгүй.");
-
-      const data: { roleId?: string; branchId?: string } = {};
-      if (roleId && emp.roleId !== roleId) data.roleId = roleId;
-      if (branchId && emp.branchId !== branchId) data.branchId = branchId;
-
-      if (Object.keys(data).length > 0) {
-        await prisma.user.update({ where: { id: emp.id }, data });
-        await logAudit({
-          tenantId: user.tenantId,
-          userId: user.id,
-          entity: "User",
-          entityId: emp.id,
-          action: "UPDATE",
-          summary: `${label} · олноор ${changeSummary}`,
-          before: { roleId: emp.roleId, branchId: emp.branchId },
-          after: { roleId: data.roleId ?? emp.roleId, branchId: data.branchId ?? emp.branchId },
-        });
-      }
-      succeeded++;
-    } catch (e) {
-      errors.push(`${label}: ${e instanceof Error ? e.message : "алдаа"}`);
-    }
+  if (!("succeeded" in result)) {
+    // Validation failed before the per-row loop ran (no selection, role/
+    // branch not found, no ids) — the original action never revalidated
+    // in this case either.
+    return { ok: false, message: result.message };
   }
 
   revalidatePath("/dashboard/employees");
-
-  if (succeeded === 0) {
-    return {
-      ok: false,
-      message: errors[0] ?? "Шинэчлэх явцад алдаа гарлаа.",
-      succeeded,
-      failed: errors.length,
-      errors,
-    };
-  }
-  return {
-    ok: true,
-    message: `${succeeded}/${ids.length} ажилтан шинэчлэгдлээ.${errors.length ? ` (${errors.length} амжилтгүй)` : ""}`,
-    succeeded,
-    failed: errors.length,
-    errors,
-  };
+  return result;
 }
 
 // --- ACTIVATE / DEACTIVATE -----------------------------------------------
 
-export async function toggleEmployeeActiveAction(
-  formData: FormData,
-): Promise<void> {
+export async function toggleEmployeeActiveAction(formData: FormData): Promise<void> {
   const me = await authorize("edit");
-  const id = s(formData, "id");
-  const next = formData.get("isActive") === "on";
-  if (!id) return;
-  if (id === me.id && !next) {
-    throw new Error("Та өөрийгөө идэвхгүй болгох боломжгүй.");
+  const result = await toggleEmployeeActive(prisma, me, formData);
+  if ("noop" in result) return;
+  if (!result.ok) {
+    throw new Error(result.error);
   }
-
-  const target = await prisma.user.findFirst({
-    where: { id, tenantId: me.tenantId },
-    select: {
-      isOwner: true,
-      isActive: true,
-      firstName: true,
-      lastName: true,
-    },
-  });
-  if (!target) return;
-  if (target.isOwner && !next) {
-    const activeOwners = await prisma.user.count({
-      where: { tenantId: me.tenantId, isOwner: true, isActive: true },
-    });
-    if (activeOwners <= 1) {
-      throw new Error("Сүүлийн админыг идэвхгүй болгох боломжгүй.");
-    }
-  }
-
-  await prisma.user.update({
-    where: { id },
-    data: { isActive: next },
-  });
 
   await logAudit({
     tenantId: me.tenantId,
     userId: me.id,
     entity: "User",
-    entityId: id,
+    entityId: result.id,
     action: "UPDATE",
-    summary: `${target.lastName} ${target.firstName} · ${next ? "идэвхжүүлэв" : "идэвхгүй болгов"}`,
-    before: { isActive: target.isActive },
-    after: { isActive: next },
+    summary: result.summary,
+    before: result.before as Prisma.InputJsonValue,
+    after: result.after as Prisma.InputJsonValue,
   });
 
   revalidatePath("/dashboard/employees");
-  revalidatePath(`/dashboard/employees/${id}`);
+  revalidatePath(`/dashboard/employees/${result.id}`);
 }
 
 // --- DELETE ---------------------------------------------------------------
 
 export async function deleteEmployeeAction(formData: FormData): Promise<void> {
   const me = await authorize("delete");
-  const id = s(formData, "id");
-  if (!id) return;
-  if (id === me.id) {
-    throw new Error("Та өөрийгөө устгах боломжгүй.");
-  }
-
-  const target = await prisma.user.findFirst({
-    where: { id, tenantId: me.tenantId },
-    include: { role: { select: { name: true } } },
-  });
-  if (!target) return;
-
-  if (target.isOwner) {
-    const ownerCount = await prisma.user.count({
-      where: { tenantId: me.tenantId, isOwner: true },
-    });
-    if (ownerCount <= 1) {
-      throw new Error("Сүүлийн админыг устгах боломжгүй.");
-    }
-  }
-
-  try {
-    await prisma.user.delete({ where: { id: target.id } });
-  } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") {
-      throw new Error(
-        "Энэ ажилтан засварын хуудастай холбоотой тул устгах боломжгүй.",
-      );
-    }
-    throw e;
+  const result = await deleteEmployee(prisma, me, formData);
+  if ("noop" in result) return;
+  if (!result.ok) {
+    throw new Error(result.error);
   }
 
   await logAudit({
     tenantId: me.tenantId,
     userId: me.id,
     entity: "User",
-    entityId: id,
+    entityId: result.id,
     action: "DELETE",
-    summary: `${target.lastName} ${target.firstName} · ${target.role?.name ?? (target.isOwner ? "Админ" : "—")}`,
+    summary: result.summary,
   });
 
   revalidatePath("/dashboard/employees");
@@ -627,50 +207,29 @@ export async function deleteEmployeeAction(formData: FormData): Promise<void> {
 /** `deleteEmployeeAction`-той ижил, гэхдээ ажилтны ДЭЛГЭРЭНГҮЙ хуудаснаас
  * дуудагдана — устгасны дараа тэр хуудас өөрөө байхгүй болдог тул жагсаалт
  * руу буцаана. */
-export async function deleteEmployeeAndReturnAction(
-  formData: FormData,
-): Promise<void> {
+export async function deleteEmployeeAndReturnAction(formData: FormData): Promise<void> {
   await deleteEmployeeAction(formData);
   redirect("/dashboard/employees");
 }
 
 // --- RESET PASSWORD ---------------------------------------------------------
 
-/**
- * Ажилтны нууц үгийг хүчингүй болгоно (шинэ ажилтан үүсгэхтэй ижил
- * passwordHash=null, verified=false төлөв) — дараагийн удаа нэвтрэхдээ
- * checkLoginEmailAction автоматаар «анх удаа нэвтрэх» (OTP + шинэ нууц үг)
- * урсгал руу оруулна. Одоогийн нэвтэрсэн session хүчинтэй хэвээр үлдэнэ.
- */
-export async function resetEmployeePasswordAction(
-  formData: FormData,
-): Promise<void> {
+export async function resetEmployeePasswordAction(formData: FormData): Promise<void> {
   const me = await authorize("edit");
-  const id = s(formData, "id");
-  if (!id) return;
-  if (id === me.id) {
-    throw new Error("Та өөрийн нууц үгээ энд шинэчлэх боломжгүй.");
+  const result = await resetEmployeePassword(prisma, me, formData);
+  if ("noop" in result) return;
+  if (!result.ok) {
+    throw new Error(result.error);
   }
-
-  const target = await prisma.user.findFirst({
-    where: { id, tenantId: me.tenantId },
-    select: { firstName: true, lastName: true },
-  });
-  if (!target) return;
-
-  await prisma.user.update({
-    where: { id },
-    data: { passwordHash: null, verified: false },
-  });
 
   await logAudit({
     tenantId: me.tenantId,
     userId: me.id,
     entity: "User",
-    entityId: id,
+    entityId: result.id,
     action: "UPDATE",
-    summary: `${target.lastName} ${target.firstName} · нууц үг хүчингүй болгов`,
+    summary: result.summary,
   });
 
-  revalidatePath(`/dashboard/employees/${id}`);
+  revalidatePath(`/dashboard/employees/${result.id}`);
 }

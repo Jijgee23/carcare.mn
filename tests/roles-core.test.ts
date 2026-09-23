@@ -1,0 +1,272 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { before, test } from "node:test";
+
+// `app/_actions/roles.ts` does `"use server"` and its sibling employees
+// action transitively imports server-only code, so tests exercise the
+// extracted `lib/roles/*` cores against an in-memory fake client (same
+// import-barrier rationale as `tests/employees-core.test.ts`). As there, the
+// true pre-move characterization of the "use server" action was not
+// possible; these tests encode the messages read from the original
+// `app/_actions/roles.ts` source (257 LOC, captured before editing).
+
+process.env.DATABASE_URL ??= "postgresql://unused/unused";
+process.env.SESSION_SECRET ??= "unit-test-placeholder-secret-value-not-real-00";
+
+let core: typeof import("../lib/roles/core");
+let dto: typeof import("../lib/roles/dto");
+let validate: typeof import("../lib/roles/validate");
+
+before(async () => {
+  [core, dto, validate] = await Promise.all([
+    import("../lib/roles/core"),
+    import("../lib/roles/dto"),
+    import("../lib/roles/validate"),
+  ]);
+});
+
+function src(relPath: string): string {
+  return readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), relPath), "utf8");
+}
+
+type FakeRole = {
+  id: string;
+  tenantId: string;
+  name: string;
+  description: string | null;
+  permissions: string[];
+  isActive: boolean;
+  userCount?: number;
+};
+
+function p2002(): Error & { code: string; clientVersion: string } {
+  return Object.assign(new Error("Unique constraint failed"), { code: "P2002", clientVersion: "x" });
+}
+
+function makeFakeDb(seed: { roles?: FakeRole[] } = {}) {
+  const roles = seed.roles ?? [];
+  const db = {
+    role: {
+      async findFirst({ where }: { where: { id: string; tenantId: string } }) {
+        const r = roles.find((x) => x.id === where.id && x.tenantId === where.tenantId);
+        if (!r) return null;
+        return { ...r, _count: { users: r.userCount ?? 0 } };
+      },
+      async create({ data }: { data: Record<string, unknown> }) {
+        if (roles.some((r) => r.tenantId === data.tenantId && r.name === data.name)) throw p2002();
+        const r: FakeRole = {
+          id: `r${roles.length + 1}`,
+          tenantId: data.tenantId as string,
+          name: data.name as string,
+          description: (data.description as string | null) ?? null,
+          permissions: (data.permissions as string[]) ?? [],
+          isActive: (data.isActive as boolean) ?? true,
+        };
+        roles.push(r);
+        return { id: r.id, name: r.name };
+      },
+      async update({ where, data }: { where: { id: string }; data: Record<string, unknown> }) {
+        const r = roles.find((x) => x.id === where.id);
+        if (!r) throw new Error("not found");
+        if (data.name && roles.some((x) => x.id !== r.id && x.tenantId === r.tenantId && x.name === data.name)) {
+          throw p2002();
+        }
+        Object.assign(r, data);
+        return { id: r.id };
+      },
+      async delete({ where }: { where: { id: string } }) {
+        const idx = roles.findIndex((x) => x.id === where.id);
+        if (idx < 0) throw new Error("not found");
+        roles.splice(idx, 1);
+        return { id: where.id };
+      },
+    },
+  };
+  return { db, roles };
+}
+
+function fd(fields: Record<string, string | string[]>): FormData {
+  const f = new FormData();
+  for (const [k, v] of Object.entries(fields)) {
+    if (Array.isArray(v)) for (const item of v) f.append(k, item);
+    else f.set(k, v);
+  }
+  return f;
+}
+
+const ACTOR = { id: "owner1", tenantId: "t1", isOwner: true };
+
+// --- validate: exact Mongolian messages ------------------------------------
+
+test("validate: no name, no permissions", () => {
+  const { errors } = validate.validate(fd({}));
+  assert.equal(errors.name, "Үүргийн нэрээ оруулна уу.");
+  assert.equal(errors.permissions, "Хамгийн багадаа нэг эрх сонгоно уу.");
+});
+
+test("validate: name over 60 chars", () => {
+  const { errors } = validate.validate(fd({ name: "x".repeat(61), permissions: ["orders.view"] }));
+  assert.equal(errors.name, "Нэр 60 тэмдэгтээс хэтрэхгүй.");
+});
+
+test("validateOrderScopes: edit without any view scope", () => {
+  const errors: Record<string, string> = {};
+  validate.validateOrderScopes(["orders.edit"], errors);
+  assert.equal(errors.orderScopes, "Салбарын засах эрхэд Салбарын харах эрх шаардлагатай.");
+});
+
+test("validateOrderScopes: branch edit without branch view (but has viewOwn) still requires branch view", () => {
+  const errors: Record<string, string> = {};
+  validate.validateOrderScopes(["orders.edit", "orders.viewOwn"], errors);
+  assert.equal(errors.orderScopes, "Салбарын засах эрхэд Салбарын харах эрх шаардлагатай.");
+});
+
+test("validateOrderScopes: editOwn without any view scope", () => {
+  const errors: Record<string, string> = {};
+  validate.validateOrderScopes(["orders.editOwn"], errors);
+  assert.equal(errors.orderScopes, "Засах эрх олгохын өмнө засварын хуудсыг харах хүрээг сонгоно уу.");
+});
+
+test("validateOrderScopes: view+edit together is valid", () => {
+  const errors: Record<string, string> = {};
+  validate.validateOrderScopes(["orders.view", "orders.edit"], errors);
+  assert.equal(errors.orderScopes, undefined);
+});
+
+test("getCheckedPermissions: dedupes and drops invalid codes", () => {
+  const form = fd({ permissions: ["orders.view", "orders.view", "not-a-real-code"] });
+  assert.deepEqual(validate.getCheckedPermissions(form), ["orders.view"]);
+});
+
+// --- createRole --------------------------------------------------------------
+
+test("createRole: duplicate name maps to the exact message", async () => {
+  const { db } = makeFakeDb({
+    roles: [{ id: "r1", tenantId: "t1", name: "Мастер", description: null, permissions: ["orders.view"], isActive: true }],
+  });
+  const result = await core.createRole(db, ACTOR, fd({ name: "Мастер", permissions: ["orders.view"] }));
+  assert.equal(result.ok, false);
+  if (result.ok) throw new Error("unreachable");
+  assert.equal(result.code, "DUPLICATE");
+  assert.equal(result.error, "Энэ нэртэй үүрэг аль хэдийн байна.");
+});
+
+test("createRole: success returns audit-ready summary/after", async () => {
+  const { db } = makeFakeDb();
+  const result = await core.createRole(db, ACTOR, fd({ name: "Мастер", permissions: ["orders.view", "orders.edit"] }));
+  assert.equal(result.ok, true);
+  if (!result.ok) throw new Error("unreachable");
+  assert.equal(result.summary, "Мастер · 2 эрх");
+  assert.deepEqual(result.after, { name: "Мастер", permissions: ["orders.view", "orders.edit"], isActive: true });
+});
+
+test("createRole: validation error surfaces field errors, not a message", async () => {
+  const { db } = makeFakeDb();
+  const result = await core.createRole(db, ACTOR, fd({}));
+  assert.equal(result.ok, false);
+  if (result.ok) throw new Error("unreachable");
+  assert.equal(result.code, "VALIDATION");
+  assert.ok("fieldErrors" in result);
+});
+
+// --- updateRole --------------------------------------------------------------
+
+test("updateRole: target not found in tenant", async () => {
+  const { db } = makeFakeDb();
+  const result = await core.updateRole(db, ACTOR, "ghost", fd({ name: "X", permissions: ["orders.view"] }));
+  assert.equal(result.ok, false);
+  if (result.ok) throw new Error("unreachable");
+  assert.equal(result.code, "NOT_FOUND");
+  assert.equal(result.error, "Үүрэг олдсонгүй.");
+});
+
+test("updateRole: duplicate name against another role", async () => {
+  const { db } = makeFakeDb({
+    roles: [
+      { id: "r1", tenantId: "t1", name: "Мастер", description: null, permissions: ["orders.view"], isActive: true },
+      { id: "r2", tenantId: "t1", name: "Менежер", description: null, permissions: ["orders.view"], isActive: true },
+    ],
+  });
+  const result = await core.updateRole(db, ACTOR, "r2", fd({ name: "Мастер", permissions: ["orders.view"] }));
+  assert.equal(result.ok, false);
+  if (result.ok) throw new Error("unreachable");
+  assert.equal(result.code, "DUPLICATE");
+  assert.equal(result.error, "Энэ нэртэй үүрэг аль хэдийн байна.");
+});
+
+test("updateRole: success returns before/after for audit", async () => {
+  const { db } = makeFakeDb({
+    roles: [{ id: "r1", tenantId: "t1", name: "Мастер", description: null, permissions: ["orders.view"], isActive: true }],
+  });
+  const result = await core.updateRole(db, ACTOR, "r1", fd({ name: "Мастер 2", permissions: ["orders.view", "orders.edit"] }));
+  assert.equal(result.ok, true);
+  if (!result.ok) throw new Error("unreachable");
+  assert.deepEqual(result.before, { name: "Мастер", permissions: ["orders.view"], isActive: true });
+  assert.equal(result.summary, "Мастер 2 · 2 эрх");
+});
+
+// --- deleteRole ----------------------------------------------------------
+
+test("deleteRole: blocked while the role still has users", async () => {
+  const { db } = makeFakeDb({
+    roles: [
+      { id: "r1", tenantId: "t1", name: "Мастер", description: null, permissions: [], isActive: true, userCount: 3 },
+    ],
+  });
+  const result = await core.deleteRole(db, ACTOR, fd({ id: "r1" }));
+  assert.equal(result.ok, false);
+  if (result.ok) throw new Error("unreachable");
+  assert.equal(result.code, "ROLE_IN_USE");
+  assert.equal(result.error, "Энэ үүрэгтэй 3 ажилтан байна. Эхлээд тэдний үүргийг солино уу.");
+});
+
+test("deleteRole: succeeds when no user has the role", async () => {
+  const { db, roles } = makeFakeDb({
+    roles: [{ id: "r1", tenantId: "t1", name: "Мастер", description: null, permissions: [], isActive: true, userCount: 0 }],
+  });
+  const result = await core.deleteRole(db, ACTOR, fd({ id: "r1" }));
+  assert.equal(result.ok, true);
+  if (!result.ok || "noop" in result) throw new Error("unreachable");
+  assert.equal(result.summary, "Мастер");
+  assert.equal(roles.length, 0);
+});
+
+test("deleteRole: missing id or missing target is a silent no-op", async () => {
+  const { db } = makeFakeDb();
+  assert.deepEqual(await core.deleteRole(db, ACTOR, fd({})), { ok: true, noop: true });
+  assert.deepEqual(await core.deleteRole(db, ACTOR, fd({ id: "ghost" })), { ok: true, noop: true });
+});
+
+// --- toRoleDto: whitelist ---------------------------------------------------
+
+test("toRoleDto emits only whitelisted fields", () => {
+  const out = dto.toRoleDto({
+    id: "r1",
+    name: "Мастер",
+    description: "d",
+    permissions: ["orders.view"],
+    isActive: true,
+    _count: { users: 2 },
+  });
+  assert.deepEqual(out, {
+    id: "r1",
+    name: "Мастер",
+    description: "d",
+    permissions: ["orders.view"],
+    isActive: true,
+    userCount: 2,
+  });
+});
+
+// --- source-pattern: the action file delegates to the core -----------------
+
+test("app/_actions/roles.ts delegates every mutation to lib/roles/core instead of reimplementing it", () => {
+  const source = src("../app/_actions/roles.ts");
+  for (const fn of ["createRole", "updateRole", "deleteRole"]) {
+    assert.ok(source.includes(fn), `action file must call core.${fn}`);
+  }
+  assert.ok(source.includes('from "@/lib/roles/core"'));
+  assert.doesNotMatch(source, /P2002/);
+});

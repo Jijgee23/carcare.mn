@@ -1,14 +1,8 @@
-import { businessDateKey, resolveEffectiveSchedule } from "@/lib/branch-effective-schedule";
-import { WEEK_DAYS, weekdayOfDateStr } from "@/lib/branches";
+import { businessDateKey } from "@/lib/branch-effective-schedule";
+import { WEEK_DAYS } from "@/lib/branches";
 import { requireUser } from "@/lib/auth";
-import {
-  firstOfMonth,
-  mondayOfWeek,
-  monthDates,
-  resolveEmployeeDay,
-  shiftMonth,
-  weekDates,
-} from "@/lib/employee-schedule";
+import { firstOfMonth, mondayOfWeek, monthDates, shiftMonth, weekDates } from "@/lib/employee-schedule";
+import { loadMySchedule } from "@/lib/employee-schedule-read";
 import { prisma } from "@/lib/prisma";
 import { ScheduleGrid, type EmployeeScheduleRow } from "../employees/schedule/schedule-grid";
 import { ScheduleHeader } from "../employees/schedule/schedule-header";
@@ -40,117 +34,13 @@ export default async function MySchedulePage({
   const rangeStart = view === "month" ? firstOfMonth(anchor) : mondayOfWeek(anchor);
   const dates = view === "month" ? monthDates(rangeStart) : weekDates(rangeStart);
 
-  const [me, branches] = await Promise.all([
-    prisma.user.findUnique({
-      where: { id: user.id },
-      select: {
-        firstName: true,
-        lastName: true,
-        isOwner: true,
-        role: { select: { name: true } },
-        branchId: true,
-        branch: { select: { id: true, name: true } },
-        workSchedule: {
-          select: {
-            weekday: true,
-            isWorking: true,
-            segments: {
-              orderBy: { order: "asc" },
-              select: { branchId: true, startTime: true, endTime: true },
-            },
-          },
-        },
-        scheduleExceptions: {
-          where: {
-            date: {
-              gte: new Date(`${dates[0]}T00:00:00.000Z`),
-              lte: new Date(`${dates[dates.length - 1]}T00:00:00.000Z`),
-            },
-          },
-          select: {
-            date: true,
-            isWorking: true,
-            label: true,
-            segments: {
-              orderBy: { order: "asc" },
-              select: { branchId: true, startTime: true, endTime: true },
-            },
-          },
-        },
-      },
-    }),
-    prisma.branch.findMany({
-      where: { tenantId: user.tenantId, isActive: true },
-      orderBy: { name: "asc" },
-      select: {
-        id: true,
-        name: true,
-        openTime: true,
-        closeTime: true,
-        schedules: { select: { weekday: true, isOpen: true, openTime: true, closeTime: true } },
-      },
-    }),
-  ]);
-
-  const branchMap = new Map(branches.map((b) => [b.id, b]));
-  function autoHours(branchIdVal: string, dateStr: string) {
-    const b = branchMap.get(branchIdVal);
-    if (!b) return null;
-    const eff = resolveEffectiveSchedule({
-      dateStr,
-      branch: { openTime: b.openTime, closeTime: b.closeTime, schedules: b.schedules },
-    });
-    return eff.open && eff.openTime && eff.closeTime
-      ? { start: eff.openTime, end: eff.closeTime }
-      : null;
-  }
-
-  const cells = Object.fromEntries(
-    dates.map((dateStr) => {
-      const weekday = weekdayOfDateStr(dateStr);
-      const resolved = me
-        ? resolveEmployeeDay({
-            dateStr,
-            weekday,
-            homeBranchId: me.branchId,
-            weeklyRules: me.workSchedule,
-            exceptions: me.scheduleExceptions,
-          })
-        : { working: false, source: "default" as const, segments: [] };
-      const customTime = resolved.source !== "default";
-      return [
-        dateStr,
-        {
-          weekday,
-          working: resolved.working,
-          source: resolved.source,
-          segments: resolved.segments.map((seg) => {
-            const auto = !seg.startTime && !seg.endTime ? autoHours(seg.branchId, dateStr) : null;
-            return {
-              branchId: seg.branchId,
-              branchName: branchMap.get(seg.branchId)?.name ?? "—",
-              startTime: seg.startTime ?? auto?.start ?? null,
-              endTime: seg.endTime ?? auto?.end ?? null,
-              customTime: Boolean(seg.startTime || seg.endTime) && customTime,
-            };
-          }),
-        },
-      ];
-    }),
-  );
-
-  const rows: EmployeeScheduleRow[] = me
-    ? [
-        {
-          id: user.id,
-          name: `${me.lastName} ${me.firstName}`,
-          roleName: me.isOwner ? "Админ" : (me.role?.name ?? null),
-          homeBranchId: me.branchId,
-          homeBranchName: me.branch?.name ?? null,
-          cells,
-        },
-      ]
-    : [];
+  const { row, cells, branches } = await loadMySchedule({
+    db: prisma,
+    tenantId: user.tenantId,
+    userId: user.id,
+    dates,
+  });
+  const rows: EmployeeScheduleRow[] = row ? [row] : [];
 
   const anchorHref = (a: string, v: ViewMode = view) => `?anchor=${a}&view=${v}`;
   const prevAnchor = view === "month" ? shiftMonth(rangeStart, -1) : shiftDays(rangeStart, -7);

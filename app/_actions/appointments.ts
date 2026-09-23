@@ -4,44 +4,47 @@ import { revalidatePath } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { requireAccount } from "@/lib/auth/account";
 import { requireUser } from "@/lib/auth";
-import { assertActiveSubscription } from "@/lib/subscription-server";
 import {
   ACTION_GENERIC_ERROR_MESSAGE,
   knownAuthorizationMessage,
   logUnexpectedActionError,
 } from "@/lib/action-errors";
-import { canCreate, canEdit, workingBranchScopeId } from "@/lib/auth/roles";
+import { canCreate, canEdit } from "@/lib/auth/roles";
 import { canEditOrder } from "@/lib/auth/order-access";
-import { formatWhen, resolveCustomerForAccount } from "@/lib/appointments";
+import { formatWhen } from "@/lib/appointments";
 import { type BulkActionState, parseIdsJson } from "@/lib/bulk-action";
-import { resolveCategoryDurations } from "@/lib/category-duration";
 import { customerLabel } from "@/lib/customers";
 import { ensureAppointmentFeeCheckout } from "@/lib/appointment-payments";
-import { ensureTenantVehicle } from "@/lib/vehicles";
 import {
-  DEFAULT_SLOT_MINUTES,
   type DayAvailability,
 } from "@/lib/appointment-slots";
 import { resolvePublicAvailability } from "@/lib/public-availability";
 import { logAudit } from "@/lib/audit";
-import { createNotification, notifyStaff } from "@/lib/notifications";
+import { notifyStaff } from "@/lib/notifications";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { isFeatureEnabled } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
 import {
   reserveAppointment,
   ReservationError,
-  ReservationConflictError,
-  moveAppointmentInTransaction,
 } from "@/lib/appointment-reservations";
-import { moveLinkedAppointmentOrder, LinkedRescheduleError } from "@/lib/linked-reschedule";
-import { bookingDateKey, bookingDayBounds, parseBusinessLocalDateTime } from "@/lib/booking-time";
-import { resolveEffectiveSchedule } from "@/lib/branch-effective-schedule";
-import { branchScheduleForDateSelect } from "@/lib/branch-effective-schedule-server";
-import { timeToMinutes } from "@/lib/branches";
+import { parseBusinessLocalDateTime } from "@/lib/booking-time";
 import { safeNext } from "@/lib/safe-redirect";
 import { setBypassContext } from "@/lib/tenant-context";
-import { appointmentBookingPaymentStatus } from "@/lib/appointment-payment-status";
+import {
+  AppointmentCommandError,
+  STAFF_SCOPE_MESSAGES,
+  cancelAppointmentByAccountCommand,
+  confirmAppointmentCommand,
+  markAppointmentArrivedCommand,
+  markAppointmentNoShowCommand,
+  rejectAppointmentCommand,
+  rescheduleAppointmentByAccountCommand,
+  rescheduleAppointmentCommand,
+  type AppointmentCommandActor,
+} from "@/lib/appointments/appointment-commands";
+import { registerAppointmentByStaffCommand } from "@/lib/appointments/appointment-create-command";
+import { bulkChangeAppointmentCategoryCommand } from "@/lib/appointments/appointment-bulk-commands";
 
 export type AppointmentActionState = {
   ok: boolean;
@@ -52,6 +55,14 @@ export type AppointmentActionState = {
 function s(fd: FormData, key: string): string {
   const v = fd.get(key);
   return typeof v === "string" ? v.trim() : "";
+}
+
+function actorFrom(user: Awaited<ReturnType<typeof requireUser>>): AppointmentCommandActor {
+  return user as unknown as AppointmentCommandActor;
+}
+
+function commandErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof AppointmentCommandError ? error.message : fallback;
 }
 
 /**
@@ -249,22 +260,11 @@ export async function cancelAppointmentByAccount(
 
   const appt = await prisma.appointment.findFirst({
     where: { id, accountId: account.id },
-    select: {
-      id: true,
-      status: true,
-      tenantId: true,
-      branchId: true,
-      requestedAt: true,
-    },
+    select: { status: true, tenantId: true, branchId: true, requestedAt: true },
   });
-  if (!appt || (appt.status !== "PENDING" && appt.status !== "CONFIRMED")) {
-    return;
-  }
 
-  await prisma.appointment.update({
-    where: { id: appt.id },
-    data: { status: "CANCELLED" },
-  });
+  const result = await cancelAppointmentByAccountCommand({ account, appointmentId: id });
+  if (!result.cancelled || !appt) return;
 
   // Холбогдох ажилтнуудад цуцалсан тухай мэдэгдэнэ.
   try {
@@ -274,7 +274,7 @@ export async function cancelAppointmentByAccount(
       tenantId: appt.tenantId,
       branchId: appt.branchId,
       input: {
-        appointmentId: appt.id,
+        appointmentId: id,
         body: `${who} — ${formatWhen(appt.requestedAt)} цагийн захиалгаа цуцаллаа.`,
       },
     });
@@ -312,86 +312,45 @@ export async function rescheduleAppointmentByAccount(
  * `rescheduleAppointmentByAccount`-ийн цөм логик — FormData-аас тусгаарласан,
  * учир нь мобайл апп (`/api/v1/app/appointments/[id]/reschedule`) ч мөн адил
  * үйлдлийг дуудах шаардлагатай (server action шууд дуудагдахгүй, JSON API
- * хэрэгтэй). Аль аль газраас нэг л газрын логикийг ашиглана — audit/staff
- * мэдэгдэл хоёуланд адил ажиллана.
+ * хэрэгтэй). Аль аль газраас нэг л газрын логикийг (одоо
+ * `rescheduleAppointmentByAccountCommand`) ашиглана — audit/staff мэдэгдэл
+ * хоёуланд адил ажиллана.
  */
 export async function rescheduleAppointmentByAccountCore(
   account: { id: string; name: string | null; phone: string },
   id: string,
   requestedAt: Date,
 ): Promise<AppointmentActionState> {
-  if (requestedAt.getTime() < Date.now()) {
-    return { ok: false, fieldErrors: { requestedAt: "Өнгөрсөн цаг сонгох боломжгүй." } };
-  }
-
-  const appt = await prisma.appointment.findFirst({
+  const before = await prisma.appointment.findFirst({
     where: { id, accountId: account.id },
-    select: {
-      id: true,
-      tenantId: true,
-      branchId: true,
-      status: true,
-      requestedAt: true,
-      estimatedDurationMinutes: true,
-      serviceOrderId: true,
-    },
+    select: { tenantId: true, branchId: true },
   });
-  if (!appt) return { ok: false, message: "Цаг захиалга олдсонгүй." };
-  if (appt.status !== "PENDING" && appt.status !== "CONFIRMED") {
-    return { ok: false, message: "Энэ цагийг шилжүүлэх боломжгүй." };
-  }
-  if (appt.serviceOrderId) {
-    return {
-      ok: false,
-      message:
-        "Энэ цагт засварын хуудас нээгдсэн тул онлайнаар шилжүүлэх боломжгүй. Байгууллагатай холбогдоно уу.",
-    };
-  }
 
   try {
-    const { withBookingTransaction } = await import("@/lib/prisma");
-    await withBookingTransaction(appt.tenantId, (tx) =>
-      moveAppointmentInTransaction(tx, {
-        tenantId: appt.tenantId,
-        branchId: appt.branchId,
-        appointmentId: appt.id,
-        requestedAt,
-        allowedStatuses: ["PENDING", "CONFIRMED"],
-      }),
-    );
+    await rescheduleAppointmentByAccountCommand({ account, appointmentId: id, requestedAt });
   } catch (error) {
+    if (error instanceof AppointmentCommandError) {
+      return { ok: false, message: error.message, fieldErrors: error.fieldErrors };
+    }
     if (error instanceof ReservationError) return { ok: false, message: error.message };
     throw error;
   }
 
-  // Тусдаа (transaction-гүй) — booking transaction нь өөр (extended биш
-  // "base") Prisma client ашигладаг тул `logAudit`-ийн хүлээж буй tx-тэй
-  // төрөл таарахгүй. Rollback-той хамт алдвал audit мөр л дутуу үлдэнэ —
-  // цуцлах үйлдэл (cancelAppointmentByAccount) ч мөн адил audit хийдэггүй.
-  await logAudit({
-    tenantId: appt.tenantId,
-    branchId: appt.branchId,
-    entity: "Appointment",
-    entityId: appt.id,
-    action: "UPDATE",
-    summary: "Хэрэглэгч цагаа шилжүүлэв",
-    before: { requestedAt: appt.requestedAt.toISOString() },
-    after: { requestedAt: requestedAt.toISOString() },
-  });
-
-  try {
-    const who = account.name?.trim() || account.phone;
-    await notifyStaff({
-      type: "appointment_rescheduled_by_account",
-      tenantId: appt.tenantId,
-      branchId: appt.branchId,
-      input: {
-        appointmentId: appt.id,
-        body: `${who} — цагаа ${formatWhen(requestedAt)} болгож шилжүүллээ.`,
-      },
-    });
-  } catch (e) {
-    console.warn("[notify] rescheduleAppointmentByAccount:", e);
+  if (before) {
+    try {
+      const who = account.name?.trim() || account.phone;
+      await notifyStaff({
+        type: "appointment_rescheduled_by_account",
+        tenantId: before.tenantId,
+        branchId: before.branchId,
+        input: {
+          appointmentId: id,
+          body: `${who} — цагаа ${formatWhen(requestedAt)} болгож шилжүүллээ.`,
+        },
+      });
+    } catch (e) {
+      console.warn("[notify] rescheduleAppointmentByAccount:", e);
+    }
   }
 
   revalidatePath("/account");
@@ -435,108 +394,29 @@ export async function registerAppointmentByStaff(
   }
   if (Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors };
 
-  const scope = workingBranchScopeId(user);
-  if (scope && branchId !== scope) {
-    return {
-      ok: false,
-      fieldErrors: { branchId: "Зөвхөн өөрийн салбарт бүртгэх боломжтой." },
-    };
-  }
-
-  const [branch, customer] = await Promise.all([
-    prisma.branch.findFirst({
-      where: { id: branchId, tenantId: user.tenantId },
-      select: { id: true },
-    }),
-    prisma.customer.findFirst({
-      where: { id: customerId, tenantId: user.tenantId },
-      select: { id: true, accountId: true },
-    }),
-  ]);
-  if (!branch) return { ok: false, fieldErrors: { branchId: "Салбар олдсонгүй." } };
-  if (!customer) {
-    return { ok: false, fieldErrors: { customerId: "Үйлчлүүлэгч олдсонгүй." } };
-  }
-
-  // Staff and customer reservations share category, duration and capacity checks —
-  // staff alone may override a capacity-full slot after an explicit confirm
-  // (see ReservationConflictError; a phone-in booking is a real physical
-  // exception a staff member present at the branch can vouch for).
   const requestedCategoryIds = [...new Set(formData.getAll("categoryIds").map(String).filter(Boolean))];
   const confirmed = s(formData, "confirmed") === "true";
-  let created;
+
   try {
-    created = await reserveAppointment({
-      tenantId: user.tenantId, branchId, customerId, staffUserId: user.id,
-      // Customer нь онлайн Account-той гүүрлэгдсэн бол (өмнө нь тэр утсаар
-      // онлайн захиалга хийсэн байвал) энэ утсаар бүртгэсэн цагийг мөн тэр
-      // Account-д харагдуулна — эс бөгөөс "Миний захиалгууд"-д алга болно (2026-09-08
-      // хэрэглэгчийн тайлан).
-      accountId: customer.accountId,
-      categoryIds: requestedCategoryIds, requestedAt: requestedAt!, note: note || null,
+    await registerAppointmentByStaffCommand({
+      actor: actorFrom(user),
+      branchId,
+      customerId,
+      requestedAt: requestedAt!,
+      note: note || null,
+      categoryIds: requestedCategoryIds,
       confirmed,
     });
   } catch (error) {
-    if (error instanceof ReservationConflictError) {
-      return { ok: false, message: error.message, fieldErrors: { confirmNeeded: "true" } };
+    if (error instanceof AppointmentCommandError) {
+      return { ok: false, message: error.message, fieldErrors: error.fieldErrors };
     }
-    if (error instanceof ReservationError) return { ok: false, message: error.message };
     throw error;
   }
-
-  await logAudit({
-    tenantId: user.tenantId,
-    userId: user.id,
-    branchId,
-    entity: "Appointment",
-    entityId: created.id,
-    action: "CREATE",
-    summary: "Утсаар цаг бүртгэсэн",
-    after: {
-      customerId,
-      requestedAt: requestedAt!.toISOString(),
-      status: "CONFIRMED",
-    },
-  });
 
   revalidatePath("/dashboard/appointments");
   // Хуваарийн (calendar) хуудаснаас "next"-тэй ирсэн бол тэр рүү буцна.
   redirect(safeNext(s(formData, "next"), "/dashboard/appointments"));
-}
-
-/**
- * `requireUser()`-ийг ЗААВАЛ эхлээд (энэ appointment-ийг Prisma-аар
- * татахаас ӨМНӨ) дуудаж tenant context тохируулсан байх ёстой — эс бөгөөс
- * "Tenant context тохируулагдаагүй" алдаа шидэгдэнэ (харах: lib/prisma.ts).
- * Тиймээс энэ функц context тохируулахгүй, зөвхөн аль хэдийн resolve
- * хийсэн `user`-ийг branchId-тэй нь харьцуулж шалгана.
- *
- * D-132: the two messages below are named constants, and `STAFF_SCOPE_MESSAGES`
- * is the allow-list a sanitizing caller hands to `knownAuthorizationMessage`.
- * Keeping it adjacent to the throws means adding a throw without listing it is
- * visible in one screen. `assertActiveSubscription` also throws out of here;
- * that message is handled unconditionally by the shared seam, never listed.
- */
-const STAFF_SCOPE_FORBIDDEN_MESSAGE = "Танд цаг захиалга удирдах эрх байхгүй.";
-const STAFF_SCOPE_WRONG_BRANCH_MESSAGE = "Зөвхөн өөрийн салбарын цаг захиалгыг удирдана.";
-
-const STAFF_SCOPE_MESSAGES = [
-  STAFF_SCOPE_FORBIDDEN_MESSAGE,
-  STAFF_SCOPE_WRONG_BRANCH_MESSAGE,
-] as const;
-
-async function assertStaffScope(
-  user: Awaited<ReturnType<typeof requireUser>>,
-  branchId?: string,
-) {
-  if (!canEdit(user, "appointments")) {
-    throw new Error(STAFF_SCOPE_FORBIDDEN_MESSAGE);
-  }
-  const scope = workingBranchScopeId(user);
-  if (scope && branchId && branchId !== scope) {
-    throw new Error(STAFF_SCOPE_WRONG_BRANCH_MESSAGE);
-  }
-  await assertActiveSubscription(user.tenantId);
 }
 
 /**
@@ -560,6 +440,7 @@ export async function repairAppointmentOrderLinkAction(
   try {
     user = await requireUser();
   } catch (e) {
+    unstable_rethrow(e);
     return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
   }
 
@@ -577,10 +458,8 @@ export async function repairAppointmentOrderLinkAction(
   });
   if (!appointment) return { ok: false, message: "Цаг захиалга олдсонгүй." };
 
-  try {
-    await assertStaffScope(user, appointment.branchId);
-  } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  if (!canEdit(user, "appointments")) {
+    return { ok: false, message: "Танд цаг захиалга удирдах эрх байхгүй." };
   }
   if (user.tenantId !== appointment.tenantId || !canEdit(user, "orders")) {
     return { ok: false, message: "Танд энэ холбоосыг засах эрх байхгүй." };
@@ -734,113 +613,16 @@ export async function confirmAppointment(
   try {
     user = await requireUser();
   } catch (e) {
+    unstable_rethrow(e);
     return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
   }
 
-  const appt = await prisma.appointment.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      tenantId: true,
-      branchId: true,
-      status: true,
-      account: { select: { id: true, phone: true, name: true, email: true } },
-      accountVehicle: { select: { vehicleId: true } },
-      feeAmount: true,
-      feeQpayInvoiceId: true,
-      feeUnderpaidAmount: true,
-      payment: { select: { status: true } },
-    },
-  });
-  if (!appt) return { ok: false, message: "Цаг захиалга олдсонгүй." };
-
   try {
-    await assertStaffScope(user, appt.branchId);
+    await confirmAppointmentCommand({ actor: actorFrom(user), appointmentId: id });
   } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
-  }
-  if (user.tenantId !== appt.tenantId) {
-    return { ok: false, message: "Танд энэ цагийг удирдах эрх байхгүй." };
-  }
-  if (appt.status !== "PENDING") {
-    return { ok: false, message: "Энэ цаг аль хэдийн хариу авсан байна." };
-  }
-  const bookingPaymentStatus = appointmentBookingPaymentStatus(appt);
-  if (bookingPaymentStatus !== "NOT_REQUIRED" && bookingPaymentStatus !== "PAID") {
-    return {
-      ok: false,
-      message:
-        "Захиалгын хураамж бүрэн төлөгдөөгүй тул цагийг баталгаажуулах боломжгүй.",
-    };
-  }
-  // Онлайн захиалгад Account заавал байна (phone-in нь CONFIRMED-ээр үүсдэг тул
-  // энд хүрэхгүй). Account байхгүй бол resolve хийх боломжгүй.
-  if (!appt.account) {
-    return { ok: false, message: "Энэ цагт хэрэглэгчийн мэдээлэл алга." };
-  }
-  const account = appt.account;
-  const accountVehicle = appt.accountVehicle;
-
-  try {
-    await prisma.$transaction(async (tx) => {
-      const customerId = await resolveCustomerForAccount(
-        tx,
-        appt.tenantId,
-        account,
-      );
-      // Хэрэглэгч машинаа сонгосон бол тенантад TenantVehicle link үүсгэнэ.
-      // Link энэ tenant-д ӨӨР эзэнтэй байсан бол (хуучин олон эзэнтэй мөр)
-      // эзнийг дарж бичихгүй, машиныг ч цагт холбохгүй — ажилтан захиалга
-      // үүсгэхдээ энэ Customer-т машин сонгоно/шинээр бүртгэнэ.
-      let vehicleId: string | null = null;
-      if (accountVehicle) {
-        const link = await ensureTenantVehicle(tx, {
-          tenantId: appt.tenantId,
-          vehicleId: accountVehicle.vehicleId,
-          customerId,
-        });
-        vehicleId = link.customerId === customerId ? accountVehicle.vehicleId : null;
-      }
-      await tx.appointment.update({
-        where: { id: appt.id },
-        data: {
-          status: "CONFIRMED",
-          customerId,
-          vehicleId,
-          respondedAt: new Date(),
-          respondedById: user.id,
-        },
-      });
-      await logAudit(
-        {
-          tenantId: appt.tenantId,
-          userId: user.id,
-          branchId: appt.branchId,
-          entity: "Appointment",
-          entityId: appt.id,
-          action: "STATUS_CHANGE",
-          summary: "Цаг баталгаажуулсан",
-          after: { status: "CONFIRMED", customerId, vehicleId },
-        },
-        tx,
-      );
-    });
-  } catch (e) {
-    return {
-      ok: false,
-      message: e instanceof Error ? e.message : "Баталгаажуулахад алдаа гарлаа.",
-    };
-  }
-
-  // Мэдэгдэл (DB + push). Алдаа гарвал confirm-ийг тасалдуулахгүй.
-  try {
-    await createNotification({
-      type: "appointment_confirmed",
-      recipient: { accountId: account.id },
-      input: { appointmentId: appt.id },
-    });
-  } catch (e) {
-    console.warn("[notify] confirmAppointment:", e);
+    const known = knownAuthorizationMessage(e, STAFF_SCOPE_MESSAGES);
+    if (known) return { ok: false, message: known };
+    return { ok: false, message: commandErrorMessage(e, "Баталгаажуулахад алдаа гарлаа.") };
   }
 
   revalidatePath("/dashboard/appointments");
@@ -862,70 +644,16 @@ export async function rejectAppointment(
   try {
     user = await requireUser();
   } catch (e) {
+    unstable_rethrow(e);
     return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
   }
 
-  const appt = await prisma.appointment.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      tenantId: true,
-      branchId: true,
-      status: true,
-      accountId: true,
-    },
-  });
-  if (!appt) return { ok: false, message: "Цаг захиалга олдсонгүй." };
-
   try {
-    await assertStaffScope(user, appt.branchId);
+    await rejectAppointmentCommand({ actor: actorFrom(user), appointmentId: id });
   } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
-  }
-  if (user.tenantId !== appt.tenantId) {
-    return { ok: false, message: "Танд энэ цагийг удирдах эрх байхгүй." };
-  }
-  if (appt.status !== "PENDING") {
-    return { ok: false, message: "Энэ цаг аль хэдийн хариу авсан байна." };
-  }
-
-  try {
-    await prisma.appointment.update({
-      where: { id: appt.id },
-      data: {
-        status: "REJECTED",
-        respondedAt: new Date(),
-        respondedById: user.id,
-      },
-    });
-    await logAudit({
-      tenantId: appt.tenantId,
-      userId: user.id,
-      branchId: appt.branchId,
-      entity: "Appointment",
-      entityId: appt.id,
-      action: "STATUS_CHANGE",
-      summary: "Цаг татгалзсан",
-      after: { status: "REJECTED" },
-    });
-  } catch (e) {
-    return {
-      ok: false,
-      message: e instanceof Error ? e.message : "Татгалзахад алдаа гарлаа.",
-    };
-  }
-
-  // Онлайн захиалга (Account-той) бол хэрэглэгчид мэдэгдэнэ.
-  if (appt.accountId) {
-    try {
-      await createNotification({
-        type: "appointment_rejected",
-        recipient: { accountId: appt.accountId },
-        input: { appointmentId: appt.id },
-      });
-    } catch (e) {
-      console.warn("[notify] rejectAppointment:", e);
-    }
+    const known = knownAuthorizationMessage(e, STAFF_SCOPE_MESSAGES);
+    if (known) return { ok: false, message: known };
+    return { ok: false, message: commandErrorMessage(e, "Татгалзахад алдаа гарлаа.") };
   }
 
   revalidatePath("/dashboard/appointments");
@@ -946,66 +674,16 @@ export async function markAppointmentNoShow(
   try {
     user = await requireUser();
   } catch (e) {
+    unstable_rethrow(e);
     return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
   }
 
-  const appt = await prisma.appointment.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      tenantId: true,
-      branchId: true,
-      status: true,
-      accountId: true,
-    },
-  });
-  if (!appt) return { ok: false, message: "Цаг захиалга олдсонгүй." };
-
   try {
-    await assertStaffScope(user, appt.branchId);
+    await markAppointmentNoShowCommand({ actor: actorFrom(user), appointmentId: id });
   } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
-  }
-  if (user.tenantId !== appt.tenantId) {
-    return { ok: false, message: "Танд энэ цагийг удирдах эрх байхгүй." };
-  }
-  if (appt.status !== "CONFIRMED") {
-    return { ok: false, message: "Энэ цагийг тэмдэглэх боломжгүй." };
-  }
-
-  try {
-    await prisma.appointment.update({
-      where: { id: appt.id },
-      data: { status: "NO_SHOW" },
-    });
-    await logAudit({
-      tenantId: appt.tenantId,
-      userId: user.id,
-      branchId: appt.branchId,
-      entity: "Appointment",
-      entityId: appt.id,
-      action: "STATUS_CHANGE",
-      summary: "Цагт ирээгүй гэж тэмдэглэв",
-      after: { status: "NO_SHOW" },
-    });
-  } catch (e) {
-    return {
-      ok: false,
-      message: e instanceof Error ? e.message : "Тэмдэглэхэд алдаа гарлаа.",
-    };
-  }
-
-  // Онлайн захиалга (Account-той) бол хэрэглэгчид мэдэгдэнэ.
-  if (appt.accountId) {
-    try {
-      await createNotification({
-        type: "appointment_no_show",
-        recipient: { accountId: appt.accountId },
-        input: { appointmentId: appt.id },
-      });
-    } catch (e) {
-      console.warn("[notify] markAppointmentNoShow:", e);
-    }
+    const known = knownAuthorizationMessage(e, STAFF_SCOPE_MESSAGES);
+    if (known) return { ok: false, message: known };
+    return { ok: false, message: commandErrorMessage(e, "Тэмдэглэхэд алдаа гарлаа.") };
   }
 
   revalidatePath("/dashboard/appointments");
@@ -1038,201 +716,44 @@ export async function rescheduleAppointmentAction(
   }
 
   try {
-  let user;
-  try {
-    user = await requireUser();
-  } catch (e) {
-    // Pre-existing hazard, deliberately left as-is: `requireUser()` signals an
-    // unauthenticated or deactivated user by *throwing* NEXT_REDIRECT, which
-    // this catch swallows, so the login redirect never happens. All seven
-    // `requireUser()` catches in this file do it; fixing them is its own task.
-    logUnexpectedActionError("appointments:reschedule-auth", e);
-    return { ok: false, message: ACTION_GENERIC_ERROR_MESSAGE };
-  }
-
-  const appt = await prisma.appointment.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      tenantId: true,
-      branchId: true,
-      status: true,
-      requestedAt: true,
-      accountId: true,
-      estimatedDurationMinutes: true,
-      serviceOrderId: true,
-      serviceOrder: { select: { id: true, status: true } },
-    },
-  });
-  if (!appt) return { ok: false, message: "Цаг захиалга олдсонгүй." };
-
-  try {
-    await assertStaffScope(user, appt.branchId);
-  } catch (e) {
-    const known = knownAuthorizationMessage(e, STAFF_SCOPE_MESSAGES);
-    if (known) return { ok: false, message: known };
-    logUnexpectedActionError("appointments:reschedule-scope", e);
-    return { ok: false, message: ACTION_GENERIC_ERROR_MESSAGE };
-  }
-  if (user.tenantId !== appt.tenantId) {
-    return { ok: false, message: "Танд энэ цагийг удирдах эрх байхгүй." };
-  }
-  if (appt.status !== "CONFIRMED") {
-    return { ok: false, message: "Зөвхөн баталгаажсан цагийг энд шилжүүлнэ." };
-  }
-
-  // S14: an appointment linked to a still-SCHEDULED order shares its slot
-  // with that order's own scheduledAt/OrderTimeBooking row — writing only
-  // `requestedAt` here would let the two drift apart (the bug this fix
-  // targets). Route this specific, dangerous window through the shared
-  // linked-move command instead of the simple single-entity write below.
-  // Once the order has moved past SCHEDULED (IN_PROGRESS/COMPLETED/
-  // CANCELLED) it has its own separate time-changing mechanisms — not
-  // touched here, so this action still refuses in that case rather than
-  // silently doing nothing useful.
-  if (appt.serviceOrderId) {
-    if (appt.serviceOrder?.status !== "SCHEDULED") {
-      return {
-        ok: false,
-        message:
-          "Энэ цаг захиалга эхэлсэн/хойшлуулсан ажлын хуудастай холбогдсон тул энд шилжүүлэх боломжгүй. Захиалгын хуудаснаас цагийг нь шилжүүлнэ үү.",
-      };
-    }
-    const linked = await prisma.serviceOrder.findFirst({ where: { id: appt.serviceOrderId, tenantId: appt.tenantId }, select: { assignedToId: true, branchId: true } });
-    if (!linked || !canEditOrder(user, linked)) return { ok: false, message: "Танд холбогдсон засварын хуудсыг засах эрх байхгүй." };
+    let user;
     try {
-      const moved = await moveLinkedAppointmentOrder({
-        tenantId: appt.tenantId,
-        userId: user.id,
-        orderId: appt.serviceOrderId,
-        newTime: requestedAt,
-        confirmed,
-        actor: user,
-        scope: workingBranchScopeId(user),
-      });
-      if (!moved.appointmentId) {
-        return { ok: false, message: "Холбогдсон цаг захиалга олдсонгүй." };
-      }
-      if (appt.accountId) {
-        try {
-          await createNotification({
-            type: "appointment_rescheduled",
-            recipient: { accountId: appt.accountId },
-            input: { appointmentId: moved.appointmentId },
-          });
-        } catch (e) {
-          console.warn("[notify] rescheduleAppointmentAction (linked):", e);
-        }
-      }
+      user = await requireUser();
+    } catch (e) {
+      unstable_rethrow(e);
+      logUnexpectedActionError("appointments:reschedule-auth", e);
+      return { ok: false, message: ACTION_GENERIC_ERROR_MESSAGE };
+    }
+
+    const result = await rescheduleAppointmentCommand({
+      actor: actorFrom(user),
+      appointmentId: id,
+      requestedAt,
+      confirmed,
+    });
+
+    if (result.linked) {
       revalidatePath("/dashboard/appointments");
       revalidatePath("/dashboard/appointments/calendar");
       revalidatePath("/dashboard/orders");
-      revalidatePath(`/dashboard/orders/${moved.orderId}`);
+      revalidatePath(`/dashboard/orders/${result.orderId}`);
       revalidatePath("/account");
       return { ok: true, message: "Цаг болон холбогдсон захиалгын огноо шилжлээ." };
-    } catch (e) {
-      if (e instanceof LinkedRescheduleError) {
-        return { ok: false, message: e.message, fieldErrors: e.fieldErrors };
-      }
-      const known = knownAuthorizationMessage(e);
-      if (known) return { ok: false, message: known };
-      logUnexpectedActionError("appointments:reschedule-linked", e);
-      return { ok: false, message: ACTION_GENERIC_ERROR_MESSAGE };
     }
-  }
 
-  try {
-  const requestedDateStr = bookingDateKey(requestedAt);
-  const requestedDay = bookingDayBounds(requestedDateStr);
-
-  const branch = await prisma.branch.findFirst({
-    where: { id: appt.branchId, tenantId: appt.tenantId, isActive: true },
-    select: {
-      slotMinutes: true,
-      ...branchScheduleForDateSelect(requestedDateStr),
-    },
-  });
-  if (!branch) return { ok: false, message: "Салбар олдсонгүй." };
-  const durationMinutes = appt.estimatedDurationMinutes ?? branch.slotMinutes ?? DEFAULT_SLOT_MINUTES;
-  const requestedEnd = new Date(requestedAt.getTime() + durationMinutes * 60000);
-  const endExclusive = new Date(requestedEnd.getTime() - 1);
-  if (bookingDateKey(endExclusive) !== requestedDateStr) {
-    return {
-      ok: false,
-      message: "Цаг захиалга нэг өдрийн ажиллах цагийн дотор багтах ёстой.",
-    };
-  }
-  const effective = resolveEffectiveSchedule({ dateStr: requestedDateStr, branch });
-  const openMin = effective.openTime ? timeToMinutes(effective.openTime) : null;
-  const closeMin = effective.closeTime ? timeToMinutes(effective.closeTime) : null;
-  const startMin = (requestedAt.getTime() - requestedDay.start.getTime()) / 60000;
-  if (
-    !effective.open ||
-    openMin == null ||
-    closeMin == null ||
-    closeMin <= openMin ||
-    startMin < openMin ||
-    startMin + durationMinutes > closeMin
-  ) {
-    return { ok: false, message: "Ажиллах цагт багтах сул цаг сонгоно уу." };
-  }
-
-  // D-111: the schedule-overlap warning that used to sit here is gone. It
-  // never blocked anything — it asked staff to press "Хадгалах" a second time —
-  // and it was capacity-blind, returning on the FIRST overlapping row without
-  // consulting the branch's `slotCapacity`, so a branch with three bays warned
-  // as soon as one was in use. The working-hours validation above is a real
-  // constraint and still hard-blocks.
-
-  const previous = appt.requestedAt;
-
-  await prisma.$transaction(async (tx) => {
-    await tx.appointment.update({
-      where: { id: appt.id },
-      data: { requestedAt },
-    });
-    await logAudit(
-      {
-        tenantId: appt.tenantId,
-        userId: user.id,
-        branchId: appt.branchId,
-        entity: "Appointment",
-        entityId: appt.id,
-        action: "UPDATE",
-        summary: "Цагийг шилжүүлэв",
-        before: { requestedAt: previous.toISOString() },
-        after: { requestedAt: requestedAt.toISOString() },
-      },
-      tx,
-    );
-  });
-
-  if (appt.accountId) {
-    try {
-      await createNotification({
-        type: "appointment_rescheduled",
-        recipient: { accountId: appt.accountId },
-        input: { appointmentId: appt.id },
-      });
-    } catch (e) {
-      console.warn("[notify] rescheduleAppointmentAction:", e);
-    }
-  }
-
-  revalidatePath("/dashboard/appointments");
-  revalidatePath("/dashboard/appointments/calendar");
-  revalidatePath("/account");
-  return { ok: true, message: "Цаг шилжлээ." };
-  } catch (error) {
-    if (error instanceof ReservationError) return { ok: false, message: error.message };
-    const known = knownAuthorizationMessage(error);
-    if (known) return { ok: false, message: known };
-    logUnexpectedActionError("appointments:reschedule", error);
-    return { ok: false, message: ACTION_GENERIC_ERROR_MESSAGE };
-  }
+    revalidatePath("/dashboard/appointments");
+    revalidatePath("/dashboard/appointments/calendar");
+    revalidatePath("/account");
+    return { ok: true, message: "Цаг шилжлээ." };
   } catch (error) {
     unstable_rethrow(error);
-    logUnexpectedActionError("appointments:reschedule-boundary", error);
+    if (error instanceof AppointmentCommandError) {
+      return { ok: false, message: error.message, fieldErrors: error.fieldErrors };
+    }
+    if (error instanceof ReservationError) return { ok: false, message: error.message };
+    const known = knownAuthorizationMessage(error, STAFF_SCOPE_MESSAGES);
+    if (known) return { ok: false, message: known };
+    logUnexpectedActionError("appointments:reschedule", error);
     return { ok: false, message: ACTION_GENERIC_ERROR_MESSAGE };
   }
 }
@@ -1250,122 +771,20 @@ export async function markAppointmentArrived(
   try {
     user = await requireUser();
   } catch (e) {
+    unstable_rethrow(e);
     return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
   }
 
-  const appt = await prisma.appointment.findUnique({
-    where: { id },
-    select: { id: true, tenantId: true, branchId: true, status: true, arrivedAt: true },
-  });
-  if (!appt) return { ok: false, message: "Цаг захиалга олдсонгүй." };
-
   try {
-    await assertStaffScope(user, appt.branchId);
+    await markAppointmentArrivedCommand({ actor: actorFrom(user), appointmentId: id });
   } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
-  }
-  if (user.tenantId !== appt.tenantId) {
-    return { ok: false, message: "Танд энэ цагийг удирдах эрх байхгүй." };
-  }
-  if (appt.status !== "CONFIRMED") {
-    return { ok: false, message: "Энэ цагийг тэмдэглэх боломжгүй." };
-  }
-  if (appt.arrivedAt) {
-    return { ok: false, message: "Аль хэдийн ирсэн гэж тэмдэглэсэн байна." };
-  }
-
-  try {
-    await prisma.appointment.update({
-      where: { id: appt.id },
-      data: { arrivedAt: new Date() },
-    });
-    await logAudit({
-      tenantId: appt.tenantId,
-      userId: user.id,
-      branchId: appt.branchId,
-      entity: "Appointment",
-      entityId: appt.id,
-      action: "STATUS_CHANGE",
-      summary: "Үйлчлүүлэгч ирснийг тэмдэглэв",
-      after: { arrivedAt: new Date().toISOString() },
-    });
-  } catch (e) {
-    return {
-      ok: false,
-      message: e instanceof Error ? e.message : "Тэмдэглэхэд алдаа гарлаа.",
-    };
+    const known = knownAuthorizationMessage(e, STAFF_SCOPE_MESSAGES);
+    if (known) return { ok: false, message: known };
+    return { ok: false, message: commandErrorMessage(e, "Тэмдэглэхэд алдаа гарлаа.") };
   }
 
   revalidatePath("/dashboard/appointments");
   return { ok: true, message: "Ирсэн гэж тэмдэглэлээ." };
-}
-
-/**
- * Ажлын төрлийг (categories) солино — Засварын хуудас (ServiceOrder) үүссэн
- * цаг захиалгад хориглоно, учир нь тухайн үед ажлын төрөл түүхэн мэдээлэл
- * болж хувирдаг (харах: resolveCategoryDurations, D-076 тэмдэглэл).
- * Хугацааны тооцоог дахин хийж estimatedDurationMinutes-ийг шинэчилнэ, учир
- * нь энэ нь слотын багтаамжид нөлөөлдөг.
- */
-async function applyAppointmentCategoryChange(
-  user: Awaited<ReturnType<typeof requireUser>>,
-  id: string,
-  categoryIds: string[],
-) {
-  const appt = await prisma.appointment.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      tenantId: true,
-      branchId: true,
-      serviceOrderId: true,
-      categories: { select: { category: { select: { name: true } } } },
-    },
-  });
-  if (!appt) throw new Error("Цаг захиалга олдсонгүй.");
-  if (user.tenantId !== appt.tenantId) {
-    throw new Error("Танд энэ цагийг удирдах эрх байхгүй.");
-  }
-  await assertStaffScope(user, appt.branchId);
-  if (appt.serviceOrderId) {
-    throw new Error("Засварын хуудас үүссэн тул ажлын төрлийг энд өөрчлөх боломжгүй.");
-  }
-
-  const uniqueIds = [...new Set(categoryIds)];
-  if (uniqueIds.length === 0) throw new Error("Дор хаяж нэг ажлын төрөл сонгоно уу.");
-
-  const categories = await prisma.category.findMany({
-    where: { id: { in: uniqueIds }, tenantId: user.tenantId, isActive: true },
-    select: { id: true, name: true },
-  });
-  if (categories.length !== uniqueIds.length) {
-    throw new Error("Сонгосон ажлын төрөл олдсонгүй.");
-  }
-
-  const beforeNames = appt.categories.map((c) => c.category.name);
-  const afterNames = categories.map((c) => c.name);
-
-  await prisma.$transaction(async (tx) => {
-    await tx.appointmentCategory.deleteMany({ where: { appointmentId: appt.id } });
-    await tx.appointmentCategory.createMany({
-      data: uniqueIds.map((categoryId) => ({ appointmentId: appt.id, categoryId })),
-    });
-    const { totalMinutes } = await resolveCategoryDurations(tx, uniqueIds);
-    await tx.appointment.update({
-      where: { id: appt.id },
-      data: { estimatedDurationMinutes: totalMinutes },
-    });
-    await logAudit({
-      tenantId: appt.tenantId,
-      userId: user.id,
-      branchId: appt.branchId,
-      entity: "Appointment",
-      entityId: appt.id,
-      action: "UPDATE",
-      summary: `Ажлын төрөл: ${beforeNames.join(", ") || "—"} → ${afterNames.join(", ")}`,
-      after: { categoryIds: uniqueIds },
-    });
-  });
 }
 
 // Жагсаалтаас олноор сонгож ажлын төрлийг нэг зэрэг солих (харах:
@@ -1379,6 +798,7 @@ export async function bulkChangeAppointmentCategoryAction(
   try {
     user = await requireUser();
   } catch (e) {
+    unstable_rethrow(e);
     return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
   }
   if (!canEdit(user, "appointments")) {
@@ -1413,17 +833,13 @@ export async function bulkChangeAppointmentCategoryAction(
     ]),
   );
 
-  let succeeded = 0;
-  const errors: string[] = [];
-  for (const id of ids) {
-    try {
-      await applyAppointmentCategoryChange(user, id, categoryIds);
-      succeeded++;
-    } catch (e) {
-      const label = labelById.get(id) ?? id;
-      errors.push(`${label}: ${e instanceof Error ? e.message : "алдаа"}`);
-    }
-  }
+  const result = await bulkChangeAppointmentCategoryCommand({
+    actor: actorFrom(user),
+    appointmentIds: ids,
+    categoryIds,
+  });
+  const errors = result.failed.map((f) => `${labelById.get(f.appointmentId) ?? f.appointmentId}: ${f.message}`);
+  const succeeded = result.succeeded.length;
 
   revalidatePath("/dashboard/appointments");
   revalidatePath("/dashboard/appointments/calendar");

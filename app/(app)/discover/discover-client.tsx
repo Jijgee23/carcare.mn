@@ -1098,11 +1098,6 @@ export function DiscoverClient({
           {visibleOrgs.length} газар · {markers.length} салбар
         </span>
 
-        {filterLoading ? (
-          <span className="basis-full text-xs text-violet-300 light:text-violet-700">
-            Шүүлтүүрийн үр дүн шинэчилж байна…
-          </span>
-        ) : null}
         {filterError ? (
           <div className="basis-full text-xs text-[var(--oc-warn)]">
             {filterError}
@@ -1201,6 +1196,38 @@ export function DiscoverClient({
               <div className="glass rounded-2xl px-8 py-6 border border-white/[0.08] text-center text-sm text-white/40">
                 Энэ хайлтаар газар олдсонгүй.
               </div>
+            </div>
+          ) : null}
+
+          {filterLoading ? (
+            <div
+              role="status"
+              aria-live="polite"
+              aria-label="Шүүлтүүрийн үр дүн шинэчлэгдэж байна"
+              className="absolute left-3 top-3 z-20 flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-zinc-900/95 text-white shadow-lg light:border-black/10 light:bg-white/95 light:text-zinc-700"
+            >
+              <svg
+                aria-hidden="true"
+                className="h-5 w-5 animate-spin"
+                viewBox="0 0 24 24"
+                fill="none"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="9"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                />
+                <path
+                  className="opacity-90"
+                  d="M21 12a9 9 0 0 0-9-9"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                />
+              </svg>
             </div>
           ) : null}
 

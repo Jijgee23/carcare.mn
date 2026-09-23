@@ -1,4 +1,4 @@
-import { jsonError, jsonOk, requireApiUser } from "@/lib/api";
+import { jsonError, jsonForbidden, jsonOk, requireApiUser } from "@/lib/api";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 
@@ -11,6 +11,9 @@ export async function PATCH(
 ) {
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
+  // Category-д permission code байхгүй тул вэб дашбоардын `authorizeOwner()`-ийг
+  // (app/_actions/categories.ts) яг таг дуурайлган зөвхөн эзэмшигчид зөвшөөрнө.
+  if (!auth.user.isOwner) return jsonForbidden();
   const { id } = await ctx.params;
 
   const existing = await prisma.category.findFirst({
@@ -64,6 +67,9 @@ export async function DELETE(
 ) {
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
+  // Category-д permission code байхгүй тул вэб дашбоардын `authorizeOwner()`-ийг
+  // (app/_actions/categories.ts) яг таг дуурайлган зөвхөн эзэмшигчид зөвшөөрнө.
+  if (!auth.user.isOwner) return jsonForbidden();
   const { id } = await ctx.params;
 
   const existing = await prisma.category.findFirst({

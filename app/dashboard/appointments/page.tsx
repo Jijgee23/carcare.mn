@@ -11,6 +11,7 @@ import {
   APPOINTMENT_STATUS_LABEL,
   type AppointmentStatus,
 } from "@/lib/appointments";
+import { appointmentSearchWhere } from "@/lib/appointments/appointment-list-query";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canEdit, canView, workingBranchScopeId } from "@/lib/auth/roles";
 import { customerLabel } from "@/lib/customers";
@@ -102,13 +103,8 @@ export default async function AppointmentsPage({
   };
   if (scopeBranchId) where.branchId = scopeBranchId;
   else if (branchId) where.branchId = branchId;
-  if (q) {
-    where.OR = [
-      { account: { name: { contains: q, mode: "insensitive" } } },
-      { account: { phone: { contains: q } } },
-      { note: { contains: q, mode: "insensitive" } },
-    ];
-  }
+  const searchWhere = appointmentSearchWhere(q);
+  if (searchWhere) where.OR = searchWhere;
 
   const { page, pageSize, skip, take } = getPageInfo(pageParam);
 

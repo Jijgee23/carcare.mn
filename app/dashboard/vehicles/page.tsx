@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { deleteVehicleAction } from "@/app/_actions/vehicles";
-import { Prisma } from "@/app/generated/prisma/client";
 import { ClickableRow } from "@/app/_components/clickable-row";
 import {
   FilterSelect,
@@ -18,6 +17,7 @@ import {
 } from "@/app/_components/row-actions";
 import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { customerLabel } from "@/lib/customers";
+import { buildVehicleListWhere } from "@/lib/vehicles/vehicle-list-query";
 import { POSTPAID_BADGE, POSTPAID_LABEL } from "@/lib/orders";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canView } from "@/lib/auth/roles";
@@ -49,24 +49,23 @@ export default async function VehiclesPage({
     postpaid = "",
     page: pageParam,
   } = await searchParams;
-  // Тенантын "машинууд" = TenantVehicle link-үүд (global Vehicle руу заана).
-  const where: Prisma.TenantVehicleWhereInput = { tenantId: user.tenantId };
-  if (q) {
-    where.OR = [
-      { vehicle: { plate: { contains: q, mode: "insensitive" } } },
-      { vehicle: { make: { contains: q, mode: "insensitive" } } },
-      { vehicle: { model: { contains: q, mode: "insensitive" } } },
-      { vehicle: { vin: { contains: q, mode: "insensitive" } } },
-      { customer: { fullName: { contains: q, mode: "insensitive" } } },
-      { customer: { phone: { contains: q } } },
-    ];
-  }
-  if (assigned === "yes") where.customerId = { not: null };
-  else if (assigned === "no") where.customerId = null;
-  if (postpaid === "yes") where.isPostpaid = true;
-  else if (postpaid === "no") where.isPostpaid = false;
-
   const { page, pageSize, skip, take } = getPageInfo(pageParam);
+  // P3-B6: канон where-builder — `lib/vehicles/vehicle-list-query.ts`.
+  // Тенантын "машинууд" = TenantVehicle link-үүд (global Vehicle руу заана),
+  // энэ хуудасны хайлт/шүүлтүүрийн зан төлөв (plate/make/model/vin + эзэмшигчийн
+  // нэр/утас, assigned, postpaid) хуучин хэвээр — өөрчлөгдөөгүй.
+  const where = buildVehicleListWhere(
+    {
+      q: q || undefined,
+      assigned: assigned === "yes" || assigned === "no" ? assigned : undefined,
+      postpaid: postpaid === "yes" || postpaid === "no" ? postpaid : undefined,
+      page,
+      pageSize,
+      skip,
+      take,
+    },
+    { tenantId: user.tenantId },
+  );
   const [links, total, totalVehicles, assignedVehicles, postpaidVehicles, customers] =
     await Promise.all([
       prisma.tenantVehicle.findMany({

@@ -31,18 +31,9 @@
 // online-booking plan gate. See that file's own doc comment.
 
 import { bookingDayBounds } from "@/lib/booking-time";
-import { resolveEffectiveSchedule } from "@/lib/branch-effective-schedule";
 import { branchScheduleForDateSelect } from "@/lib/branch-effective-schedule-server";
-import {
-  buildDaySlots,
-  DEFAULT_SLOT_CAPACITY,
-  DEFAULT_SLOT_MINUTES,
-  type DayAvailability,
-} from "@/lib/appointment-slots";
-import {
-  resolveCategoryDurations,
-  resolveTakenCapacityIntervals,
-} from "@/lib/category-duration";
+import type { DayAvailability } from "@/lib/appointment-slots";
+import { computeBranchDayAvailability } from "@/lib/appointments/day-availability";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { isFeatureEnabled } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
@@ -111,63 +102,20 @@ export async function resolvePublicAvailability(
     };
   }
 
-  if (categoryIds.length) {
-    const eligible = await prisma.category.findMany({
-      where: {
-        id: { in: categoryIds },
-        tenantId: branch.tenantId,
-        isActive: true,
-        OR: [{ branches: { some: { id: branch.id } } }, { branches: { none: {} } }],
-      },
-      select: { id: true },
-    });
-    if (eligible.length !== categoryIds.length) {
-      return {
-        ok: false,
-        reason: "invalid_category",
-        message: "Үйлчилгээний ангиллаа дахин сонгоно уу.",
-      };
-    }
+  const result = await computeBranchDayAvailability(prisma, {
+    branch,
+    dateStr,
+    dayStart: bounds.start,
+    dayEnd: bounds.end,
+    categoryIds,
+  });
+  if (!result.ok) {
+    return {
+      ok: false,
+      reason: "invalid_category",
+      message: "Үйлчилгээний ангиллаа дахин сонгоно уу.",
+    };
   }
 
-  const schedule = resolveEffectiveSchedule({ dateStr, branch });
-  const { open, openTime, closeTime } = schedule;
-
-  const slotMin = branch.slotMinutes ?? DEFAULT_SLOT_MINUTES;
-  const { totalMinutes } = categoryIds.length
-    ? await resolveCategoryDurations(prisma, categoryIds)
-    : { totalMinutes: 0 };
-  const appointmentMinutes = totalMinutes > 0 ? totalMinutes : slotMin;
-
-  const dayStart = bounds.start;
-  const dayEnd = bounds.end;
-  const capacityIntervals = open
-    ? await resolveTakenCapacityIntervals(prisma, branch.id, dayStart, dayEnd, slotMin)
-    : [];
-  const taken = capacityIntervals.map((interval) => ({
-    start: new Date(interval.startMs),
-    durationMinutes: Math.max(1, Math.ceil((interval.endMs - interval.startMs) / 60000)),
-  }));
-
-  const availability = buildDaySlots({
-    dateStr,
-    open,
-    openTime,
-    closeTime,
-    slotMinutes: slotMin,
-    capacity: branch.slotCapacity ?? DEFAULT_SLOT_CAPACITY,
-    taken,
-    now: new Date(),
-    appointmentMinutes,
-  });
-
-  return {
-    ok: true,
-    availability: {
-      ...availability,
-      scheduleSource: schedule.source,
-      scheduleLabel: schedule.label,
-      durationMinutes: appointmentMinutes,
-    },
-  };
+  return { ok: true, availability: result.availability };
 }

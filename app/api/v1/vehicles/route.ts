@@ -1,36 +1,32 @@
-import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
-import { logAudit } from "@/lib/audit";
 import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
-import { buildMeta, getApiPageInfo } from "@/lib/pagination";
+import { buildMeta } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
+import { VehicleCommandError, createVehicleCommand } from "@/lib/vehicles/vehicle-commands";
 import {
-  normalizePlate,
-  ownerFromCustomer,
-  resolveVehicleForOwner,
-} from "@/lib/vehicles";
+  buildVehicleListWhere,
+  parseVehicleListQuery,
+} from "@/lib/vehicles/vehicle-list-query";
 
 export async function GET(req: Request) {
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
+  const denied = requirePermission(auth.user, "vehicles.view");
+  if (denied) return denied;
 
   const url = new URL(req.url);
-  const q = url.searchParams.get("q")?.trim() ?? "";
-  const customerId = url.searchParams.get("customerId")?.trim() ?? "";
-  const { page, pageSize, skip, take } = getApiPageInfo(url.searchParams);
+  const parsed = parseVehicleListQuery(url.searchParams);
+  if (!parsed.ok) return jsonError(400, parsed.message, { field: parsed.field });
+  const query = parsed.value;
+  const { page, pageSize, skip, take } = query;
 
-  const where: Prisma.TenantVehicleWhereInput = { tenantId: auth.user.tenantId };
-  if (customerId) where.customerId = customerId;
-  if (q) {
-    where.vehicle = {
-      OR: [
-        { plate: { contains: q, mode: "insensitive" } },
-        { make: { contains: q, mode: "insensitive" } },
-        { model: { contains: q, mode: "insensitive" } },
-        { vin: { contains: q, mode: "insensitive" } },
-      ],
-    };
-  }
+  // P3-B6: канон where-builder — `lib/vehicles/vehicle-list-query.ts`.
+  // Тенантын хамрах хүрээ TenantVehicle-ээр дамждаг хэвээр (global Vehicle
+  // биш). Хайлт нь одоо dashboard-ийн зургаан талбарт (plate/make/model/vin +
+  // эзэмшигчийн нэр/утас) тааруулна — өмнө нь энэ route зөвхөн машины
+  // талбаруудыг л хайдаг байсан тул энэ нь зориудаар ӨРГӨТГӨСӨН зан төлөв
+  // (see this slice's report: search must match the dashboard's rows).
+  const where = buildVehicleListWhere(query, { tenantId: auth.user.tenantId });
 
   const [links, total] = await Promise.all([
     prisma.tenantVehicle.findMany({
@@ -87,128 +83,55 @@ export async function POST(req: Request) {
     unknown
   >;
 
-  const plateStr = typeof plate === "string" ? plate.trim().toUpperCase() : "";
-  const makeStr = typeof make === "string" ? make.trim() : "";
-  const modelStr = typeof model === "string" ? model.trim() : "";
-  const vinStr = typeof vin === "string" ? vin.trim() : "";
-  const yearNum =
-    typeof year === "number"
-      ? Math.floor(year)
-      : typeof year === "string" && year.trim()
-        ? Math.floor(Number(year))
-        : null;
-  const mileageNum =
-    typeof mileage === "number"
-      ? Math.floor(mileage)
-      : typeof mileage === "string" && mileage.trim()
-        ? Math.floor(Number(mileage))
-        : null;
-  const customerIdStr =
-    typeof customerId === "string" && customerId.trim() ? customerId.trim() : null;
-
-  const fieldErrors: Record<string, string> = {};
-  if (!plateStr) fieldErrors.plate = "Улсын дугаар шаардлагатай.";
-  if (!makeStr) fieldErrors.make = "Үйлдвэрлэгч шаардлагатай.";
-  if (!modelStr) fieldErrors.model = "Загвар шаардлагатай.";
-  if (yearNum !== null && (Number.isNaN(yearNum) || yearNum < 1900))
-    fieldErrors.year = "Он буруу.";
-  if (mileageNum !== null && (Number.isNaN(mileageNum) || mileageNum < 0))
-    fieldErrors.mileage = "Гүйлт буруу.";
-  if (Object.keys(fieldErrors).length > 0) {
-    return jsonError(422, "Хүсэлт буруу.", { fieldErrors });
-  }
-
-  if (customerIdStr) {
-    const cust = await prisma.customer.findFirst({
-      where: { id: customerIdStr, tenantId: auth.user.tenantId },
-      select: { id: true },
-    });
-    if (!cust)
-      return jsonError(422, "Хүсэлт буруу.", {
-        fieldErrors: { customerId: "Үйлчлүүлэгч олдсонгүй." },
-      });
-  }
-
-  // Эзэн сонгоогүй үед ижил дугаартай ЭЗЭНГҮЙ бүртгэл энэ tenant-д байвал
-  // мөр үржүүлэхгүй, түүнийг буцаана.
-  const unownedExisting = customerIdStr
-    ? null
-    : await prisma.tenantVehicle.findFirst({
-        where: {
-          tenantId: auth.user.tenantId,
-          customerId: null,
-          vehicle: { plate: normalizePlate(plateStr) },
-        },
-        select: { vehicleId: true },
-      });
-
-  const vehicle = await prisma.$transaction(async (tx) => {
-    // Vehicle = эзэмшигчийн бүртгэл: Customer-ийн account/утсаар ижил эзний
-    // мөрийг тааруулна, өөр эзний ижил дугаартай мөр байвал шинээр үүсгэнэ.
-    const owner = await ownerFromCustomer(tx, auth.user.tenantId, customerIdStr);
-    const v = unownedExisting
-      ? { id: unownedExisting.vehicleId }
-      : await resolveVehicleForOwner(tx, {
-          plate: plateStr,
-          vin: vinStr || null,
-          make: makeStr,
-          model: modelStr,
-          year: yearNum,
-          mileage: mileageNum,
-          owner,
-        });
-    const link = await tx.tenantVehicle.upsert({
-      where: {
-        tenantId_vehicleId: {
-          tenantId: auth.user.tenantId,
-          vehicleId: v.id,
-        },
+  // P3-B2: validate/claim логик нь `lib/vehicles/vehicle-commands.ts`-д
+  // нэгдсэн. Энэ route зөвхөн эрх/subscription шалгаад, командыг дуудаж,
+  // JSON хариу болгон хувиргадаг нимгэн адаптер.
+  //  - Divergence 3 хэвээр: он дээд хязгаарыг (2100) шалгахгүй
+  //    (`enforceYearUpperBound: false`) — хуучин route зөвхөн доод хязгаарыг
+  //    шалгадаг байсан.
+  //  - `wheelPosition` энд огт хүлээж авдаггүй — хуучин route-д байгаагүй.
+  //  - MAX_VEHICLES одоо энд ч шалгагдана: D-154 (2026-09-22) D-151-ийг
+  //    орлуулсан. Давхардал татгалзах (`rejectDuplicate`) хэвээр унтраалттай
+  //    — тусдаа divergence, хязгаартай хамаагүй.
+  //  - Хуучин "эзэнгүй давхардлыг чимээгүй ашиглах" гар аргыг Divergence 5-ийн
+  //    нэгтгэл устгасан: одоо бүх зам `resolveVehicleForOwner`/
+  //    `ensureTenantVehicle`-ээр дамжина, тусдаа хайлт байхгүй.
+  let record;
+  try {
+    record = await createVehicleCommand({
+      actor: auth.user,
+      data: {
+        plate: typeof plate === "string" ? plate : "",
+        vin: typeof vin === "string" ? vin : null,
+        make: typeof make === "string" ? make : "",
+        model: typeof model === "string" ? model : "",
+        year: typeof year === "number" || typeof year === "string" ? year : null,
+        mileage: typeof mileage === "number" || typeof mileage === "string" ? mileage : null,
+        customerId: typeof customerId === "string" ? customerId : null,
       },
-      create: {
-        tenantId: auth.user.tenantId,
-        vehicleId: v.id,
-        customerId: customerIdStr,
-      },
-      // Байгаа эзнийг дарж бичихгүй (түүх шилжихгүй).
-      update: {},
-      select: { id: true, customerId: true },
+      rejectDuplicate: false,
+      enforceYearUpperBound: false,
     });
-    if (customerIdStr && !link.customerId) {
-      await tx.tenantVehicle.update({
-        where: { id: link.id },
-        data: { customerId: customerIdStr },
-      });
+  } catch (e) {
+    if (e instanceof VehicleCommandError) {
+      return jsonError(e.status, e.message, e.fieldErrors ? { fieldErrors: e.fieldErrors } : undefined);
     }
-    const full = await tx.vehicle.findUniqueOrThrow({
-      where: { id: v.id },
-      select: {
-        id: true,
-        plate: true,
-        vin: true,
-        make: true,
-        model: true,
-        year: true,
-        mileage: true,
-      },
-    });
+    throw e;
+  }
 
-    await logAudit(
-      {
-        tenantId: auth.user.tenantId,
-        userId: auth.user.id,
-        entity: "Vehicle",
-        entityId: full.id,
-        action: "CREATE",
-        summary: `${full.plate} · ${full.make} ${full.model}`,
-        after: { plate: full.plate, make: full.make, model: full.model, customerId: customerIdStr },
-      },
-      tx,
-    );
-
-    return full;
-  });
   return jsonOk(
-    { vehicle: { ...vehicle, customerId: customerIdStr } },
+    {
+      vehicle: {
+        id: record.id,
+        plate: record.plate,
+        vin: record.vin,
+        make: record.make,
+        model: record.model,
+        year: record.year,
+        mileage: record.mileage,
+        customerId: record.customerId,
+      },
+    },
     { status: 201 },
   );
 }

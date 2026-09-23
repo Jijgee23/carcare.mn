@@ -6,6 +6,7 @@ import { requireAccount } from "@/lib/auth/account";
 import { requireUser } from "@/lib/auth";
 import { requireSuperAdmin } from "@/lib/auth/system";
 import { isFeedbackStatus, isFeedbackType } from "@/lib/feedback";
+import { addStaffFeedbackReply, createStaffFeedback } from "@/lib/feedback-staff";
 import { createNotification } from "@/lib/notifications";
 import { prisma } from "@/lib/prisma";
 import { saveUpload } from "@/lib/storage";
@@ -46,29 +47,8 @@ export async function submitStaffFeedback(
   formData: FormData,
 ): Promise<FeedbackActionState> {
   const user = await requireUser();
-  const input = parseInput(formData);
-  if (!input) {
-    return { ok: false, message: "Мессеж 5-2000 тэмдэгт байх ёстой." };
-  }
-  let screenshotUrl: string | null;
-  try {
-    screenshotUrl = await saveScreenshot(formData);
-  } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : "Зураг хадгалахад алдаа гарлаа." };
-  }
-
-  await prisma.feedback.create({
-    data: {
-      tenantId: user.tenantId,
-      userId: user.id,
-      type: input.type,
-      message: input.message,
-      screenshotUrl,
-      pageUrl: input.pageUrl || null,
-      userAgent: input.userAgent || null,
-    },
-  });
-
+  const result = await createStaffFeedback({ id: user.id, tenantId: user.tenantId }, formData);
+  if (!result.ok) return { ok: false, message: result.message };
   return { ok: true, message: "Санал хүсэлт илгээгдлээ. Баярлалаа!" };
 }
 
@@ -187,30 +167,9 @@ export async function addSubmitterFeedbackReply(
   const user = await requireUser();
   const id = s(formData, "id");
   const message = s(formData, "message");
-  if (!id || message.length < 2 || message.length > 2000) {
-    return { ok: false, message: "Хариу 2-2000 тэмдэгт байх ёстой." };
-  }
 
-  const feedback = await prisma.feedback.findFirst({
-    where: { id, tenantId: user.tenantId },
-  });
-  if (!feedback) return { ok: false, message: "Олдсонгүй." };
-
-  await prisma.feedbackMessage.create({
-    data: {
-      feedbackId: id,
-      tenantId: user.tenantId,
-      author: "SUBMITTER",
-      message,
-    },
-  });
-
-  if (feedback.status === "RESOLVED" || feedback.status === "DISMISSED") {
-    await prisma.feedback.update({
-      where: { id },
-      data: { status: "IN_REVIEW", resolvedAt: null },
-    });
-  }
+  const result = await addStaffFeedbackReply({ id: user.id, tenantId: user.tenantId }, id, message);
+  if (!result.ok) return { ok: false, message: result.message };
 
   revalidatePath(`/dashboard/feedback/${id}`);
   return { ok: true, message: "Хариу илгээгдлээ." };

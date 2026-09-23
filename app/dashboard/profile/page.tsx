@@ -6,7 +6,7 @@ import { Btn, Chip } from "@/app/_components/landing-ops-ui";
 import { ConfirmForm } from "@/app/_components/confirm-form";
 import { getSession, requireUser } from "@/lib/auth";
 import { userRoleLabel } from "@/lib/auth/roles";
-import { deviceLabel } from "@/lib/auth/user-session";
+import { listAccountSessions } from "@/lib/account/sessions";
 import { Pagination } from "@/app/_components/pagination";
 import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
@@ -33,43 +33,22 @@ export default async function ProfilePage({
 
   const session = await getSession();
   const currentSid = session?.sid ?? null;
-  const now = new Date();
-  const sessionSelect = {
-    id: true,
-    userAgent: true,
-    ip: true,
-    createdAt: true,
-    lastSeenAt: true,
-    expiresAt: true,
-    revokedAt: true,
-  } as const;
   // Идэвхтэй: гараагүй бөгөөд хугацаа дуусаагүй. Түүх: гарсан ЭСВЭЛ дууссан —
-  // DB талд хуудаслана (өмнө сүүлийн 50-аас 10-ыг л харуулдаг байв).
-  const activeWhere = { userId: user.id, revokedAt: null, expiresAt: { gt: now } };
-  const endedWhere = {
-    userId: user.id,
-    OR: [{ revokedAt: { not: null } }, { expiresAt: { lte: now } }],
-  };
+  // хуудаслана (өмнө сүүлийн 50-аас 10-ыг л харуулдаг байв). D-178: web
+  // (UserSession) + mobile (RefreshToken, rotation-ийн сүүлчийн холбоос) хоёуланг нэгтгэнэ.
   const { page: endedPageRaw, skip, take } = getPageInfo(
     sp[DEVICE_PAGE_PARAM],
     DEVICE_HISTORY_PAGE_SIZE,
   );
-  const [activeSessions, endedSessions, endedTotal] = await Promise.all([
-    prisma.userSession.findMany({
-      where: activeWhere,
-      orderBy: { lastSeenAt: "desc" },
-      select: sessionSelect,
-    }),
-    prisma.userSession.findMany({
-      where: endedWhere,
-      orderBy: { lastSeenAt: "desc" },
-      skip,
-      take,
-      select: sessionSelect,
-    }),
-    prisma.userSession.count({ where: endedWhere }),
-  ]);
-  const otherActiveCount = activeSessions.filter((s) => s.id !== currentSid).length;
+  const {
+    active: activeSessions,
+    ended: endedSessions,
+    endedTotal,
+    otherActiveCount,
+  } = await listAccountSessions(prisma, user.id, {
+    currentSessionId: currentSid,
+    pagination: { skip, take },
+  });
   const endedMeta = buildMeta(endedTotal, endedPageRaw, DEVICE_HISTORY_PAGE_SIZE);
   // Pagination линкэнд бусад query-г хадгална (зөвхөн string утгууд).
   const pageParams: Record<string, string> = {};
@@ -188,10 +167,10 @@ export default async function ProfilePage({
           >
             <div className="flex flex-col gap-2">
               {activeSessions.map((s) => {
-                const isCurrent = s.id === currentSid;
+                const isCurrent = s.current;
                 return (
                   <div
-                    key={s.id}
+                    key={`${s.source}:${s.id}`}
                     className="flex items-center gap-3 rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel2)] px-3 py-2.5"
                   >
                     <div className="w-9 h-9 rounded-lg bg-[var(--oc-panel)] border border-[var(--oc-line)] flex items-center justify-center text-[var(--oc-muted2)] shrink-0">
@@ -202,13 +181,16 @@ export default async function ProfilePage({
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-medium text-[var(--oc-ink2)] flex items-center gap-2">
-                        {deviceLabel(s.userAgent)}
+                        {s.deviceLabel}
+                        <Chip tone="neutral" bordered>
+                          {s.source === "mobile" ? "Мобайл" : "Веб"}
+                        </Chip>
                         {isCurrent ? (
                           <Chip tone="ok" bordered>Энэ төхөөрөмж</Chip>
                         ) : null}
                       </div>
                       <div className="font-plex-mono text-xs text-[var(--oc-muted3)] tabular-nums">
-                        {s.ip ?? "—"} · Сүүлд: {formatDateTime(s.lastSeenAt)}
+                        {s.ip ?? "—"} · Сүүлд: {formatDateTime(s.lastActivityAt ?? s.createdAt)}
                       </div>
                     </div>
                     <ConfirmForm
@@ -216,6 +198,7 @@ export default async function ProfilePage({
                       message={`${isCurrent ? "Энэ төхөөрөмжөөс" : "Энэ төхөөрөмжийг"} гарах уу?`}
                     >
                       <input type="hidden" name="id" value={s.id} />
+                      <input type="hidden" name="source" value={s.source} />
                       <Btn type="submit" variant="ghost" size="sm">
                         {isCurrent ? "Гарах" : "Гаргах"}
                       </Btn>
@@ -234,11 +217,11 @@ export default async function ProfilePage({
                 <div className="flex flex-col gap-1.5">
                   {endedSessions.map((s) => (
                     <div
-                      key={s.id}
+                      key={`${s.source}:${s.id}`}
                       className="flex items-center justify-between gap-3 text-xs px-1 py-1"
                     >
                       <span className="text-[var(--oc-muted2)] truncate">
-                        {deviceLabel(s.userAgent)} · {s.ip ?? "—"}
+                        {s.deviceLabel} · {s.source === "mobile" ? "Мобайл" : "Веб"} · {s.ip ?? "—"}
                       </span>
                       <span className="font-plex-mono text-[var(--oc-muted4)] tabular-nums shrink-0">
                         {s.revokedAt ? "Гарсан" : "Хугацаа дууссан"} ·{" "}

@@ -1,19 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { Prisma } from "@/app/generated/prisma/client";
-import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
 import { canCreate } from "@/lib/auth/roles";
 import { assertActiveSubscription } from "@/lib/subscription-server";
-import { normalizeWheelPosition } from "@/lib/hur_service";
-import { isValidPhone, normalizePhone } from "@/lib/phone";
-import { prisma } from "@/lib/prisma";
-import {
-  ensureTenantVehicle,
-  ownerFromCustomer,
-  resolveVehicleForOwner,
-} from "@/lib/vehicles";
+import { CustomerCommandError, createCustomerCommand } from "@/lib/customers/customer-commands";
+import { VehicleCommandError, createVehicleCommand } from "@/lib/vehicles/vehicle-commands";
 
 // Захиалга үүсгэх явцад үйлчлүүлэгч / машин шинээр бүртгэх — хуудас сольж redirect
 // хийхгүй, шинээр үүсгэсэн бичлэгийг буцаана.
@@ -53,79 +45,25 @@ export async function quickCreateCustomerAction(input: {
     return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
   }
 
-  const fullName = input.fullName?.trim() ?? "";
-  const phone = input.phone?.trim() ?? "";
-  const email = input.email?.trim() || null;
-  const note = input.note?.trim() || null;
-
-  const errors: Record<string, string> = {};
-  // Зөвхөн утас заавал. Овог нэр заавал биш.
-  if (!phone) errors.phone = "Утасны дугаар оруулна уу.";
-  else if (!isValidPhone(phone))
-    errors.phone = "Утасны дугаар 8 оронтой тоо байх ёстой.";
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-    errors.email = "Имэйл хаяг буруу.";
-  if (Object.keys(errors).length > 0) return { ok: false, fieldErrors: errors };
-
-  const normalizedPhone = normalizePhone(phone) ?? phone;
-
-  // Утасны дугаараар онлайн Account олж, байвал шинэ Customer-т холбоно —
-  // эс бөгөөс энэ Customer "Миний захиалгууд"/"Засварын захиалгууд"-д (харилцагчийн
-  // апп/веб) хожим харагдахгүй үлддэг байсан (2026-09-08 хэрэглэгчийн тайлан:
-  // ажилтны шууд үүсгэсэн захиалга харилцагчид харагдахгүй байсан — үндэс нь
-  // энэ функц accountId-г огт тохируулдаггүй байсан явдал байсан).
-  const account = await prisma.account.findUnique({
-    where: { phone: normalizedPhone },
-    select: { id: true },
-  });
-
-  if (account) {
-    // Энэ Account-д зориулсан Customer тухайн tenant-д аль хэдийн байвал
-    // (@@unique([tenantId, accountId])) шинээр үүсгэхгүй, түүнийг ашиглана.
-    const existingForAccount = await prisma.customer.findUnique({
-      where: { tenantId_accountId: { tenantId: user.tenantId, accountId: account.id } },
-      select: { id: true, fullName: true, phone: true },
-    });
-    if (existingForAccount) {
-      return { ok: true, customer: existingForAccount };
-    }
-  }
-
-  let created;
+  // P3-B1: validate/normalise болон Account-claim нь
+  // `lib/customers/customer-commands.ts`-д нэгдсэн. Энэ функц зөвхөн эрх
+  // шалгаад, командыг дуудаж, слим үр дүн буцаадаг нимгэн адаптер.
+  // MAX_CUSTOMERS-ийг команд өөрөө үргэлж шалгана (D-154).
+  let result;
   try {
-    // Ижил утастай "эзэнгүй" (accountId=null) Customer энэ tenant-д өмнө нь
-    // үүссэн байж болзошгүй (энэ засвараас өмнө) — шинээр давхардуулан
-    // үүсгэхийн оронд түүнийг "нэхэмжлэх" (accountId-г нь тохируулах).
-    const unclaimed = account
-      ? await prisma.customer.findFirst({
-          where: { tenantId: user.tenantId, phone: normalizedPhone, accountId: null },
-          select: { id: true },
-        })
-      : null;
-
-    created = unclaimed
-      ? await prisma.customer.update({
-          where: { id: unclaimed.id },
-          data: { fullName: fullName || undefined, email, note, accountId: account!.id },
-          select: { id: true, fullName: true, phone: true },
-        })
-      : await prisma.customer.create({
-          data: {
-            fullName,
-            phone: normalizedPhone,
-            email,
-            note,
-            tenantId: user.tenantId,
-            accountId: account?.id ?? null,
-          },
-          select: { id: true, fullName: true, phone: true },
-        });
+    result = await createCustomerCommand({
+      actor: user,
+      data: { fullName: input.fullName, phone: input.phone, email: input.email, note: input.note },
+      // Түүх: энэ зам урьд нь MAX_CUSTOMERS шалгадаггүй байсан. D-154
+      // (2026-09-22) шийдвэрээр хязгаар одоо бүх зам дээр үйлчилнэ — команд
+      // өөрөө шалгадаг тул хязгаарт хүрсэн tenant энэ modal-аас блоклогдоно.
+      // Энэ бол зориудын зан төлөв; bypass сэргээж болохгүй.
+      auditSummarySuffix: "(засварын хуудаснаас түргэн)",
+    });
   } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      return {
-        ok: false,
-        fieldErrors: { phone: "Энэ утасны дугаартай үйлчлүүлэгч аль хэдийн бүртгэлтэй байна." },
-      };
+    if (e instanceof CustomerCommandError) {
+      if (e.fieldErrors) return { ok: false, fieldErrors: e.fieldErrors };
+      return { ok: false, message: e.message };
     }
     return {
       ok: false,
@@ -133,18 +71,15 @@ export async function quickCreateCustomerAction(input: {
     };
   }
 
-  await logAudit({
-    tenantId: user.tenantId,
-    userId: user.id,
-    entity: "Customer",
-    entityId: created.id,
-    action: "CREATE",
-    summary: `${fullName || normalizedPhone} (засварын хуудаснаас түргэн)`,
-    after: { fullName, phone: normalizedPhone, email, note },
-  });
-
   revalidatePath("/dashboard/customers");
-  return { ok: true, customer: created };
+  return {
+    ok: true,
+    customer: {
+      id: result.customer.id,
+      fullName: result.customer.fullName,
+      phone: result.customer.phone,
+    },
+  };
 }
 
 // ---------- Vehicle -------------------------------------------------------
@@ -180,98 +115,58 @@ export async function quickCreateVehicleAction(input: {
     return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
   }
 
-  const plate = input.plate?.trim().toUpperCase() ?? "";
-  const vin = input.vin?.trim().toUpperCase() || null;
-  const make = input.make?.trim() ?? "";
-  const model = input.model?.trim() ?? "";
-  const year = Number.isFinite(input.year) ? input.year : null;
-  const fuelType = input.fuelType?.trim() || null;
-  const wheelPosition = normalizeWheelPosition(input.wheelPosition ?? null);
-  const customerId = input.customerId?.trim() ?? "";
-
-  const errors: Record<string, string> = {};
-  if (!plate) errors.plate = "Улсын дугаар оруулна уу.";
-  if (!make) errors.make = "Маркаа оруулна уу.";
-  if (!model) errors.model = "Моделоо оруулна уу.";
-  if (!customerId) errors.customerId = "Үйлчлүүлэгч сонгох эсвэл нэмэх ёстой.";
-  if (year !== null && (year < 1900 || year > 2100)) errors.year = "Жил буруу.";
-  if (wheelPosition && wheelPosition !== "Зүүн" && wheelPosition !== "Баруун") {
-    errors.wheelPosition = "Жолооны хүрдний талыг буруу сонгосон.";
-  }
-  if (Object.keys(errors).length > 0) return { ok: false, fieldErrors: errors };
-
-  if (customerId) {
-    const c = await prisma.customer.findFirst({
-      where: { id: customerId, tenantId: user.tenantId },
-      select: { id: true },
-    });
-    if (!c) return { ok: false, fieldErrors: { customerId: "Үйлчлүүлэгч олдсонгүй." } };
-  }
-
-  let created: {
-    id: string;
-    plate: string;
-    make: string;
-    model: string;
-    customerId: string | null;
-    isPostpaid: boolean;
-  };
+  // P3-B2: validate/claim логик нь `lib/vehicles/vehicle-commands.ts`-д
+  // нэгдсэн. Энэ функц зөвхөн эрх шалгаад, командыг дуудаж, слим үр дүн
+  // буцаадаг нимгэн адаптер.
+  //  - `customerId` заавал: quick-create-ийн ганцхан онцлог дүрэм
+  //    (Divergence 1) — `requireCustomerId: true` тугаар дамжина.
+  //  - MAX_VEHICLES одоо энд ч шалгагдана: D-154 (2026-09-22) D-151-ийг
+  //    орлуулж, хязгаарыг бүх зам дээр үйлчлүүлсэн. Давхардал татгалзах
+  //    (`rejectDuplicate`) нь харин хэвээр унтраалттай — энэ нь тусдаа
+  //    divergence, хязгаартай хамаагүй.
+  //  - `mileage` талбар энд байхгүй: хуучин quick-create-д ч байгаагүй.
+  let record;
   try {
-    created = await prisma.$transaction(async (tx) => {
-      // Vehicle = эзэмшигчийн бүртгэл: сонгосон Customer-ийн мөрийг тааруулна,
-      // өөр эзний ижил дугаартай мөр байвал шинээр үүсгэнэ.
-      const owner = await ownerFromCustomer(tx, user.tenantId, customerId);
-      const v = await resolveVehicleForOwner(tx, {
-        plate,
-        vin,
-        make,
-        model,
-        year,
-        fuelType,
-        wheelPosition,
-        owner,
-      });
-      // Link-ийн БОДИТ эзнийг буцаана (ensureTenantVehicle байгаа эзнийг дарж
-      // бичихгүй) — захиалгын форм үүгээр шалгадаг.
-      const link = await ensureTenantVehicle(tx, {
-        tenantId: user.tenantId,
-        vehicleId: v.id,
-        customerId,
-      });
-      const full = await tx.vehicle.findUniqueOrThrow({
-        where: { id: v.id },
-        select: { id: true, plate: true, make: true, model: true },
-      });
-      const linkState = await tx.tenantVehicle.findUnique({
-        where: { id: link.id },
-        select: { isPostpaid: true },
-      });
-      return {
-        ...full,
-        customerId: link.customerId,
-        isPostpaid: linkState?.isPostpaid ?? false,
-      };
+    record = await createVehicleCommand({
+      actor: user,
+      data: {
+        plate: input.plate ?? "",
+        vin: input.vin,
+        make: input.make ?? "",
+        model: input.model ?? "",
+        year: input.year,
+        fuelType: input.fuelType,
+        wheelPosition: input.wheelPosition,
+        customerId: input.customerId,
+      },
+      rejectDuplicate: false,
+      requireCustomerId: true,
+      auditSummarySuffix: "(засварын хуудаснаас түргэн)",
     });
   } catch (e) {
+    if (e instanceof VehicleCommandError) {
+      if (e.fieldErrors) return { ok: false, fieldErrors: e.fieldErrors };
+      return { ok: false, message: e.message };
+    }
     return {
       ok: false,
       message: e instanceof Error ? e.message : "Үүсгэх явцад алдаа гарлаа.",
     };
   }
 
-  await logAudit({
-    tenantId: user.tenantId,
-    userId: user.id,
-    entity: "Vehicle",
-    entityId: created.id,
-    action: "CREATE",
-    summary: `${plate} · ${make} ${model} (засварын хуудаснаас түргэн)`,
-    after: { plate, make, model, year, fuelType, customerId },
-  });
-
   revalidatePath("/dashboard/vehicles");
-  if (created.customerId) {
-    revalidatePath(`/dashboard/customers/${created.customerId}`);
+  if (record.customerId) {
+    revalidatePath(`/dashboard/customers/${record.customerId}`);
   }
-  return { ok: true, vehicle: created };
+  return {
+    ok: true,
+    vehicle: {
+      id: record.id,
+      plate: record.plate,
+      make: record.make,
+      model: record.model,
+      customerId: record.customerId,
+      isPostpaid: record.isPostpaid,
+    },
+  };
 }

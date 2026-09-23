@@ -78,10 +78,13 @@ export async function POST(req: Request) {
     return jsonError(403, "Таны байгууллага түр хугацаагаар зогссон байна.");
   }
 
+  // D-180: embed the newly-rotated refresh token's id (not the raw token or
+  // its hash) so `/me/sessions` and password-change can identify this device.
   const accessToken = await signApiToken({
     userId: user.id,
     tenantId: user.tenantId,
     isOwner: user.isOwner,
+    refreshTokenId: result.id,
   });
 
   return jsonOk({

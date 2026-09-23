@@ -12,6 +12,13 @@ import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { enforceCountLimit } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
 import { SERVICE_KINDS, SERVICE_KIND_SLUG, type ServiceKind } from "@/lib/services";
+import {
+  ServiceCommandError,
+  adjustServiceStockCommand,
+  bulkChangeServiceCategoryCommand,
+  deleteServiceCommand,
+  updateServiceCommand,
+} from "@/lib/services/service-commands";
 
 export type ServiceActionState = {
   ok: boolean;
@@ -283,6 +290,11 @@ export async function createServiceAction(
   redirectAfter(data.type);
 }
 
+// P4-B1 — thin adapter over `updateServiceCommand`
+// (`lib/services/service-commands.ts`). All validation, the type-conditional
+// unit/duration/category rules, the stock-is-never-written-here behaviour and
+// the P2002 code-conflict mapping now live only in the command module — see
+// its doc comment for the whole-record-replace decision this slice made.
 export async function updateServiceAction(
   id: string,
   _prev: ServiceActionState,
@@ -295,38 +307,31 @@ export async function updateServiceAction(
     return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
   }
 
-  const { data, errors } = await validate(formData, user.tenantId);
-  if (!data) return { ok: false, fieldErrors: errors };
-
-  // Засах үед stock-ийг шууд бүү дарж бичиж бай — adjust action ашиглана.
-  // updateMany нь relation connect/disconnect-ыг дэмждэггүй болохоор
-  // scalar foreign key-уудыг шууд хэрэглэнэ.
-  const update: Prisma.ServiceUncheckedUpdateManyInput = {
-    name: data.name,
-    code: data.code,
-    price: data.price,
-    costPrice: data.costPrice,
-    durationValue: data.durationValue,
-    reminderIntervalMonths: data.reminderIntervalMonths,
-    description: data.description,
-    isActive: data.isActive,
-    unitId: data.unitId,
-    durationUnitId: data.durationUnitId,
-    categoryId: data.categoryId,
-  };
-
+  let updated;
   try {
-    const updated = await prisma.service.updateMany({
-      where: { id, tenantId: user.tenantId },
-      data: update,
+    updated = await updateServiceCommand({
+      actor: user,
+      serviceId: id,
+      data: {
+        type: s(formData, "type"),
+        name: s(formData, "name"),
+        code: s(formData, "code").toUpperCase(),
+        unitId: s(formData, "unitId"),
+        price: s(formData, "price"),
+        costPrice: s(formData, "costPrice"),
+        stock: s(formData, "stock"),
+        durationValue: s(formData, "durationValue"),
+        durationUnitId: s(formData, "durationUnitId"),
+        reminderIntervalMonths: s(formData, "reminderIntervalMonths"),
+        description: s(formData, "description"),
+        isActive: formData.get("isActive") === "on",
+        categoryId: s(formData, "categoryId"),
+      },
     });
-    if (updated.count === 0) return { ok: false, message: "Олдсонгүй." };
   } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      return {
-        ok: false,
-        fieldErrors: { code: "Энэ код өөр үйлчилгээнд ашиглагдсан байна." },
-      };
+    if (e instanceof ServiceCommandError) {
+      if (e.fieldErrors) return { ok: false, fieldErrors: e.fieldErrors };
+      return { ok: false, message: e.message };
     }
     return {
       ok: false,
@@ -334,60 +339,30 @@ export async function updateServiceAction(
     };
   }
 
-  await logAudit({
-    tenantId: user.tenantId,
-    userId: user.id,
-    entity: "Service",
-    entityId: id,
-    action: "UPDATE",
-    summary: `[${data.type}] ${data.name}${data.code ? ` · ${data.code}` : ""}`,
-    after: {
-      name: data.name,
-      code: data.code,
-      price: data.price.toString(),
-      isActive: data.isActive,
-    },
-  });
-
   revalidatePath("/dashboard/services", "layout");
   revalidatePath(`/dashboard/services/${id}`);
-  redirectAfter(data.type);
+  redirectAfter(updated.type);
 }
 
+// P4-B1 — thin adapter over `deleteServiceCommand`. The command decides
+// archive-vs-hard-delete; this adapter only swallows the not-found case, same
+// as the original inline `if (!svc) return;`.
 export async function deleteServiceAction(formData: FormData): Promise<void> {
   const user = await authorize("delete");
   const id = s(formData, "id");
   if (!id) return;
 
-  const svc = await prisma.service.findFirst({
-    where: { id, tenantId: user.tenantId },
-    select: { name: true, type: true, _count: { select: { items: true } } },
-  });
-  if (!svc) return;
-
-  const archived = svc._count.items > 0;
-  if (archived) {
-    // Захиалгад ашиглагдсан бол идэвхгүй болгоно
-    await prisma.service.update({
-      where: { id },
-      data: { isActive: false },
-    });
-  } else {
-    await prisma.service.delete({ where: { id } });
+  try {
+    await deleteServiceCommand({ actor: user, serviceId: id });
+  } catch (e) {
+    if (e instanceof ServiceCommandError && e.code === "SERVICE_NOT_FOUND") return;
+    throw e;
   }
-
-  await logAudit({
-    tenantId: user.tenantId,
-    userId: user.id,
-    entity: "Service",
-    entityId: id,
-    action: archived ? "UPDATE" : "DELETE",
-    summary: `[${svc.type}] ${svc.name}${archived ? " (архивлав)" : ""}`,
-  });
 
   revalidatePath("/dashboard/services", "layout");
 }
 
+// P4-B1 — thin adapter over `adjustServiceStockCommand`.
 export async function adjustServiceStockAction(
   id: string,
   _prev: ServiceActionState,
@@ -400,51 +375,25 @@ export async function adjustServiceStockAction(
     return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
   }
 
-  const direction = s(formData, "direction");
-  const amountRaw = s(formData, "amount");
-  const errors: Record<string, string> = {};
-
-  const amount = parseDecimal(amountRaw);
-  if (!amount || amount.lte(0)) errors.amount = "Эерэг тоо оруулна уу.";
-  if (direction !== "in" && direction !== "out")
-    errors.direction = "Чиглэлийг сонгоно уу.";
-
-  if (Object.keys(errors).length > 0) return { ok: false, fieldErrors: errors };
-
-  const svc = await prisma.service.findFirst({
-    where: { id, tenantId: user.tenantId, type: "GOODS" },
-    select: { id: true, stock: true },
-  });
-  if (!svc) return { ok: false, message: "Бараа олдсонгүй." };
-
-  const current = svc.stock ?? new Prisma.Decimal(0);
-  const delta = direction === "in" ? amount! : amount!.negated();
-  const next = current.plus(delta);
-
-  if (next.lt(0)) {
+  try {
+    await adjustServiceStockCommand({
+      actor: user,
+      serviceId: id,
+      data: {
+        direction: s(formData, "direction"),
+        amount: s(formData, "amount"),
+      },
+    });
+  } catch (e) {
+    if (e instanceof ServiceCommandError) {
+      if (e.fieldErrors) return { ok: false, fieldErrors: e.fieldErrors };
+      return { ok: false, message: e.message };
+    }
     return {
       ok: false,
-      fieldErrors: {
-        amount: `Үлдэгдэл сөрөг болж байна. Одоо: ${current.toString()}`,
-      },
+      message: e instanceof Error ? e.message : "Алдаа гарлаа.",
     };
   }
-
-  await prisma.service.update({
-    where: { id: svc.id },
-    data: { stock: next },
-  });
-
-  await logAudit({
-    tenantId: user.tenantId,
-    userId: user.id,
-    entity: "Service",
-    entityId: svc.id,
-    action: "STOCK_CHANGE",
-    summary: `${direction === "in" ? "+" : "−"}${amount!.toString()} (гар тохируулга)`,
-    before: { stock: current.toString() },
-    after: { stock: next.toString(), reason: "MANUAL_ADJUST" },
-  });
 
   revalidatePath("/dashboard/services/goods");
   revalidatePath(`/dashboard/services/${id}`);
@@ -456,6 +405,11 @@ export async function adjustServiceStockAction(
 // bulkChangeAppointmentCategoryAction app/_actions/appointments.ts — адил
 // all-or-nothing БИШ загвар). Ангилал бүх Service-д заавал тул хоослож
 // болохгүй.
+//
+// P4-B1 — thin adapter over `bulkChangeServiceCategoryCommand`. The three
+// whole-request rejections (missing categoryId, unknown categoryId, empty
+// selection) surface as plain `{ok:false,message}` — same shape as the
+// original inline early-returns, no succeeded/failed/errors keys attached.
 export async function bulkChangeServiceCategoryAction(
   _prev: BulkActionState,
   formData: FormData,
@@ -468,69 +422,42 @@ export async function bulkChangeServiceCategoryAction(
   }
 
   const categoryId = s(formData, "categoryId");
-  if (!categoryId) return { ok: false, message: "Ангилал сонгоно уу." };
-
-  const category = await prisma.category.findFirst({
-    where: { id: categoryId, tenantId: user.tenantId },
-    select: { id: true, name: true },
-  });
-  if (!category) return { ok: false, message: "Сонгосон ангилал олдсонгүй." };
-
   const ids = parseIdsJson(s(formData, "serviceIdsJson"));
-  if (ids.length === 0) return { ok: false, message: "Дор хаяж нэг мөр сонгоно уу." };
 
-  const services = await prisma.service.findMany({
-    where: { id: { in: ids }, tenantId: user.tenantId },
-    select: { id: true, name: true, code: true, categoryId: true },
-  });
-  const byId = new Map(services.map((svc) => [svc.id, svc]));
-
-  let succeeded = 0;
-  const errors: string[] = [];
-  for (const id of ids) {
-    const svc = byId.get(id);
-    const label = svc ? (svc.code ? `${svc.code} · ${svc.name}` : svc.name) : id;
-    try {
-      if (!svc) throw new Error("Олдсонгүй.");
-      if (svc.categoryId !== categoryId) {
-        await prisma.service.update({
-          where: { id: svc.id },
-          data: { categoryId },
-        });
-        await logAudit({
-          tenantId: user.tenantId,
-          userId: user.id,
-          entity: "Service",
-          entityId: svc.id,
-          action: "UPDATE",
-          summary: `Ангилал: ${category.name}`,
-          after: { categoryId },
-        });
-      }
-      succeeded++;
-    } catch (e) {
-      errors.push(`${label}: ${e instanceof Error ? e.message : "алдаа"}`);
-    }
+  let result;
+  try {
+    result = await bulkChangeServiceCategoryCommand({
+      actor: user,
+      categoryId,
+      serviceIds: ids,
+    });
+  } catch (e) {
+    if (e instanceof ServiceCommandError) return { ok: false, message: e.message };
+    return {
+      ok: false,
+      message: e instanceof Error ? e.message : "Ангилал солиход алдаа гарлаа.",
+    };
   }
 
   revalidatePath("/dashboard/services", "layout");
 
+  const { succeeded, failed, errors } = result;
   if (succeeded === 0) {
     return {
       ok: false,
       message: errors[0] ?? "Ангилал солиход алдаа гарлаа.",
       succeeded,
-      failed: errors.length,
+      failed,
       errors,
     };
   }
   return {
     ok: true,
     message: `${succeeded}/${ids.length} мөрийн ангилал шинэчлэгдлээ.${
-      errors.length ? ` (${errors.length} амжилтгүй)` : ""
+      failed ? ` (${failed} амжилтгүй)` : ""
     }`,
     succeeded,
-    failed: errors.length,
+    failed,
     errors: errors.length ? errors : undefined,
   };
 }

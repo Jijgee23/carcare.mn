@@ -1,21 +1,14 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import type { Prisma } from "@/app/generated/prisma/client";
 import { SearchBox } from "@/app/_components/list-filters";
-import { businessDateKey, resolveEffectiveSchedule } from "@/lib/branch-effective-schedule";
-import { WEEK_DAYS, weekdayOfDateStr } from "@/lib/branches";
+import { businessDateKey } from "@/lib/branch-effective-schedule";
+import { WEEK_DAYS } from "@/lib/branches";
 import { requireUser } from "@/lib/auth";
 import { canView, hasPermission } from "@/lib/auth/roles";
-import {
-  firstOfMonth,
-  mondayOfWeek,
-  monthDates,
-  resolveEmployeeDay,
-  shiftMonth,
-  weekDates,
-} from "@/lib/employee-schedule";
+import { firstOfMonth, mondayOfWeek, monthDates, shiftMonth, weekDates } from "@/lib/employee-schedule";
+import { loadEmployeeScheduleGrid } from "@/lib/employee-schedule-read";
 import { prisma } from "@/lib/prisma";
-import { ScheduleGrid, type EmployeeScheduleRow } from "./schedule-grid";
+import { ScheduleGrid } from "./schedule-grid";
 import { ScheduleNav } from "./schedule-nav";
 import { ScheduleHeader } from "./schedule-header";
 import { branchColorClass } from "./schedule-ui";
@@ -44,146 +37,12 @@ export default async function EmployeeSchedulePage({
   const rangeStart = view === "month" ? firstOfMonth(anchor) : mondayOfWeek(anchor);
   const dates = view === "month" ? monthDates(rangeStart) : weekDates(rangeStart);
 
-  // Нэр/албан тушаалаар хайх (`buildEmployeeWhere`-ийн адил insensitive contains,
-  // гэхдээ энд имэйл/утас хэрэггүй бөгөөд роль-ийн нэрээр мөн хайна).
-  const searchWhere: Prisma.UserWhereInput = q
-    ? {
-        OR: [
-          { firstName: { contains: q, mode: "insensitive" } },
-          { lastName: { contains: q, mode: "insensitive" } },
-          { role: { is: { name: { contains: q, mode: "insensitive" } } } },
-        ],
-      }
-    : {};
-
-  const [employees, branches, branchCounts] = await Promise.all([
-    prisma.user.findMany({
-      where: {
-        tenantId: user.tenantId,
-        isActive: true,
-        ...(branchId ? { branchId } : {}),
-        ...searchWhere,
-      },
-      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        isOwner: true,
-        role: { select: { name: true } },
-        branchId: true,
-        branch: { select: { id: true, name: true } },
-        workSchedule: {
-          select: {
-            weekday: true,
-            isWorking: true,
-            segments: {
-              orderBy: { order: "asc" },
-              select: { branchId: true, startTime: true, endTime: true },
-            },
-          },
-        },
-        scheduleExceptions: {
-          where: {
-            date: {
-              gte: new Date(`${dates[0]}T00:00:00.000Z`),
-              lte: new Date(`${dates[dates.length - 1]}T00:00:00.000Z`),
-            },
-          },
-          select: {
-            date: true,
-            isWorking: true,
-            label: true,
-            segments: {
-              orderBy: { order: "asc" },
-              select: { branchId: true, startTime: true, endTime: true },
-            },
-          },
-        },
-      },
-    }),
-    prisma.branch.findMany({
-      where: { tenantId: user.tenantId, isActive: true },
-      orderBy: { name: "asc" },
-      select: {
-        id: true,
-        name: true,
-        openTime: true,
-        closeTime: true,
-        schedules: { select: { weekday: true, isOpen: true, openTime: true, closeTime: true } },
-      },
-    }),
-    // Салбарын чип дээрх тоо — үндсэн салбараар нь идэвхтэй ажилтны тоо
-    // (хайлт/шүүлтээс хамаарахгүй, нийт дүн).
-    prisma.user.groupBy({
-      by: ["branchId"],
-      where: { tenantId: user.tenantId, isActive: true },
-      _count: { _all: true },
-    }),
-  ]);
-
-  const branchMap = new Map(branches.map((b) => [b.id, b]));
-  const countByBranch = new Map(
-    branchCounts.map((c) => [c.branchId ?? "", c._count._all]),
-  );
-  const totalEmployees = branchCounts.reduce((n, c) => n + c._count._all, 0);
-
-  // Салбарын өөрийнх нь тухайн өдрийн auto-цаг — зөвхөн долоо хоногийн base
-  // (BranchSchedule) дүрмээс тооцно, салбарын тусгай өдөр/улирлаас биш (v1
-  // хялбарчлал — ажлын хувиарт ойролцоо ч хангалттай).
-  function autoHours(branchIdVal: string, dateStr: string) {
-    const b = branchMap.get(branchIdVal);
-    if (!b) return null;
-    const eff = resolveEffectiveSchedule({
-      dateStr,
-      branch: { openTime: b.openTime, closeTime: b.closeTime, schedules: b.schedules },
-    });
-    return eff.open && eff.openTime && eff.closeTime
-      ? { start: eff.openTime, end: eff.closeTime }
-      : null;
-  }
-
-  const rows: EmployeeScheduleRow[] = employees.map((e) => {
-    const cells = Object.fromEntries(
-      dates.map((dateStr) => {
-        const weekday = weekdayOfDateStr(dateStr);
-        const resolved = resolveEmployeeDay({
-          dateStr,
-          weekday,
-          homeBranchId: e.branchId,
-          weeklyRules: e.workSchedule,
-          exceptions: e.scheduleExceptions,
-        });
-        const customTime = resolved.source !== "default";
-        return [
-          dateStr,
-          {
-            weekday,
-            working: resolved.working,
-            source: resolved.source,
-            segments: resolved.segments.map((seg) => {
-              const auto = !seg.startTime && !seg.endTime ? autoHours(seg.branchId, dateStr) : null;
-              return {
-                branchId: seg.branchId,
-                branchName: branchMap.get(seg.branchId)?.name ?? "—",
-                startTime: seg.startTime ?? auto?.start ?? null,
-                endTime: seg.endTime ?? auto?.end ?? null,
-                customTime: Boolean(seg.startTime || seg.endTime) && customTime,
-              };
-            }),
-          },
-        ];
-      }),
-    );
-    return {
-      id: e.id,
-      name: `${e.lastName} ${e.firstName}`,
-      // Эзэмшигч (isOwner) role-гүй байж болно — ажилтны жагсаалтын адил "Админ".
-      roleName: e.isOwner ? "Админ" : (e.role?.name ?? null),
-      homeBranchId: e.branchId,
-      homeBranchName: e.branch?.name ?? null,
-      cells,
-    };
+  const { rows, branches, countByBranch, totalEmployees } = await loadEmployeeScheduleGrid({
+    db: prisma,
+    tenantId: user.tenantId,
+    dates,
+    branchId,
+    q,
   });
 
   const buildHref = (params: { anchor?: string; view?: ViewMode; branchId?: string }) => {

@@ -1,5 +1,5 @@
 import { Prisma } from "@/app/generated/prisma/client";
-import { jsonError, jsonOk, requireApiUser } from "@/lib/api";
+import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
 import { logAudit } from "@/lib/audit";
 import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
@@ -25,6 +25,8 @@ const SERVICE_SELECT = {
 export async function GET(req: Request) {
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
+  const denied = requirePermission(auth.user, "services.view");
+  if (denied) return denied;
 
   const url = new URL(req.url);
   const type = url.searchParams.get("type")?.trim() || undefined;
@@ -65,6 +67,8 @@ const KINDS = ["LABOR", "GOODS", "DIAGNOSTIC"] as const;
 export async function POST(req: Request) {
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
+  const denied = requirePermission(auth.user, "services.create");
+  if (denied) return denied;
   const locked = await requireActiveSubscriptionApi(auth.user);
   if (locked) return locked;
 
