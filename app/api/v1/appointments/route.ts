@@ -4,6 +4,7 @@ import { resolveWorkingBranch } from "@/lib/auth/api-branch";
 import { APPOINTMENT_STATUSES, type AppointmentStatus } from "@/lib/appointments";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
+import { appointmentBookingPaymentStatus } from "@/lib/appointment-payment-status";
 import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
 import {
   AppointmentCommandError,
@@ -15,6 +16,13 @@ import {
   appointmentSearchWhere,
   parseAppointmentListQuery,
 } from "@/lib/appointments/appointment-list-query";
+
+type BookingFeeFields = {
+  feeAmount: unknown;
+  feeQpayInvoiceId: string | null;
+  feeUnderpaidAmount: unknown;
+  payment: { status: string } | null;
+};
 
 const APPT_SELECT = {
   id: true,
@@ -31,6 +39,12 @@ const APPT_SELECT = {
   },
   vehicle: { select: { id: true, plate: true, make: true, model: true } },
   serviceOrder: { select: { id: true, number: true } },
+  // `paymentStatus`-г тооцоход (харах: shapeAppointment) — түүхий fee
+  // талбарууд хариунд гарахгүй.
+  feeAmount: true,
+  feeQpayInvoiceId: true,
+  feeUnderpaidAmount: true,
+  payment: { select: { status: true } },
 } satisfies Prisma.AppointmentSelect;
 
 // AccountVehicle нь global Vehicle руу заадаг болсон тул хариунд хуучин хэлбэрээр
@@ -40,11 +54,22 @@ export function shapeAppointment<
     accountVehicle: {
       vehicle: { plate: string; make: string; model: string };
     } | null;
-  },
->(a: T): Omit<T, "accountVehicle"> & {
-  accountVehicle: { plate: string; make: string; model: string } | null;
-} {
-  return { ...a, accountVehicle: a.accountVehicle?.vehicle ?? null };
+  } & BookingFeeFields,
+>(a: T) {
+  // Веб dashboard-тай ижил `paymentStatus` (NOT_REQUIRED/PENDING/UNDERPAID/
+  // FAILED/PAID) — calendar route-ийн block-уудтай ижил нэр. Түүхий fee/QPay
+  // талбаруудыг хариунаас хасна.
+  const { feeAmount, feeQpayInvoiceId, feeUnderpaidAmount, payment, ...rest } = a;
+  return {
+    ...rest,
+    accountVehicle: a.accountVehicle?.vehicle ?? null,
+    paymentStatus: appointmentBookingPaymentStatus({
+      feeAmount,
+      feeQpayInvoiceId,
+      feeUnderpaidAmount,
+      payment,
+    }),
+  };
 }
 
 /**

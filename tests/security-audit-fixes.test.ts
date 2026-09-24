@@ -159,3 +159,12 @@ test("history (web + mobile) shows only fully paid completed orders; unpaid ones
   assert.match(account, /function outstandingLabel\(/);
   assert.match(account, /o\.status !== "COMPLETED" \|\| o\.paymentStatus === "PAID"/);
 });
+
+test("staff appointment responses expose the derived paymentStatus, not raw fee fields", () => {
+  for (const file of ["app/api/v1/appointments/route.ts", "app/api/v1/appointments/[id]/route.ts"]) {
+    const src = read(file);
+    assert.match(src, /payment: \{ select: \{ status: true \} \},\n\} satisfies Prisma\.AppointmentSelect;/);
+    assert.match(src, /const \{ feeAmount, feeQpayInvoiceId, feeUnderpaidAmount, payment, \.\.\.rest \} = a;/);
+    assert.match(src, /paymentStatus: appointmentBookingPaymentStatus\(/);
+  }
+});
