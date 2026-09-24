@@ -1645,3 +1645,13 @@ BUG FIX: Ажилтны утас засахад буруу талбарт алд
 
 [2026-09-24] Light theme-д accent товчны текст хар гарч байсныг цагаан болгов
 - `app/globals.css` — `--oc-on-accent` (accent дэвсгэртэй товч/chip/badge-ийн текст, ~51 газар) хоёр theme-д `#14120c` байсан; light-д accent бараан teal (`#0e7490`) тул контраст муу. `html.light .landing-ops`-д `--oc-on-accent: #ffffff` нэмэв. DatePicker-ийн portal override (`.dp-accent-active`, `.dp-accent-btn`) light-д мөн цагаан болгов. Dark theme өөрчлөгдөөгүй (цайвар cyan дээр бараан текст хэвээр).
+
+[2026-09-24] pg "client is already executing a query" deprecation warning-ийг арилгав
+- Жинхэнэ шалтгаан: Prisma 7-ийн query interpreter `include`-ийн child query-г (`join` node) `Promise.all`-аар зэрэг ажиллуулдаг; RLS extension бүх query-г нэг `$transaction` (= нэг pg client) дотор явуулдаг тул нэг client дээр `client.query()` зэрэг дуудагдаж байв. (Өмнө нь pool cold-start race гэж үзэж `warmPool`/`idleTimeoutMillis`-ээр засах гэж оролдсон — энэ нь шалтгаан биш байсан.)
+- `lib/prisma.ts` — `SerializedPgClient` (`pg.Client` subclass): promise-style `query()`-г нэг холболт дээр дараалуулна (pg дотооддоо ч дараалуулдаг тул зан төлөв ижил); callback (`pool.query`) болон submittable (cursor)-ийг хэвээр. `PrismaPg({ Client: SerializedPgClient, ... })`-аар pool-д өгөв.
+- Баталгаажуулалт: local DB дээр нэг client-д 3 зэрэг query (BEGIN дотор) — энгийн `pg.Client` warning өгч, `SerializedPgClient` өгөхгүй, үр дүн ижил; `pool.query` хэвийн. `tsc` шинэ алдаагүй.
+
+[2026-09-24] "Ерөнхий үзлэг (хүлээж авах)" загварыг системийн хуваалцсан загвар болгон прод-д seed хийх script
+- `scripts/seed-system-diagnostic-template.ts` (шинэ), `npm run db:seed:diagnostic-template`. Агуулга: `lib/diagnostics.ts` DEFAULT_INTAKE_TEMPLATE_SCHEMA (local-ийн difftpl_87fac... загвартай яг ижил гэж шалгасан). tenantId=NULL, тогтмол id `systpl_default_intake` (local-ийн difftpl_* id нь тенантын id-ээс md5 хийсэн тул прод-д тенантын өөрийн загвартай давхцаж болзошгүй — ашиглаагүй).
+- Идемпотент: байгаа бол хөндөхгүй; ижил нэртэй системийн загвар байвал давхар үүсгэхгүй; `--update` кодын утгаар шинэчилнэ (тайлантай + schema өөрчлөгдсөн бол version +1, jsonb key дарааллаас үл хамааран харьцуулна). Grant зөвхөн `--grant-all` / `--grant=id1,id2` өгсөн үед (skipDuplicates).
+- Баталгаажуулалт: local дээр skip / create+grant / rerun / --update (schema ижил, version хэвээр) / олдоогүй tenant warning — бүгд хүлээгдсэн; туршилтын мөрийг устгаж local-ийг сэргээв.

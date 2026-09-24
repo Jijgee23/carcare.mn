@@ -1,4 +1,5 @@
 import { PrismaPg } from "@prisma/adapter-pg";
+import pg from "pg";
 import { PrismaClient, type Prisma as PrismaTypes } from "@/app/generated/prisma/client";
 import { env } from "@/lib/env";
 import { getTenantContext } from "@/lib/tenant-context";
@@ -74,9 +75,40 @@ function idleTimeoutMillis(): number {
   return process.env.VERCEL ? 10_000 : 0;
 }
 
+/**
+ * Нэг холболт дээрх query-г дараалуулдаг pg Client.
+ *
+ * Prisma 7-ийн query interpreter `include`-ийн child query-г (`join` node)
+ * `Promise.all`-аар зэрэг ажиллуулдаг. RLS extension-ий улмаас query бүр нэг
+ * transaction (= нэг pg client) дотор явдаг тул тэр client дээр `client.query()`
+ * зэрэг дуудагдаж pg "client is already executing a query" deprecation
+ * warning (pg@9-д алдаа болно) өгдөг. Энд promise-style дуудлагыг өмнөхийг нь
+ * дуусахыг хүлээж явуулна — pg дотооддоо ч мөн дараалуулдаг тул зан төлөв
+ * өөрчлөгдөхгүй. Callback/submittable (pool.query, cursor) дуудлагыг хэвээр нь.
+ */
+class SerializedPgClient extends pg.Client {
+  #tail: Promise<unknown> = Promise.resolve();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  override query(...args: any[]): any {
+    const run = (): unknown => Reflect.apply(super.query, this, args);
+    const [config] = args;
+    if (
+      typeof args[args.length - 1] === "function" ||
+      typeof config?.submit === "function"
+    ) {
+      return run();
+    }
+    const next = this.#tail.then(run);
+    this.#tail = next.catch(() => {});
+    return next;
+  }
+}
+
 function createBaseClient(): PrismaClient {
   return new PrismaClient({
     adapter: new PrismaPg({
+      Client: SerializedPgClient,
       connectionString: env.DATABASE_URL,
       max: poolMax(),
       idleTimeoutMillis: idleTimeoutMillis(),
