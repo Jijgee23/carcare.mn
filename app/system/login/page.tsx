@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import { redirect } from "next/navigation";
+import { hasActiveSystemSession } from "@/lib/auth/system";
 import { Brand } from "@/app/_components/brand";
 import { SystemLoginForm } from "./login-form";
 
@@ -18,7 +20,10 @@ export const metadata = {
   title: "Системийн нэвтрэх",
 };
 
-export default function SystemLoginPage() {
+export default async function SystemLoginPage() {
+  // Аль хэдийн нэвтэрсэн бол системийн самбар руу.
+  if (await hasActiveSystemSession()) redirect("/system");
+
   return (
     <div
       className={`${plexSans.variable} ${plexMono.variable} landing-ops relative min-h-screen flex flex-col bg-[var(--oc-carbon)] bg-oc-grid overflow-hidden`}

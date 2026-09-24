@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import { redirect } from "next/navigation";
+import { hasActiveUserSession } from "@/lib/auth";
 import { TenantAuthShell } from "@/app/_components/tenant-auth-shell";
 import { LoginForm } from "./login-form";
 
@@ -20,7 +22,11 @@ export const metadata = {
   title: "Нэвтрэх",
 };
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  // Аль хэдийн нэвтэрсэн бол консол руу (салбар сонгоогүй бол proxy
+  // choose-branch руу шилжүүлнэ).
+  if (await hasActiveUserSession()) redirect("/dashboard");
+
   return (
     <div className={`${plexSans.variable} ${plexMono.variable}`}>
       <TenantAuthShell

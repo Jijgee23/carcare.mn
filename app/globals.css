@@ -256,7 +256,8 @@ html.light
   --oc-accent-hi: #67e8f9;
   --oc-ok: #3ddc97;
   --oc-warn: #dc7f4f;
-  /* Accent товч/badge дээрх текст — theme өөрчлөгдсөн ч бараан хэвээр үлдэнэ. */
+  /* Accent товч/badge дээрх текст — dark-д (цайвар cyan accent) бараан,
+     light-д (бараан teal accent) цагаан (доорх html.light override). */
   --oc-on-accent: #14120c;
   /* Ажлын хувиарын салбар бүрийн өнгө (designs/Schedule Calendar) — салбарын
      индексээр ээлжлэн оноогдоно; light-д бараан хувилбар. */
@@ -288,6 +289,7 @@ html.light .landing-ops {
   --oc-muted4: #b7babf;
   --oc-accent: #0e7490;
   --oc-accent-hi: #0891b2;
+  --oc-on-accent: #ffffff;
   --oc-ok: #1e9f6e;
   --oc-warn: #b45309;
   --oc-b1: #0e7490;
@@ -432,7 +434,7 @@ html.light body:has(.landing-ops) .dp-accent-border {
 }
 html.light body:has(.landing-ops) .dp-accent-active {
   background-color: #0e7490 !important;
-  color: #14120c !important;
+  color: #ffffff !important;
 }
 html.light body:has(.landing-ops) .dp-accent-inrange {
   background-color: rgba(14, 116, 144, 0.14) !important;
@@ -448,7 +450,7 @@ html.light body:has(.landing-ops) .dp-accent-text:hover {
 }
 html.light body:has(.landing-ops) .dp-accent-btn {
   background-color: #0e7490 !important;
-  color: #14120c !important;
+  color: #ffffff !important;
 }
 html.light body:has(.landing-ops) .dp-accent-btn:hover {
   background-color: #0891b2 !important;

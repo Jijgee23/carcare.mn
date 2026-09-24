@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import { redirect } from "next/navigation";
+import { hasActiveUserSession } from "@/lib/auth";
 import { TenantAuthShellWide } from "@/app/_components/tenant-auth-shell";
 import { getAddressData } from "@/lib/address";
 import { setBypassContext } from "@/lib/tenant-context";
@@ -21,6 +23,8 @@ export const metadata = {
 };
 
 export default async function SignUpPage() {
+  // Аль хэдийн байгууллагад нэвтэрсэн бол консол руу.
+  if (await hasActiveUserSession()) redirect("/dashboard");
   // Нэвтрээгүй, public хуудас — session/tenant байхгүй.
   setBypassContext();
   const addressData = await getAddressData();

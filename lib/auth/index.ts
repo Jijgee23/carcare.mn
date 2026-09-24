@@ -98,3 +98,21 @@ export async function requireUser() {
   setTenantContext(user.tenantId);
   return user;
 }
+
+/**
+ * Redirect хийхгүй хувилбар — session хүчинтэй, DB session (sid) цуцлагдаагүй,
+ * хэрэглэгч идэвхтэй бол true. Login/signup хуудсууд "аль хэдийн нэвтэрсэн
+ * бол консол руу" шилжүүлэхэд ашиглана. JWT-г л биш DB-г бүрэн шалгадаг нь
+ * чухал: зөвхөн JWT-ээр шийдвэл цуцлагдсан session дээр login ↔ dashboard
+ * redirect loop үүснэ.
+ */
+export async function hasActiveUserSession(): Promise<boolean> {
+  const session = await getSession();
+  if (!session) return false;
+  setBypassContext();
+  const user = await prisma.user.findUnique({
+    where: { id: session.userId },
+    select: { isActive: true, activeUntil: true },
+  });
+  return Boolean(user && checkUserActive(user).ok);
+}

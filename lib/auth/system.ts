@@ -50,3 +50,19 @@ export async function requireSuperAdmin() {
   setBypassContext();
   return result;
 }
+
+/**
+ * Redirect хийхгүй хувилбар — system session хүчинтэй бөгөөд admin идэвхтэй
+ * бол true (/system/login-оос /system руу шилжүүлэхэд; loop-оос сэргийлж DB
+ * шалгана — харах: hasActiveUserSession).
+ */
+export async function hasActiveSystemSession(): Promise<boolean> {
+  const session = await getSystemSession();
+  if (!session) return false;
+  setBypassContext();
+  const admin = await prisma.superAdmin.findUnique({
+    where: { id: session.adminId },
+    select: { isActive: true },
+  });
+  return Boolean(admin?.isActive);
+}

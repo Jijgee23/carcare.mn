@@ -10,6 +10,7 @@ import {
 } from "react";
 import {
   createReportAction,
+  startDiagnosticItemAction,
   type ReportActionState,
 } from "@/app/_actions/diagnostic-reports";
 import { Field, FormError, SubmitButton } from "@/app/_components/auth-shell";
@@ -23,6 +24,9 @@ import {
   type TemplateItem,
   type TemplateSchema,
 } from "@/lib/diagnostics";
+
+// "Бүгдийг тэмдэглэх" товчоор санал болгох check сонголтууд.
+const BULK_OPTIONS = ["Хэвийн", "Анхаарах"];
 
 export function DiagnosticForm({
   orderId,
@@ -66,7 +70,18 @@ export function DiagnosticForm({
   // input тул DOM-оор шууд тэмдэглэж, React-ийн onChange (showWhen-д
   // ашиглагддаг) хэвийн ажиллуулахын тулд жинхэнэ "change" event илгээнэ.
   function markSection(sectionId: string, value: string) {
-    const container = sectionRefs.current[sectionId];
+    markContainer(sectionRefs.current[sectionId], value);
+  }
+
+  // Загварын БҮХ бүлгийн check мөрийг нэг дор тэмдэглэнэ (бүлэг тус бүрийн
+  // товч хэвээр — зөвхөн тухайн бүлэгт үйлчилнэ).
+  function markAll(value: string) {
+    for (const container of Object.values(sectionRefs.current)) {
+      markContainer(container, value);
+    }
+  }
+
+  function markContainer(container: HTMLDivElement | null, value: string) {
     if (!container) return;
     const radios = container.querySelectorAll<HTMLInputElement>(
       `input[type="radio"][value="${CSS.escape(value)}"]`,
@@ -76,6 +91,30 @@ export function DiagnosticForm({
       radio.checked = true;
       radio.dispatchEvent(new Event("change", { bubbles: true }));
     });
+  }
+
+  // Бүх харагдаж буй бүлгийн check мөрүүдэд ашиглагдаж буй сонголтуудаас
+  // "бүгдийг тэмдэглэх" товч гаргана (бүлгийн товчтой ижил дүрэм).
+  const allCheckOptions = new Set<string>();
+  for (const section of schema.sections) {
+    for (const it of section.items) {
+      if (it.type === "check" && isItemVisible(it, answers)) {
+        for (const opt of it.options ?? []) allCheckOptions.add(opt);
+      }
+    }
+  }
+  const globalBulkOptions = BULK_OPTIONS.filter((o) => allCheckOptions.has(o));
+
+  // Анхны хариулт өгөх мөчид мөрийг автоматаар "Эхэлсэн" болгоно (нэг л
+  // удаа). Хайлтын input нь хариулт биш тул тоолохгүй. Тайлан хадгалахад
+  // сервер мөрийг "Дууссан" болгоно (createReportAction).
+  const startedRef = useRef(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  function handleFormChange(e: React.FormEvent<HTMLFormElement>) {
+    if (!itemId || startedRef.current) return;
+    if (e.target === searchRef.current) return;
+    startedRef.current = true;
+    startTransition(() => startDiagnosticItemAction(orderId, itemId));
   }
 
   // Алдааны мессежийг харагдуулахын тулд form-ын эхэнд гүйлгэнэ.
@@ -98,6 +137,7 @@ export function DiagnosticForm({
     <form
       ref={formRef}
       onSubmit={handleSubmit}
+      onChange={handleFormChange}
       className="flex flex-col gap-6"
       noValidate
     >
@@ -107,13 +147,31 @@ export function DiagnosticForm({
 
       <FormError message={state?.message} />
 
-      <div className="glass rounded-2xl px-5 py-4 border border-white/[0.08]">
-        <div className="text-xs text-white/40">Загвар</div>
-        <div className="text-sm font-medium text-white/90">{templateName}</div>
+      <div className="glass rounded-2xl px-5 py-4 border border-white/[0.08] flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <div className="text-xs text-white/40">Загвар</div>
+          <div className="text-sm font-medium text-white/90">{templateName}</div>
+        </div>
+        {globalBulkOptions.length > 0 ? (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-white/40">Бүх асуултыг:</span>
+            {globalBulkOptions.map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => markAll(opt)}
+                className="text-xs px-2.5 py-1 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] text-white/70 hover:text-white/90 transition-colors"
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       <div className="relative">
         <input
+          ref={searchRef}
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -161,7 +219,7 @@ export function DiagnosticForm({
             for (const opt of it.options ?? []) checkOptions.add(opt);
           }
         }
-        const bulkOptions = ["Хэвийн", "Анхаарах"].filter((o) =>
+        const bulkOptions = BULK_OPTIONS.filter((o) =>
           checkOptions.has(o),
         );
         return (

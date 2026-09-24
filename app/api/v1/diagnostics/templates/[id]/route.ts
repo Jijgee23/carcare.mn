@@ -4,6 +4,7 @@ import {
   deleteTemplateCommand,
   updateTemplateCommand,
 } from "@/lib/diagnostics-templates-server";
+import { tenantVisibleTemplateWhere } from "@/lib/diagnostics";
 import { prisma } from "@/lib/prisma";
 import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
 
@@ -18,7 +19,7 @@ export async function GET(
 
   const { id } = await ctx.params;
   const template = await prisma.diagnosticTemplate.findFirst({
-    where: { id, tenantId: auth.user.tenantId },
+    where: { AND: [{ id }, tenantVisibleTemplateWhere(auth.user.tenantId)] },
     select: {
       id: true,
       name: true,

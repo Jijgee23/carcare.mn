@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useEffect, useRef, useState } from "react";
+import {
+  Fragment,
+  useEffect,
+  useOptimistic,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import {
   cancelOrderItemAction,
   changeOrderItemPriceAction,
@@ -308,30 +315,18 @@ export function OrderItems({
                           {canChangeStatus &&
                             g.kind !== "PART" &&
                             canChangeServiceItemStatus(status) ? (
-                            // key={status}: React 19 action-ий дараа form-г reset хийж
-                            // select-ийг хуучин defaultValue руу буцаадаг — статус
-                            // солигдоход remount хийж шинэ утгыг харуулна.
-                            <form key={status} action={changeOrderItemStatusAction}>
-                              <input type="hidden" name="itemId" value={it.id} />
-                              <select
-                                name="status"
-                                defaultValue={status}
-                                disabled={!orderStarted}
-                                title={
-                                  orderStarted
-                                    ? "Явц өөрчлөх"
-                                    : "Захиалга эхлээгүй байна — эхлүүлсний дараа явц өөрчлөх боломжтой"
-                                }
-                                onChange={(e) => e.currentTarget.form?.requestSubmit()}
-                                className="compact-input !py-1 !px-1.5 !text-[11px] !rounded-lg !w-[9.5rem] disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                {rowStatuses.map((s) => (
-                                  <option key={s} value={s}>
-                                    {SERVICE_ITEM_STATUS_LABEL[s]}
-                                  </option>
-                                ))}
-                              </select>
-                            </form>
+                            <ItemStatusSelect
+                              itemId={it.id}
+                              status={status}
+                              statuses={rowStatuses}
+                              disabledReason={
+                                !orderStarted
+                                  ? "Захиалга эхлээгүй байна — эхлүүлсний дараа явц өөрчлөх боломжтой"
+                                  : it.kind === "DIAGNOSTIC" && status === "PENDING"
+                                    ? "Оношилгоо эхлээгүй байна — бөглөж эхлэхэд автоматаар \"Эхэлсэн\" болно"
+                                    : null
+                              }
+                            />
                           ) : null}
                           {canEdit && isServiceItemCancellable(status) ? (
                             <ConfirmForm
@@ -392,6 +387,55 @@ export function OrderItems({
 // хадгалсны дараа сервэрээс шинэ `unitPrice` ирэхэд (анхны mount-ыг тооцохгүй)
 // local state-ийг дахин тохируулаад, дараагийн мөрийг шууд засаж болохоор
 // input-ыг дахин focus/select хийнэ — олон мөр дараалан засахад тав тухтай.
+/**
+ * Мөрийн явц сонгогч — controlled select. Өмнө нь `<form action>` доторх
+ * uncontrolled `defaultValue` байсан тул React 19 action дууссаны дараа формыг
+ * автоматаар reset хийж, select эхний сонголт ("Хүлээгдэж буй") руу буцдаг
+ * байв. Одоо action-ыг шууд дуудаж, дуустал optimistic утгыг харуулна;
+ * дараа нь серверээс ирсэн `status` (амжилтгүй бол хуучин утга) руу шилжинэ.
+ */
+function ItemStatusSelect({
+  itemId,
+  status,
+  statuses,
+  disabledReason,
+}: {
+  itemId: string;
+  status: ServiceItemStatus;
+  statuses: readonly ServiceItemStatus[];
+  /** null бол идэвхтэй; утгатай бол идэвхгүй бөгөөд tooltip-д харагдана. */
+  disabledReason: string | null;
+}) {
+  const [optimisticStatus, setOptimisticStatus] = useOptimistic(status);
+  const [pending, startTransition] = useTransition();
+
+  return (
+    <select
+      name="status"
+      value={optimisticStatus}
+      disabled={disabledReason !== null || pending}
+      title={disabledReason ?? "Явц өөрчлөх"}
+      onChange={(e) => {
+        const next = e.currentTarget.value as ServiceItemStatus;
+        startTransition(async () => {
+          setOptimisticStatus(next);
+          const fd = new FormData();
+          fd.set("itemId", itemId);
+          fd.set("status", next);
+          await changeOrderItemStatusAction(fd);
+        });
+      }}
+      className="compact-input !py-1 !px-1.5 !text-[11px] !rounded-lg !w-[9.5rem] disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      {statuses.map((s) => (
+        <option key={s} value={s}>
+          {SERVICE_ITEM_STATUS_LABEL[s]}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 function PriceCell({
   itemId,
   unitPrice,

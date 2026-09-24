@@ -59,6 +59,7 @@ export async function createReportAction(
   if (!orderId && !canCreatePerm(user, "diagnostics")) {
     return { ok: false, message: "Танд оношилгооны тайлан үүсгэх эрх байхгүй." };
   }
+  let itemStartedAt: Date | null = null;
   let customerId = s(formData, "customerId");
   let vehicleId = s(formData, "vehicleId");
   let branchId = s(formData, "branchId");
@@ -68,6 +69,7 @@ export async function createReportAction(
   if (!templateId) return { ok: false, message: "Загвар сонгоогүй байна." };
 
   const template = await prisma.diagnosticTemplate.findFirst({
+    // Систем admin-ийн хуваалцсан (tenantId=NULL + grant) загварыг ч оруулна.
     where: {
       AND: [
         { id: templateId, isActive: true },
@@ -129,7 +131,7 @@ export async function createReportAction(
           status: { not: "CANCELLED" },
           diagnosticReportId: null,
         },
-        select: { id: true },
+        select: { id: true, startedAt: true },
       });
       if (!item) {
         return {
@@ -137,6 +139,7 @@ export async function createReportAction(
           message: "Оношилгооны мөр олдсонгүй эсвэл аль хэдийн бөглөгдсөн байна.",
         };
       }
+      itemStartedAt = item.startedAt;
     }
   }
 
@@ -235,12 +238,16 @@ export async function createReportAction(
         });
 
         if (itemId) {
+          const now = new Date();
           await prisma.serviceItem.update({
             where: { id: itemId },
             data: {
               diagnosticReportId: report.id,
               status: "COMPLETED",
-              completedAt: new Date(),
+              // Бөглөж эхлэхэд (startDiagnosticItemAction) тавигдсан startedAt-г
+              // хадгална; эхлэлгүйгээр шууд хадгалсан бол одоогоор тавина.
+              startedAt: itemStartedAt ?? now,
+              completedAt: now,
             },
           });
         }
@@ -271,6 +278,58 @@ export async function createReportAction(
     redirect(`/dashboard/orders/${orderId}`);
   }
   redirect(`/dashboard/diagnostics/reports/${reportId}`);
+}
+
+/**
+ * Оношилгооны формд анхны хариулт өгөх үед дуудагдана — тухайн
+ * (хараахан бөглөгдөөгүй, "Хүлээгдэж буй") DIAGNOSTIC мөрийг автоматаар
+ * "Эхэлсэн" болгож startedAt тавина. Тайлан хадгалах эрхтэй (canEditOrder)
+ * хэн ч өдөөж болно — `orders.itemStatus` гараар солих эрх шаардахгүй.
+ * Нөхцөл таарахгүй бол (аль хэдийн эхэлсэн г.м.) чимээгүй алгасна.
+ */
+export async function startDiagnosticItemAction(
+  orderId: string,
+  itemId: string,
+): Promise<void> {
+  const user = await requireUser();
+  if (!orderId || !itemId) return;
+  const scope = workingBranchScopeId(user);
+
+  const order = await prisma.serviceOrder.findFirst({
+    where: {
+      id: orderId,
+      tenantId: user.tenantId,
+      ...(scope ? { branchId: scope } : {}),
+    },
+    select: { id: true, status: true, branchId: true, assignedToId: true },
+  });
+  if (!order || !canEditOrder(user, order)) return;
+  const status = order.status as OrderStatus;
+  if (isOrderLocked(status) || !canFillDiagnostics(status)) return;
+
+  const { count } = await prisma.serviceItem.updateMany({
+    where: {
+      id: itemId,
+      orderId: order.id,
+      kind: "DIAGNOSTIC",
+      status: "PENDING",
+      diagnosticReportId: null,
+    },
+    data: { status: "IN_PROGRESS", startedAt: new Date(), completedAt: null },
+  });
+  if (count === 0) return;
+
+  await logAudit({
+    tenantId: user.tenantId,
+    userId: user.id,
+    entity: "ServiceOrder",
+    entityId: order.id,
+    action: "ITEM_STATUS_CHANGE",
+    summary: `PENDING → IN_PROGRESS (мөр ${itemId}, оношилгоо бөглөж эхэлсэн)`,
+    before: { status: "PENDING" },
+    after: { status: "IN_PROGRESS" },
+  });
+  revalidatePath(`/dashboard/orders/${order.id}`);
 }
 
 export async function deleteReportAction(formData: FormData): Promise<ConfirmActionResult> {
