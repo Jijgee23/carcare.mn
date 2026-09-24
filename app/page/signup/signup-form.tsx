@@ -445,7 +445,7 @@ export function SignUpForm({
         <Field
           label="Лого"
           htmlFor="logo"
-          hint="PNG, JPG, WEBP, SVG · хамгийн ихдээ 2MB · заавал биш"
+          hint="PNG, JPG, WEBP · хамгийн ихдээ 2MB · заавал биш"
           error={fe.logo}
         >
           <div className="flex items-center gap-4">
@@ -467,7 +467,7 @@ export function SignUpForm({
                 id="logo"
                 name="logo"
                 type="file"
-                accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                accept="image/png,image/jpeg,image/webp"
                 onChange={onLogoChange}
                 className="sr-only"
               />

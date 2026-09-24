@@ -292,6 +292,30 @@ export function validateServiceUpdateInput(
   };
 }
 
+/**
+ * Unit/category id-г тухайн tenant-д харьяалагдаж буйг шалгана. FK constraint
+ * RLS-г үл тоодог тул шалгахгүй бол өөр tenant-ийн мөр рүү холбогдох боломжтой.
+ */
+export async function serviceRefFieldErrors(
+  tenantId: string,
+  refs: { unitId?: string | null; durationUnitId?: string | null; categoryId?: string | null },
+): Promise<Record<string, string>> {
+  const errors: Record<string, string> = {};
+  if (refs.unitId) {
+    const exists = await prisma.unit.findFirst({ where: { id: refs.unitId, tenantId }, select: { id: true } });
+    if (!exists) errors.unitId = "Сонгосон нэгж олдсонгүй.";
+  }
+  if (refs.durationUnitId) {
+    const exists = await prisma.unit.findFirst({ where: { id: refs.durationUnitId, tenantId }, select: { id: true } });
+    if (!exists) errors.durationUnitId = "Сонгосон нэгж олдсонгүй.";
+  }
+  if (refs.categoryId) {
+    const exists = await prisma.category.findFirst({ where: { id: refs.categoryId, tenantId }, select: { id: true } });
+    if (!exists) errors.categoryId = "Сонгосон ангилал олдсонгүй.";
+  }
+  return errors;
+}
+
 export async function updateServiceCommand(input: {
   actor: ServiceCommandActor;
   serviceId: string;
@@ -301,27 +325,7 @@ export async function updateServiceCommand(input: {
   const { actor, serviceId } = input;
   const { data, fieldErrors, refs } = validateServiceUpdateInput(input.data, input.options);
 
-  if (refs.unitId) {
-    const exists = await prisma.unit.findFirst({
-      where: { id: refs.unitId, tenantId: actor.tenantId },
-      select: { id: true },
-    });
-    if (!exists) fieldErrors.unitId = "Сонгосон нэгж олдсонгүй.";
-  }
-  if (refs.durationUnitId) {
-    const exists = await prisma.unit.findFirst({
-      where: { id: refs.durationUnitId, tenantId: actor.tenantId },
-      select: { id: true },
-    });
-    if (!exists) fieldErrors.durationUnitId = "Сонгосон нэгж олдсонгүй.";
-  }
-  if (refs.categoryId) {
-    const exists = await prisma.category.findFirst({
-      where: { id: refs.categoryId, tenantId: actor.tenantId },
-      select: { id: true },
-    });
-    if (!exists) fieldErrors.categoryId = "Сонгосон ангилал олдсонгүй.";
-  }
+  Object.assign(fieldErrors, await serviceRefFieldErrors(actor.tenantId, refs));
 
   if (Object.keys(fieldErrors).length > 0) {
     throw new ServiceCommandError("Хүсэлт буруу.", 422, "VALIDATION_FAILED", fieldErrors);

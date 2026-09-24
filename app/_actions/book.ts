@@ -32,10 +32,17 @@ export type BookingBranchResult = {
  * `app/(app)/book/page.tsx`-ийн анхны SSR-ээс, мөн клиент талаас сонголт
  * өөрчлөгдөх бүрт (`booking-flow.tsx`) дуудагдана.
  */
+const MAX_SELECTED_SERVICE_KEYS = 50;
+
 export async function getBookingBranchResults(
   selectedIds: string[],
 ): Promise<BookingBranchResult[]> {
-  if (selectedIds.length === 0) return [];
+  // Нийтэд нээлттэй server action — оролтыг шалгаж, хэмжээг хязгаарлана.
+  const ids = Array.isArray(selectedIds)
+    ? [...new Set(selectedIds.filter((id): id is string => typeof id === "string" && id.length > 0))]
+    : [];
+  if (ids.length === 0) return [];
+  if (ids.length > MAX_SELECTED_SERVICE_KEYS) return [];
   setBypassContext();
 
   const allowedPlans = await plansWithFeature(PLAN_LIMIT_CODES.ONLINE_BOOKING);
@@ -45,6 +52,9 @@ export async function getBookingBranchResults(
       acceptsOnlineBooking: true,
       suspended: false,
       plan: { in: allowedPlans },
+      // Сонгосон үйлчилгээ бүрийн идэвхтэй ангилалтай tenant-уудыг л DB-ээс
+      // авна (салбар түвшний шалгалт доор хэвээр) — бүх tenant-ийг ачаалахгүй.
+      AND: ids.map((id) => ({ categories: { some: { isActive: true, systemServiceKeyId: id } } })),
     },
     orderBy: { name: "asc" },
     select: {
@@ -64,7 +74,8 @@ export async function getBookingBranchResults(
         },
       },
       categories: {
-        where: { isActive: true },
+        // Зөвхөн сонгосон түлхүүрүүд хэрэгтэй (доор `every(ids)` л шалгана).
+        where: { isActive: true, systemServiceKeyId: { in: ids } },
         select: {
           systemServiceKeyId: true,
           branches: { select: { id: true } },
@@ -81,7 +92,7 @@ export async function getBookingBranchResults(
           .filter((c) => c.branches.length === 0 || c.branches.some((x) => x.id === b.id))
           .map((c) => c.systemServiceKeyId),
       );
-      const coversAll = selectedIds.every((id) => branchServiceKeyIds.has(id));
+      const coversAll = ids.every((id) => branchServiceKeyIds.has(id));
       if (!coversAll) continue;
       const status = branchStatusNow(
         {

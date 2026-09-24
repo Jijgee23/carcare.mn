@@ -1,5 +1,7 @@
 "use server";
 
+
+import type { ConfirmActionResult } from "@/lib/confirm-action";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Prisma } from "@/app/generated/prisma/client";
@@ -347,7 +349,7 @@ export async function updateServiceAction(
 // P4-B1 — thin adapter over `deleteServiceCommand`. The command decides
 // archive-vs-hard-delete; this adapter only swallows the not-found case, same
 // as the original inline `if (!svc) return;`.
-export async function deleteServiceAction(formData: FormData): Promise<void> {
+export async function deleteServiceAction(formData: FormData): Promise<ConfirmActionResult> {
   const user = await authorize("delete");
   const id = s(formData, "id");
   if (!id) return;
@@ -356,6 +358,7 @@ export async function deleteServiceAction(formData: FormData): Promise<void> {
     await deleteServiceCommand({ actor: user, serviceId: id });
   } catch (e) {
     if (e instanceof ServiceCommandError && e.code === "SERVICE_NOT_FOUND") return;
+    if (e instanceof ServiceCommandError) return { error: e.message };
     throw e;
   }
 

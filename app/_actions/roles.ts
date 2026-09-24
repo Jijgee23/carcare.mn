@@ -1,5 +1,7 @@
 "use server";
 
+
+import type { ConfirmActionResult } from "@/lib/confirm-action";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Prisma } from "@/app/generated/prisma/client";
@@ -100,12 +102,12 @@ export async function updateRoleAction(
 
 // --- DELETE ---------------------------------------------------------------
 
-export async function deleteRoleAction(formData: FormData): Promise<void> {
+export async function deleteRoleAction(formData: FormData): Promise<ConfirmActionResult> {
   const user = await authorize();
   const result = await deleteRole(prisma, user, formData);
   if ("noop" in result) return;
   if (!result.ok) {
-    throw new Error(result.error);
+    return { error: result.error };
   }
 
   await logAudit({

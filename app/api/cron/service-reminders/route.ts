@@ -85,10 +85,17 @@ async function run(req: Request) {
       // атомикаар claim хийнэ — 2 зэрэгцээ cron invocation нэг мөрийг зэрэг
       // авахгүй, crash дунд орвол дахин илгээгдэхгүй (алгасагдана, давхар
       // илгээгдэхгүй).
-      const claim = await prisma.serviceItem.updateMany({
-        where: { id: item.id, reminderSentAt: null },
-        data: { reminderSentAt: now },
-      });
+      // Нэг мөрийн DB алдаа үлдсэн batch-ийг зогсоохгүй.
+      let claim: { count: number };
+      try {
+        claim = await prisma.serviceItem.updateMany({
+          where: { id: item.id, reminderSentAt: null },
+          data: { reminderSentAt: now },
+        });
+      } catch (e) {
+        console.warn("[cron] service-reminders claim failed:", item.id, e);
+        continue;
+      }
       if (claim.count !== 1) continue;
 
       const accountId = item.order.customer.accountId;

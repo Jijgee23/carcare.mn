@@ -56,10 +56,14 @@ export function SubscriptionPaymentRow({
         </span>
       </td>
       <td className="px-5 py-3 text-xs text-[var(--oc-muted3)]">
-        {payment.createdAt.toLocaleDateString("mn-MN")}
+        {payment.createdAt.toLocaleDateString("mn-MN", {
+          timeZone: "Asia/Ulaanbaatar",
+        })}
         {payment.paidAt ? (
           <div className="text-[var(--oc-ok)]">
-            {payment.paidAt.toLocaleDateString("mn-MN")}
+            {payment.paidAt.toLocaleDateString("mn-MN", {
+              timeZone: "Asia/Ulaanbaatar",
+            })}
           </div>
         ) : null}
       </td>

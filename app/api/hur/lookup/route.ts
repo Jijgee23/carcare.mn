@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { enforceRateLimit } from "@/lib/api";
+import { enforceRateLimit, upstreamErrorResponse } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { HurService } from "@/lib/hur_service";
 import { prisma } from "@/lib/prisma";
@@ -72,7 +72,6 @@ export async function GET(req: Request) {
     const vehicle = await HurService.getVehicle(canonPlate);
     return NextResponse.json({ vehicle, source: "hur" });
   } catch (e) {
-    const message = e instanceof Error ? e.message : "HUR алдаа гарлаа.";
-    return NextResponse.json({ error: message }, { status: 502 });
+    return upstreamErrorResponse("hur-lookup", e, "HUR алдаа гарлаа.");
   }
 }

@@ -22,7 +22,7 @@ export default async function SystemQPayPage() {
         <QPaySettingsForm
           initial={{
             username: settings?.username ?? "",
-            password: decryptSecret(settings?.password) ?? "",
+            hasPassword: Boolean(decryptSecret(settings?.password)),
             invoiceCode: settings?.invoiceCode ?? "",
             callbackUrl: settings?.callbackUrl ?? "",
             tokenExpiresAt: settings?.tokenExpiresAt?.toISOString() ?? null,

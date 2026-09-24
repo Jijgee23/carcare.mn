@@ -1,4 +1,4 @@
-import { jsonOk } from "@/lib/api";
+import { enforceRateLimit, jsonOk, PUBLIC_CATALOG_RATE_LIMIT } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 import { setBypassContext } from "@/lib/tenant-context";
 
@@ -7,7 +7,9 @@ import { setBypassContext } from "@/lib/tenant-context";
  * (нийтэд нээлттэй, org сонголтоос өмнөх "ямар ажил хийлгэх гэж байна?"
  * сонголтод зориулав — харах: /api/v1/app/orgs-ийн branch.serviceKeyIds).
  */
-export async function GET() {
+export async function GET(req: Request) {
+  const limited = enforceRateLimit(req, "public-catalog", PUBLIC_CATALOG_RATE_LIMIT);
+  if (limited) return limited;
   setBypassContext();
   // Ямар ч ангилалд холбогдоогүй түлхүүрийг ШҮҮНЭ ГАРГАНА — сонговол
   // баталгаатай хоосон салбарын жагсаалт буцаах сонголтыг харуулахгүй (харах:

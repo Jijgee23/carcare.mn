@@ -169,19 +169,28 @@ export function AppointmentRescheduleButton({
   const [confirmArmed, setConfirmArmed] = useState(false);
   const [prevState, setPrevState] = useState<AppointmentActionState>(null);
 
+  // Өөрийн state-ийг render дотор тохируулах нь зөв (React-ийн "previous
+  // props" загвар), харин toast нь ToastProvider-ийн state — render үед
+  // шинэчилбэл "Cannot update a component while rendering" алдаа өгнө.
   if (state !== prevState) {
     setPrevState(state);
     if (state?.ok) {
-      toast.success(state.message ?? "Амжилттай.");
       setEditing(false);
       setConfirmArmed(false);
     } else if (state?.fieldErrors?.confirmNeeded) {
       setConfirmArmed(true);
     } else if (state) {
-      toast.error(state.message ?? "Алдаа гарлаа.");
       setConfirmArmed(false);
     }
   }
+
+  const toasted = useRef<AppointmentActionState>(null);
+  useEffect(() => {
+    if (!state || state === toasted.current) return;
+    toasted.current = state;
+    if (state.ok) toast.success(state.message ?? "Амжилттай.");
+    else if (!state.fieldErrors?.confirmNeeded) toast.error(state.message ?? "Алдаа гарлаа.");
+  }, [state, toast]);
 
   const conflictMessage =
     state && !state.ok && state.fieldErrors?.confirmNeeded ? state.message : null;

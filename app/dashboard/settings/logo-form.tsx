@@ -72,13 +72,13 @@ export function LogoForm({
               эсвэл энд чирж тавина уу
             </div>
             <div className="text-[11px] text-[var(--oc-muted4)]">
-              PNG, JPG, WEBP, SVG · хамгийн ихдээ 2MB
+              PNG, JPG, WEBP · хамгийн ихдээ 2MB
             </div>
             <input
               id="logo"
               name="logo"
               type="file"
-              accept="image/png,image/jpeg,image/webp,image/svg+xml"
+              accept="image/png,image/jpeg,image/webp"
               onChange={onChange}
               className="sr-only"
             />

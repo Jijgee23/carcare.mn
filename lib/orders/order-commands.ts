@@ -284,6 +284,22 @@ export async function applyOrderPatchCommand(input: {
         throw new OrderCommandError("Энэ статус руу шилжих боломжгүй.", 422, "INVALID_STATUS_TRANSITION");
       }
 
+      // Төлөгдсөн төлбөртэй захиалгыг цуцлахгүй (устгахтай ижил) — эхлээд
+      // төлбөрийг буцаах ёстой, эс бөгөөс шийдэгдээгүй илүү төлөлт үлдэнэ.
+      if (nextStatus === "CANCELLED") {
+        const paid = await tx.orderPayment.findFirst({
+          where: { orderId, tenantId: actor.tenantId, status: "PAID" },
+          select: { id: true },
+        });
+        if (paid) {
+          throw new OrderCommandError(
+            "Энэ засварын хуудсанд төлбөр төлөгдсөн тул цуцлах боломжгүй. Эхлээд төлбөрийг буцаана уу.",
+            422,
+            "PAID_PAYMENT_EXISTS",
+          );
+        }
+      }
+
       if (nextStatus === "COMPLETED") {
         const pending = await tx.serviceItem.count({
           where: {
@@ -486,6 +502,28 @@ export async function deleteOrderCommand(input: {
       await tx.orderPayment.deleteMany({
         where: { orderId, tenantId: actor.tenantId, status: { not: "PAID" } },
       });
+      // Мөрүүд cascade-аар устана — цуцлагдаагүй барааны үлдэгдлийг эхлээд
+      // буцаана (захиалга цуцлахтай ижил).
+      const stockItems = await tx.serviceItem.findMany({
+        where: { orderId, status: { not: "CANCELLED" } },
+        select: { kind: true, serviceId: true, quantity: true },
+      });
+      for (const item of stockItems) {
+        if (!isStockBackedOrderItem(item.kind, item.serviceId)) continue;
+        await tx.service.update({
+          where: { id: item.serviceId as string },
+          data: { stock: { increment: new Prisma.Decimal(item.quantity.toString()) } },
+        });
+        await logAudit({
+          tenantId: actor.tenantId,
+          userId: actor.id,
+          entity: "Service",
+          entityId: item.serviceId as string,
+          action: "STOCK_CHANGE",
+          summary: `+${item.quantity.toString()} (захиалга устгагдсан)`,
+          after: { delta: `+${item.quantity.toString()}`, reason: "ORDER_DELETE" },
+        }, tx);
+      }
       await tx.serviceOrder.delete({ where: { id: orderId, tenantId: actor.tenantId } });
       await logAudit(
         {

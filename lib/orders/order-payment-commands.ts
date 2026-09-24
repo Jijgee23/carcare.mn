@@ -9,6 +9,9 @@ import {
   type OrderPaymentMethod,
 } from "@/lib/orders";
 import { withOrderTransaction } from "@/lib/order-time-booking";
+import { paidLedger, recomputeOrderPaymentTotals } from "@/lib/orders/order-payment-totals";
+
+export { recomputeOrderPaymentTotals };
 import { prisma, type PrismaTransactionClient } from "@/lib/prisma";
 import { TenantQPayService } from "@/lib/qpay-tenant";
 import { createNotification } from "@/lib/notifications";
@@ -97,37 +100,6 @@ function assertPaymentAccess(
   }
 }
 
-async function paidLedger(tx: PrismaTransactionClient, tenantId: string, orderId: string) {
-  const rows = await tx.orderPayment.findMany({
-    where: { tenantId, orderId, status: "PAID" },
-    select: { amount: true, paidAt: true },
-  });
-  const paid = rows.reduce((sum, row) => sum.plus(row.amount), new Prisma.Decimal(0));
-  const paidAt = rows.reduce<Date | null>((latest, row) => {
-    if (!row.paidAt) return latest;
-    return !latest || row.paidAt > latest ? row.paidAt : latest;
-  }, null);
-  return { paid, paidAt };
-}
-
-export async function recomputeOrderPaymentTotals(
-  tx: PrismaTransactionClient,
-  tenantId: string,
-  order: Pick<LockedPaymentOrder, "id" | "totalAmount">,
-) {
-  const { paid, paidAt } = await paidLedger(tx, tenantId, order.id);
-  const total = order.totalAmount ?? new Prisma.Decimal(0);
-  const status = paid.lte(0) ? "UNPAID" : paid.gte(total) ? "PAID" : "PARTIAL";
-  await tx.serviceOrder.update({
-    where: { id: order.id },
-    data: {
-      paidAmount: paid.lte(0) ? null : paid,
-      paymentStatus: status,
-      paidAt: status === "PAID" ? paidAt ?? new Date() : null,
-    },
-  });
-  return { paid, status, paidAt, total, remaining: total.minus(paid) };
-}
 
 async function cancelPendingQPay(tx: PrismaTransactionClient, tenantId: string, orderId: string) {
   await tx.orderPayment.updateMany({

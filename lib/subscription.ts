@@ -21,14 +21,29 @@ export const BILLING_PERIOD_MONTHS: Record<BillingPeriod, number> = {
   YEAR: 12,
 };
 
+const UB_OFFSET_MS = 8 * 60 * 60 * 1000;
+
 export function periodEndDate(
   start: Date,
   period: BillingPeriod,
 ): Date {
   const months = BILLING_PERIOD_MONTHS[period];
-  const end = new Date(start);
-  end.setMonth(end.getMonth() + months);
-  return end;
+  // Улаанбаатарын цагаар (UTC+8, DST-гүй) сар нэмнэ. Зорилтот сард тухайн өдөр
+  // байхгүй бол (1/31 + 1 сар) сарын сүүлийн өдрөөр хязгаарлана — `setMonth`
+  // шиг дараа сар руу (3/3) халихгүй, серверийн цагийн бүсээс ч хамаарахгүй.
+  const ub = new Date(start.getTime() + UB_OFFSET_MS);
+  const targetMonth = ub.getUTCMonth() + months;
+  const lastDay = new Date(Date.UTC(ub.getUTCFullYear(), targetMonth + 1, 0)).getUTCDate();
+  const endUb = Date.UTC(
+    ub.getUTCFullYear(),
+    targetMonth,
+    Math.min(ub.getUTCDate(), lastDay),
+    ub.getUTCHours(),
+    ub.getUTCMinutes(),
+    ub.getUTCSeconds(),
+    ub.getUTCMilliseconds(),
+  );
+  return new Date(endUb - UB_OFFSET_MS);
 }
 
 export const TRIAL_DAYS = 14;

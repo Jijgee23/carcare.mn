@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 import { requireUser } from "@/lib/auth";
+import { canView } from "@/lib/auth/roles";
 import { prisma } from "@/lib/prisma";
 import { buildEmployeeWhere, type EmployeeStatusFilter } from "../data";
 
@@ -7,6 +8,7 @@ import { buildEmployeeWhere, type EmployeeStatusFilter } from "../data";
 // Одоогийн шүүлтүүртэй нийцсэн ажилтнуудыг .xlsx болгож татна.
 export async function GET(req: Request) {
   const user = await requireUser();
+  if (!canView(user, "employees")) return new Response("Forbidden", { status: 403 });
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q") ?? "";
   const roleId = searchParams.get("roleId") ?? "";

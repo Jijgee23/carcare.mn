@@ -1,4 +1,4 @@
-import { enforceRateLimit, jsonError, jsonOk } from "@/lib/api";
+import { enforceRateLimit, jsonError, jsonOk, upstreamErrorResponse } from "@/lib/api";
 import { getApiAccountFromRequest } from "@/lib/auth/account-api-token";
 import { HurService, toPublicVehicle } from "@/lib/hur_service";
 import { prisma } from "@/lib/prisma";
@@ -40,6 +40,6 @@ export async function GET(req: Request) {
     const vehicle = toPublicVehicle(await HurService.getVehicle(canonPlate));
     return jsonOk({ vehicle, source: "hur" });
   } catch (e) {
-    return jsonError(502, e instanceof Error ? e.message : "HUR алдаа гарлаа.");
+    return upstreamErrorResponse("hur-lookup", e, "HUR алдаа гарлаа.");
   }
 }

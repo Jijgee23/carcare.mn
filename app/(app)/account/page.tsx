@@ -78,6 +78,24 @@ function dateParts(d: Date): { date: string; time: string; weekday: string } {
   };
 }
 
+/**
+ * Дууссан ч бүрэн төлөгдөөгүй захиалга энэ хуудсанд үлддэг (D-083/D-084) —
+ * яагаад үлдсэнийг ойлгуулахын тулд үлдэгдлийг харуулна. Үлдэгдэлгүй бол null.
+ */
+function outstandingLabel(o: {
+  status: string;
+  paymentStatus: string;
+  totalAmount: { toString(): string } | null;
+  paidAmount: { toString(): string } | null;
+} | null): string | null {
+  if (!o || o.status !== "COMPLETED" || o.paymentStatus === "PAID") return null;
+  const due = Number(o.totalAmount?.toString() ?? 0) - Number(o.paidAmount?.toString() ?? 0);
+  return due > 0 ? `Төлбөр дутуу · ${formatTugrik(due)}` : "Төлбөр дутуу";
+}
+
+const OUTSTANDING_BADGE =
+  "font-plex-mono text-[11px] px-2.5 py-1 rounded-full whitespace-nowrap bg-[var(--oc-warn)]/15 text-[var(--oc-warn)]";
+
 export default async function AccountPage({
   searchParams,
 }: {
@@ -111,7 +129,7 @@ export default async function AccountPage({
       branch: { select: { name: true } },
       category: { select: { name: true } },
       payment: { select: { id: true, amount: true } },
-      serviceOrder: { select: { status: true } },
+      serviceOrder: { select: { status: true, paymentStatus: true, totalAmount: true, paidAmount: true } },
     },
   });
 
@@ -268,6 +286,9 @@ export default async function AccountPage({
                           ? ORDER_STATUS_LABEL[a.serviceOrder.status as OrderStatus]
                           : APPOINTMENT_STATUS_LABEL[a.status]}
                       </span>
+                      {outstandingLabel(a.serviceOrder) ? (
+                        <span className={OUTSTANDING_BADGE}>{outstandingLabel(a.serviceOrder)}</span>
+                      ) : null}
                     </div>
                     <div className="text-xs text-[var(--oc-muted)] mt-0.5">
                       {dt.weekday} · {a.branch.name}
@@ -339,6 +360,9 @@ export default async function AccountPage({
                   >
                     {ORDER_STATUS_LABEL[o.status as OrderStatus]}
                   </span>
+                  {outstandingLabel(o) ? (
+                    <span className={OUTSTANDING_BADGE}>{outstandingLabel(o)}</span>
+                  ) : null}
                 </div>
                 <div className="text-xs text-[var(--oc-muted)] mt-0.5">
                   {o.branch.name} · {o.vehicle.plate} · №{o.number}

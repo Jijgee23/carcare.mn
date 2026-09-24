@@ -27,7 +27,7 @@ export async function requireSystemSession(): Promise<SystemSessionPayload> {
   return session;
 }
 
-export const requireSuperAdmin = cache(async () => {
+const loadSuperAdmin = cache(async () => {
   const session = await requireSystemSession();
   // Superadmin бүх үйлдэл cross-tenant тул RLS-г бүхэлд нь тойрч гарна.
   setBypassContext();
@@ -43,3 +43,10 @@ export const requireSuperAdmin = cache(async () => {
   }
   return admin;
 });
+
+/** cache hit-д ч bypass context-г дахин тохируулна (харах: requireUser). */
+export async function requireSuperAdmin() {
+  const result = await loadSuperAdmin();
+  setBypassContext();
+  return result;
+}

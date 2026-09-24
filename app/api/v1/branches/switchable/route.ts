@@ -32,7 +32,17 @@ export async function GET(req: Request) {
         ...(restrictToEligible ? { id: { in: eligible } } : {}),
       },
       orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
-      select: { id: true, name: true, isPrimary: true },
+      // district/address/openTime/closeTime — web /page/choose-branch-ийн
+      // картад харуулдагтай адил мобайл сонголтын дэлгэцэд (additive).
+      select: {
+        id: true,
+        name: true,
+        isPrimary: true,
+        district: true,
+        address: true,
+        openTime: true,
+        closeTime: true,
+      },
     }),
     resolveTodayLockedBranch(user),
   ]);

@@ -64,6 +64,21 @@ async function run(req: Request) {
   for (const sub of due) {
     if (!sub.endsAt) continue;
 
+    // Илгээхээс ӨМНӨ атомаар "claim" хийнэ — давхцсан/дахин ажилласан cron
+    // хоёулаа ижил мөрийг уншсан ч зөвхөн нэг нь илгээнэ (бусад reminder
+    // cron-той ижил загвар).
+    let claimed: { count: number };
+    try {
+      claimed = await prisma.subscription.updateMany({
+        where: { id: sub.id, reminderSentAt: null },
+        data: { reminderSentAt: now },
+      });
+    } catch (e) {
+      console.warn("[cron] subscription-reminders claim failed:", sub.id, e);
+      continue;
+    }
+    if (claimed.count !== 1) continue;
+
     // Тухайн тенантын төлбөр төлж чадах эзэд (идэвхтэй).
     const owners = await prisma.user.findMany({
       where: { tenantId: sub.tenantId, isOwner: true, isActive: true },
@@ -90,11 +105,6 @@ async function run(req: Request) {
       }
     }
 
-    // Амжилт/амжилтгүйгээс үл хамаарч тэмдэглэж, дахин илгээхээс сэргийлнэ.
-    await prisma.subscription.update({
-      where: { id: sub.id },
-      data: { reminderSentAt: now },
-    });
     remindedSubs++;
   }
 

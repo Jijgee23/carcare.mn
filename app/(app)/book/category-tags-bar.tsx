@@ -52,9 +52,15 @@ export function CategoryTagsBar({
       <button
         type="button"
         onClick={onOpenPicker}
-        className="inline-flex items-center gap-1 rounded-full border border-dashed border-[var(--oc-line)] px-3 py-1 text-xs font-medium text-[var(--oc-muted3)] hover:text-[var(--oc-ink)] hover:border-[var(--oc-accent)]/40 transition-colors"
+        // Хайлтын гол алхам — сонголтгүй үед үндсэн (дүүрэн) товч, сонгосны
+        // дараа tag-уудтай өрсөлдөхгүй accent outline болно.
+        className={
+          selected.length === 0
+            ? "inline-flex items-center gap-1.5 rounded-full bg-[var(--oc-accent)] px-4 py-2 text-sm font-semibold text-[var(--oc-on-accent)] shadow-sm hover:bg-[var(--oc-accent-hi)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--oc-accent)]/50"
+            : "inline-flex items-center gap-1.5 rounded-full border border-[var(--oc-accent)]/50 bg-[var(--oc-accent)]/10 px-3.5 py-1.5 text-sm font-medium text-[var(--oc-accent)] hover:bg-[var(--oc-accent)]/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--oc-accent)]/50"
+        }
       >
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
           <path d="M12 5v14M5 12h14" />
         </svg>
         Ажлын төрөл нэмэх

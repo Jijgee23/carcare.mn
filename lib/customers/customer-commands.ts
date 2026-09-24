@@ -7,6 +7,7 @@
 // Эрх (permission) шалгалт болон subscription gate дуудагч талд үлдэнэ
 // (order-commands-ийн адил зарчим).
 
+import { isForeignKeyViolation } from "@/lib/prisma-errors";
 import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
@@ -284,7 +285,7 @@ export async function deleteCustomerCommand(input: {
       where: { id: customerId, tenantId: actor.tenantId },
     });
   } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") {
+    if (isForeignKeyViolation(e)) {
       throw new CustomerCommandError(
         "Энэ үйлчлүүлэгчтэй холбоотой засварын хуудас байгаа тул устгах боломжгүй.",
         409,

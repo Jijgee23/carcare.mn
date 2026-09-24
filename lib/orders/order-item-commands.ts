@@ -7,6 +7,7 @@ import {
   canViewOrderItemHistory,
 } from "@/lib/auth/order-access";
 import { withOrderTransaction } from "@/lib/order-time-booking";
+import { recomputeOrderPaymentTotals } from "@/lib/orders/order-payment-totals";
 import { prisma, type PrismaTransactionClient } from "@/lib/prisma";
 import {
   ITEM_KINDS,
@@ -126,7 +127,13 @@ export async function recomputeOrderTotal(tx: PrismaTransactionClient, orderId: 
   });
   const total = items.reduce((sum, item) => sum.plus(item.total), new Prisma.Decimal(0));
   assertServiceOrderTotal(total);
-  await tx.serviceOrder.update({ where: { id: orderId }, data: { totalAmount: total } });
+  const order = await tx.serviceOrder.update({
+    where: { id: orderId },
+    data: { totalAmount: total },
+    select: { id: true, tenantId: true, totalAmount: true },
+  });
+  // Нийт дүн өөрчлөгдвөл төлбөрийн төлөв (PAID/PARTIAL) хуучирна — дахин тооцно.
+  await recomputeOrderPaymentTotals(tx, order.tenantId, order);
   return total;
 }
 
@@ -173,9 +180,15 @@ export async function addOrderItemCommand(input: {
 
     let kind = input.kind;
     let description = input.description?.trim() ?? "";
-    let unitPrice = input.unitPrice ?? null;
     let serviceId = input.serviceId ?? null;
     const diagnosticTemplateId = input.diagnosticTemplateId ?? null;
+    // Үнэ өөрчлөх эрхгүй бол каталогийн үнийг л ашиглана — илгээсэн үнийг үл тооно.
+    // Каталоггүй (гараар) мөрөнд үнэ заавал хэрэгтэй тул тэр эрхийг шаардана.
+    const canSetPrice = canChangeOrderItemPrice(actor, order);
+    if (!canSetPrice && !serviceId && !diagnosticTemplateId) {
+      throw new OrderCommandError("Гараар мөр нэмэх эрх байхгүй.", 403, "ITEM_PRICE_FORBIDDEN");
+    }
+    let unitPrice = canSetPrice ? (input.unitPrice ?? null) : null;
     let isGoods = false;
 
     if (diagnosticTemplateId) {

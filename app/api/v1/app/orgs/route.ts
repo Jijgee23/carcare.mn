@@ -1,10 +1,12 @@
-import { jsonError, jsonOk } from "@/lib/api";
+import { enforceRateLimit, jsonError, jsonOk, PUBLIC_CATALOG_RATE_LIMIT } from "@/lib/api";
 import { getDiscoveryCatalog, parseDiscoveryFilters } from "@/lib/discovery-catalog";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { setBypassContext } from "@/lib/tenant-context";
 
 /** Mobile discovery contract: server-filtered, organization-paginated catalog. */
 export async function GET(request: Request) {
+  const limited = enforceRateLimit(request, "public-catalog", PUBLIC_CATALOG_RATE_LIMIT);
+  if (limited) return limited;
   setBypassContext();
   const searchParams = new URL(request.url).searchParams;
   const parsed = parseDiscoveryFilters(searchParams);

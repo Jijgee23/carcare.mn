@@ -21,20 +21,20 @@ process.env.SESSION_SECRET ??= "unit-test-placeholder-secret-value-not-real-00";
 
 let prisma: typeof import("../lib/prisma").prisma;
 let signApiToken: typeof import("../lib/auth/api-token").signApiToken;
-let unitsRoute: typeof import("../app/api/v1/units/route.ts");
-let unitRoute: typeof import("../app/api/v1/units/[id]/route.ts");
-let categoriesRoute: typeof import("../app/api/v1/labor-categories/route.ts");
-let categoryRoute: typeof import("../app/api/v1/labor-categories/[id]/route.ts");
+let unitsRoute: typeof import("../app/api/v1/units/route");
+let unitRoute: typeof import("../app/api/v1/units/[id]/route");
+let categoriesRoute: typeof import("../app/api/v1/labor-categories/route");
+let categoryRoute: typeof import("../app/api/v1/labor-categories/[id]/route");
 
 before(async () => {
   [{ prisma }, { signApiToken }, unitsRoute, unitRoute, categoriesRoute, categoryRoute] =
     await Promise.all([
       import("../lib/prisma"),
       import("../lib/auth/api-token"),
-      import("../app/api/v1/units/route.ts"),
-      import("../app/api/v1/units/[id]/route.ts"),
-      import("../app/api/v1/labor-categories/route.ts"),
-      import("../app/api/v1/labor-categories/[id]/route.ts"),
+      import("../app/api/v1/units/route"),
+      import("../app/api/v1/units/[id]/route"),
+      import("../app/api/v1/labor-categories/route"),
+      import("../app/api/v1/labor-categories/[id]/route"),
     ]);
 });
 

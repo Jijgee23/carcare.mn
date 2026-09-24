@@ -14,7 +14,7 @@
 //   Auth: any authenticated user.
 //   Body: multipart/form-data — type (BUG/SUGGESTION/OTHER), message
 //     (5-2000 chars), screenshot? (optional file, same limits as
-//     `lib/storage.ts`'s other upload paths: 2MB, PNG/JPG/WEBP/SVG).
+//     `lib/storage.ts`'s other upload paths: 2MB, PNG/JPG/WEBP).
 //   201: { feedback: FeedbackDto }
 //   Errors: 400 (bad multipart), 401, 422 (VALIDATION)
 //

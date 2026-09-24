@@ -8,6 +8,7 @@ import {
 } from "@/lib/auth/account-cookies";
 import { signAccountSession } from "@/lib/auth/account-session";
 import { issuePhoneOtp, verifyPhoneOtp } from "@/lib/auth/otp";
+import { consumeRateLimit, LOGIN_WINDOW_MS, RATE_LIMITED_MESSAGE } from "@/lib/rate-limit";
 import { formatPhone, normalizePhone } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
 import { sendOtpSms } from "@/lib/sms";
@@ -96,6 +97,11 @@ export async function accountLoginAction(
       phone,
       fieldErrors: { otpCode: "6 оронтой код оруулна уу." },
     };
+  }
+
+  // Кодын оролдлогын хязгаараас гадна IP-ээр — олон утсан дээр тархсан таалтыг хаана.
+  if (!consumeRateLimit(`otp-verify-ip:${ip ?? "unknown"}`, { limit: 30, windowMs: LOGIN_WINDOW_MS }).ok) {
+    return { ok: false, awaitingOtp: true, phone, message: RATE_LIMITED_MESSAGE };
   }
 
   const result = await verifyPhoneOtp({

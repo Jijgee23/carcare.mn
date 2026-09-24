@@ -258,7 +258,7 @@ export function OrderItems({
                           >
                             Тайлан үзэх →
                           </Link>
-                        ) : needsReport && !cancelled && orderStarted ? (
+                        ) : needsReport && !cancelled && orderStarted && canEdit ? (
                           <Link
                             href={`/dashboard/orders/${orderId}/diagnostics/new?itemId=${it.id}`}
                             className="shrink-0 text-[11px] font-medium text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors"
@@ -308,7 +308,10 @@ export function OrderItems({
                           {canChangeStatus &&
                             g.kind !== "PART" &&
                             canChangeServiceItemStatus(status) ? (
-                            <form action={changeOrderItemStatusAction}>
+                            // key={status}: React 19 action-ий дараа form-г reset хийж
+                            // select-ийг хуучин defaultValue руу буцаадаг — статус
+                            // солигдоход remount хийж шинэ утгыг харуулна.
+                            <form key={status} action={changeOrderItemStatusAction}>
                               <input type="hidden" name="itemId" value={it.id} />
                               <select
                                 name="status"

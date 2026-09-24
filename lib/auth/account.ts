@@ -41,7 +41,7 @@ export async function requireAccountSession(): Promise<AccountSessionPayload> {
  * Нэвтэрсэн Account-ийг буцаана. Session байхгүй / идэвхгүй бол login руу.
  * Request бүрд нэг л удаа DB-д хандана.
  */
-export const requireAccount = cache(async () => {
+const loadRequiredAccount = cache(async () => {
   const session = await requireAccountSession();
   // Account глобал (tenant-гүй) объект — доорх урсгал ихэвчлэн cross-tenant
   // (олон tenant-д Customer-тэй байж болно) эсвэл tenant-ийг өөр контекстоос
@@ -58,11 +58,18 @@ export const requireAccount = cache(async () => {
   return account;
 });
 
+/** cache hit-д ч bypass context-г дахин тохируулна (харах: requireUser). */
+export async function requireAccount() {
+  const result = await loadRequiredAccount();
+  setBypassContext();
+  return result;
+}
+
 /**
  * Заавал биш хувилбар — Account байвал буцаана, үгүй бол null (redirect хийхгүй).
  * Public хуудсанд "нэвтэрсэн эсэх"-ийг зөөлөн шалгахад.
  */
-export const getAccount = cache(async () => {
+const loadOptionalAccount = cache(async () => {
   const session = await getAccountSession();
   if (!session) return null;
   setBypassContext();
@@ -72,3 +79,10 @@ export const getAccount = cache(async () => {
   if (!account || !account.isActive) return null;
   return account;
 });
+
+/** cache hit-д ч bypass context-г дахин тохируулна (харах: requireUser). */
+export async function getAccount() {
+  const result = await loadOptionalAccount();
+  if (result) setBypassContext();
+  return result;
+}

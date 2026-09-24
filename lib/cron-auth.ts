@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
 /**
@@ -19,8 +20,15 @@ export function verifyCronSecret(req: Request): NextResponse | null {
     return NextResponse.json({ error: "CRON_SECRET тогтоогоогүй." }, { status: 500 });
   }
   const bearer = (req.headers.get("authorization") ?? "").match(/^Bearer\s+(.+)$/i)?.[1];
-  if (bearer !== secret) {
+  if (!bearer || !safeEqual(bearer, secret)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   return null;
+}
+
+/** Тогтмол хугацаатай харьцуулалт — secret-ийг timing-ээр таахаас сэргийлнэ. */
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  return ab.length === bb.length && timingSafeEqual(ab, bb);
 }

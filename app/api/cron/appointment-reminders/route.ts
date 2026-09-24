@@ -95,10 +95,17 @@ async function run(req: Request) {
       // rather than send-then-mark, so a crash between the two can only ever
       // lose a reminder (accepted tradeoff — full retry semantics are Phase C,
       // out of scope), never send it twice.
-      const claim = await prisma.appointment.updateMany({
-        where: { id: a.id, reminderSentAt: null },
-        data: { reminderSentAt: new Date() },
-      });
+      // Нэг мөрийн DB алдаа үлдсэн batch-ийг зогсоохгүй.
+      let claim: { count: number };
+      try {
+        claim = await prisma.appointment.updateMany({
+          where: { id: a.id, reminderSentAt: null },
+          data: { reminderSentAt: new Date() },
+        });
+      } catch (e) {
+        console.warn("[cron] appointment-reminders claim failed:", a.id, e);
+        continue;
+      }
       if (claim.count !== 1) continue;
 
       const when = formatWhen(a.requestedAt);

@@ -1,5 +1,7 @@
 "use server";
 
+
+import type { ConfirmActionResult } from "@/lib/confirm-action";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
@@ -115,7 +117,7 @@ export async function updateCustomerAction(
   redirect("/dashboard/customers");
 }
 
-export async function deleteCustomerAction(formData: FormData): Promise<void> {
+export async function deleteCustomerAction(formData: FormData): Promise<ConfirmActionResult> {
   const user = await authorize("delete");
   const id = s(formData, "id");
   if (!id) return;
@@ -124,7 +126,7 @@ export async function deleteCustomerAction(formData: FormData): Promise<void> {
     await deleteCustomerCommand({ actor: user, customerId: id });
   } catch (e) {
     if (e instanceof CustomerCommandError) {
-      throw new Error(e.message);
+      return { error: e.message };
     }
     throw e;
   }

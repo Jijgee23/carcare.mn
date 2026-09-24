@@ -83,7 +83,7 @@ export function AdminRow({
             </ConfirmForm>
           )
         ) : (
-          <form action={setSuperAdminActiveAction}>
+          <ConfirmForm enabled={false} message="" action={setSuperAdminActiveAction}>
             <input type="hidden" name="id" value={admin.id} />
             <input type="hidden" name="active" value="1" />
             <button
@@ -92,7 +92,7 @@ export function AdminRow({
             >
               Идэвхжүүлэх
             </button>
-          </form>
+          </ConfirmForm>
         )}
       </td>
     </tr>

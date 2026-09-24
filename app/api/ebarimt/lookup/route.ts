@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { enforceRateLimit } from "@/lib/api";
+import { enforceRateLimit, upstreamErrorResponse } from "@/lib/api";
 import { lookupOrgByRegno } from "@/lib/ebarimt";
 
 /**
@@ -29,7 +29,6 @@ export async function GET(req: Request) {
     const org = await lookupOrgByRegno(regno);
     return NextResponse.json({ org });
   } catch (e) {
-    const message = e instanceof Error ? e.message : "ebarimt алдаа гарлаа.";
-    return NextResponse.json({ error: message }, { status: 502 });
+    return upstreamErrorResponse("ebarimt-lookup", e, "ebarimt алдаа гарлаа.");
   }
 }

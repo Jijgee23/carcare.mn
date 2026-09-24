@@ -1,8 +1,10 @@
 "use server";
 
+
+import { isForeignKeyViolation } from "@/lib/prisma-errors";
+import type { ConfirmActionResult } from "@/lib/confirm-action";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { Prisma } from "@/app/generated/prisma/client";
 import { requireSuperAdmin } from "@/lib/auth/system";
 import { prisma } from "@/lib/prisma";
 
@@ -54,7 +56,7 @@ export async function changeTenantPlanAction(formData: FormData): Promise<void> 
   revalidatePath("/system");
 }
 
-export async function deleteTenantAction(formData: FormData): Promise<void> {
+export async function deleteTenantAction(formData: FormData): Promise<ConfirmActionResult> {
   await requireSuperAdmin();
   const id = s(formData, "id");
   const confirm = s(formData, "confirmName");
@@ -64,20 +66,16 @@ export async function deleteTenantAction(formData: FormData): Promise<void> {
     where: { id },
     select: { name: true },
   });
-  if (!tenant) throw new Error("Байгууллага олдсонгүй.");
+  if (!tenant) return { error: "Байгууллага олдсонгүй." };
   if (confirm !== tenant.name) {
-    throw new Error(
-      "Баталгаажуулалт буруу. Байгууллагын нэрийг яг адил бичнэ үү.",
-    );
+    return { error: "Баталгаажуулалт буруу. Байгууллагын нэрийг яг адил бичнэ үү." };
   }
 
   try {
     await prisma.tenant.delete({ where: { id } });
   } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") {
-      throw new Error(
-        "Энэ байгууллага санхүү/аудитын түүхтэй (төлбөр, лог) тул устгах боломжгүй. Оронд нь идэвхгүй болгоно уу.",
-      );
+    if (isForeignKeyViolation(e)) {
+      return { error: "Энэ байгууллага санхүү/аудитын түүхтэй (төлбөр, лог) тул устгах боломжгүй. Оронд нь идэвхгүй болгоно уу." };
     }
     throw e;
   }

@@ -169,3 +169,12 @@ test("generic PATCH has an explicit closed key set and rejects empty/unknown pay
   assert.match(commandSource, /ROUND_HALF_UP/);
   assert.match(commandSource, /ORDER_TOTAL_TOO_LARGE/);
 });
+
+test("item add ignores a client price unless the actor holds orders.itemPrice", () => {
+  const source = readFileSync(new URL("../lib/orders/order-item-commands.ts", import.meta.url), "utf8");
+  const add = source.slice(source.indexOf("export async function addOrderItemCommand"));
+  assert.match(add, /const canSetPrice = canChangeOrderItemPrice\(actor, order\);/);
+  assert.match(add, /let unitPrice = canSetPrice \? \(input\.unitPrice \?\? null\) : null;/);
+  assert.match(add, /!canSetPrice && !serviceId && !diagnosticTemplateId[\s\S]*ITEM_PRICE_FORBIDDEN/);
+  assert.ok(add.indexOf("canSetPrice") < add.indexOf("unitPrice ??= service.price"));
+});

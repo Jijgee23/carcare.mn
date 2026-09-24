@@ -44,7 +44,10 @@ import {
   type AppointmentCommandActor,
 } from "@/lib/appointments/appointment-commands";
 import { registerAppointmentByStaffCommand } from "@/lib/appointments/appointment-create-command";
-import { bulkChangeAppointmentCategoryCommand } from "@/lib/appointments/appointment-bulk-commands";
+import {
+  bulkChangeAppointmentCategoryCommand,
+  MAX_BULK_APPOINTMENT_IDS,
+} from "@/lib/appointments/appointment-bulk-commands";
 
 export type AppointmentActionState = {
   ok: boolean;
@@ -301,7 +304,9 @@ export async function rescheduleAppointmentByAccount(
   const requestedRaw = s(formData, "requestedAt");
   if (!id || !requestedRaw) return { ok: false, message: "Буруу хүсэлт." };
 
-  const requestedAt = parseBusinessLocalDateTime(requestedRaw);
+  // Слот сонгогч `toISOString()` (…Z) илгээдэг — createAppointment болон
+  // мобайл reschedule route-тэй адил бүрэн ISO хугацааг задлана.
+  const requestedAt = new Date(requestedRaw);
   if (!Number.isFinite(requestedAt.getTime())) {
     return { ok: false, fieldErrors: { requestedAt: "Огноо буруу." } };
   }
@@ -814,6 +819,9 @@ export async function bulkChangeAppointmentCategoryAction(
 
   const ids = parseIdsJson(s(formData, "appointmentIdsJson"));
   if (ids.length === 0) return { ok: false, message: "Дор хаяж нэг цаг захиалга сонгоно уу." };
+  if (ids.length > MAX_BULK_APPOINTMENT_IDS) {
+    return { ok: false, message: `Нэг хүсэлтэд хамгийн ихдээ ${MAX_BULK_APPOINTMENT_IDS} цаг захиалга сонгоно уу.` };
+  }
 
   const appointments = await prisma.appointment.findMany({
     where: { id: { in: ids }, tenantId: user.tenantId },

@@ -13,6 +13,7 @@ import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { customerLabel } from "@/lib/customers";
 import { requireUser } from "@/lib/auth";
 import { canView, workingBranchScopeId } from "@/lib/auth/roles";
+import { orderReadWhere } from "@/lib/auth/order-access";
 import {
   ORDER_STATUS_BADGE,
   ORDER_STATUS_LABEL,
@@ -56,7 +57,10 @@ export default async function PostpaidOrdersPage({
     tenantId: user.tenantId,
     isPostpaid: true,
     ...(scopeBranchId ? { branchId: scopeBranchId } : {}),
+    // "Зөвхөн өөрийн" эрхтэй ажилтан зөвхөн өөрт оноосон захиалгыг харна.
+    ...orderReadWhere(user),
   };
+  const ownScoped = Object.keys(orderReadWhere(user)).length > 0;
 
   // Машин тус бүрийн нэгтгэл — бүх хугацааг хамарна (шүүлтүүрээс хамаарахгүй).
   // Цуцлагдсан захиалга дүнд орохгүй.
@@ -79,7 +83,9 @@ export default async function PostpaidOrdersPage({
   const sumByVehicle = new Map(sums.map((s) => [s.vehicleId, s]));
 
   const ZERO = new Prisma.Decimal(0);
-  const vehicleRows = links.map((l) => {
+  // Өөрийн хүрээтэй бол зөвхөн өөрийн захиалгатай машинуудыг харуулна.
+  const visibleLinks = ownScoped ? links.filter((l) => sumByVehicle.has(l.vehicle.id)) : links;
+  const vehicleRows = visibleLinks.map((l) => {
     const s = sumByVehicle.get(l.vehicle.id);
     const total = s?._sum.totalAmount ?? ZERO;
     const paid = s?._sum.paidAmount ?? ZERO;

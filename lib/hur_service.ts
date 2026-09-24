@@ -1,3 +1,5 @@
+import { PublicUpstreamError } from "@/lib/action-errors";
+
 /**
  * HUR (МАК-ын vehicle registry) API-тай харьцах wrapper.
  *
@@ -8,6 +10,9 @@
  *
  * Token-г module-level дотор cache хийнэ — request бүрт login дуудахгүй.
  */
+
+/** HUR удаан/гацсан үед хүсэлт хязгааргүй хүлээхгүй (ebarimt-тай ижил зарчим). */
+const HUR_TIMEOUT_MS = 10_000;
 
 export type HurVehicle = {
   plate: string | null;
@@ -51,6 +56,7 @@ export class HurService {
     const url = new URL("login", baseUrl()).toString();
     const response = await fetch(url, {
       method: "POST",
+      signal: AbortSignal.timeout(HUR_TIMEOUT_MS),
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         username: process.env.HUR_USERNAME,
@@ -58,13 +64,13 @@ export class HurService {
       }),
     });
     if (!response.ok) {
-      throw new Error(`HUR login алдаа: ${response.status}`);
+      throw new PublicUpstreamError(`HUR login алдаа: ${response.status}`);
     }
     const data = (await response.json()) as {
       token?: string;
       expiresIn?: number;
     };
-    if (!data.token) throw new Error("HUR login token буцаагаагүй.");
+    if (!data.token) throw new PublicUpstreamError("HUR login token буцаагаагүй.");
     const expiresInSec = typeof data.expiresIn === "number" ? data.expiresIn : 60 * 60;
     cached = {
       token: data.token,
@@ -75,13 +81,14 @@ export class HurService {
 
   static async getVehicle(plate: string): Promise<HurVehicle> {
     const normalized = plate.trim().toUpperCase();
-    if (!normalized) throw new Error("Улсын дугаар хоосон байна.");
+    if (!normalized) throw new PublicUpstreamError("Улсын дугаар хоосон байна.");
 
     let token = await this.getAccessToken();
 
     const doFetch = async () =>
       fetch(new URL("getVehicleInfo", baseUrl()).toString(), {
         method: "POST",
+        signal: AbortSignal.timeout(HUR_TIMEOUT_MS),
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
@@ -100,7 +107,7 @@ export class HurService {
       response = await doFetch();
     }
     if (!response.ok) {
-      throw new Error(`HUR getVehicleInfo алдаа: ${response.status}`);
+      throw new PublicUpstreamError(`HUR getVehicleInfo алдаа: ${response.status}`);
     }
 
     const raw = (await response.json()) as unknown;
@@ -146,14 +153,14 @@ export function ownerKindFromRegnum(
 
 function parseVehicleResponse(raw: unknown, fallbackPlate: string): HurVehicle {
   if (!raw || typeof raw !== "object") {
-    throw new Error("HUR-аас буруу хариу ирлээ.");
+    throw new PublicUpstreamError("HUR-аас буруу хариу ирлээ.");
   }
 
   // Хариу нь { return: { response: {...}, resultCode, resultMessage } } бүтэцтэй
   const ret =
     (raw as { return?: unknown }).return ?? (raw as Record<string, unknown>);
   if (!ret || typeof ret !== "object") {
-    throw new Error("HUR-аас буруу хариу ирлээ.");
+    throw new PublicUpstreamError("HUR-аас буруу хариу ирлээ.");
   }
 
   const block = ret as {
@@ -164,7 +171,7 @@ function parseVehicleResponse(raw: unknown, fallbackPlate: string): HurVehicle {
 
   if (typeof block.resultCode === "number" && block.resultCode !== 0) {
     const msg = block.resultMessage || "HUR алдаа";
-    throw new Error(`HUR: ${msg}`);
+    throw new PublicUpstreamError(`HUR: ${msg}`);
   }
 
   const r = (block.response ?? (raw as Record<string, unknown>)) as Record<

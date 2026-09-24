@@ -1,5 +1,6 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { verifyPassword } from "@/lib/auth/password";
 import {
@@ -8,6 +9,12 @@ import {
 } from "@/lib/auth/system-cookies";
 import { signSystemSession } from "@/lib/auth/system-session";
 import { prisma } from "@/lib/prisma";
+import {
+  consumeRateLimit,
+  ipFromHeaders,
+  LOGIN_WINDOW_MS,
+  RATE_LIMITED_MESSAGE,
+} from "@/lib/rate-limit";
 import { setBypassContext } from "@/lib/tenant-context";
 
 export type SystemActionState = {
@@ -41,6 +48,17 @@ export async function signInSystemAction(
   if (!password) fieldErrors.password = "Нууц үгээ оруулна уу.";
   if (Object.keys(fieldErrors).length > 0) {
     return { ok: false, fieldErrors, values: { email } };
+  }
+
+  // Brute-force хамгаалалт: IP болон имэйлээр тус тусад нь хязгаарлана.
+  const ip = ipFromHeaders(await headers());
+  const byIp = consumeRateLimit(`system-login-ip:${ip}`, { limit: 20, windowMs: LOGIN_WINDOW_MS });
+  const byEmail = consumeRateLimit(`system-login:${email.toLowerCase()}`, {
+    limit: 10,
+    windowMs: LOGIN_WINDOW_MS,
+  });
+  if (!byIp.ok || !byEmail.ok) {
+    return { ok: false, message: RATE_LIMITED_MESSAGE, values: { email } };
   }
 
   // SuperAdmin login нь pre-auth, cross-tenant тул RLS-г тойрч гарна.

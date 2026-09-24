@@ -389,7 +389,7 @@ export default async function SystemTenantDetailPage({
             )}
 
             {activeSub ? (
-              <form
+              <ConfirmForm enabled={false} message=""
                 action={extendSubscriptionAction}
                 className="flex items-center gap-2 mb-4"
               >
@@ -413,7 +413,7 @@ export default async function SystemTenantDetailPage({
                 >
                   Сунгах
                 </button>
-              </form>
+              </ConfirmForm>
             ) : null}
 
             <h3 className="font-plex-mono text-xs uppercase tracking-[0.1em] text-[var(--oc-muted3)] mb-2">
@@ -527,7 +527,10 @@ export default async function SystemTenantDetailPage({
             </ConfirmForm>
           )}
 
-          <form
+          <ConfirmForm
+            title="Байгууллагыг бүрмөсөн устгах"
+            message={`«${tenant.name}» болон түүний БҮХ өгөгдөл бүрмөсөн устана. Сэргээх боломжгүй.`}
+            confirmLabel="Бүрмөсөн устгах"
             action={deleteTenantAction}
             className="rounded-[10px] border border-red-500/30 bg-[var(--oc-panel)] p-5"
           >
@@ -552,7 +555,7 @@ export default async function SystemTenantDetailPage({
             >
               Устгах
             </button>
-          </form>
+          </ConfirmForm>
         </aside>
       </div>
     </div>

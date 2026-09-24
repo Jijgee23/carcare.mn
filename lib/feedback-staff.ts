@@ -7,7 +7,7 @@
 // permission code).
 //
 // Screenshot uploads reuse `lib/storage.ts`'s existing `saveUpload` (same
-// mime/size limits as every other upload path — 2MB, PNG/JPG/WEBP/SVG).
+// mime/size limits as every other upload path — 2MB, PNG/JPG/WEBP).
 
 import type {
   Feedback,
@@ -23,7 +23,7 @@ export type StaffFeedbackActor = { id: string; tenantId: string };
 
 export type FeedbackResult<T> =
   | { ok: true; data: T }
-  | { ok: false; message: string };
+  | { ok: false; message: string; code?: "NOT_FOUND" };
 
 export type StaffFeedbackInput = {
   type: FeedbackType;
@@ -110,7 +110,7 @@ export async function addStaffFeedbackReply(
   const feedback = await prisma.feedback.findFirst({
     where: { id, tenantId: actor.tenantId },
   });
-  if (!feedback) return { ok: false, message: "Олдсонгүй." };
+  if (!feedback) return { ok: false, message: "Олдсонгүй.", code: "NOT_FOUND" };
 
   const feedbackMessage = await prisma.feedbackMessage.create({
     data: {

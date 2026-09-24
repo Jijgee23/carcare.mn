@@ -1,5 +1,7 @@
 "use server";
 
+
+import type { ConfirmActionResult } from "@/lib/confirm-action";
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
@@ -261,7 +263,7 @@ export async function updateCategoryAction(
   return { ok: true, message: "Хадгалагдлаа." };
 }
 
-export async function deleteCategoryAction(formData: FormData): Promise<void> {
+export async function deleteCategoryAction(formData: FormData): Promise<ConfirmActionResult> {
   const user = await authorizeOwner();
   const id = s(formData, "id");
   if (!id) return;

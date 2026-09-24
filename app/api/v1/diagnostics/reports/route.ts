@@ -270,7 +270,7 @@ export async function POST(req: Request) {
 
   const mileage = mileageStr ? Number(mileageStr) : null;
   const mileageVal =
-    mileage !== null && !Number.isNaN(mileage) && mileage >= 0
+    mileage !== null && Number.isFinite(mileage) && mileage >= 0
       ? Math.floor(mileage)
       : null;
 

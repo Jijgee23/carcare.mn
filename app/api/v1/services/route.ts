@@ -4,6 +4,7 @@ import { logAudit } from "@/lib/audit";
 import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
 import { buildMeta, getApiPageInfo } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
+import { serviceRefFieldErrors } from "@/lib/services/service-commands";
 
 const SERVICE_SELECT = {
   id: true,
@@ -63,6 +64,15 @@ export async function GET(req: Request) {
 
 const KINDS = ["LABOR", "GOODS", "DIAGNOSTIC"] as const;
 
+const INVALID = Symbol("invalid");
+
+/** Хоосон бол null; бусад үед 0-ээс их буюу тэнцүү төгсгөлөг тоо (0 нь 0 хэвээр). */
+function optionalNonNegative(value: unknown): number | null | typeof INVALID {
+  if (value === undefined || value === null || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : INVALID;
+}
+
 // POST /api/v1/services
 export async function POST(req: Request) {
   const auth = await requireApiUser(req);
@@ -86,8 +96,24 @@ export async function POST(req: Request) {
     return jsonError(400, "Нэр заавал шаардлагатай");
 
   const priceNum = Number(price);
-  if (isNaN(priceNum) || priceNum < 0)
+  if (!Number.isFinite(priceNum) || priceNum < 0)
     return jsonError(400, "Үнэ буруу байна");
+  const costPriceNum = optionalNonNegative(costPrice);
+  const stockNum = optionalNonNegative(stock);
+  const durationNum = optionalNonNegative(durationValue);
+  if (costPriceNum === INVALID) return jsonError(400, "Өртөг буруу байна");
+  if (stockNum === INVALID) return jsonError(400, "Үлдэгдэл буруу байна");
+  if (durationNum === INVALID) return jsonError(400, "Хугацаа буруу байна");
+
+  const refs = {
+    unitId: typeof unitId === "string" && unitId ? unitId : null,
+    categoryId: typeof categoryId === "string" && categoryId ? categoryId : null,
+    durationUnitId: typeof durationUnitId === "string" && durationUnitId ? durationUnitId : null,
+  };
+  const refErrors = await serviceRefFieldErrors(auth.user.tenantId, refs);
+  if (Object.keys(refErrors).length > 0) {
+    return jsonError(400, Object.values(refErrors)[0], { fieldErrors: refErrors });
+  }
 
   const service = await prisma.service.create({
     data: {
@@ -95,14 +121,14 @@ export async function POST(req: Request) {
       name: (name as string).trim(),
       code: typeof code === "string" && code.trim() ? code.trim() : null,
       price: priceNum,
-      costPrice: costPrice !== undefined && costPrice !== "" ? Number(costPrice) || null : null,
-      stock: stock !== undefined && stock !== "" ? Number(stock) || null : null,
+      costPrice: costPriceNum,
+      stock: stockNum,
       description: typeof description === "string" && description.trim() ? description.trim() : null,
       isActive: isActive !== false,
-      unitId: typeof unitId === "string" && unitId ? unitId : null,
-      categoryId: typeof categoryId === "string" && categoryId ? categoryId : null,
-      durationValue: durationValue !== undefined && durationValue !== "" ? Number(durationValue) || null : null,
-      durationUnitId: typeof durationUnitId === "string" && durationUnitId ? durationUnitId : null,
+      unitId: refs.unitId,
+      categoryId: refs.categoryId,
+      durationValue: durationNum,
+      durationUnitId: refs.durationUnitId,
       tenantId: auth.user.tenantId,
     },
     select: SERVICE_SELECT,

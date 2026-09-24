@@ -1,4 +1,4 @@
-import { jsonError, jsonOk } from "@/lib/api";
+import { enforceRateLimit, jsonError, jsonOk, PUBLIC_CATALOG_RATE_LIMIT } from "@/lib/api";
 import { resolvePublicAvailability } from "@/lib/public-availability";
 import { setBypassContext } from "@/lib/tenant-context";
 
@@ -13,6 +13,8 @@ export async function GET(
   req: Request,
   ctx: { params: Promise<{ branchId: string }> },
 ) {
+  const limited = enforceRateLimit(req, "public-catalog", PUBLIC_CATALOG_RATE_LIMIT);
+  if (limited) return limited;
   setBypassContext();
   const { branchId } = await ctx.params;
   const sp = new URL(req.url).searchParams;

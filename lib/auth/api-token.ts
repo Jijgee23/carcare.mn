@@ -20,6 +20,9 @@ export type ApiTokenPayload = {
 const client = createJwtSession<ApiTokenPayload>({
   // Анхдагч нь session-тэй ижил secret-г ашиглана
   secretEnvVars: ["API_TOKEN_SECRET", "SESSION_SECRET"],
+  // Web session-той secret давхцаж болох тул tag-аар ялгана — эс бөгөөс
+  // mobile access token-ийг web cookie болгон ашиглах боломжтой байсан.
+  tag: "api",
   maxAgeSeconds: ACCESS_TOKEN_MAX_AGE_SECONDS,
   parse(payload) {
     if (!payload.userId || !payload.tenantId) return null;

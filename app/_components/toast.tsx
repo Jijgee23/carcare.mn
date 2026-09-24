@@ -45,6 +45,11 @@ export function useToast(): ToastContextValue {
   return ctx;
 }
 
+/** ToastProvider-гүй газар (жишээ нь нийтийн хуудас) null буцаана. */
+export function useOptionalToast(): ToastContextValue | null {
+  return useContext(ToastContext);
+}
+
 const DEFAULT_DURATION = 4000;
 
 function makeId(): string {

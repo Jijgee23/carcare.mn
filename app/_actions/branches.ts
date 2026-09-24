@@ -1,8 +1,10 @@
 "use server";
 
+
+import { isForeignKeyViolation } from "@/lib/prisma-errors";
+import type { ConfirmActionResult } from "@/lib/confirm-action";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canEdit } from "@/lib/auth/roles";
@@ -524,7 +526,7 @@ export async function toggleBranchActiveAction(formData: FormData): Promise<void
   revalidatePath("/dashboard");
 }
 
-export async function deleteBranchAction(formData: FormData): Promise<void> {
+export async function deleteBranchAction(formData: FormData): Promise<ConfirmActionResult> {
   const user = await authorize("delete");
   const id = s(formData, "id");
   if (!id) return;
@@ -535,22 +537,32 @@ export async function deleteBranchAction(formData: FormData): Promise<void> {
   });
   if (!target) return;
   if (target.isPrimary) {
-    throw new Error(
-      "Үндсэн салбарыг устгах боломжгүй. Эхлээд өөр салбарыг үндсэн болгоно уу.",
-    );
+    return { error: "Үндсэн салбарыг устгах боломжгүй. Эхлээд өөр салбарыг үндсэн болгоно уу." };
   }
 
+  // User.branchId нь onDelete: SetNull тул DB зогсоохгүй — ажилтнууд салбаргүй
+  // болж, ээлжийн хуваарь нь cascade-аар устна. Тиймээс апп түвшинд хориглоно.
+  // Тоолох болон устгахыг нэг transaction-д хийж, хооронд нь ажилтан
+  // оноогдохоос сэргийлнэ.
+  let employeeCount = 0;
   try {
-    await prisma.branch.delete({
-      where: { id, tenantId: user.tenantId },
+    employeeCount = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Branch" WHERE id = ${id} AND "tenantId" = ${user.tenantId} FOR UPDATE`;
+      const count = await tx.user.count({ where: { branchId: id, tenantId: user.tenantId } });
+      if (count > 0) return count;
+      await tx.branch.delete({ where: { id, tenantId: user.tenantId } });
+      return 0;
     });
   } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") {
-      throw new Error(
-        "Энэ салбар засварын хуудас/ажилтантай холбогдсон тул устгах боломжгүй.",
-      );
+    if (isForeignKeyViolation(e)) {
+      return { error: "Энэ салбарт засварын хуудас/цаг захиалга бүртгэлтэй тул устгах боломжгүй." };
     }
     throw e;
+  }
+  if (employeeCount > 0) {
+    return {
+      error: `Энэ салбарт ${employeeCount} ажилтан бүртгэлтэй. Эхлээд тэднийг өөр салбар руу шилжүүлнэ үү.`,
+    };
   }
 
   await logAudit({

@@ -1,8 +1,16 @@
 import { NextResponse } from "next/server";
+import { PublicUpstreamError } from "@/lib/action-errors";
 import { type ApiUser, getApiUserFromRequest } from "@/lib/auth/api-token";
 import type { PermissionCode } from "@/lib/auth/permissions";
 import { hasPermission } from "@/lib/auth/roles";
 import { clientIp, consumeRateLimit } from "@/lib/rate-limit";
+
+/** HUR/ebarimt алдааг 502 болгоно — зөвхөн PublicUpstreamError-ийн мессежийг ил гаргана. */
+export function upstreamErrorResponse(label: string, e: unknown, fallback: string) {
+  if (e instanceof PublicUpstreamError) return jsonError(502, e.message);
+  console.error(`[${label}]`, e);
+  return jsonError(502, fallback);
+}
 
 export function jsonError(status: number, message: string, extra?: object) {
   return NextResponse.json({ error: message, ...extra }, { status });
@@ -64,6 +72,9 @@ export async function requireApiUser(
  *   const limited = enforceRateLimit(req, "api-login", { limit: 10, windowMs: 60_000 });
  *   if (limited) return limited;
  */
+/** Нийтэд нээлттэй catalog/discovery GET-үүдийн IP тутмын хязгаар. */
+export const PUBLIC_CATALOG_RATE_LIMIT = { limit: 120, windowMs: 60_000 };
+
 export function enforceRateLimit(
   req: Request,
   bucket: string,

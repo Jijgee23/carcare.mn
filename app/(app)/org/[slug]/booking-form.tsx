@@ -125,6 +125,8 @@ export function BookingForm({
       // тул reload дуудах шаардлагагүй (хуучин instance дээр дуудвал
       // unmount-ийн дараах setState анхааруулга үүсгэнэ).
       setBranchId(compatible.length === 1 ? compatible[0].id : "");
+      // Хуучин салбарын цаг шинэ салбарт хүчингүй.
+      setSelectedIso("");
     } else {
       timePickerRef.current?.reload(next);
     }
@@ -217,7 +219,9 @@ export function BookingForm({
           {/* Дэвийн шийдвэрээр: ангилал сонгогдоогүй бол салбар сонгох
               хэсгийг нуана — эхлээд орж ирсэн салбар (initialBranchId эсвэл
               цорын ганц салбар) хэвээрээ идэвхтэй хэрэглэгдэнэ. */}
-          {branches.length > 1 && categoryIds.length > 0 ? (
+          {/* Салбар хараахан сонгогдоогүй бол (олон салбартай, ангилалгүй
+              байгууллага гэх мэт) сонгуулахгүй бол илгээх боломжгүй болно. */}
+          {branches.length > 1 && (categoryIds.length > 0 || !branchId) ? (
             <Field label="Салбар" htmlFor="branchId" error={fe.branchId}>
               {compatibleBranches.length === 0 ? (
                 <p className="text-xs text-red-400 light:text-red-600">

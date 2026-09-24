@@ -207,7 +207,7 @@ test("customers.notify is a standalone permission, not part of the customers CRU
   assert.match(permissions, /"customers\.notify"/);
   // It must be listed under StandaloneCode, not produced by buildCrudPermissions
   // (which only ever emits `${resource}.${view|create|edit|delete}`).
-  assert.doesNotMatch(permissions, /customers\.notify.*"(view|create|edit|delete)"/s);
+  assert.doesNotMatch(permissions, /customers\.notify[\s\S]*"(view|create|edit|delete)"/);
   const standaloneSection = permissions.slice(
     permissions.indexOf("type StandaloneCode"),
     permissions.indexOf(";", permissions.indexOf("type StandaloneCode")),

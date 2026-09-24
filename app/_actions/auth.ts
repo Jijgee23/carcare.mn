@@ -27,6 +27,12 @@ import {
   revokeUserSession,
 } from "@/lib/auth/user-session";
 import { prisma } from "@/lib/prisma";
+import {
+  consumeRateLimit,
+  ipFromHeaders,
+  LOGIN_WINDOW_MS,
+  RATE_LIMITED_MESSAGE,
+} from "@/lib/rate-limit";
 import { setBypassContext, setTenantContext } from "@/lib/tenant-context";
 import { sendOtpSms } from "@/lib/sms";
 import { saveUpload } from "@/lib/storage";
@@ -429,7 +435,14 @@ export async function signUpAction(
     return { ok: false, message: msg, values };
   }
 
-  const token = await signSession(session);
+  // Web session-ийг DB-д бүртгэж, JWT-д sid шигтгэнэ (revoke/төхөөрөмжийн жагсаалт).
+  const h = await headers();
+  const userSession = await createUserSession({
+    userId: session.userId,
+    userAgent: h.get("user-agent"),
+    ip: h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || null,
+  });
+  const token = await signSession({ ...session, sid: userSession.id });
   await setSessionCookie(token);
 
   try {
@@ -538,6 +551,12 @@ export async function signInAction(
   if (!isEmail(email)) fieldErrors.email = "Имэйл хаяг буруу.";
   if (!password) fieldErrors.password = "Нууц үгээ оруулна уу.";
   if (Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors };
+
+  // Account-ын түгжээнээс гадна IP-ээр — олон имэйл дээр тархсан оролдлогыг хаана.
+  const loginIp = ipFromHeaders(await headers());
+  if (!consumeRateLimit(`web-login-ip:${loginIp}`, { limit: 30, windowMs: LOGIN_WINDOW_MS }).ok) {
+    return { ok: false, message: RATE_LIMITED_MESSAGE };
+  }
 
   // Нэвтрэхээс өмнө — session/tenant хараахан байхгүй.
   setBypassContext();

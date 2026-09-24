@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 import { requireUser } from "@/lib/auth";
+import { canView } from "@/lib/auth/roles";
 import { formatAddress, formatWorkDays, formatWorkHoursSummary } from "@/lib/branches";
 import { prisma } from "@/lib/prisma";
 import { buildBranchWhere, type BranchStatusFilter } from "../data";
@@ -8,6 +9,7 @@ import { buildBranchWhere, type BranchStatusFilter } from "../data";
 // Одоогийн шүүлтүүртэй нийцсэн салбаруудыг .xlsx болгож татна.
 export async function GET(req: Request) {
   const user = await requireUser();
+  if (!canView(user, "branches")) return new Response("Forbidden", { status: 403 });
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q") ?? "";
   const statusParam = searchParams.get("status");

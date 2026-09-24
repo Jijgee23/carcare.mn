@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import {
   type NotificationItem,
@@ -34,6 +35,7 @@ export async function markStaffNotificationRead(id: string): Promise<number> {
     where: { id, userId: user.id, readAt: null },
     data: { readAt: new Date() },
   });
+  revalidatePath("/dashboard/notifications");
   return prisma.notification.count({
     where: { userId: user.id, readAt: null },
   });
@@ -45,5 +47,6 @@ export async function markAllStaffNotificationsRead(): Promise<number> {
     where: { userId: user.id, readAt: null },
     data: { readAt: new Date() },
   });
+  revalidatePath("/dashboard/notifications");
   return 0;
 }

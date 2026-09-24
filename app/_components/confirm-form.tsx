@@ -9,8 +9,13 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { unstable_rethrow } from "next/navigation";
+import { useOptionalToast } from "@/app/_components/toast";
+import type { ConfirmActionResult } from "@/lib/confirm-action";
 
-type ServerAction = (formData: FormData) => void | Promise<void>;
+type ServerAction = (formData: FormData) => ConfirmActionResult | Promise<ConfirmActionResult>;
+
+const FALLBACK_ERROR = "Үйлдэл амжилтгүй боллоо. Дахин оролдоно уу.";
 
 function ConfirmationDialog({
   open,
@@ -47,11 +52,13 @@ function ConfirmationDialog({
         type="button"
         tabIndex={-1}
         aria-label="Хаах"
+        data-confirm-dialog
         onClick={onCancel}
         className="fixed inset-0 z-[100] cursor-default bg-black/60 backdrop-blur-sm"
       />
       <div
         role="alertdialog"
+        data-confirm-dialog
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={messageId}
@@ -129,6 +136,27 @@ export function ConfirmForm({
   const [open, setOpen] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const confirmedRef = useRef(false);
+  const toast = useOptionalToast();
+
+  // Action-ийн буцаасан `{ error }`-ийг toast-оор харуулна. Санаандгүй throw
+  // (production-д мессеж нь нуугддаг) error хуудас руу унахын оронд ерөнхий
+  // мессеж болно. redirect/notFound-г Next-д буцааж шиднэ.
+  async function run(formData: FormData) {
+    let message: string | null = null;
+    try {
+      const result = await action(formData);
+      if (result && typeof result === "object" && result.error) message = result.error;
+    } catch (error) {
+      unstable_rethrow(error);
+      message = FALLBACK_ERROR;
+    }
+    // Action дууссаны дараа л хаана — submit үед хаавал (жишээ нь row menu)
+    // form unmount болж action огт илгээгдэхгүй байсан.
+    onSubmitConfirmed?.();
+    if (!message) return;
+    if (toast) toast.error(message);
+    else window.alert(message);
+  }
 
   function close() {
     setOpen(false);
@@ -137,7 +165,6 @@ export function ConfirmForm({
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     if (!enabled || confirmedRef.current) {
       confirmedRef.current = false;
-      onSubmitConfirmed?.();
       return;
     }
     event.preventDefault();
@@ -152,7 +179,7 @@ export function ConfirmForm({
 
   return (
     <>
-      <form ref={formRef} action={action} className={className} onSubmit={onSubmit}>
+      <form ref={formRef} action={run} className={className} onSubmit={onSubmit}>
         {children}
       </form>
       <ConfirmationDialog

@@ -1,5 +1,7 @@
 "use server";
 
+
+import type { ConfirmActionResult } from "@/lib/confirm-action";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Prisma } from "@/app/generated/prisma/client";
@@ -183,12 +185,12 @@ export async function toggleEmployeeActiveAction(formData: FormData): Promise<vo
 
 // --- DELETE ---------------------------------------------------------------
 
-export async function deleteEmployeeAction(formData: FormData): Promise<void> {
+export async function deleteEmployeeAction(formData: FormData): Promise<ConfirmActionResult> {
   const me = await authorize("delete");
   const result = await deleteEmployee(prisma, me, formData);
   if ("noop" in result) return;
   if (!result.ok) {
-    throw new Error(result.error);
+    return { error: result.error };
   }
 
   await logAudit({
@@ -207,19 +209,20 @@ export async function deleteEmployeeAction(formData: FormData): Promise<void> {
 /** `deleteEmployeeAction`-той ижил, гэхдээ ажилтны ДЭЛГЭРЭНГҮЙ хуудаснаас
  * дуудагдана — устгасны дараа тэр хуудас өөрөө байхгүй болдог тул жагсаалт
  * руу буцаана. */
-export async function deleteEmployeeAndReturnAction(formData: FormData): Promise<void> {
-  await deleteEmployeeAction(formData);
+export async function deleteEmployeeAndReturnAction(formData: FormData): Promise<ConfirmActionResult> {
+  const result = await deleteEmployeeAction(formData);
+  if (result?.error) return result;
   redirect("/dashboard/employees");
 }
 
 // --- RESET PASSWORD ---------------------------------------------------------
 
-export async function resetEmployeePasswordAction(formData: FormData): Promise<void> {
+export async function resetEmployeePasswordAction(formData: FormData): Promise<ConfirmActionResult> {
   const me = await authorize("edit");
   const result = await resetEmployeePassword(prisma, me, formData);
   if ("noop" in result) return;
   if (!result.ok) {
-    throw new Error(result.error);
+    return { error: result.error };
   }
 
   await logAudit({

@@ -59,10 +59,17 @@ async function run(req: Request) {
     // at write time). If another concurrent run (or a staff action) already
     // changed it, `count` is 0 and we skip — no double-cancel, no stale
     // audit/notification for a row we didn't touch.
-    const result = await prisma.appointment.updateMany({
-      where: { id: a.id, status: "PENDING", requestedAt: { lt: now } },
-      data: { status: "CANCELLED" },
-    });
+    // Нэг мөрийн DB алдаа үлдсэн batch-ийг зогсоохгүй.
+    let result: { count: number };
+    try {
+      result = await prisma.appointment.updateMany({
+        where: { id: a.id, status: "PENDING", requestedAt: { lt: now } },
+        data: { status: "CANCELLED" },
+      });
+    } catch (e) {
+      console.warn("[cron] expire-appointments update failed:", a.id, e);
+      continue;
+    }
     if (result.count !== 1) continue;
 
     await logAudit({

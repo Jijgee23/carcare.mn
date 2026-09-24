@@ -75,6 +75,15 @@ export async function registerDevice(
     superAdminId: owner.superAdminId ?? null,
     lastSeenAt: new Date(),
   };
+  // Нэг FCM token нэг л эзэнтэй байна: өөр мөрөнд (жнь logout хийгээгүй
+  // хуваалцсан төхөөрөмж) үлдсэн ижил token-ийг цэвэрлэнэ — эс бөгөөс тэр
+  // төхөөрөмж хоёр өөр хэрэглэгчийн push-ийг хүлээн авна.
+  if (data.firebaseToken) {
+    await prisma.device.updateMany({
+      where: { firebaseToken: data.firebaseToken, NOT: { deviceId: input.deviceId } },
+      data: { firebaseToken: null },
+    });
+  }
   return prisma.device.upsert({
     where: { deviceId: input.deviceId },
     create: { deviceId: input.deviceId, ...data },

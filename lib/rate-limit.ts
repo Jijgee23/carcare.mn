@@ -58,10 +58,20 @@ export function consumeRateLimit(
 
 /** Request-ээс клиентийн IP-г reverse-proxy header-үүдээс тогтооно. */
 export function clientIp(req: Request): string {
-  const xff = req.headers.get("x-forwarded-for");
+  return ipFromHeaders(req.headers);
+}
+
+/** Server Action-д (`await headers()`) зориулсан хувилбар. */
+export function ipFromHeaders(headers: Headers): string {
+  const xff = headers.get("x-forwarded-for");
   if (xff) {
     const first = xff.split(",")[0]?.trim();
     if (first) return first;
   }
-  return req.headers.get("x-real-ip")?.trim() || "unknown";
+  return headers.get("x-real-ip")?.trim() || "unknown";
 }
+
+/** Нэвтрэлтийн оролдлогын нийтлэг цонх — 15 минут. */
+export const LOGIN_WINDOW_MS = 15 * 60_000;
+export const RATE_LIMITED_MESSAGE =
+  "Хэт олон оролдлого хийлээ. Түр хүлээгээд дахин оролдоно уу.";

@@ -265,6 +265,12 @@ export async function resolveVehicleForOwner(
   const attrs = input;
 
   const where = input.owner ? ownerMatchWhere(plate, input.owner) : null;
+  // Vehicle нь глобал (unique constraint-гүй) тул ижил дугаарын зэрэгцээ
+  // "шалгаад үүсгэх" хоёр хүсэлт давхар мөр үүсгэж болно. Дугаараар advisory
+  // xact lock авч цувуулна — транзакц дуусахад автоматаар суллагдана.
+  if (where) {
+    await client.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`vehicle-plate:${plate}`}))`;
+  }
   const existing = where
     ? await client.vehicle.findFirst({
         where,

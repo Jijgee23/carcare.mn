@@ -1,4 +1,4 @@
-import { jsonOk } from "@/lib/api";
+import { enforceRateLimit, jsonOk, PUBLIC_CATALOG_RATE_LIMIT } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 import { setBypassContext } from "@/lib/tenant-context";
 
@@ -7,7 +7,9 @@ import { setBypassContext } from "@/lib/tenant-context";
  * нээлттэй, discover дээр байгууллага/салбарыг бизнесийн төрлөөр шүүхэд
  * зориулав — харах: /api/v1/app/orgs-ийн branch.tagIds).
  */
-export async function GET() {
+export async function GET(req: Request) {
+  const limited = enforceRateLimit(req, "public-catalog", PUBLIC_CATALOG_RATE_LIMIT);
+  if (limited) return limited;
   setBypassContext();
   // Ямар ч салбарт холбогдоогүй шошгыг ШҮҮНЭ ГАРГАНА — сонговол баталгаатай
   // хоосон жагсаалт буцаах сонголтыг харуулахгүй (харах: service-keys

@@ -202,14 +202,14 @@ test("POST /api/v1/diagnostics/reports computes and stores maxSeverity on both d
   const { post, full } = reportsRouteSections();
   const occurrences = post.match(/maxSeverity:\s*computeReportSeverity\(schema,\s*validated\)/g) ?? [];
   assert.equal(occurrences.length, 2, "both the itemId-transaction path and the plain path must set maxSeverity");
-  assert.match(full, /import\s*\{[^}]*computeReportSeverity[^}]*\}\s*from\s*"@\/lib\/diagnostics"/s);
+  assert.match(full, /import\s*\{[^}]*computeReportSeverity[^}]*\}\s*from\s*"@\/lib\/diagnostics"/);
 });
 
 // --- Source-pattern: isOrderLocked/canFillDiagnostics replace the old inline check
 
 test("reports/route.ts imports isOrderLocked and canFillDiagnostics from @/lib/orders", () => {
   const { full } = reportsRouteSections();
-  assert.match(full, /import\s*\{[^}]*canFillDiagnostics[^}]*isOrderLocked[^}]*\}\s*from\s*"@\/lib\/orders"|import\s*\{[^}]*isOrderLocked[^}]*canFillDiagnostics[^}]*\}\s*from\s*"@\/lib\/orders"/s);
+  assert.match(full, /import\s*\{[^}]*canFillDiagnostics[^}]*isOrderLocked[^}]*\}\s*from\s*"@\/lib\/orders"|import\s*\{[^}]*isOrderLocked[^}]*canFillDiagnostics[^}]*\}\s*from\s*"@\/lib\/orders"/);
 });
 
 test("reports/route.ts no longer hand-rolls the order.status !== \"IN_PROGRESS\" check anywhere", () => {

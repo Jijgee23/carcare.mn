@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import {
   type AppointmentActionState,
   rescheduleAppointmentByAccount,
@@ -37,13 +37,17 @@ export function AccountRescheduleControl({
 
   if (state !== prevState) {
     setPrevState(state);
-    if (state?.ok) {
-      toast.success(state.message ?? "Амжилттай.");
-      setEditing(false);
-    } else if (state) {
-      toast.error(state.message ?? "Алдаа гарлаа.");
-    }
+    if (state?.ok) setEditing(false);
   }
+
+  // Toast нь ToastProvider-ийн state тул render биш effect дотор дуудна.
+  const toasted = useRef<AppointmentActionState>(null);
+  useEffect(() => {
+    if (!state || state === toasted.current) return;
+    toasted.current = state;
+    if (state.ok) toast.success(state.message ?? "Амжилттай.");
+    else toast.error(state.message ?? "Алдаа гарлаа.");
+  }, [state, toast]);
 
   if (!editing) {
     return (

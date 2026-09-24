@@ -1,5 +1,7 @@
 "use server";
 
+
+import type { ConfirmActionResult } from "@/lib/confirm-action";
 import { revalidatePath } from "next/cache";
 import { hashPassword } from "@/lib/auth/password";
 import { requireSuperAdmin } from "@/lib/auth/system";
@@ -69,7 +71,7 @@ export async function createSuperAdminAction(
  */
 export async function setSuperAdminActiveAction(
   formData: FormData,
-): Promise<void> {
+): Promise<ConfirmActionResult> {
   const actor = await requireSuperAdmin();
   const id = s(formData, "id");
   const active = s(formData, "active") === "1";
@@ -77,15 +79,13 @@ export async function setSuperAdminActiveAction(
 
   if (!active) {
     if (id === actor.id) {
-      throw new Error("Өөрийгөө идэвхгүй болгож болохгүй.");
+      return { error: "Өөрийгөө идэвхгүй болгож болохгүй." };
     }
     const activeCount = await prisma.superAdmin.count({
       where: { isActive: true },
     });
     if (activeCount <= 1) {
-      throw new Error(
-        "Хамгийн сүүлийн идэвхтэй admin-ыг идэвхгүй болгож болохгүй.",
-      );
+      return { error: "Хамгийн сүүлийн идэвхтэй admin-ыг идэвхгүй болгож болохгүй." };
     }
   }
 

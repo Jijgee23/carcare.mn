@@ -81,13 +81,13 @@ test("diagnostics/reports/route.ts exports GET and POST", () => {
 test("diagnostic report creation guards linked orders before report creation", async () => {
   const source = await readFile(new URL("../app/api/v1/diagnostics/reports/route.ts", import.meta.url), "utf8");
   const orderRead = source.indexOf("status: true");
-  const statusGuard = source.indexOf('order.status !== "IN_PROGRESS"');
+  const statusGuard = source.indexOf("canFillDiagnostics(orderStatus)");
   const reportCreate = source.indexOf("prisma.diagnosticReport.create");
   assert.ok(orderRead >= 0, "linked order read must include status");
   assert.ok(statusGuard > orderRead, "status guard must use the linked order status");
   assert.ok(reportCreate > statusGuard, "status guard must run before report creation");
   assert.match(source.slice(statusGuard, reportCreate), /ORDER_STATUS_INVALID/);
-  assert.match(source, /if \(itemId\)[\s\S]*?item\.order\.status !== "IN_PROGRESS"/);
+  assert.match(source, /if \(itemId\)[\s\S]*?canFillDiagnostics\(itemOrderStatus\)/);
   assert.match(source, /tenantVisibleTemplateWhere\(auth\.user\.tenantId\)/);
   assert.match(source, /DIAGNOSTIC_TEMPLATE_MISMATCH/);
 

@@ -1,5 +1,7 @@
 "use server";
 
+
+import type { ConfirmActionResult } from "@/lib/confirm-action";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Prisma } from "@/app/generated/prisma/client";
@@ -290,7 +292,7 @@ export async function updateTemplateAction(
   redirect("/dashboard/services/diagnostics");
 }
 
-export async function deleteTemplateAction(formData: FormData): Promise<void> {
+export async function deleteTemplateAction(formData: FormData): Promise<ConfirmActionResult> {
   const user = await authorize("delete");
   const id = s(formData, "id");
   if (!id) return;
@@ -344,6 +346,15 @@ export async function duplicateTemplateAction(formData: FormData): Promise<void>
   });
   if (!src) return;
 
+  // Системийн загварын ангилал өөр tenant-ынх байж болзошгүй — зөвхөн
+  // энэ tenant-ын ангилал бол хадгална.
+  const categoryId = src.categoryId
+    ? (await prisma.category.findFirst({
+        where: { id: src.categoryId, tenantId: user.tenantId },
+        select: { id: true },
+      }))?.id ?? null
+    : null;
+
   const copy = await prisma.diagnosticTemplate.create({
     data: {
       name: `${src.name} (хуулбар)`,
@@ -351,6 +362,9 @@ export async function duplicateTemplateAction(formData: FormData): Promise<void>
       type: src.type,
       isActive: src.isActive,
       schema: src.schema as object,
+      categoryId,
+      price: src.price,
+      durationMin: src.durationMin,
       version: 1,
       tenantId: user.tenantId,
       createdById: user.id,

@@ -65,9 +65,10 @@ export async function GET(req: Request) {
   const where: Prisma.ServiceOrderWhereInput = {
     // Дууссан AND цуцлагдсан ажлыг харуулна (D-085) — SCHEDULED/IN_PROGRESS
     // хараахан идэвхтэй, /api/v1/app/appointments дээр харагдана.
-    // Төлбөрийн төлөв нэмэлт шүүлт биш: төлөгдөөгүй ч дууссан ажил энд
-    // харагдана (chip нь unpaid/partial/paid-г тусад нь харуулна).
+    // Дууссан ч бүрэн төлөгдөөгүй ажил энд биш — /api/v1/app/appointments
+    // дээр үлдэнэ; бүрэн төлөгдмөгц энд шилжинэ (веб /account/history-тэй ижил).
     status: { in: ["COMPLETED", "CANCELLED"] },
+    NOT: { status: "COMPLETED", paymentStatus: { not: "PAID" } },
     OR: owned,
   };
   if (vehicleIdFilter) where.vehicleId = vehicleIdFilter;
@@ -116,6 +117,7 @@ export async function GET(req: Request) {
   const facetOrders = await prisma.serviceOrder.findMany({
     where: {
       status: { in: ["COMPLETED", "CANCELLED"] },
+      NOT: { status: "COMPLETED", paymentStatus: { not: "PAID" } },
       OR: owned,
     },
     select: { completedAt: true },

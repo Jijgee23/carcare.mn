@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { confirmAppointmentPayment } from "@/lib/appointment-payments";
+import { enforceRateLimit } from "@/lib/api";
 import { setBypassContext } from "@/lib/tenant-context";
 
 /**
@@ -19,6 +20,10 @@ async function handle(req: Request): Promise<NextResponse> {
       status: 400,
     });
   }
+  // Хуурамч дуудлага төлбөр идэвхжүүлэхгүй ч QPay.checkPayment-ийг дахин дахин
+  // өдөөж upstream квотыг шавхахаас сэргийлнэ. QPay-ийн IP хуваалцагдсан тул id-аар.
+  const limited = enforceRateLimit(req, "qpay-cb-appointment", { limit: 10, windowMs: 60_000 }, appointmentId);
+  if (limited) return limited;
   // tenantId нь appointmentId-аар өөрөө DB-ээс уншигдах хүртэл тодорхойгүй.
   setBypassContext();
 

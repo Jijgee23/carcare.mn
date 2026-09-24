@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { requireAccount } from "@/lib/auth/account";
 import {
   type NotificationItem,
@@ -44,6 +45,7 @@ export async function markAccountNotificationRead(id: string): Promise<number> {
     where: { id, accountId: account.id, readAt: null },
     data: { readAt: new Date() },
   });
+  revalidatePath("/account/notifications");
   return prisma.notification.count({
     where: { accountId: account.id, readAt: null },
   });
@@ -56,5 +58,6 @@ export async function markAllAccountNotificationsRead(): Promise<number> {
     where: { accountId: account.id, readAt: null },
     data: { readAt: new Date() },
   });
+  revalidatePath("/account/notifications");
   return 0;
 }

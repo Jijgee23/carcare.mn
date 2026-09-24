@@ -286,6 +286,9 @@ export function StandaloneDiagnosticForm({
                 accept="image/png,image/jpeg,image/webp"
                 className="block w-full text-sm text-[var(--oc-muted2)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--oc-panel2)] file:px-3 file:py-2 file:text-sm file:font-medium file:text-[var(--oc-ink2)] hover:file:bg-[var(--oc-line)] file:cursor-pointer"
               />
+              <p className="text-[11px] text-[var(--oc-muted4)] mt-1.5">
+                PNG, JPG, WEBP · хамгийн ихдээ 2MB
+              </p>
             </Field>
           </section>
         </>
@@ -406,18 +409,27 @@ function FieldInputs({
           className="block w-full text-sm text-[var(--oc-muted2)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--oc-panel2)] file:px-3 file:py-2 file:text-sm file:font-medium file:text-[var(--oc-ink2)] hover:file:bg-[var(--oc-line)] file:cursor-pointer"
         />
       ) : null}
-      {item.type === "photo" && photoCount > 0 ? (
-        <p className="text-xs text-[var(--oc-muted3)]">{photoCount} зураг сонгогдсон</p>
+      {item.type === "photo" ? (
+        <p className="text-[11px] text-[var(--oc-muted4)]">
+          {photoCount > 0
+            ? `${photoCount} зураг сонгогдсон`
+            : "PNG, JPG, WEBP · хамгийн ихдээ 2MB"}
+        </p>
       ) : null}
 
       {item.type === "signature" ? (
-        <input
-          name={`signatures[${fieldId}]`}
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          required={item.required}
-          className="block w-full text-sm text-[var(--oc-muted2)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--oc-panel2)] file:px-3 file:py-2 file:text-sm file:font-medium file:text-[var(--oc-ink2)] hover:file:bg-[var(--oc-line)] file:cursor-pointer"
-        />
+        <>
+          <input
+            name={`signatures[${fieldId}]`}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            required={item.required}
+            className="block w-full text-sm text-[var(--oc-muted2)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--oc-panel2)] file:px-3 file:py-2 file:text-sm file:font-medium file:text-[var(--oc-ink2)] hover:file:bg-[var(--oc-line)] file:cursor-pointer"
+          />
+          <p className="text-[11px] text-[var(--oc-muted4)]">
+            PNG, JPG, WEBP · хамгийн ихдээ 2MB
+          </p>
+        </>
       ) : null}
 
       <input

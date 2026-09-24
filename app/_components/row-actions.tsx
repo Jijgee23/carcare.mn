@@ -9,6 +9,7 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 import { ConfirmForm } from "@/app/_components/confirm-form";
+import type { ConfirmActionResult } from "@/lib/confirm-action";
 
 /* Жагсаалтын мөрийн «⋯» үйлдлийн цэс. Аюултай үйлдлүүдийг (устгах г.м)
    мөрөн дээр ил байлгахын оронд энд нууна. Цэс нь position:fixed тул
@@ -38,6 +39,9 @@ export function RowActionsMenu({ children }: { children: ReactNode }) {
     function onDoc(e: MouseEvent) {
       const t = e.target as Node;
       if (menuRef.current?.contains(t) || btnRef.current?.contains(t)) return;
+      // Цэсний item-ийн баталгаажуулах цонх body руу portal-оор гарна — түүн
+      // дээр дарахад цэс хаагдвал form unmount болж action илгээгдэхгүй.
+      if (t instanceof Element && t.closest("[data-confirm-dialog]")) return;
       close();
     }
     function onKey(e: KeyboardEvent) {
@@ -97,7 +101,7 @@ export function RowMenuFormItem({
   destructive,
   children,
 }: {
-  action: (formData: FormData) => void | Promise<void>;
+  action: (formData: FormData) => ConfirmActionResult | Promise<ConfirmActionResult>;
   hidden?: Record<string, string>;
   confirmMessage?: string;
   destructive?: boolean;

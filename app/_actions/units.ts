@@ -1,5 +1,7 @@
 "use server";
 
+
+import type { ConfirmActionResult } from "@/lib/confirm-action";
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
@@ -167,7 +169,7 @@ export async function updateUnitAction(
   return { ok: true, message: "Хадгалагдлаа." };
 }
 
-export async function deleteUnitAction(formData: FormData): Promise<void> {
+export async function deleteUnitAction(formData: FormData): Promise<ConfirmActionResult> {
   const user = await authorizeOwner();
   const id = s(formData, "id");
   if (!id) return;
@@ -179,7 +181,7 @@ export async function deleteUnitAction(formData: FormData): Promise<void> {
   if (!target) return;
 
   if (SYSTEM_UNIT_NAMES.has(target.name)) {
-    throw new Error("Системийн default нэгжийг устгах боломжгүй.");
+    return { error: "Системийн default нэгжийг устгах боломжгүй." };
   }
 
   await prisma.unit.deleteMany({

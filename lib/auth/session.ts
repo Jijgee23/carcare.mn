@@ -23,7 +23,8 @@ const client = createJwtSession<SessionPayload>({
   secretEnvVars: ["SESSION_SECRET"],
   maxAgeSeconds: SESSION_MAX_AGE_SECONDS,
   parse(payload) {
-    if (!payload.userId || !payload.tenantId) return null;
+    // sid-гүй token-ийг DB-ээр revoke шалгах боломжгүй тул хүлээж авахгүй.
+    if (!payload.userId || !payload.tenantId || typeof payload.sid !== "string") return null;
     return {
       userId: payload.userId as string,
       tenantId: payload.tenantId as string,

@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { PageHeader } from "@/app/_components/page-header";
 import { requireUser } from "@/lib/auth";
+import { canEditOrder } from "@/lib/auth/order-access";
+import { canView, workingBranchScopeId } from "@/lib/auth/roles";
 import { canFillDiagnostics, type OrderStatus } from "@/lib/orders";
 import {
   type TemplateSchema,
@@ -25,16 +27,26 @@ export default async function NewReportPage({
   const { id: orderId } = await params;
   const { itemId } = await searchParams;
 
+  if (!canView(user, "orders")) redirect("/dashboard");
+  const scopeBranchId = workingBranchScopeId(user);
+
   const order = await prisma.serviceOrder.findFirst({
-    where: { id: orderId, tenantId: user.tenantId },
+    where: {
+      id: orderId,
+      tenantId: user.tenantId,
+      ...(scopeBranchId ? { branchId: scopeBranchId } : {}),
+    },
     select: {
       id: true,
+      assignedToId: true,
       number: true,
       status: true,
       vehicle: { select: { plate: true, make: true, model: true } },
     },
   });
   if (!order) notFound();
+  // Бөглөх нь засвар тул createReportAction-тай ижил canEditOrder шалгана.
+  if (!canEditOrder(user, order)) redirect(`/dashboard/orders/${orderId}`);
 
   const backHref = `/dashboard/orders/${orderId}`;
 

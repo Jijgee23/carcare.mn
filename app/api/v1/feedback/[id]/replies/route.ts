@@ -30,7 +30,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const actor = { id: auth.user.id, tenantId: auth.user.tenantId };
   const result = await addStaffFeedbackReply(actor, id, message);
   if (!result.ok) {
-    const code = result.message === "Олдсонгүй." ? "NOT_FOUND" : "VALIDATION";
+    const code = result.code ?? "VALIDATION";
     return jsonError(code === "NOT_FOUND" ? 404 : 422, result.message, { code });
   }
 

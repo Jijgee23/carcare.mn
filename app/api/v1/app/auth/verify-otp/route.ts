@@ -1,4 +1,5 @@
-import { jsonError, jsonOk } from "@/lib/api";
+import { enforceRateLimit, jsonError, jsonOk } from "@/lib/api";
+import { LOGIN_WINDOW_MS } from "@/lib/rate-limit";
 import { signAccountApiToken } from "@/lib/auth/account-api-token";
 import { verifyPhoneOtp } from "@/lib/auth/otp";
 import { normalizePhone } from "@/lib/phone";
@@ -7,6 +8,9 @@ import { setBypassContext } from "@/lib/tenant-context";
 
 // POST /api/v1/app/auth/verify-otp  { phone, code, name? } → accessToken
 export async function POST(req: Request) {
+  const limited = enforceRateLimit(req, "app-verify-otp", { limit: 30, windowMs: LOGIN_WINDOW_MS });
+  if (limited) return limited;
+
   // Нэвтрэхээс өмнө — session/tenant хараахан байхгүй, Account глобал объект.
   setBypassContext();
 

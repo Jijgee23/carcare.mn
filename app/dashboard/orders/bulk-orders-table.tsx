@@ -83,11 +83,14 @@ export function BulkOrdersTable({
           noun="захиалга"
           actions={[
             { label: "Статус солих", onSelect: () => setStatusPickerOpen(true) },
-            {
-              label: "Хариуцагч оноох",
-              variant: "ghost",
-              onSelect: () => setAssignPickerOpen(true),
-            },
+            // bulkAssignOrderAction orders.assign шаарддаг — эрхгүйд харуулахгүй.
+            ...(canAssign
+              ? [{
+                  label: "Хариуцагч оноох",
+                  variant: "ghost" as const,
+                  onSelect: () => setAssignPickerOpen(true),
+                }]
+              : []),
           ]}
         />
       ) : null}

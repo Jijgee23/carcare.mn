@@ -24,12 +24,9 @@ export const getSession = cache(async (): Promise<SessionPayload | null> => {
   if (!token) return null;
   const payload = await verifySession(token);
   if (!payload) return null;
-  // sid-тэй (шинэ) token бол DB session-ийг шалгана (UserSession — tenant-гүй
-  // хүснэгт). sid-гүй хуучин token-ийг JWT хүчинтэй хэвээр (backward-compat)
-  // үлдээнэ.
-  if (payload.sid) {
-    if (!(await validateUserSession(payload.sid))) return null;
-  }
+  // DB session-ийг шалгана (UserSession — tenant-гүй хүснэгт). sid-гүй
+  // token-ийг verifySession өөрөө татгалзана.
+  if (!payload.sid || !(await validateUserSession(payload.sid))) return null;
   return payload;
 });
 
@@ -46,7 +43,7 @@ export async function requireSession(): Promise<SessionPayload> {
  * Одоогийн нэвтэрсэн хэрэглэгчийг tenant-тай нь хамт буцаана.
  * Request бүрд нэг л удаа DB-д хандана.
  */
-export const requireUser = cache(async () => {
+const loadCurrentUser = cache(async () => {
   const session = await requireSession();
   // Ямар tenant-тай болохыг хараахан мэдэхгүй тул өөрийн session.userId-аар
   // (найдвартай, сервэрийн session-оос гарсан id) нэг мөр татахад л bypass —
@@ -88,3 +85,16 @@ export const requireUser = cache(async () => {
 
   return { ...user, workingBranchId, workingBranch };
 });
+
+/**
+ * `cache()` нь хэрэглэгчийг request-д нэг удаа татна, гэхдээ tenant context
+ * (AsyncLocalStorage.enterWith) зөвхөн анхны дуудлагын async салбарт
+ * тохируулагдана. Cache hit (жишээ нь action-ий дараах re-render дотор
+ * notification bell) context-гүй үлдэж query throw хийдэг байсан тул дуудлага
+ * бүрд дахин тохируулна.
+ */
+export async function requireUser() {
+  const user = await loadCurrentUser();
+  setTenantContext(user.tenantId);
+  return user;
+}

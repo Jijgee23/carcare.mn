@@ -48,3 +48,10 @@ export function logUnexpectedActionError(label: string, error: unknown): void {
   };
   console.error(`[${label}] unexpected error`, metadata);
 }
+
+/**
+ * Гадаад үйлчилгээний (HUR, ebarimt) алдаанаас хэрэглэгчид харуулж болох,
+ * бидний өөрсдийн бичсэн мессеж. Бусад алдаа (fetch failed, DNS г.м.) дотоод
+ * хост/сүлжээний мэдээлэл агуулж болзошгүй тул нууж, лог руу бичнэ.
+ */
+export class PublicUpstreamError extends Error {}

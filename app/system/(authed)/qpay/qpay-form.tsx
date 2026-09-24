@@ -13,7 +13,7 @@ import {
 
 type Initial = {
   username: string;
-  password: string;
+  hasPassword: boolean;
   invoiceCode: string;
   callbackUrl: string;
   tokenExpiresAt: string | null;
@@ -56,10 +56,10 @@ export function QPaySettingsForm({ initial }: { initial: Initial }) {
               id="password"
               name="password"
               type={showPassword ? "text" : "password"}
-              required
-              defaultValue={initial.password}
+              required={!initial.hasPassword}
+              autoComplete="new-password"
               className={`auth-input pr-14 ${fe.password ? "border-red-500/50" : ""}`}
-              placeholder="••••••••"
+              placeholder={initial.hasPassword ? "Хадгалсан — солих бол шинээр оруулна" : "••••••••"}
             />
             <button
               type="button"

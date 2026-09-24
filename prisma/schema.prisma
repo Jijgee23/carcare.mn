@@ -551,6 +551,10 @@ model ServiceOrder {
   @@index([tenantId, status])
   @@index([tenantId, isPostpaid])
   @@index([branchId, scheduledAt])
+  // FK-ууд — харилцагч/машины түүх, техникчийн ажил, Restrict cascade шалгалт.
+  @@index([customerId])
+  @@index([vehicleId])
+  @@index([assignedToId])
 }
 
 enum OrderStatus {

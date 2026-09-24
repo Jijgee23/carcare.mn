@@ -1,5 +1,7 @@
 "use server";
 
+
+import type { ConfirmActionResult } from "@/lib/confirm-action";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
@@ -144,7 +146,7 @@ export async function updateVehicleAction(
 
 // --- DELETE ---------------------------------------------------------------
 
-export async function deleteVehicleAction(formData: FormData): Promise<void> {
+export async function deleteVehicleAction(formData: FormData): Promise<ConfirmActionResult> {
   const user = await authorize("delete");
   const id = s(formData, "id");
   if (!id) return;
@@ -155,6 +157,7 @@ export async function deleteVehicleAction(formData: FormData): Promise<void> {
     if (e instanceof VehicleCommandError && e.code === "VEHICLE_NOT_FOUND") {
       return;
     }
+    if (e instanceof VehicleCommandError) return { error: e.message };
     throw e;
   }
 

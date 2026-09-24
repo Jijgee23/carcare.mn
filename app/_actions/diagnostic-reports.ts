@@ -1,15 +1,18 @@
 "use server";
 
+
+import type { ConfirmActionResult } from "@/lib/confirm-action";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
 import { workingBranchScopeId } from "@/lib/auth/roles";
-import { canDelete as canDeletePerm } from "@/lib/auth/roles";
+import { canCreate as canCreatePerm, canDelete as canDeletePerm } from "@/lib/auth/roles";
 import {
   computeReportSeverity,
   type ReportEntry,
   type TemplateSchema,
+  tenantVisibleTemplateWhere,
   validateReportData,
 } from "@/lib/diagnostics";
 import {
@@ -51,6 +54,11 @@ export async function createReportAction(
   const templateId = s(formData, "templateId");
   const orderId = s(formData, "orderId");
   const itemId = s(formData, "itemId");
+  // Захиалгагүй (standalone) тайланд canEditOrder хамаарахгүй тул эрхийг
+  // шууд шалгана — mobile POST /diagnostics/reports-тэй ижил.
+  if (!orderId && !canCreatePerm(user, "diagnostics")) {
+    return { ok: false, message: "Танд оношилгооны тайлан үүсгэх эрх байхгүй." };
+  }
   let customerId = s(formData, "customerId");
   let vehicleId = s(formData, "vehicleId");
   let branchId = s(formData, "branchId");
@@ -60,7 +68,12 @@ export async function createReportAction(
   if (!templateId) return { ok: false, message: "Загвар сонгоогүй байна." };
 
   const template = await prisma.diagnosticTemplate.findFirst({
-    where: { id: templateId, tenantId: user.tenantId, isActive: true },
+    where: {
+      AND: [
+        { id: templateId, isActive: true },
+        tenantVisibleTemplateWhere(user.tenantId),
+      ],
+    },
     select: { id: true, name: true, version: true, schema: true },
   });
   if (!template) return { ok: false, message: "Загвар олдсонгүй." };
@@ -191,7 +204,7 @@ export async function createReportAction(
 
   const mileage = mileageStr ? Number(mileageStr) : null;
   const mileageVal =
-    mileage !== null && !Number.isNaN(mileage) && mileage >= 0
+    mileage !== null && Number.isFinite(mileage) && mileage >= 0
       ? Math.floor(mileage)
       : null;
 
@@ -260,7 +273,7 @@ export async function createReportAction(
   redirect(`/dashboard/diagnostics/reports/${reportId}`);
 }
 
-export async function deleteReportAction(formData: FormData): Promise<void> {
+export async function deleteReportAction(formData: FormData): Promise<ConfirmActionResult> {
   const user = await requireUser();
   const id = s(formData, "id");
   if (!id) return;
@@ -275,7 +288,7 @@ export async function deleteReportAction(formData: FormData): Promise<void> {
     (canDeletePerm(user, "diagnostics") || report.filledById === user.id) &&
     (!report.order || canEditOrder(user, report.order));
   if (!allowed) {
-    throw new Error("Танд устгах эрх байхгүй.");
+    return { error: "Танд устгах эрх байхгүй." };
   }
 
   // Энэ тайланг гүйцээж байсан ServiceItem-ийг олж, тайлан устгагдсаны дараа

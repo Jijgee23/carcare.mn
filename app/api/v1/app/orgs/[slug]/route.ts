@@ -1,4 +1,4 @@
-import { jsonError, jsonOk } from "@/lib/api";
+import { enforceRateLimit, jsonError, jsonOk, PUBLIC_CATALOG_RATE_LIMIT } from "@/lib/api";
 import { resolveCategoryDurationMinutes } from "@/lib/category-duration";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { plansWithFeature } from "@/lib/plan-limits-server";
@@ -10,9 +10,11 @@ import { branchScheduleDisplaySelect } from "@/lib/branch-effective-schedule-ser
 // Booking v2: салбар бүрд санал болгох ангилалуудыг шийдэгдсэн хугацаатай нь
 // (category default ?? 30) хавсаргана.
 export async function GET(
-  _req: Request,
+  req: Request,
   ctx: { params: Promise<{ slug: string }> },
 ) {
+  const limited = enforceRateLimit(req, "public-catalog", PUBLIC_CATALOG_RATE_LIMIT);
+  if (limited) return limited;
   // Нийтэд нээлттэй, slug-аар Tenant олохоос өмнө tenant тодорхойгүй тул bypass.
   setBypassContext();
   const { slug } = await ctx.params;

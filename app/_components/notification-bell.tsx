@@ -34,6 +34,7 @@ function timeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString("mn-MN", {
     month: "short",
     day: "2-digit",
+    timeZone: "Asia/Ulaanbaatar",
   });
 }
 

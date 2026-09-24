@@ -1,3 +1,4 @@
+import { PublicUpstreamError } from "@/lib/action-errors";
 /**
  * api.ebarimt.mn-аас аж ахуйн нэгжийн мэдээллийг 2 алхамаар авна:
  *   1) /api/info/check/getTinInfo?regNo=XXXXXXX  → татвар төлөгчийн дугаар (TIN)
@@ -28,7 +29,7 @@ async function fetchJson(url: string): Promise<unknown> {
     signal: AbortSignal.timeout(5000),
   });
   if (!res.ok) {
-    throw new Error(`ebarimt алдаа: ${res.status}`);
+    throw new PublicUpstreamError(`ebarimt алдаа: ${res.status}`);
   }
   return res.json();
 }

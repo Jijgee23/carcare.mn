@@ -12,6 +12,7 @@
 // `logAudit` itself has no `server-only`/Next import and accepts an
 // injectable client, so this stays framework-free and fake-able.
 
+import { isForeignKeyViolation } from "@/lib/prisma-errors";
 import { logAudit } from "@/lib/audit";
 import { parseIdsJson } from "@/lib/bulk-action";
 import { duplicateUserFields, ensureRoleBelongsToTenant, filterOwnBranchIds } from "./guards";
@@ -569,7 +570,7 @@ function isP2002(e: unknown): boolean {
 }
 
 function isP2003(e: unknown): boolean {
-  return isPrismaErrorCode(e, "P2003");
+  return isForeignKeyViolation(e);
 }
 
 function isPrismaErrorCode(e: unknown, code: string): boolean {

@@ -99,10 +99,12 @@ export default async function AccountHistoryPage({
   // AccountVehicle нь өөрөө claim хийдэг тул эзэмшлийн нотолгоо БОЛОХГҮЙ.
   // Түүх дууссан AND цуцлагдсан ажлыг харуулна (D-085) — SCHEDULED/IN_PROGRESS
   // хараахан идэвхтэй, /account (Миний захиалгууд) дээр харагдана.
-  // Төлбөрийн төлөв энд шүүлт биш: төлөгдөөгүй ч дууссан ажил энд харагдана.
+  // Дууссан ч бүрэн төлөгдөөгүй ажил энд биш — /account дээр "Төлбөр дутуу"
+  // badge-тэй үлдэнэ; бүрэн төлөгдмөгц энд шилжинэ (2026-09-24 шийдвэр).
   // Эзэмшлийн нөхцөл — дор дахин ашиглагдана (боломжит онуудыг тооцоход).
   const ownershipWhere: Prisma.ServiceOrderWhereInput = {
     status: { in: ["COMPLETED", "CANCELLED"] },
+    NOT: { status: "COMPLETED", paymentStatus: { not: "PAID" } },
     OR: customerOwnershipFilters(account.id, account.phone),
   };
 

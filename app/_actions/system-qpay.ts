@@ -23,18 +23,20 @@ export async function saveQPaySettingsAction(
   await requireSuperAdmin();
 
   const username = s(formData, "username");
-  const password = s(formData, "password");
+  const passwordInput = s(formData, "password");
   const invoiceCode = s(formData, "invoiceCode");
   const callbackUrl = s(formData, "callbackUrl");
 
   const errors: Record<string, string> = {};
   if (!username) errors.username = "Username шаардлагатай.";
-  if (!password) errors.password = "Password шаардлагатай.";
   if (!invoiceCode) errors.invoiceCode = "Invoice code шаардлагатай.";
 
-  if (Object.keys(errors).length > 0) return { ok: false, fieldErrors: errors };
-
   const existing = await prisma.qPaySettings.findUnique({ where: { id: 1 } });
+  // Нууц үгийг клиент рүү буцааж илгээдэггүй — хоосон ирвэл хадгалсныг үлдээнэ.
+  const password = passwordInput || decryptSecret(existing?.password) || "";
+  if (!password) errors.password = "Password шаардлагатай.";
+
+  if (Object.keys(errors).length > 0) return { ok: false, fieldErrors: errors };
   const tokensToReset = existing && (
     existing.username !== username ||
     decryptSecret(existing.password) !== password ||

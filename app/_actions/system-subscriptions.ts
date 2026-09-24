@@ -1,5 +1,7 @@
 "use server";
 
+
+import type { ConfirmActionResult } from "@/lib/confirm-action";
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@/app/generated/prisma/client";
 import { requireSuperAdmin } from "@/lib/auth/system";
@@ -107,7 +109,7 @@ export async function createSubscriptionAction(formData: FormData): Promise<void
  */
 export async function extendSubscriptionAction(
   formData: FormData,
-): Promise<void> {
+): Promise<ConfirmActionResult> {
   await requireSuperAdmin();
 
   const tenantId = s(formData, "id");
@@ -115,16 +117,16 @@ export async function extendSubscriptionAction(
   const addDaysRaw = s(formData, "addDays");
   const addDays = Number.parseInt(addDaysRaw, 10);
   if (!Number.isFinite(addDays) || addDays <= 0) {
-    throw new Error("Нэмэгдэх хоног эерэг тоо байх ёстой.");
+    return { error: "Нэмэгдэх хоног эерэг тоо байх ёстой." };
   }
 
   const sub = await prisma.subscription.findFirst({
     where: { id: subscriptionId, tenantId },
     select: { id: true, status: true, endsAt: true },
   });
-  if (!sub) throw new Error("Subscription олдсонгүй.");
+  if (!sub) return { error: "Subscription олдсонгүй." };
   if (sub.status !== "TRIAL" && sub.status !== "ACTIVE") {
-    throw new Error("Зөвхөн идэвхтэй subscription-ийг сунгана.");
+    return { error: "Зөвхөн идэвхтэй subscription-ийг сунгана." };
   }
 
   const base = sub.endsAt ?? new Date();
@@ -145,7 +147,7 @@ export async function extendSubscriptionAction(
  */
 export async function cancelSubscriptionAction(
   formData: FormData,
-): Promise<void> {
+): Promise<ConfirmActionResult> {
   await requireSuperAdmin();
 
   const tenantId = s(formData, "id");
@@ -154,7 +156,7 @@ export async function cancelSubscriptionAction(
     where: { id: subscriptionId, tenantId },
     select: { id: true, status: true },
   });
-  if (!sub) throw new Error("Subscription олдсонгүй.");
+  if (!sub) return { error: "Subscription олдсонгүй." };
   if (sub.status === "CANCELLED" || sub.status === "EXPIRED") return;
 
   await prisma.subscription.update({

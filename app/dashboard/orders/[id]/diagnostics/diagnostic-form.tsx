@@ -223,6 +223,9 @@ export function DiagnosticForm({
             accept="image/png,image/jpeg,image/webp"
             className="block w-full text-sm text-white/60 file:mr-3 file:rounded-lg file:border-0 file:bg-white/[0.08] file:px-3 file:py-2 file:text-sm file:font-medium file:text-white/80 hover:file:bg-white/[0.12] file:cursor-pointer"
           />
+          <p className="text-xs text-white/40 mt-1.5">
+            PNG, JPG, WEBP · хамгийн ихдээ 2MB
+          </p>
         </Field>
       </section>
 
@@ -355,18 +358,27 @@ function FieldInputs({
           className="block w-full text-sm text-white/60 file:mr-3 file:rounded-lg file:border-0 file:bg-white/[0.08] file:px-3 file:py-2 file:text-sm file:font-medium file:text-white/80 hover:file:bg-white/[0.12] file:cursor-pointer"
         />
       ) : null}
-      {item.type === "photo" && photoCount > 0 ? (
-        <p className="text-xs text-white/40">{photoCount} зураг сонгогдсон</p>
+      {item.type === "photo" ? (
+        <p className="text-xs text-white/40">
+          {photoCount > 0
+            ? `${photoCount} зураг сонгогдсон`
+            : "PNG, JPG, WEBP · хамгийн ихдээ 2MB"}
+        </p>
       ) : null}
 
       {item.type === "signature" ? (
-        <input
-          name={`signatures[${fieldId}]`}
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          required={item.required}
-          className="block w-full text-sm text-white/60 file:mr-3 file:rounded-lg file:border-0 file:bg-white/[0.08] file:px-3 file:py-2 file:text-sm file:font-medium file:text-white/80 hover:file:bg-white/[0.12] file:cursor-pointer"
-        />
+        <>
+          <input
+            name={`signatures[${fieldId}]`}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            required={item.required}
+            className="block w-full text-sm text-white/60 file:mr-3 file:rounded-lg file:border-0 file:bg-white/[0.08] file:px-3 file:py-2 file:text-sm file:font-medium file:text-white/80 hover:file:bg-white/[0.12] file:cursor-pointer"
+          />
+          <p className="text-xs text-white/40">
+            PNG, JPG, WEBP · хамгийн ихдээ 2MB
+          </p>
+        </>
       ) : null}
 
       <input

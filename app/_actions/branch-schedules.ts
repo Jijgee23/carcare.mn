@@ -1,5 +1,7 @@
 "use server";
 
+
+import type { ConfirmActionResult } from "@/lib/confirm-action";
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { canEdit } from "@/lib/auth/roles";
@@ -197,7 +199,7 @@ export async function upsertBranchScheduleExceptionAction(
   }
 }
 
-export async function deleteBranchScheduleExceptionAction(formData: FormData): Promise<void> {
+export async function deleteBranchScheduleExceptionAction(formData: FormData): Promise<ConfirmActionResult> {
   const branchId = s(formData, "branchId");
   const id = s(formData, "id");
   if (!branchId || !id) return;
@@ -227,12 +229,13 @@ export async function deleteBranchScheduleExceptionAction(formData: FormData): P
       fallbackDurationMinutes: current.slotMinutes ?? 30,
     });
     if (impact.erased.length > 0) {
-      throw new Error(`Энэ өөрчлөлт ${impact.erased.length} захиалгыг бүрэн хүчингүй болгоно. Ажилтан эхлээд шийднэ үү.`);
+      return { error: `Энэ өөрчлөлт ${impact.erased.length} захиалгыг бүрэн хүчингүй болгоно. Ажилтан эхлээд шийднэ үү.` };
     }
     const result = await tx.branchScheduleException.deleteMany({ where: { id, branchId } });
     await applyScheduleClips(tx, impact);
     return result;
   });
+  if ("error" in deleted) return deleted;
   if (deleted.count > 0) {
     await logAudit({ tenantId: user.tenantId, userId: user.id, branchId, entity: "Branch", entityId: branchId, action: "DELETE", summary: "Тусгай өдрийн хуваарь устгав" });
   }
@@ -389,7 +392,7 @@ export async function upsertBranchScheduleSeasonAction(
   }
 }
 
-export async function deleteBranchScheduleSeasonAction(formData: FormData): Promise<void> {
+export async function deleteBranchScheduleSeasonAction(formData: FormData): Promise<ConfirmActionResult> {
   const branchId = s(formData, "branchId");
   const id = s(formData, "id");
   if (!branchId || !id) return;
@@ -425,12 +428,13 @@ export async function deleteBranchScheduleSeasonAction(formData: FormData): Prom
         })
       : { erased: [], clipped: [] };
     if (impact.erased.length > 0) {
-      throw new Error(`Энэ өөрчлөлт ${impact.erased.length} захиалгыг бүрэн хүчингүй болгоно. Ажилтан эхлээд шийднэ үү.`);
+      return { error: `Энэ өөрчлөлт ${impact.erased.length} захиалгыг бүрэн хүчингүй болгоно. Ажилтан эхлээд шийднэ үү.` };
     }
     const result = await tx.branchScheduleSeason.deleteMany({ where: { id, branchId } });
     await applyScheduleClips(tx, impact);
     return result;
   });
+  if ("error" in deleted) return deleted;
   if (deleted.count > 0) {
     await logAudit({ tenantId: user.tenantId, userId: user.id, branchId, entity: "Branch", entityId: branchId, action: "DELETE", summary: "Улирлын хуваарь устгав" });
   }
