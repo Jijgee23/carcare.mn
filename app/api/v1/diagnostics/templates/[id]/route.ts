@@ -29,6 +29,8 @@ export async function GET(
       isActive: true,
       price: true,
       durationMin: true,
+      // Create/update require it — the mobile edit form must prefill it.
+      categoryId: true,
       schema: true,
       updatedAt: true,
     },

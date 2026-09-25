@@ -443,6 +443,36 @@ test("updateEmployee: an owner's role cannot be edited", async () => {
   assert.deepEqual(result.fieldErrors, { roleId: "Тенант админы үүргийг өөрчилж болохгүй." });
 });
 
+test("updateEmployee: an owner's profile can be edited; role and active state stay", async () => {
+  const { db } = makeFakeDb({
+    users: [
+      {
+        id: "u1",
+        tenantId: "t1",
+        firstName: "Boss",
+        lastName: "Own",
+        email: "boss@b.com",
+        phone: "99112233",
+        passwordHash: "x",
+        verified: true,
+        isOwner: true,
+        roleId: null,
+        branchId: null,
+        assignableBranchIds: [],
+        isActive: true,
+        activeUntil: null,
+      },
+    ],
+  });
+  const result = await core.updateEmployee(
+    db,
+    ACTOR,
+    "u1",
+    fd({ firstName: "Шинэ", lastName: "Own", email: "boss@b.com", phone: "99112244" }),
+  );
+  assert.equal(result.ok, true);
+});
+
 test("updateEmployee: duplicate phone/email against another user on update", async () => {
   const { db } = makeFakeDb({
     roles: [{ id: "r1", tenantId: "t1", name: "Мастер", isActive: true }],

@@ -1,3 +1,4 @@
+import { checkUserActive } from "@/lib/auth/active";
 import { prisma } from "@/lib/prisma";
 import { setBypassContext, setTenantContext } from "@/lib/tenant-context";
 import { createJwtSession } from "@/lib/auth/jwt-session";
@@ -75,9 +76,26 @@ export async function getApiUserFromRequest(req: Request) {
       role: {
         select: { id: true, name: true, permissions: true, isActive: true },
       },
+      isActive: true,
+      activeUntil: true,
+      lockedAt: true,
+      tenant: { select: { suspended: true } },
     },
   });
   if (!user) return null;
+  // Re-checked on every request, not only at login: a deactivated, expired
+  // or locked employee (or a suspended tenant) used to keep full access for
+  // the rest of the 24h access token and could refresh indefinitely.
+  // Returning null makes the route answer 401, and the refresh that follows
+  // is rejected too (auth/refresh), so the app signs out.
+  const { isActive, activeUntil, lockedAt, tenant, ...profile } = user;
+  if (
+    lockedAt ||
+    tenant.suspended ||
+    !checkUserActive({ isActive, activeUntil }).ok
+  ) {
+    return null;
+  }
   // D-180: nullable for tokens signed before this claim existed.
-  return { ...user, refreshTokenId: payload.refreshTokenId ?? null };
+  return { ...profile, refreshTokenId: payload.refreshTokenId ?? null };
 }

@@ -204,14 +204,23 @@ export async function updateEmployee(
   });
   if (!target) return { ok: false, code: "NOT_FOUND", error: "Ажилтан олдсонгүй." };
 
-  // OWNER (тенант админ)-ын үүрэг солих, эсвэл хасах боломжгүй.
+  // OWNER (тенант админ)-ын үүрэг солих, эсвэл хасах боломжгүй — гэхдээ нэр,
+  // утас, имэйл зэрэг профайлыг засах боломжтой. Өмнө нь ямар ч PATCH-ийг
+  // 409 болгодог байсан тул owner-ийн нэр ч засагдахгүй байв. Үүрэг болон
+  // идэвхтэй/хугацааг owner-д хэвээр нь үлдээнэ (эдгээрийг toggle-active /
+  // owner шилжүүлэх урсгал удирдана).
   if (target.isOwner) {
-    return {
-      ok: false,
-      code: "OWNER_ROLE_LOCKED",
-      error: "Тенант админы үүргийг өөрчилж болохгүй.",
-      fieldErrors: { roleId: "Тенант админы үүргийг өөрчилж болохгүй." },
-    };
+    if (data.roleId && data.roleId !== target.roleId) {
+      return {
+        ok: false,
+        code: "OWNER_ROLE_LOCKED",
+        error: "Тенант админы үүргийг өөрчилж болохгүй.",
+        fieldErrors: { roleId: "Тенант админы үүргийг өөрчилж болохгүй." },
+      };
+    }
+    data.roleId = target.roleId;
+    data.isActive = target.isActive;
+    data.activeUntil = target.activeUntil;
   }
 
   if (data.roleId) {

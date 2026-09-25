@@ -17,6 +17,9 @@ const SERVICE_SELECT = {
   description: true,
   isActive: true,
   durationValue: true,
+  // PATCH replaces the whole record, so edit forms must read this back —
+  // without it every mobile edit wiped the service reminder interval.
+  reminderIntervalMonths: true,
   unit: { select: { id: true, name: true, code: true } },
   durationUnit: { select: { id: true, name: true, code: true } },
   category: { select: { id: true, name: true } },

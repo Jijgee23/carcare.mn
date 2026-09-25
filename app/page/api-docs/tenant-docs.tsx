@@ -91,6 +91,35 @@ Res:  200 { same shape as /auth/login }
 
         <Endpoint
           method="POST"
+          path="/api/v1/auth/password/request-otp"
+          auth="public"
+          tags={["Rate limit: 5/60с (IP)"]}
+          title="Нууц үг сэргээх — бүртгэлтэй утас руу 6 оронтой код илгээх (дахин илгээхэд ч үүнийг дуудна)."
+        >
+          <Code>{`Req:  { "identifier": "manager@example.com" | "99112233" }
+Res:  200 { "sent": true, "maskedPhone": "99***33", "message": "..." }
+// Бүртгэлгүй нэвтрэх нэрд ч 200 { "sent": true, "maskedPhone": "**" } (enumeration-safe).
+400 { "error": "Имэйл эсвэл утасны дугаар буруу." }
+429 { "error": "<throttle мессеж>" }`}</Code>
+        </Endpoint>
+
+        <Endpoint
+          method="POST"
+          path="/api/v1/auth/password/reset"
+          auth="public"
+          tags={["Rate limit: 10/60с (IP)"]}
+          title="OTP код + шинэ нууц үг — нууц үгийг шинэчилж, аккаунтыг unlock хийнэ. Бүх refresh token цуцлагдана; дараа нь /auth/login хийнэ."
+        >
+          <Code>{`Req:  { "identifier": "manager@example.com" | "99112233", "code": "123456", "password": "минимум 8 тэмдэгт" }
+Res:  200 { "ok": true, "message": "Нууц үг шинэчлэгдлээ. Шинэ нууц үгээрээ нэвтэрнэ үү." }
+400  { "error": "6 оронтой код шаардлагатай." } | { "error": "Нууц үг хамгийн багадаа 8 тэмдэгт байх ёстой." }
+401  { "error": "Кодны хугацаа дууссан. Шинээр код илгээнэ үү." }
+401  { "error": "Хэт олон удаа буруу оролдсон. Шинээр код илгээнэ үү." }
+401  { "error": "Код буруу байна." }`}</Code>
+        </Endpoint>
+
+        <Endpoint
+          method="POST"
           path="/api/v1/auth/refresh"
           auth="public"
           tags={["Rate limit: 30/60с (IP)"]}

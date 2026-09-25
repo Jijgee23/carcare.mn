@@ -13,6 +13,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { buildIncomeSeries, type ResolvedIncomeRange } from "@/app/dashboard/income-range";
 import type { IncomePoint } from "@/app/dashboard/income-chart";
+import { bookingDateKey } from "@/lib/booking-time";
 
 export type Range = { from: Date; to: Date; label: string; key: string };
 
@@ -78,21 +79,30 @@ export function validateReportRangeParams(searchParams: {
   return null;
 }
 
+// Report days are Asia/Ulaanbaatar business days (fixed +08:00), never the
+// deployment host's zone — on a UTC host the old local-midnight bounds shifted
+// every report window by 8 hours and exports disagreed with the screen.
+const BUSINESS_OFFSET = "+08:00";
+const labelDate = (d: Date) =>
+  d.toLocaleDateString("mn-MN", { timeZone: "Asia/Ulaanbaatar" });
+
 export function parseRange(searchParams: { from?: string; to?: string }): Range {
   const now = new Date();
-  const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startOfThisMonth = new Date(
+    `${bookingDateKey(now).slice(0, 7)}-01T00:00:00${BUSINESS_OFFSET}`,
+  );
 
   if (searchParams.from || searchParams.to) {
     const from = searchParams.from
-      ? new Date(`${searchParams.from}T00:00:00`)
+      ? new Date(`${searchParams.from}T00:00:00${BUSINESS_OFFSET}`)
       : startOfThisMonth;
     const to = searchParams.to
-      ? new Date(`${searchParams.to}T23:59:59.999`)
+      ? new Date(`${searchParams.to}T23:59:59.999${BUSINESS_OFFSET}`)
       : now;
     return {
       from,
       to,
-      label: `${from.toLocaleDateString("mn-MN")} – ${to.toLocaleDateString("mn-MN")}`,
+      label: `${labelDate(from)} – ${labelDate(to)}`,
       key: "custom",
     };
   }
@@ -105,19 +115,17 @@ export function parseRange(searchParams: { from?: string; to?: string }): Range 
   };
 }
 
-// Локал цагаар YYYY-MM-DD. toISOString() нь UTC руу хөрвүүлдэг тул UTC+8-д
-// шөнө дундын огноо өмнөх өдөр рүү "гулсаж" муж 1 өдрөөр буруу болдгийг зассан.
+// Business-day YYYY-MM-DD (Asia/Ulaanbaatar). toISOString() is UTC and the
+// host's local getters depend on its zone — both slid midnight to the
+// previous day and made the range one day off.
 export function fmt(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return bookingDateKey(d);
 }
 
 function daySpan(from: Date, to: Date): number {
   const DAY_MS = 24 * 60 * 60 * 1000;
-  const sod = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  return Math.round((sod(to).getTime() - sod(from).getTime()) / DAY_MS) + 1;
+  const dayNo = (d: Date) => Date.parse(`${bookingDateKey(d)}T00:00:00Z`) / DAY_MS;
+  return Math.round(dayNo(to) - dayNo(from)) + 1;
 }
 
 export type ReportData = {

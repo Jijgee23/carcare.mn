@@ -16,6 +16,7 @@ import {
   appointmentSearchWhere,
   parseAppointmentListQuery,
 } from "@/lib/appointments/appointment-list-query";
+import { bookingDateKey, bookingDayBounds } from "@/lib/booking-time";
 
 type BookingFeeFields = {
   feeAmount: unknown;
@@ -126,10 +127,13 @@ export async function GET(req: Request) {
 
   // ── Month counts mode ─────────────────────────────────────────────────────
   const monthParam = url.searchParams.get("month")?.trim();
-  if (monthParam && /^\d{4}-\d{2}$/.test(monthParam)) {
+  if (monthParam && /^\d{4}-(0[1-9]|1[0-2])$/.test(monthParam)) {
+    // Month bounds and per-row date keys in Asia/Ulaanbaatar business time,
+    // never the host's zone (a UTC server shifted every dot by 8 hours).
     const [y, m] = monthParam.split("-").map(Number);
-    const monthStart = new Date(y, m - 1, 1);
-    const monthEnd = new Date(y, m, 1);
+    const nextKey = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
+    const monthStart = bookingDayBounds(`${monthParam}-01`).start;
+    const monthEnd = bookingDayBounds(`${nextKey}-01`).start;
 
     const rows = await prisma.appointment.findMany({
       where: {
@@ -140,10 +144,7 @@ export async function GET(req: Request) {
       select: { requestedAt: true },
     });
 
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const dates = rows.map(
-      (r) => `${r.requestedAt.getFullYear()}-${pad(r.requestedAt.getMonth() + 1)}-${pad(r.requestedAt.getDate())}`,
-    );
+    const dates = rows.map((r) => bookingDateKey(r.requestedAt));
     return jsonOk({ dates });
   }
 
@@ -173,12 +174,12 @@ export async function GET(req: Request) {
   };
 
   if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
-    const dayStart = new Date(`${dateParam}T00:00:00`);
-    if (Number.isFinite(dayStart.getTime())) {
-      where.requestedAt = {
-        gte: dayStart,
-        lt: new Date(dayStart.getTime() + 86_400_000),
-      };
+    // Business day (Asia/Ulaanbaatar), same bounds as calendar and slots.
+    try {
+      const { start, end } = bookingDayBounds(dateParam);
+      where.requestedAt = { gte: start, lt: end };
+    } catch {
+      // Not a real calendar date — ignore the filter, as before.
     }
   }
 

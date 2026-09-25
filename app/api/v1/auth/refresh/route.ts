@@ -1,3 +1,4 @@
+import { checkUserActive } from "@/lib/auth/active";
 import { enforceRateLimit, jsonError, jsonOk } from "@/lib/api";
 import {
   ACCESS_TOKEN_MAX_AGE_SECONDS,
@@ -70,6 +71,9 @@ export async function POST(req: Request) {
       id: true,
       tenantId: true,
       isOwner: true,
+      isActive: true,
+      activeUntil: true,
+      lockedAt: true,
       tenant: { select: { suspended: true } },
     },
   });
@@ -77,6 +81,19 @@ export async function POST(req: Request) {
   if (user.tenant.suspended) {
     return jsonError(403, "Таны байгууллага түр хугацаагаар зогссон байна.");
   }
+  // Same gates as /auth/login — otherwise a deactivated, expired or locked
+  // employee could keep refreshing forever. 403 ends the app session.
+  if (user.lockedAt) {
+    return jsonError(
+      403,
+      "Хэт олон удаа буруу оролдсон тул аккаунт түгжигдсэн. Нууц үгээ сэргээнэ үү.",
+    );
+  }
+  const active = checkUserActive({
+    isActive: user.isActive,
+    activeUntil: user.activeUntil,
+  });
+  if (!active.ok) return jsonError(403, active.message);
 
   // D-180: embed the newly-rotated refresh token's id (not the raw token or
   // its hash) so `/me/sessions` and password-change can identify this device.
