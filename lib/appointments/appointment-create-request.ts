@@ -3,6 +3,8 @@ import { parseBusinessLocalDateTime } from "@/lib/booking-time";
 export type ParsedCreateAppointmentBody = {
   branchId: string;
   customerId: string;
+  /** Optional global Vehicle id; must be this customer's tenant vehicle. */
+  vehicleId: string | null;
   requestedAt: Date;
   note: string | null;
   categoryIds: string[];
@@ -33,6 +35,11 @@ export function parseCreateAppointmentBody(
 
   const branchId = typeof b.branchId === "string" ? b.branchId.trim() : "";
   const customerId = typeof b.customerId === "string" ? b.customerId.trim() : "";
+
+  if (b.vehicleId !== undefined && b.vehicleId !== null && typeof b.vehicleId !== "string") {
+    return { ok: false, status: 400, message: "vehicleId нь string эсвэл null байна." };
+  }
+  const vehicleId = typeof b.vehicleId === "string" ? b.vehicleId.trim() || null : null;
 
   if (b.note !== undefined && b.note !== null && typeof b.note !== "string") {
     return { ok: false, status: 400, message: "note нь string эсвэл null байна." };
@@ -87,6 +94,7 @@ export function parseCreateAppointmentBody(
     value: {
       branchId,
       customerId,
+      vehicleId,
       requestedAt: requestedAt!,
       note,
       categoryIds,

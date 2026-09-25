@@ -168,3 +168,10 @@ test("staff appointment responses expose the derived paymentStatus, not raw fee 
     assert.match(src, /paymentStatus: appointmentBookingPaymentStatus\(/);
   }
 });
+
+test("API template duplicate (tenant app) keeps category (tenant-owned only), price and duration", () => {
+  const src = read("lib/diagnostics-templates-server.ts");
+  const fn = src.slice(src.indexOf("export async function duplicateTemplateCommand"));
+  assert.match(fn, /where: \{ id: src\.categoryId, tenantId: actor\.tenantId \}/);
+  assert.match(fn, /categoryId,\s*price: src\.price,\s*durationMin: src\.durationMin,/);
+});

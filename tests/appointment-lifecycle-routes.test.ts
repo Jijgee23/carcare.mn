@@ -230,8 +230,12 @@ test("PATCH cancellation is subscription-gated and uses a conditional write for 
 test("PARITY (ARRIVED): PATCH has no equivalent — arrivedAt is only reachable through the named route", () => {
   // arrivedAt is not part of AppointmentStatus / APPOINTMENT_STATUS_TRANSITIONS,
   // so PATCH cannot express this transition at all; there is nothing for the
-  // named /arrived route to drift against on the PATCH side.
-  assert.doesNotMatch(patchSource(), /arrivedAt/);
+  // named /arrived route to drift against on the PATCH side. The file may
+  // READ arrivedAt once (APPT_SELECT, so GET/PATCH responses carry it), but
+  // must never write it.
+  const src = patchSource();
+  assert.equal(src.match(/arrivedAt/g)?.length ?? 0, 1);
+  assert.match(src, /^\s*arrivedAt: true,$/m);
   assert.match(commandsSource(), /const arrivedAt = new Date\(\)/);
 });
 
@@ -269,4 +273,31 @@ test("PARITY (transitions): the named routes only reach statuses PATCH's own tra
     commandsSource(),
     /markAppointmentNoShowCommand[\s\S]{0,600}appt\.status !== "CONFIRMED"/,
   );
+});
+
+// --- GET /api/v1/appointments/[id] (tenant app notification deep link) -----
+
+test("GET appointment by id is authenticated, needs appointments.view, and is tenant + working-branch scoped", () => {
+  const src = patchSource();
+  const get = src.slice(src.indexOf("export async function GET"), src.indexOf("export async function PATCH"));
+  assert.ok(get.length > 0, "GET handler present before PATCH");
+  assert.match(get, /requireApiUser\(req\)/);
+  assert.match(get, /requirePermission\(auth\.user, "appointments\.view"\)/);
+  assert.match(get, /resolveWorkingBranch\(req, auth\.user\)/);
+  assert.match(get, /tenantId: auth\.user\.tenantId/);
+  assert.match(get, /\.\.\.\(scope \? \{ branchId: scope \} : \{\}\)/);
+  assert.match(get, /jsonError\(404,/);
+  assert.match(get, /shapeAppointment\(appointment\)/);
+});
+
+test("staff create validates vehicle ownership and persists vehicleId", () => {
+  const cmd = readSource("../lib/appointments/appointment-create-command.ts");
+  assert.match(cmd, /tenantVehicle\.findUnique\(\{\s*where: \{ tenantId_vehicleId: \{ tenantId: actor\.tenantId, vehicleId \} \}/);
+  assert.match(cmd, /"VEHICLE_NOT_FOUND"/);
+  assert.match(cmd, /vehicle\?\.customerId !== customerId/);
+  assert.match(cmd, /"VEHICLE_CUSTOMER_MISMATCH"/);
+  const reserve = readSource("../lib/appointment-reservations.ts");
+  assert.match(reserve, /vehicleId: input\.vehicleId \?\? null/);
+  const route = readSource("../app/api/v1/appointments/route.ts");
+  assert.match(route, /registerAppointmentByStaffCommand\(\{[^}]*vehicleId,/);
 });

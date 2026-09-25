@@ -14,6 +14,7 @@ export type RegisterAppointmentByStaffInput = {
   actor: AppointmentCommandActor;
   branchId: string;
   customerId: string;
+  vehicleId?: string | null;
   requestedAt: Date;
   note: string | null;
   categoryIds: string[];
@@ -37,6 +38,7 @@ export async function registerAppointmentByStaffCommand(
   input: RegisterAppointmentByStaffInput,
 ): Promise<RegisterAppointmentByStaffResult> {
   const { actor, branchId, customerId, requestedAt, note, categoryIds, confirmed = false } = input;
+  const vehicleId = input.vehicleId || null;
 
   // Creation is intentionally a separate permission from editing an existing
   // appointment. The web action and API route both expose this operation as
@@ -72,12 +74,18 @@ export async function registerAppointmentByStaffCommand(
     );
   }
 
-  const [branch, customer] = await Promise.all([
+  const [branch, customer, vehicle] = await Promise.all([
     prisma.branch.findFirst({ where: { id: branchId, tenantId: actor.tenantId }, select: { id: true } }),
     prisma.customer.findFirst({
       where: { id: customerId, tenantId: actor.tenantId },
       select: { id: true, accountId: true },
     }),
+    vehicleId
+      ? prisma.tenantVehicle.findUnique({
+          where: { tenantId_vehicleId: { tenantId: actor.tenantId, vehicleId } },
+          select: { customerId: true },
+        })
+      : Promise.resolve(null),
   ]);
   if (!branch) {
     throw new AppointmentCommandError("Салбар олдсонгүй.", 422, "BRANCH_NOT_FOUND", { branchId: "Салбар олдсонгүй." });
@@ -88,6 +96,17 @@ export async function registerAppointmentByStaffCommand(
     });
   }
 
+  // Same ownership rule and wording as order creation
+  // (lib/orders/order-create-references.ts).
+  if (vehicleId && !vehicle) {
+    throw new AppointmentCommandError("Машин олдсонгүй.", 422, "VEHICLE_NOT_FOUND", { vehicleId: "Машин олдсонгүй." });
+  }
+  if (vehicleId && vehicle?.customerId !== customerId) {
+    throw new AppointmentCommandError("Энэ машин сонгосон үйлчлүүлэгчийнх биш.", 422, "VEHICLE_CUSTOMER_MISMATCH", {
+      vehicleId: "Энэ машин сонгосон үйлчлүүлэгчийнх биш.",
+    });
+  }
+
   const uniqueCategoryIds = [...new Set(categoryIds)];
   let created;
   try {
@@ -95,6 +114,7 @@ export async function registerAppointmentByStaffCommand(
       tenantId: actor.tenantId,
       branchId,
       customerId,
+      vehicleId,
       staffUserId: actor.id,
       // Bridges the phone-in booking to the customer's online Account (if
       // any), so it still shows up under "Миний захиалгууд".
@@ -122,7 +142,7 @@ export async function registerAppointmentByStaffCommand(
     entityId: created.id,
     action: "CREATE",
     summary: "Утсаар цаг бүртгэсэн",
-    after: { customerId, requestedAt: requestedAt.toISOString(), status: "CONFIRMED" },
+    after: { customerId, vehicleId, requestedAt: requestedAt.toISOString(), status: "CONFIRMED" },
   });
 
   return { appointmentId: created.id };

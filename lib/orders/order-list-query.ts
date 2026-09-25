@@ -19,6 +19,8 @@ export type OrderListQuery = {
   dateTo?: string;
   q?: string;
   vehicleId?: string;
+  /** Case-insensitive substring of the vehicle plate. */
+  plate?: string;
   customerId?: string;
   page: number;
   pageSize: number;
@@ -160,6 +162,7 @@ export function parseOrderListQuery(
       dateTo: typeof dateTo === "string" ? dateTo : undefined,
       q: optionalText(searchParams, "q"),
       vehicleId: optionalText(searchParams, "vehicleId"),
+      plate: optionalText(searchParams, "plate"),
       customerId: optionalText(searchParams, "customerId"),
       page,
       pageSize,
@@ -198,6 +201,11 @@ export function buildOrderListWhere(
   if (query.dateTo) scheduledAt.lt = bookingDayBounds(query.dateTo).end;
   const accessPredicates: Prisma.ServiceOrderWhereInput[] = [options.readWhere];
   if (query.q) accessPredicates.push(searchWhere(query.q));
+  if (query.plate) {
+    accessPredicates.push({
+      vehicle: { plate: { contains: query.plate, mode: "insensitive" } },
+    });
+  }
 
   return {
     // These predicates are intentionally unconditional. A route caller must

@@ -51,6 +51,8 @@ const APPT_SELECT = {
   id: true,
   status: true,
   requestedAt: true,
+  // Tenant app hides "Ирсэн" / shows the arrived row from this.
+  arrivedAt: true,
   note: true,
   createdAt: true,
   branch: { select: { id: true, name: true } },
@@ -92,6 +94,36 @@ function commandErrorResponse(error: unknown) {
   }
   console.error("[appointments/patch]", error instanceof Error ? error.name : "UnknownError");
   return jsonError(500, "Серверийн алдаа гарлаа. Дахин оролдоно уу.");
+}
+
+// GET /api/v1/appointments/[id]
+// Permission: appointments.view
+// Нэг цагийг жагсаалтын хэлбэрээр буцаана (tenant апп-ын мэдэгдлээс шууд
+// дэлгэрэнгүй нээхэд). `X-Working-Branch` scope-ийг жагсаалттай адил мөрдөнө —
+// өөр салбарын цаг 404.
+export async function GET(
+  req: Request,
+  ctx: { params: Promise<{ id: string }> },
+) {
+  const auth = await requireApiUser(req);
+  if (auth.response) return auth.response;
+  const denied = requirePermission(auth.user, "appointments.view");
+  if (denied) return denied;
+  const scopeResult = await resolveWorkingBranch(req, auth.user);
+  if (scopeResult.response) return scopeResult.response;
+  const scope = scopeResult.branchId;
+
+  const { id } = await ctx.params;
+  const appointment = await prisma.appointment.findFirst({
+    where: {
+      id,
+      tenantId: auth.user.tenantId,
+      ...(scope ? { branchId: scope } : {}),
+    },
+    select: APPT_SELECT,
+  });
+  if (!appointment) return jsonError(404, "Цаг захиалга олдсонгүй.");
+  return jsonOk({ appointment: shapeAppointment(appointment) });
 }
 
 // PATCH /api/v1/appointments/[id]

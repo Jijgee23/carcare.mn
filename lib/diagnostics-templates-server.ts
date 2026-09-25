@@ -483,6 +483,15 @@ export async function duplicateTemplateCommand(input: {
     throw new DiagnosticTemplateCommandError("Загвар олдсонгүй.", 404, "TEMPLATE_NOT_FOUND");
   }
 
+  // Системийн загварын ангилал өөр tenant-ынх байж болзошгүй — зөвхөн энэ
+  // tenant-ын ангилал бол хадгална (веб duplicateTemplateAction-тай ижил).
+  const categoryId = src.categoryId
+    ? (await prisma.category.findFirst({
+        where: { id: src.categoryId, tenantId: actor.tenantId },
+        select: { id: true },
+      }))?.id ?? null
+    : null;
+
   const copy = await prisma.diagnosticTemplate.create({
     data: {
       name: `${src.name} (хуулбар)`,
@@ -490,6 +499,9 @@ export async function duplicateTemplateCommand(input: {
       type: src.type,
       isActive: src.isActive,
       schema: src.schema as object,
+      categoryId,
+      price: src.price,
+      durationMin: src.durationMin,
       version: 1,
       tenantId: actor.tenantId,
       createdById: actor.id,

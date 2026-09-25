@@ -410,3 +410,24 @@ test("without contention the same slot books normally (control case)", async () 
   assert.equal(result.status, "CONFIRMED");
   assert.equal(committed.length, 1);
 });
+
+test("vehicleId is optional, trimmed, and blank/null normalizes to null", () => {
+  for (const [input, expected] of [
+    [undefined, null],
+    [null, null],
+    ["", null],
+    ["  veh-1 ", "veh-1"],
+  ] as const) {
+    const result = parseCreateAppointmentBody({ ...validBody, vehicleId: input }, NOW);
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.vehicleId, expected);
+  }
+});
+
+test("a non-string vehicleId is rejected with 400", () => {
+  const result = parseCreateAppointmentBody({ ...validBody, vehicleId: 42 }, NOW);
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.status, 400);
+});

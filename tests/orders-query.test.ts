@@ -16,7 +16,7 @@ test("parses every orders-list filter and decodes encoded search text", () => {
   const parsed = query(
     "status=IN_PROGRESS&branchId=branch-a&assignedToId=user-1" +
       "&paymentStatus=PARTIAL&postpaid=true&dateFrom=2026-09-01&dateTo=2026-09-30" +
-      "&q=Jane%20Doe%2F9911&vehicleId=vehicle-1&customerId=customer-1&page=2&pageSize=25",
+      "&q=Jane%20Doe%2F9911&vehicleId=vehicle-1&customerId=customer-1&plate=%D0%A3%D0%91&page=2&pageSize=25",
   );
 
   assert.deepEqual(parsed, {
@@ -30,6 +30,7 @@ test("parses every orders-list filter and decodes encoded search text", () => {
     q: "Jane Doe/9911",
     vehicleId: "vehicle-1",
     customerId: "customer-1",
+    plate: "УБ",
     page: 2,
     pageSize: 25,
     skip: 25,
@@ -96,6 +97,17 @@ test("search covers number, customer, phone, plate, make and model", () => {
       ],
     },
   ]);
+});
+
+test("plate filter matches only the vehicle plate, conjunctive with search", () => {
+  const where = buildOrderListWhere(query("plate=1234&q=Jane"), {
+    tenantId: "tenant-a",
+    readWhere: {},
+  });
+  assert.deepEqual((where.AND as unknown[]).at(-1), {
+    vehicle: { plate: { contains: "1234", mode: "insensitive" } },
+  });
+  assert.equal((where.AND as unknown[]).length, 3);
 });
 
 test("working branch overrides a requested branch without widening tenant scope", () => {

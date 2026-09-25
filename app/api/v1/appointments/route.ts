@@ -28,6 +28,8 @@ const APPT_SELECT = {
   id: true,
   status: true,
   requestedAt: true,
+  // Tenant app hides "Ирсэн" / shows the arrived row from this.
+  arrivedAt: true,
   note: true,
   createdAt: true,
   branch: { select: { id: true, name: true } },
@@ -221,7 +223,7 @@ export async function POST(req: Request) {
   if (!parsed.ok) {
     return jsonError(parsed.status, parsed.message, parsed.fieldErrors ? { fieldErrors: parsed.fieldErrors } : undefined);
   }
-  const { branchId, customerId, requestedAt, note, categoryIds, confirmed } = parsed.value;
+  const { branchId, customerId, vehicleId, requestedAt, note, categoryIds, confirmed } = parsed.value;
 
   const scopeResult = await resolveWorkingBranch(req, auth.user);
   if (scopeResult.response) return scopeResult.response;
@@ -242,6 +244,7 @@ export async function POST(req: Request) {
       actor,
       branchId,
       customerId,
+      vehicleId,
       requestedAt,
       note,
       categoryIds,

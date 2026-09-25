@@ -45,6 +45,8 @@ export type ReservationInput = {
   accountId?: string | null;
   accountVehicleId?: string | null;
   customerId?: string | null;
+  // Staff registration only; the caller validates tenant ownership.
+  vehicleId?: string | null;
   note?: string | null;
   staffUserId?: string;
   // Only honored when staffUserId is set — see ReservationConflictError.
@@ -125,6 +127,7 @@ export async function reserveAppointmentInTransaction(
       estimatedDurationMinutes: duration, originalEstimatedDurationMinutes: duration,
       accountId: input.accountId ?? null,
       accountVehicleId: input.accountVehicleId ?? null, customerId: input.customerId ?? null,
+      vehicleId: input.vehicleId ?? null,
       note: input.note ?? null, categoryId: categoryIds[0] ?? null,
       categories: categoryIds.length ? { create: categoryIds.map((categoryId) => ({ categoryId })) } : undefined,
       status: input.staffUserId ? "CONFIRMED" : "PENDING",
