@@ -23,7 +23,7 @@ export default function ForgotPage() {
     <div className={`${plexSans.variable} ${plexMono.variable}`}>
       <TenantAuthShell
         title="Нууц үгээ сэргээх"
-        subtitle="Бүртгэлтэй имэйлээ оруулна уу. Бид утсан дээр чинь 6 оронтой код илгээх болно."
+        subtitle="Бүртгэлтэй имэйл эсвэл утасны дугаараа оруулна уу. Бид утсан дээр чинь 6 оронтой код илгээх болно."
         notice={
           <>
             Нэвтрэх юм уу?{" "}

@@ -13,8 +13,8 @@ import {
 import { Field, FormError, SubmitButton } from "@/app/_components/landing-ops-ui";
 
 /**
- * Нэвтрэх — имэйлээр эхэлсэн (progressive) урсгал:
- *   1) Имэйл оруулна → checkLoginEmailAction
+ * Нэвтрэх — имэйл эсвэл утасны дугаараар эхэлсэн (progressive) урсгал:
+ *   1) Имэйл / утас оруулна → checkLoginEmailAction
  *   2a) Бүртгэлтэй + идэвхжсэн → нууц үг асууна (signInAction)
  *   2b) Бүртгэлтэй ч нууц үггүй → OTP + шинэ нууц үг (activateAccountAction)
  *   2c) Бүртгэлгүй → мессеж + бүртгүүлэх холбоос
@@ -26,15 +26,15 @@ export function LoginForm() {
   >(checkLoginEmailAction, null);
 
   const status = checkState?.ok ? checkState.status : undefined;
-  const email = checkState?.email ?? "";
+  const identifier = checkState?.identifier ?? "";
 
   if (status === "password") {
-    return <PasswordStep email={email} />;
+    return <PasswordStep identifier={identifier} />;
   }
   if (status === "activate") {
     return (
       <ActivateStep
-        email={email}
+        identifier={identifier}
         maskedPhone={checkState?.maskedPhone ?? ""}
         notice={checkState?.message}
       />
@@ -44,13 +44,13 @@ export function LoginForm() {
     return <NotRegistered message={checkState?.message} />;
   }
   return (
-    <EmailStep state={checkState} formAction={checkAction} pending={checkPending} />
+    <IdentifierStep state={checkState} formAction={checkAction} pending={checkPending} />
   );
 }
 
-// --- 1-р шат: имэйл ---------------------------------------------------------
+// --- 1-р шат: имэйл эсвэл утас ------------------------------------------------
 
-function EmailStep({
+function IdentifierStep({
   state,
   formAction,
   pending,
@@ -60,25 +60,46 @@ function EmailStep({
   pending: boolean;
 }) {
   const fe = state?.fieldErrors ?? {};
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   return (
     <form action={formAction} className="flex flex-col gap-5" noValidate>
-      <Field label="Имэйл хаяг" htmlFor="email" error={fe.email}>
+      <Field
+        label="Имэйл эсвэл утасны дугаар"
+        htmlFor="identifier"
+        error={fe.identifier}
+      >
         <input
-          id="email"
-          name="email"
-          type="email"
+          id="identifier"
+          name="identifier"
+          type="text"
           required
-          autoComplete="email"
+          autoComplete="username"
+          autoCapitalize="none"
+          spellCheck={false}
           autoFocus
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className={`auth-input ${fe.email ? "border-red-500/50" : ""}`}
-          placeholder="menejer@servis.mn"
+          value={identifier}
+          onChange={(e) => setIdentifier(e.target.value)}
+          className={`auth-input ${fe.identifier ? "border-red-500/50" : ""}`}
+          placeholder="menejer@servis.mn эсвэл 99112233"
         />
       </Field>
 
       <SubmitButton pending={pending}>Үргэлжлүүлэх →</SubmitButton>
+
+      <div className="flex items-center justify-between gap-3">
+        <Link
+          href="/page/activate"
+          className="text-xs text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors"
+        >
+          Нууц үг үүсгэх
+        </Link>
+        <Link
+          href="/page/forgot"
+          className="text-xs text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors"
+        >
+          Нууц үг сэргээх
+        </Link>
+      </div>
 
       {/* Progressive урсгалыг тайлбарлана — нууц үг дараагийн шатанд асуугдана */}
       <p className="text-center text-xs text-[var(--oc-muted3)]">
@@ -91,7 +112,7 @@ function EmailStep({
 
 // --- 2a: нууц үгээр нэвтрэх --------------------------------------------------
 
-function PasswordStep({ email }: { email: string }) {
+function PasswordStep({ identifier }: { identifier: string }) {
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
     signInAction,
     null,
@@ -102,11 +123,11 @@ function PasswordStep({ email }: { email: string }) {
 
   return (
     <form action={formAction} className="flex flex-col gap-5" noValidate>
-      <input type="hidden" name="email" value={email} />
+      <input type="hidden" name="identifier" value={identifier} />
       <FormError message={state?.message} />
 
       <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] px-4 py-2.5 text-sm text-[var(--oc-muted2)]">
-        {email}
+        {identifier}
       </div>
 
       <Field label="Нууц үг" htmlFor="password" error={fe.password}>
@@ -140,7 +161,7 @@ function PasswordStep({ email }: { email: string }) {
           href="/page/login"
           className="text-xs text-[var(--oc-muted3)] hover:text-[var(--oc-accent-hi)] transition-colors"
         >
-          ← Өөр имэйл
+          ← Өөр нэвтрэх нэр
         </a>
         <Link
           href="/page/forgot"
@@ -156,11 +177,11 @@ function PasswordStep({ email }: { email: string }) {
 // --- 2b: анхны нэвтрэлт — OTP + шинэ нууц үг ---------------------------------
 
 function ActivateStep({
-  email,
+  identifier,
   maskedPhone,
   notice,
 }: {
-  email: string;
+  identifier: string;
   maskedPhone: string;
   notice?: string;
 }) {
@@ -176,7 +197,7 @@ function ActivateStep({
 
   return (
     <form action={formAction} className="flex flex-col gap-5" noValidate>
-      <input type="hidden" name="email" value={email} />
+      <input type="hidden" name="identifier" value={identifier} />
 
       <div className="bg-[var(--oc-accent)]/10 border border-[var(--oc-accent)]/25 rounded-[10px] px-4 py-3 text-sm text-[var(--oc-ink2)]">
         Анх удаа нэвтрэх тул нууц үгээ үүсгэнэ үү.{" "}
@@ -257,7 +278,7 @@ function ActivateStep({
         href="/page/login"
         className="text-center text-xs text-[var(--oc-muted3)] hover:text-[var(--oc-accent-hi)] transition-colors"
       >
-        ← Өөр имэйл
+        ← Өөр нэвтрэх нэр
       </a>
     </form>
   );
@@ -269,7 +290,7 @@ function NotRegistered({ message }: { message?: string }) {
   return (
     <div className="flex flex-col gap-4 text-center">
       <div className="bg-[var(--oc-accent)]/10 border border-[var(--oc-accent)]/25 rounded-[10px] px-4 py-3 text-sm text-[var(--oc-ink2)]">
-        {message ?? "Энэ имэйл бүртгэлгүй байна."}
+        {message ?? "Энэ имэйл / утас бүртгэлгүй байна."}
       </div>
       <Link
         href="/page/signup"
@@ -281,7 +302,7 @@ function NotRegistered({ message }: { message?: string }) {
         href="/page/login"
         className="text-xs text-[var(--oc-muted3)] hover:text-[var(--oc-accent-hi)] transition-colors"
       >
-        ← Өөр имэйл оруулах
+        ← Өөр имэйл / утас оруулах
       </a>
     </div>
   );

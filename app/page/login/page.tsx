@@ -31,7 +31,7 @@ export default async function LoginPage() {
     <div className={`${plexSans.variable} ${plexMono.variable}`}>
       <TenantAuthShell
         title="Ажлын консолд нэвтрэх"
-        subtitle="Байгууллагын имэйл хаягаа оруулна уу. Дараагийн алхамд нууц үг эсвэл нэг удаагийн кодоор баталгаажуулна."
+        subtitle="Байгууллагын имэйл хаяг эсвэл утасны дугаараа оруулна уу. Дараагийн алхамд нууц үг эсвэл нэг удаагийн кодоор баталгаажуулна."
         notice={
           <>
             <span className="font-plex-mono text-[11px] uppercase tracking-[0.1em] text-[var(--oc-muted3)] block mb-2">

@@ -82,6 +82,27 @@ function isEmail(s: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 }
 
+// Ажилтны нэвтрэх нэр — имэйл ЭСВЭЛ утасны дугаар (User.email, User.phone
+// хоёулаа глобал unique). OTP нь (email, type)-аар түлхүүрлэгддэг тул утсаар
+// орсон ч хэрэглэгчийг олсны дараа OTP-д user.email-ийг ашиглана.
+type LoginIdentifier = { email: string } | { phone: string };
+
+const IDENTIFIER_ERROR = "Имэйл эсвэл утасны дугаар буруу.";
+
+/** Form-ын `identifier` (хуучин `email`) талбарыг задлана. Хүчингүй бол null. */
+function getIdentifier(fd: FormData): LoginIdentifier | null {
+  const raw = getStr(fd, "identifier") || getStr(fd, "email");
+  const lower = raw.toLowerCase();
+  if (isEmail(lower)) return { email: lower };
+  const phone = normalizePhone(raw);
+  return phone ? { phone } : null;
+}
+
+/** Client руу буцаах канон утга (имэйл lowercase / 8 оронтой утас). */
+function identifierValue(id: LoginIdentifier): string {
+  return "email" in id ? id.email : id.phone;
+}
+
 function makeSlug(name: string): string {
   const base = name
     .toLowerCase()
@@ -457,18 +478,19 @@ export async function signUpAction(
   redirect("/dashboard");
 }
 
-// ---- LOGIN EMAIL CHECK (нэвтрэх хуудасны 1-р шат) --------------------------
-// Имэйлээ оруулсны дараа дараагийн алхмыг тодорхойлно:
+// ---- LOGIN IDENTIFIER CHECK (нэвтрэх хуудасны 1-р шат) ---------------------
+// Имэйл эсвэл утасны дугаараа оруулсны дараа дараагийн алхмыг тодорхойлно:
 //   - "password"        : бүртгэлтэй, идэвхжсэн → нууц үг асууна
 //   - "activate"        : бүртгэлтэй ч нууц үггүй → утсанд OTP илгээж, нууц үг үүсгүүлнэ
 //   - "not_registered"  : бүртгэлгүй → мессеж харуулна
-// Тэмдэглэл: энэ нь имэйл бүртгэлтэй эсэхийг ил болгодог (enumeration) — UX-ийн
+// Тэмдэглэл: энэ нь имэйл/утас бүртгэлтэй эсэхийг ил болгодог (enumeration) — UX-ийн
 // үүднээс зориуд. Бусад урсгал (signup/forgot/activate) enumeration-safe хэвээр.
 
 export type LoginEmailState = {
   ok: boolean;
   status?: "password" | "activate" | "not_registered";
-  email?: string;
+  /** Канон нэвтрэх нэр (имэйл эсвэл 8 оронтой утас) — дараагийн шатанд дамжина. */
+  identifier?: string;
   maskedPhone?: string;
   message?: string;
   fieldErrors?: Record<string, string>;
@@ -478,31 +500,31 @@ export async function checkLoginEmailAction(
   _prev: LoginEmailState,
   formData: FormData,
 ): Promise<LoginEmailState> {
-  const email = getStr(formData, "email").toLowerCase();
-  if (!isEmail(email)) {
-    return { ok: false, fieldErrors: { email: "Имэйл хаяг буруу." } };
+  const id = getIdentifier(formData);
+  if (!id) {
+    return { ok: false, fieldErrors: { identifier: IDENTIFIER_ERROR } };
   }
+  const identifier = identifierValue(id);
 
   // Нэвтрэхээс өмнө — session/tenant хараахан байхгүй.
   setBypassContext();
   const user = await prisma.user.findUnique({
-    where: { email },
-    select: { id: true, verified: true, passwordHash: true, phone: true },
+    where: id,
+    select: { id: true, email: true, verified: true, passwordHash: true, phone: true },
   });
 
   if (!user) {
     return {
       ok: true,
       status: "not_registered",
-      email,
-      message:
-        "Энэ имэйл бүртгэлгүй байна. Байгууллагаа бүртгүүлэх эсвэл админтайгаа холбогдоно уу.",
+      identifier,
+      message: `Энэ ${"email" in id ? "имэйл" : "утасны дугаар"} бүртгэлгүй байна. Байгууллагаа бүртгүүлэх эсвэл админтайгаа холбогдоно уу.`,
     };
   }
 
   // Идэвхжсэн — нууц үгээр нэвтэрнэ.
   if (user.verified && user.passwordHash) {
-    return { ok: true, status: "password", email };
+    return { ok: true, status: "password", identifier };
   }
 
   // Идэвхжээгүй — анхны нэвтрэлт: утсанд OTP илгээж нууц үг үүсгүүлнэ.
@@ -515,7 +537,7 @@ export async function checkLoginEmailAction(
       h.get("x-real-ip") ||
       null;
     const { code } = await issueOtp({
-      email,
+      email: user.email,
       type: "SET_PASSWORD",
       userId: user.id,
       userAgent: ua,
@@ -527,13 +549,13 @@ export async function checkLoginEmailAction(
     return {
       ok: true,
       status: "activate",
-      email,
+      identifier,
       maskedPhone,
       message: e instanceof Error ? e.message : "Код илгээхэд алдаа гарлаа.",
     };
   }
 
-  return { ok: true, status: "activate", email, maskedPhone };
+  return { ok: true, status: "activate", identifier, maskedPhone };
 }
 
 // ---- SIGN IN --------------------------------------------------------------
@@ -544,13 +566,13 @@ export async function signInAction(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const email = getStr(formData, "email").toLowerCase();
+  const id = getIdentifier(formData);
   const password = getStr(formData, "password");
 
   const fieldErrors: Record<string, string> = {};
-  if (!isEmail(email)) fieldErrors.email = "Имэйл хаяг буруу.";
+  if (!id) fieldErrors.identifier = IDENTIFIER_ERROR;
   if (!password) fieldErrors.password = "Нууц үгээ оруулна уу.";
-  if (Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors };
+  if (!id || Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors };
 
   // Account-ын түгжээнээс гадна IP-ээр — олон имэйл дээр тархсан оролдлогыг хаана.
   const loginIp = ipFromHeaders(await headers());
@@ -561,12 +583,12 @@ export async function signInAction(
   // Нэвтрэхээс өмнө — session/tenant хараахан байхгүй.
   setBypassContext();
   const user = await prisma.user.findUnique({
-    where: { email },
+    where: id,
     include: { tenant: { select: { suspended: true } } },
   });
   // Цаг алдалгүй "имэйл буруу" гэхгүй — нэвтрэгчдийг нэрлэх боломж өгөхгүй.
   if (!user) {
-    return { ok: false, message: "Имэйл эсвэл нууц үг буруу байна." };
+    return { ok: false, message: "Нэвтрэх нэр эсвэл нууц үг буруу байна." };
   }
 
   // Аккаунт түгжигдсэн бол энд л зогсоо.
@@ -608,7 +630,7 @@ export async function signInAction(
     const remaining = MAX_LOGIN_ATTEMPTS - nextAttempts;
     return {
       ok: false,
-      message: `Имэйл эсвэл нууц үг буруу байна. Үлдсэн оролдлого: ${remaining}.`,
+      message: `Нэвтрэх нэр эсвэл нууц үг буруу байна. Үлдсэн оролдлого: ${remaining}.`,
     };
   }
 
@@ -724,31 +746,33 @@ export type ForgotPasswordState = {
   step: "request" | "verify";
   message?: string;
   fieldErrors?: Record<string, string>;
-  email?: string;
+  /** Канон нэвтрэх нэр (имэйл эсвэл 8 оронтой утас). */
+  identifier?: string;
   maskedPhone?: string;
 } | null;
 
 /**
- * 1-р шат: имэйл оруулаад, утсанд OTP илгээнэ.
+ * 1-р шат: имэйл эсвэл утасны дугаар оруулаад, утсанд OTP илгээнэ.
  */
 export async function requestPasswordResetAction(
   _prev: ForgotPasswordState,
   formData: FormData,
 ): Promise<ForgotPasswordState> {
-  const email = getStr(formData, "email").toLowerCase();
-  if (!isEmail(email)) {
+  const id = getIdentifier(formData);
+  if (!id) {
     return {
       ok: false,
       step: "request",
-      fieldErrors: { email: "Имэйл хаяг буруу." },
+      fieldErrors: { identifier: IDENTIFIER_ERROR },
     };
   }
+  const identifier = identifierValue(id);
 
   // Нууц үг сэргээхээс өмнө — session/tenant хараахан байхгүй.
   setBypassContext();
   const user = await prisma.user.findUnique({
-    where: { email },
-    select: { id: true, phone: true },
+    where: id,
+    select: { id: true, email: true, phone: true },
   });
 
   // Хэрэглэгчийн нууцлалыг хадгалахын тулд бүх тохиолдолд success-тэй адил
@@ -761,7 +785,7 @@ export async function requestPasswordResetAction(
       h.get("x-real-ip") ||
       null;
     const { code } = await issueOtp({
-      email,
+      email: user.email,
       type: "RESET_PASSWORD",
       userId: user.id,
       userAgent: ua,
@@ -771,7 +795,7 @@ export async function requestPasswordResetAction(
     return {
       ok: true,
       step: "verify",
-      email,
+      identifier,
       maskedPhone: maskPhone(user.phone),
       message: "Утсанд 6 оронтой код илгээлээ.",
     };
@@ -781,9 +805,9 @@ export async function requestPasswordResetAction(
   return {
     ok: true,
     step: "verify",
-    email,
+    identifier,
     maskedPhone: "**",
-    message: "Хэрэв энэ имэйл бүртгэлтэй бол утсанд код илгээгдсэн.",
+    message: "Хэрэв энэ бүртгэлтэй бол утсанд код илгээгдсэн.",
   };
 }
 
@@ -795,25 +819,41 @@ export async function resetPasswordAction(
   _prev: ForgotPasswordState,
   formData: FormData,
 ): Promise<ForgotPasswordState> {
-  const email = getStr(formData, "email").toLowerCase();
+  const id = getIdentifier(formData);
+  const identifier = id ? identifierValue(id) : "";
   const code = getStr(formData, "code");
   const password = getStr(formData, "password");
   const passwordConfirm = getStr(formData, "passwordConfirm");
 
   const fieldErrors: Record<string, string> = {};
-  if (!isEmail(email)) fieldErrors.email = "Имэйл хаяг буруу.";
+  if (!id) fieldErrors.identifier = IDENTIFIER_ERROR;
   if (!/^\d{6}$/.test(code))
     fieldErrors.code = "6 оронтой код оруулна уу.";
   if (password.length < 8)
     fieldErrors.password = "Нууц үг хамгийн багадаа 8 тэмдэгт байна.";
   if (password !== passwordConfirm)
     fieldErrors.passwordConfirm = "Нууц үг таарахгүй байна.";
-  if (Object.keys(fieldErrors).length > 0) {
-    return { ok: false, step: "verify", email, fieldErrors };
+  if (!id || Object.keys(fieldErrors).length > 0) {
+    return { ok: false, step: "verify", identifier, fieldErrors };
   }
 
   // Нууц үг сэргээхээс өмнө — session/tenant хараахан байхгүй.
   setBypassContext();
+  const user = await prisma.user.findUnique({
+    where: id,
+    select: { id: true, email: true, tenantId: true },
+  });
+  // Бүртгэлгүй нэвтрэх нэрийг "код буруу"-тай адил харуулна (enumeration-аас сэргийлнэ).
+  if (!user) {
+    return {
+      ok: false,
+      step: "verify",
+      identifier,
+      fieldErrors: { code: "Код буруу байна." },
+    };
+  }
+  const email = user.email;
+
   const otp = await verifyOtp({ email, type: "RESET_PASSWORD", code });
   if (!otp.ok) {
     const message =
@@ -822,20 +862,7 @@ export async function resetPasswordAction(
         : otp.reason === "too_many_attempts"
           ? "Хэт олон удаа буруу оролдсон. Шинээр код илгээнэ үү."
           : "Код буруу байна.";
-    return { ok: false, step: "verify", email, fieldErrors: { code: message } };
-  }
-
-  const user = await prisma.user.findUnique({
-    where: { email },
-    select: { id: true, tenantId: true },
-  });
-  if (!user) {
-    return {
-      ok: false,
-      step: "verify",
-      email,
-      message: "Хэрэглэгч олдсонгүй.",
-    };
+    return { ok: false, step: "verify", identifier, fieldErrors: { code: message } };
   }
 
   const passwordHash = await hashPassword(password);
@@ -866,14 +893,14 @@ export async function resetPasswordAction(
   return {
     ok: true,
     step: "verify",
-    email,
+    identifier,
     message: "Нууц үг шинэчлэгдлээ. Шинэ нууц үгээрээ нэвтэрнэ үү.",
   };
 }
 
 // ---- ACTIVATE ACCOUNT (анхны нэвтрэлт) ------------------------------------
 // Админ ажилтан үүсгэхэд нууц үг тавихгүй (passwordHash=null, verified=false).
-// Ажилтан энд имэйлээ оруулж утсандаа ирэх OTP-ээр баталгаажуулан нууц үгээ
+// Ажилтан энд имэйл эсвэл утасны дугаараа оруулж утсандаа ирэх OTP-ээр баталгаажуулан нууц үгээ
 // үүсгэснээр аккаунт идэвхжиж (verified=true), шууд нэвтэрнэ.
 
 export type ActivateAccountState = {
@@ -881,31 +908,33 @@ export type ActivateAccountState = {
   step: "request" | "verify";
   message?: string;
   fieldErrors?: Record<string, string>;
-  email?: string;
+  /** Канон нэвтрэх нэр (имэйл эсвэл 8 оронтой утас). */
+  identifier?: string;
   maskedPhone?: string;
 } | null;
 
 /**
- * 1-р шат: имэйл оруулаад, идэвхжээгүй ажилтны утсанд OTP илгээнэ.
+ * 1-р шат: имэйл эсвэл утас оруулаад, идэвхжээгүй ажилтны утсанд OTP илгээнэ.
  */
 export async function requestActivationAction(
   _prev: ActivateAccountState,
   formData: FormData,
 ): Promise<ActivateAccountState> {
-  const email = getStr(formData, "email").toLowerCase();
-  if (!isEmail(email)) {
+  const id = getIdentifier(formData);
+  if (!id) {
     return {
       ok: false,
       step: "request",
-      fieldErrors: { email: "Имэйл хаяг буруу." },
+      fieldErrors: { identifier: IDENTIFIER_ERROR },
     };
   }
+  const identifier = identifierValue(id);
 
   // Идэвхжүүлэхээс өмнө — session/tenant хараахан байхгүй.
   setBypassContext();
   const user = await prisma.user.findUnique({
-    where: { email },
-    select: { id: true, phone: true, verified: true },
+    where: id,
+    select: { id: true, email: true, phone: true, verified: true },
   });
 
   // Аль хэдийн идэвхжсэн бол энгийн нэвтрэлт рүү чиглүүлнэ.
@@ -926,7 +955,7 @@ export async function requestActivationAction(
       h.get("x-real-ip") ||
       null;
     const { code } = await issueOtp({
-      email,
+      email: user.email,
       type: "SET_PASSWORD",
       userId: user.id,
       userAgent: ua,
@@ -936,19 +965,19 @@ export async function requestActivationAction(
     return {
       ok: true,
       step: "verify",
-      email,
+      identifier,
       maskedPhone: maskPhone(user.phone),
       message: "Бүртгэлтэй утсанд 6 оронтой код илгээлээ.",
     };
   }
 
-  // Бүртгэлгүй имэйлийг ч "илгээсэн" мэт харуулна (enumeration-аас сэргийлнэ).
+  // Бүртгэлгүй нэвтрэх нэрийг ч "илгээсэн" мэт харуулна (enumeration-аас сэргийлнэ).
   return {
     ok: true,
     step: "verify",
-    email,
+    identifier,
     maskedPhone: "**",
-    message: "Хэрэв энэ имэйл бүртгэлтэй бол утсанд код илгээгдсэн.",
+    message: "Хэрэв энэ бүртгэлтэй бол утсанд код илгээгдсэн.",
   };
 }
 
@@ -960,24 +989,40 @@ export async function activateAccountAction(
   _prev: ActivateAccountState,
   formData: FormData,
 ): Promise<ActivateAccountState> {
-  const email = getStr(formData, "email").toLowerCase();
+  const id = getIdentifier(formData);
+  const identifier = id ? identifierValue(id) : "";
   const code = getStr(formData, "code");
   const password = getStr(formData, "password");
   const passwordConfirm = getStr(formData, "passwordConfirm");
 
   const fieldErrors: Record<string, string> = {};
-  if (!isEmail(email)) fieldErrors.email = "Имэйл хаяг буруу.";
+  if (!id) fieldErrors.identifier = IDENTIFIER_ERROR;
   if (!/^\d{6}$/.test(code)) fieldErrors.code = "6 оронтой код оруулна уу.";
   if (password.length < 8)
     fieldErrors.password = "Нууц үг хамгийн багадаа 8 тэмдэгт байна.";
   if (password !== passwordConfirm)
     fieldErrors.passwordConfirm = "Нууц үг таарахгүй байна.";
-  if (Object.keys(fieldErrors).length > 0) {
-    return { ok: false, step: "verify", email, fieldErrors };
+  if (!id || Object.keys(fieldErrors).length > 0) {
+    return { ok: false, step: "verify", identifier, fieldErrors };
   }
 
   // Идэвхжүүлэхээс өмнө — session/tenant хараахан байхгүй.
   setBypassContext();
+  const user = await prisma.user.findUnique({
+    where: id,
+    include: { tenant: { select: { suspended: true } } },
+  });
+  // Бүртгэлгүй нэвтрэх нэрийг "код буруу"-тай адил харуулна (enumeration-аас сэргийлнэ).
+  if (!user) {
+    return {
+      ok: false,
+      step: "verify",
+      identifier,
+      fieldErrors: { code: "Код буруу байна." },
+    };
+  }
+  const email = user.email;
+
   const otp = await verifyOtp({ email, type: "SET_PASSWORD", code });
   if (!otp.ok) {
     const message =
@@ -986,21 +1031,14 @@ export async function activateAccountAction(
         : otp.reason === "too_many_attempts"
           ? "Хэт олон удаа буруу оролдсон. Шинээр код илгээнэ үү."
           : "Код буруу байна.";
-    return { ok: false, step: "verify", email, fieldErrors: { code: message } };
+    return { ok: false, step: "verify", identifier, fieldErrors: { code: message } };
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email },
-    include: { tenant: { select: { suspended: true } } },
-  });
-  if (!user) {
-    return { ok: false, step: "verify", email, message: "Хэрэглэгч олдсонгүй." };
-  }
   if (user.verified) {
     return {
       ok: false,
       step: "verify",
-      email,
+      identifier,
       message: "Аккаунт аль хэдийн идэвхжсэн байна. Нэвтэрнэ үү.",
     };
   }
@@ -1008,7 +1046,7 @@ export async function activateAccountAction(
     return {
       ok: false,
       step: "verify",
-      email,
+      identifier,
       message:
         "Таны байгууллагын хандалт түр зогссон байна. carservice.mn-тай холбоо барина уу.",
     };
@@ -1020,7 +1058,7 @@ export async function activateAccountAction(
     activeUntil: user.activeUntil,
   });
   if (!active.ok) {
-    return { ok: false, step: "verify", email, message: active.message };
+    return { ok: false, step: "verify", identifier, message: active.message };
   }
 
   const passwordHash = await hashPassword(password);

@@ -28,7 +28,7 @@ export function ForgotPasswordForm() {
   const onVerifyStep =
     Boolean(requestState?.ok) && requestState?.step === "verify";
   const finished = Boolean(resetState?.ok && resetState.step === "verify");
-  const email = resetState?.email ?? requestState?.email ?? "";
+  const identifier = resetState?.identifier ?? requestState?.identifier ?? "";
   const maskedPhone = requestState?.maskedPhone ?? "";
 
   if (finished) {
@@ -49,7 +49,7 @@ export function ForgotPasswordForm() {
 
   return onVerifyStep ? (
     <VerifyStep
-      email={email}
+      identifier={identifier}
       maskedPhone={maskedPhone}
       state={resetState}
       formAction={resetAction}
@@ -77,22 +77,28 @@ function RequestStep({
   pending: boolean;
 }) {
   const fe = state?.fieldErrors ?? {};
-  const [email, setEmail] = useState(state?.email ?? "");
+  const [identifier, setIdentifier] = useState(state?.identifier ?? "");
   return (
     <form action={formAction} className="flex flex-col gap-5" noValidate>
       <FormError message={!state?.ok ? state?.message : undefined} />
 
-      <Field label="Имэйл" htmlFor="forgot-email" error={fe.email}>
+      <Field
+        label="Имэйл эсвэл утасны дугаар"
+        htmlFor="forgot-email"
+        error={fe.identifier}
+      >
         <input
           id="forgot-email"
-          name="email"
-          type="email"
+          name="identifier"
+          type="text"
           required
-          autoComplete="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className={`auth-input ${fe.email ? "border-red-500/50" : ""}`}
-          placeholder="you@example.com"
+          autoComplete="username"
+          autoCapitalize="none"
+          spellCheck={false}
+          value={identifier}
+          onChange={(e) => setIdentifier(e.target.value)}
+          className={`auth-input ${fe.identifier ? "border-red-500/50" : ""}`}
+          placeholder="you@example.com эсвэл 99112233"
         />
       </Field>
 
@@ -102,7 +108,7 @@ function RequestStep({
 }
 
 function VerifyStep({
-  email,
+  identifier,
   maskedPhone,
   state,
   formAction,
@@ -111,7 +117,7 @@ function VerifyStep({
   resendAction,
   resendPending,
 }: {
-  email: string;
+  identifier: string;
   maskedPhone: string;
   state: ForgotPasswordState;
   formAction: (fd: FormData) => void;
@@ -128,7 +134,7 @@ function VerifyStep({
 
   return (
     <form action={formAction} className="flex flex-col gap-5" noValidate>
-      <input type="hidden" name="email" value={email} />
+      <input type="hidden" name="identifier" value={identifier} />
 
       <div className="bg-[var(--oc-accent)]/10 border border-[var(--oc-accent)]/25 rounded-[10px] px-4 py-3 text-sm text-[var(--oc-ink2)]">
         {requestSuccessMessage ??
@@ -167,7 +173,7 @@ function VerifyStep({
         onResend={() => {
           setCode("");
           const fd = new FormData();
-          fd.set("email", email);
+          fd.set("identifier", identifier);
           startTransition(() => resendAction(fd));
         }}
       />

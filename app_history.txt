@@ -1655,3 +1655,19 @@ BUG FIX: Ажилтны утас засахад буруу талбарт алд
 - `scripts/seed-system-diagnostic-template.ts` (шинэ), `npm run db:seed:diagnostic-template`. Агуулга: `lib/diagnostics.ts` DEFAULT_INTAKE_TEMPLATE_SCHEMA (local-ийн difftpl_87fac... загвартай яг ижил гэж шалгасан). tenantId=NULL, тогтмол id `systpl_default_intake` (local-ийн difftpl_* id нь тенантын id-ээс md5 хийсэн тул прод-д тенантын өөрийн загвартай давхцаж болзошгүй — ашиглаагүй).
 - Идемпотент: байгаа бол хөндөхгүй; ижил нэртэй системийн загвар байвал давхар үүсгэхгүй; `--update` кодын утгаар шинэчилнэ (тайлантай + schema өөрчлөгдсөн бол version +1, jsonb key дарааллаас үл хамааран харьцуулна). Grant зөвхөн `--grant-all` / `--grant=id1,id2` өгсөн үед (skipDuplicates).
 - Баталгаажуулалт: local дээр skip / create+grant / rerun / --update (schema ижил, version хэвээр) / олдоогүй tenant warning — бүгд хүлээгдсэн; туршилтын мөрийг устгаж local-ийг сэргээв.
+
+[2026-09-25] SMS gateway-г CallPro-оос sendsms.mn руу шилжүүлэв
+- `lib/sms.ts` — `sendSms()` нь `SMS_PROVIDER`-оор gateway сонгоно: `sendsms` (default) → `sendViaSendSms` (POST JSON `{ apiKey, apiToken, phone, message }` → `SEND_SMS_API_URL`, `.env`-ийн `SENS_SMS_API_URL` нэрийг мөн уншина); `callpro` → хуучин CallPro код (`sendViaCallPro`) өөрчлөлтгүй үлдсэн.
+- `SEND_SMS_MAX_LENGHT` (default 159)-аас урт текстийг warning бичээд таслана. HTTP 2xx ч body-д `success:false`/`error` ирвэл амжилтгүй гэж үзнэ.
+- README env хүснэгт, интеграцийн хэсгийг шинэчлэв. Бодит SMS илгээлтээр туршаагүй.
+
+[2026-09-25] Ажилтны (tenant) web нэвтрэлт утасны дугаараар — нууц үг үүсгэх/сэргээх ч мөн
+- `app/_actions/auth.ts` — `getIdentifier()` (form-ын `identifier`, хуучин `email`-ийг ч уншина): имэйл бол `{ email }`, үгүй бол `normalizePhone` → `{ phone }` (User.email, User.phone хоёулаа unique). `checkLoginEmailAction`, `signInAction`, `requestPasswordResetAction`/`resetPasswordAction`, `requestActivationAction`/`activateAccountAction` бүгд имэйл эсвэл утас хүлээн авна. OTP (email, type)-аар түлхүүрлэгддэг тул хэрэглэгчийг олсны дараа `user.email`-ээр issue/verify хийнэ. State-ийн `email` → `identifier` (утсаар орсон үед хэрэглэгчийн имэйлийг client руу ил гаргахгүй). Verify шатанд бүртгэлгүй нэвтрэх нэрийг "Код буруу" гэж харуулна (enumeration-safe хэвээр).
+- Формууд (`/page/login`, `/page/forgot`, `/page/activate`) — "Имэйл эсвэл утасны дугаар" талбар (`type=text`, `autoComplete=username`). Нэвтрэх хуудасны 1-р шатанд «Нууц үг үүсгэх» (/page/activate), «Нууц үг сэргээх» (/page/forgot) холбоос нэмэв.
+- Мобайл API (`/api/v1/auth/*`) өөрчлөгдөөгүй — имэйлээр хэвээр.
+- Баталгаажуулалт: `tsc` шинэ алдаагүй; `npm test` өмнө/дараа ижил (1093 pass / 26 урьдын fail). Browser дээр гараар туршаагүй.
+
+[2026-09-25] /page/activate-г Ops Console дизайнд шилжүүлэв
+- `app/page/activate/page.tsx` — хуучин `AuthShell` (violet) → `TenantAuthShell` + IBM Plex фонт (login/forgot-той ижил); гарчиг «Нууц үгээ үүсгэх», notice-д «Нэвтрэх» холбоос.
+- `activate-form.tsx` — `landing-ops-ui`-ийн Field/FormError/SubmitButton, `--oc-*` token-оор мэдэгдлийн хайрцаг, код талбар (`font-plex-mono`), "Харах" товч; ResendOtpButton default загвар. Урсгал/логик өөрчлөгдөөгүй.
+- Баталгаажуулалт: `tsc` шинэ алдаагүй; dev server дээр `/page/activate` 200, шинэ гарчиг/талбар render болсон.

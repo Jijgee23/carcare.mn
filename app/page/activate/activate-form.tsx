@@ -6,7 +6,11 @@ import {
   activateAccountAction,
   requestActivationAction,
 } from "@/app/_actions/auth";
-import { Field, FormError, SubmitButton } from "@/app/_components/auth-shell";
+import {
+  Field,
+  FormError,
+  SubmitButton,
+} from "@/app/_components/landing-ops-ui";
 import { ResendOtpButton } from "@/app/_components/resend-otp-button";
 
 export function ActivateAccountForm() {
@@ -23,12 +27,12 @@ export function ActivateAccountForm() {
   // server action /dashboard руу redirect хийдэг тул "finished" state хэрэггүй.
   const onVerifyStep =
     Boolean(requestState?.ok) && requestState?.step === "verify";
-  const email = activateState?.email ?? requestState?.email ?? "";
+  const identifier = activateState?.identifier ?? requestState?.identifier ?? "";
   const maskedPhone = requestState?.maskedPhone ?? "";
 
   return onVerifyStep ? (
     <VerifyStep
-      email={email}
+      identifier={identifier}
       maskedPhone={maskedPhone}
       state={activateState}
       formAction={activateAction}
@@ -56,22 +60,28 @@ function RequestStep({
   pending: boolean;
 }) {
   const fe = state?.fieldErrors ?? {};
-  const [email, setEmail] = useState(state?.email ?? "");
+  const [identifier, setIdentifier] = useState(state?.identifier ?? "");
   return (
     <form action={formAction} className="flex flex-col gap-5" noValidate>
       <FormError message={!state?.ok ? state?.message : undefined} />
 
-      <Field label="Имэйл" htmlFor="activate-email" error={fe.email}>
+      <Field
+        label="Имэйл эсвэл утасны дугаар"
+        htmlFor="activate-email"
+        error={fe.identifier}
+      >
         <input
           id="activate-email"
-          name="email"
-          type="email"
+          name="identifier"
+          type="text"
           required
-          autoComplete="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className={`auth-input ${fe.email ? "border-red-500/50" : ""}`}
-          placeholder="you@example.com"
+          autoComplete="username"
+          autoCapitalize="none"
+          spellCheck={false}
+          value={identifier}
+          onChange={(e) => setIdentifier(e.target.value)}
+          className={`auth-input ${fe.identifier ? "border-red-500/50" : ""}`}
+          placeholder="you@example.com эсвэл 99112233"
         />
       </Field>
 
@@ -81,7 +91,7 @@ function RequestStep({
 }
 
 function VerifyStep({
-  email,
+  identifier,
   maskedPhone,
   state,
   formAction,
@@ -90,7 +100,7 @@ function VerifyStep({
   resendAction,
   resendPending,
 }: {
-  email: string;
+  identifier: string;
   maskedPhone: string;
   state: ActivateAccountState;
   formAction: (fd: FormData) => void;
@@ -107,9 +117,9 @@ function VerifyStep({
 
   return (
     <form action={formAction} className="flex flex-col gap-5" noValidate>
-      <input type="hidden" name="email" value={email} />
+      <input type="hidden" name="identifier" value={identifier} />
 
-      <div className="bg-violet-500/10 border border-violet-500/25 rounded-xl px-4 py-3 text-sm text-violet-200 light:bg-violet-100 light:border-violet-300 light:text-violet-700">
+      <div className="bg-[var(--oc-accent)]/10 border border-[var(--oc-accent)]/25 rounded-[10px] px-4 py-3 text-sm text-[var(--oc-ink2)]">
         {requestSuccessMessage ??
           `Утас ${maskedPhone} руу 6 оронтой код илгээлээ.`}
       </div>
@@ -136,7 +146,7 @@ function VerifyStep({
           autoFocus
           value={code}
           onChange={(e) => setCode(e.target.value.replace(/\D+/g, ""))}
-          className={`auth-input tracking-[0.5em] text-center font-mono ${fe.code ? "border-red-500/50" : ""}`}
+          className={`auth-input font-plex-mono tracking-[0.5em] text-center ${fe.code ? "border-red-500/50" : ""}`}
           placeholder="••••••"
         />
       </Field>
@@ -146,10 +156,9 @@ function VerifyStep({
         onResend={() => {
           setCode("");
           const fd = new FormData();
-          fd.set("email", email);
+          fd.set("identifier", identifier);
           startTransition(() => resendAction(fd));
         }}
-        className="text-center text-xs text-violet-300 hover:text-violet-200 disabled:text-white/30 disabled:cursor-not-allowed transition-colors"
       />
 
       <Field
@@ -174,7 +183,7 @@ function VerifyStep({
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors text-xs"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--oc-muted3)] hover:text-[var(--oc-muted)] transition-colors text-xs"
           >
             {showPassword ? "Нуух" : "Харах"}
           </button>

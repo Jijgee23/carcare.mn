@@ -1,6 +1,19 @@
 import Link from "next/link";
-import { AuthShell } from "@/app/_components/auth-shell";
+import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import { TenantAuthShell } from "@/app/_components/tenant-auth-shell";
 import { ActivateAccountForm } from "./activate-form";
+
+// Ops Console дизайны фонт — зөвхөн энэ хуудсанд scoped (login/forgot-той ижил).
+const plexSans = IBM_Plex_Sans({
+  subsets: ["latin", "cyrillic"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-plex-sans",
+});
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin", "cyrillic"],
+  weight: ["400", "500", "600"],
+  variable: "--font-plex-mono",
+});
 
 export const metadata = {
   title: "Анх удаа нэвтрэх",
@@ -8,22 +21,24 @@ export const metadata = {
 
 export default function ActivatePage() {
   return (
-    <AuthShell
-      title="Анх удаа нэвтрэх"
-      subtitle="Танд бүртгэл үүсгэсэн бол имэйлээ оруулна уу. Бид утсан дээр чинь 6 оронтой код илгээж, та өөрийн нууц үгээ үүсгэнэ."
-      footer={
-        <>
-          Нууц үгтэй болсон уу?{" "}
-          <Link
-            href="/page/login"
-            className="font-medium text-violet-300 hover:text-violet-200 light:text-violet-700 light:hover:text-violet-800"
-          >
-            Нэвтрэх
-          </Link>
-        </>
-      }
-    >
-      <ActivateAccountForm />
-    </AuthShell>
+    <div className={`${plexSans.variable} ${plexMono.variable}`}>
+      <TenantAuthShell
+        title="Нууц үгээ үүсгэх"
+        subtitle="Танд бүртгэл үүсгэсэн бол имэйл эсвэл утасны дугаараа оруулна уу. Бид утсан дээр чинь 6 оронтой код илгээж, та өөрийн нууц үгээ үүсгэнэ."
+        notice={
+          <>
+            Нууц үгтэй болсон уу?{" "}
+            <Link
+              href="/page/login"
+              className="font-semibold text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] transition-colors"
+            >
+              Нэвтрэх
+            </Link>
+          </>
+        }
+      >
+        <ActivateAccountForm />
+      </TenantAuthShell>
+    </div>
   );
 }

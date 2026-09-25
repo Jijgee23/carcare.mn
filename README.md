@@ -117,7 +117,9 @@ npm run system:create-admin
 | `API_TOKEN_SECRET` | Мобайл API token (заавал биш, default нь SESSION_SECRET) |
 | `ENCRYPTION_KEY` | QPay зэрэг нууц мэдээлэл шифрлэх |
 | `CRON_SECRET` | Cron endpoint-ийн Bearer secret |
-| `CALL_PRO_API_KEY`, `CALL_PRO_SPECIAL_KEY`, `CALL_PRO_URL` | SMS (CallPro/messagepro) |
+| `SMS_PROVIDER` | SMS gateway: `sendsms` (default) эсвэл `callpro` |
+| `SEND_SMS_API_KEY`, `SEND_SMS_API_TOKEN`, `SEND_SMS_API_URL`, `SEND_SMS_MAX_LENGHT` | SMS (sendsms.mn, үндсэн) |
+| `CALL_PRO_API_KEY`, `CALL_PRO_SPECIAL_KEY`, `CALL_PRO_URL` | SMS (CallPro/messagepro, нөөц) |
 | `HUR_URL`, `HUR_USERNAME`, `HUR_PASSWORD`, `HUR_CODE` | Машины бүртгэлийн API (HUR) |
 | `QPAY_MERCHANT_URL`, `EBARIMT_BASE_URL` | Төлбөр, и-баримт |
 | `FIREBASE_SERVICE_ACCOUNT_BASE64` *(эсвэл `_FILE`)* | Firebase admin (push) |
@@ -142,7 +144,7 @@ npm run system:create-admin
 
 ## Интеграцууд
 - **HUR** (МАК vehicle registry) — улсын дугаараар машины марк/загвар/он/VIN автоматаар татах. Ажилтан болон хэрэглэгчийн машин бүртгэлд хоёуланд.
-- **CallPro SMS** — OTP, цаг сануулга, мэдэгдэл.
+- **sendsms.mn SMS** — OTP, цаг сануулга, мэдэгдэл (CallPro gateway нөөцөөр үлдсэн, `SMS_PROVIDER=callpro`).
 - **Firebase Cloud Messaging** — web + мобайл push (цаг баталгаажих, сануулга). `Device` хүснэгтэд FCM token хадгална.
 - **QPay** — багцын төлбөр (QR/invoice).
 - **eBarimt** — төлбөрийн баримт.
