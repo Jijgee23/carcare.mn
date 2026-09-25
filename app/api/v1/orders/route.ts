@@ -33,7 +33,7 @@ const ORDER_SELECT = {
 
 const ORDER_LIST_SELECT = {
   ...ORDER_SELECT,
-  items: { select: { kind: true, status: true } },
+  items: { select: { kind: true, status: true, description: true } },
 } satisfies Prisma.ServiceOrderSelect;
 
 export async function GET(req: Request) {
@@ -67,6 +67,7 @@ export async function GET(req: Request) {
     orders: orders.map(({ items, ...order }) => ({
       ...order,
       progress: summarizeOrderProgress(items),
+      servicePreview: items.filter((item) => item.status !== "CANCELLED" && item.kind !== "PART").slice(0, 2).map((item) => item.description),
     })),
     pagination: buildMeta(total, parsed.value.page, parsed.value.pageSize),
   });
