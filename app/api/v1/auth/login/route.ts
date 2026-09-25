@@ -1,12 +1,19 @@
 import { enforceRateLimit, jsonError, jsonOk } from "@/lib/api";
 import { checkUserActive } from "@/lib/auth/active";
 import { buildApiLoginResponse } from "@/lib/auth/api-login";
+import { IDENTIFIER_ERROR, loginIdentifierFromBody } from "@/lib/auth/login-identifier";
 import { verifyPassword } from "@/lib/auth/password";
 import { prisma } from "@/lib/prisma";
 import { setBypassContext } from "@/lib/tenant-context";
 
 const MAX_LOGIN_ATTEMPTS = 5;
 
+/**
+ * POST /api/v1/auth/login  { identifier, password } → access/refresh token
+ *
+ * `identifier` — имэйл эсвэл утасны дугаар (99112233, 9911-2233, +976...).
+ * Хуучин клиентийн `{ email, password }` (эсвэл `{ phone, password }`) хэвээр ажиллана.
+ */
 export async function POST(req: Request) {
   // Нэвтрэхээс өмнө — session/tenant хараахан байхгүй.
   setBypassContext();
@@ -26,27 +33,23 @@ export async function POST(req: Request) {
   }
 
   if (!body || typeof body !== "object") {
-    return jsonError(400, "Email, нууц үг шаардлагатай.");
+    return jsonError(400, "Нэвтрэх нэр (имэйл/утас), нууц үг шаардлагатай.");
   }
-  const { email, password } = body as { email?: unknown; password?: unknown };
-
-  if (typeof email !== "string" || typeof password !== "string") {
-    return jsonError(400, "Email, нууц үгийг текстээр илгээнэ үү.");
+  const { password } = body as { password?: unknown };
+  if (typeof password !== "string" || !password) {
+    return jsonError(400, "Нууц үгээ текстээр илгээнэ үү.");
   }
-
-  const normalizedEmail = email.trim().toLowerCase();
-  if (!normalizedEmail || !password) {
-    return jsonError(400, "Email, нууц үг хоосон байж болохгүй.");
-  }
+  const id = loginIdentifierFromBody(body);
+  if (!id) return jsonError(400, IDENTIFIER_ERROR);
 
   const user = await prisma.user.findUnique({
-    where: { email: normalizedEmail },
+    where: id,
     include: {
       tenant: { select: { id: true, name: true, suspended: true } },
       role: { select: { id: true, name: true, permissions: true } },
     },
   });
-  if (!user) return jsonError(401, "Имэйл эсвэл нууц үг буруу.");
+  if (!user) return jsonError(401, "Нэвтрэх нэр эсвэл нууц үг буруу.");
 
   // Аккаунт түгжигдсэн эсэх (web login-тэй ижил DB-backed lockout).
   if (user.lockedAt) {
@@ -81,7 +84,7 @@ export async function POST(req: Request) {
         "Хэт олон удаа буруу оролдсон тул аккаунт түгжигдсэн. Нууц үгээ сэргээнэ үү.",
       );
     }
-    return jsonError(401, "Имэйл эсвэл нууц үг буруу.");
+    return jsonError(401, "Нэвтрэх нэр эсвэл нууц үг буруу.");
   }
 
   if (user.tenant.suspended) {

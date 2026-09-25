@@ -23,6 +23,13 @@ import { resolveTodayLockedBranch } from "@/lib/employee-branch-lock";
 import { notifySuperAdmins } from "@/lib/notifications";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
 import {
+  IDENTIFIER_ERROR,
+  type LoginIdentifier,
+  loginIdentifierLabel,
+  loginIdentifierValue,
+  parseLoginIdentifier,
+} from "@/lib/auth/login-identifier";
+import {
   createUserSession,
   revokeUserSession,
 } from "@/lib/auth/user-session";
@@ -82,25 +89,10 @@ function isEmail(s: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 }
 
-// Ажилтны нэвтрэх нэр — имэйл ЭСВЭЛ утасны дугаар (User.email, User.phone
-// хоёулаа глобал unique). OTP нь (email, type)-аар түлхүүрлэгддэг тул утсаар
-// орсон ч хэрэглэгчийг олсны дараа OTP-д user.email-ийг ашиглана.
-type LoginIdentifier = { email: string } | { phone: string };
-
-const IDENTIFIER_ERROR = "Имэйл эсвэл утасны дугаар буруу.";
-
+// Ажилтны нэвтрэх нэр — имэйл ЭСВЭЛ утасны дугаар (харах: lib/auth/login-identifier.ts).
 /** Form-ын `identifier` (хуучин `email`) талбарыг задлана. Хүчингүй бол null. */
 function getIdentifier(fd: FormData): LoginIdentifier | null {
-  const raw = getStr(fd, "identifier") || getStr(fd, "email");
-  const lower = raw.toLowerCase();
-  if (isEmail(lower)) return { email: lower };
-  const phone = normalizePhone(raw);
-  return phone ? { phone } : null;
-}
-
-/** Client руу буцаах канон утга (имэйл lowercase / 8 оронтой утас). */
-function identifierValue(id: LoginIdentifier): string {
-  return "email" in id ? id.email : id.phone;
+  return parseLoginIdentifier(getStr(fd, "identifier") || getStr(fd, "email"));
 }
 
 function makeSlug(name: string): string {
@@ -504,7 +496,7 @@ export async function checkLoginEmailAction(
   if (!id) {
     return { ok: false, fieldErrors: { identifier: IDENTIFIER_ERROR } };
   }
-  const identifier = identifierValue(id);
+  const identifier = loginIdentifierValue(id);
 
   // Нэвтрэхээс өмнө — session/tenant хараахан байхгүй.
   setBypassContext();
@@ -518,7 +510,7 @@ export async function checkLoginEmailAction(
       ok: true,
       status: "not_registered",
       identifier,
-      message: `Энэ ${"email" in id ? "имэйл" : "утасны дугаар"} бүртгэлгүй байна. Байгууллагаа бүртгүүлэх эсвэл админтайгаа холбогдоно уу.`,
+      message: `Энэ ${loginIdentifierLabel(id)} бүртгэлгүй байна. Байгууллагаа бүртгүүлэх эсвэл админтайгаа холбогдоно уу.`,
     };
   }
 
@@ -766,7 +758,7 @@ export async function requestPasswordResetAction(
       fieldErrors: { identifier: IDENTIFIER_ERROR },
     };
   }
-  const identifier = identifierValue(id);
+  const identifier = loginIdentifierValue(id);
 
   // Нууц үг сэргээхээс өмнө — session/tenant хараахан байхгүй.
   setBypassContext();
@@ -820,7 +812,7 @@ export async function resetPasswordAction(
   formData: FormData,
 ): Promise<ForgotPasswordState> {
   const id = getIdentifier(formData);
-  const identifier = id ? identifierValue(id) : "";
+  const identifier = id ? loginIdentifierValue(id) : "";
   const code = getStr(formData, "code");
   const password = getStr(formData, "password");
   const passwordConfirm = getStr(formData, "passwordConfirm");
@@ -928,7 +920,7 @@ export async function requestActivationAction(
       fieldErrors: { identifier: IDENTIFIER_ERROR },
     };
   }
-  const identifier = identifierValue(id);
+  const identifier = loginIdentifierValue(id);
 
   // Идэвхжүүлэхээс өмнө — session/tenant хараахан байхгүй.
   setBypassContext();
@@ -990,7 +982,7 @@ export async function activateAccountAction(
   formData: FormData,
 ): Promise<ActivateAccountState> {
   const id = getIdentifier(formData);
-  const identifier = id ? identifierValue(id) : "";
+  const identifier = id ? loginIdentifierValue(id) : "";
   const code = getStr(formData, "code");
   const password = getStr(formData, "password");
   const passwordConfirm = getStr(formData, "passwordConfirm");

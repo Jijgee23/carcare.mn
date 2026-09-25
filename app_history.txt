@@ -1671,3 +1671,9 @@ BUG FIX: Ажилтны утас засахад буруу талбарт алд
 - `app/page/activate/page.tsx` — хуучин `AuthShell` (violet) → `TenantAuthShell` + IBM Plex фонт (login/forgot-той ижил); гарчиг «Нууц үгээ үүсгэх», notice-д «Нэвтрэх» холбоос.
 - `activate-form.tsx` — `landing-ops-ui`-ийн Field/FormError/SubmitButton, `--oc-*` token-оор мэдэгдлийн хайрцаг, код талбар (`font-plex-mono`), "Харах" товч; ResendOtpButton default загвар. Урсгал/логик өөрчлөгдөөгүй.
 - Баталгаажуулалт: `tsc` шинэ алдаагүй; dev server дээр `/page/activate` 200, шинэ гарчиг/талбар render болсон.
+
+[2026-09-25] Мобайл API (ажилтан) — утасны дугаараар нэвтрэх
+- `lib/auth/login-identifier.ts` (шинэ) — `parseLoginIdentifier` / `loginIdentifierFromBody` (body-ийн `identifier`, хуучин `email`/`phone`), `loginIdentifierValue`, `loginIdentifierLabel`, `IDENTIFIER_ERROR`. Веб `app/_actions/auth.ts` ч энийг ашигладаг болов (давхардсан локал helper-ийг хасав).
+- `/api/v1/auth/login`, `/check-email`, `/activate/request-otp`, `/activate` — `identifier` (имэйл эсвэл утас) хүлээн авна; хуучин `{ email }` клиент өөрчлөлтгүй ажиллана. OTP-г олдсон `user.email`-ээр issue/verify. `check-email` хариунд канон `identifier`; `email` талбар зөвхөн имэйлээр орсон үед (утсаар орсонд хэрэглэгчийн имэйлийг ил гаргахгүй). `/activate` бүртгэлгүй нэвтрэх нэрд 404 биш 401 "Код буруу" (enumeration-safe).
+- API docs (`app/page/api-docs/tenant-docs.tsx`) шинэчлэв.
+- Баталгаажуулалт: dev server дээр curl — хүчингүй (400), бүртгэлгүй утас/имэйл/`phone`+976 формат (not_registered), бодит хэрэглэгч `9573-3832` → `password` (email ил гараагүй), буруу нууц үг 401, activate бүртгэлгүй 401. Бодит нууц үгээр амжилттай login-ийг туршаагүй (local хэрэглэгчийн нууц үг мэдэгдэхгүй; буруу оролдлого тоологч нэмэгдэхээс сэргийлж бодит хэрэглэгч дээр оролдоогүй). `tsc` шинэ алдаагүй.

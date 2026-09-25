@@ -1,17 +1,20 @@
 import { enforceRateLimit, jsonError, jsonOk } from "@/lib/api";
 import { issueOtp } from "@/lib/auth/otp";
+import { IDENTIFIER_ERROR, loginIdentifierFromBody } from "@/lib/auth/login-identifier";
 import { maskPhone } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
 import { sendOtpSms } from "@/lib/sms";
 import { setBypassContext } from "@/lib/tenant-context";
 
 /**
- * POST /api/v1/auth/activate/request-otp  { email } → идэвхжүүлэх OTP дахин илгээх
+ * POST /api/v1/auth/activate/request-otp  { identifier } → идэвхжүүлэх OTP дахин илгээх
+ *
+ * `identifier` — имэйл эсвэл утасны дугаар (хуучин `{ email }` хэвээр ажиллана).
  *
  * Веб дэх requestActivationAction-ийн мобайл хувилбар. Идэвхжүүлэх дэлгэц дэх
  * "Код дахин илгээх" товчинд зориулсан.
  *
- * Enumeration-safe: бүртгэлгүй / аль хэдийн идэвхжсэн имэйлд ч ерөнхий
+ * Enumeration-safe: бүртгэлгүй / аль хэдийн идэвхжсэн нэвтрэх нэрд ч ерөнхий
  * "илгээгдсэн" хариу буцаана. OTP нь зөвхөн идэвхжээгүй жинхэнэ ажилтанд л
  * илгээгдэнэ. Хэт олон хүсэлтэд issueOtp throttle 429 буцаана.
  */
@@ -31,18 +34,12 @@ export async function POST(req: Request) {
   } catch {
     return jsonError(400, "Body нь JSON байх ёстой.");
   }
-  const { email } = (body ?? {}) as { email?: unknown };
-  if (typeof email !== "string") {
-    return jsonError(400, "Имэйлээ текстээр илгээнэ үү.");
-  }
-  const normalizedEmail = email.trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
-    return jsonError(400, "Имэйл хаяг буруу.");
-  }
+  const id = loginIdentifierFromBody(body);
+  if (!id) return jsonError(400, IDENTIFIER_ERROR);
 
   const user = await prisma.user.findUnique({
-    where: { email: normalizedEmail },
-    select: { id: true, phone: true, verified: true },
+    where: id,
+    select: { id: true, email: true, phone: true, verified: true },
   });
 
   if (user && !user.verified) {
@@ -52,7 +49,7 @@ export async function POST(req: Request) {
       null;
     try {
       const { code } = await issueOtp({
-        email: normalizedEmail,
+        email: user.email,
         type: "SET_PASSWORD",
         userId: user.id,
         userAgent: req.headers.get("user-agent"),
@@ -76,6 +73,6 @@ export async function POST(req: Request) {
   return jsonOk({
     sent: true,
     maskedPhone: "**",
-    message: "Хэрэв энэ имэйл идэвхжээгүй бүртгэлтэй бол утсанд код илгээгдсэн.",
+    message: "Хэрэв энэ идэвхжээгүй бүртгэлтэй бол утсанд код илгээгдсэн.",
   });
 }

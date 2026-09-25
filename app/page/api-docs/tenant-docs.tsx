@@ -6,12 +6,17 @@ export function TenantDocs() {
   return (
     <>
       {/* --- Нэвтрэлт --- */}
-      <Section title="1. Нэвтрэлт — имэйл + нууц үг">
+      <Section title="1. Нэвтрэлт — имэйл / утас + нууц үг">
         <p className="text-sm text-[var(--oc-muted)] -mt-2">
           Ажилтан (байгууллагын дотоод хэрэглэгч, <code className="font-plex-mono text-[var(--oc-muted2)]">User</code> загвар)
-          имэйл + нууц үгээр нэвтэрнэ. Эхлээд{" "}
+          имэйл эсвэл утасны дугаар + нууц үгээр нэвтэрнэ. Бүх auth endpoint{" "}
+          <code className="font-plex-mono text-[var(--oc-muted2)]">identifier</code>{" "}
+          (имэйл эсвэл утас — <code className="font-plex-mono text-[var(--oc-muted2)]">99112233</code>,{" "}
+          <code className="font-plex-mono text-[var(--oc-muted2)]">9911-2233</code>,{" "}
+          <code className="font-plex-mono text-[var(--oc-muted2)]">+976...</code>) хүлээн авна; хуучин{" "}
+          <code className="font-plex-mono text-[var(--oc-muted2)]">email</code> талбар хэвээр ажиллана. Эхлээд{" "}
           <code className="font-plex-mono text-[var(--oc-muted2)]">check-email</code>-ээр
-          имэйлийн төлөвийг шалгаад, дараа нь эсвэл <code className="font-plex-mono text-[var(--oc-muted2)]">login</code>{" "}
+          төлөвийг шалгаад, хариуны <code className="font-plex-mono text-[var(--oc-muted2)]">identifier</code>-ийг дамжуулан <code className="font-plex-mono text-[var(--oc-muted2)]">login</code>{" "}
           (идэвхжсэн бол) эсвэл <code className="font-plex-mono text-[var(--oc-muted2)]">activate/*</code>{" "}
           урсгал (анхны идэвхжүүлэлт) руу орно.
         </p>
@@ -21,13 +26,14 @@ export function TenantDocs() {
           path="/api/v1/auth/check-email"
           auth="public"
           tags={["Rate limit: 15/60с (IP)"]}
-          title="Имэйлийн төлөв шалгах — дараагийн алхмыг шийднэ (password / activate / not_registered)."
+          title="Нэвтрэх нэрийн (имэйл / утас) төлөв шалгах — дараагийн алхмыг шийднэ (password / activate / not_registered)."
         >
-          <Code>{`Req:  { "email": "manager@example.com" }
-Res:  200 { "status": "not_registered", "email": "...", "message": "..." }
-   | 200 { "status": "password", "email": "..." }
-   | 200 { "status": "activate", "email": "...", "maskedPhone": "99***33", "otpSent": true, "message": "..." }
-400 { "error": "Имэйл хаяг буруу." }
+          <Code>{`Req:  { "identifier": "manager@example.com" | "99112233" }   // хуучин { "email": "..." } ч болно
+Res:  200 { "status": "not_registered", "identifier": "...", "message": "..." }
+   | 200 { "status": "password", "identifier": "..." }
+   | 200 { "status": "activate", "identifier": "...", "maskedPhone": "99***33", "otpSent": true, "message": "..." }
+// identifier = канон утга (имэйл lowercase / 8 оронтой утас). "email" талбар зөвхөн имэйлээр орсон үед нэмэгдэж ирнэ.
+400 { "error": "Имэйл эсвэл утасны дугаар буруу." }
 429 { "error": "Хэт олон хүсэлт илгээлээ..." }`}</Code>
         </Endpoint>
 
@@ -38,7 +44,7 @@ Res:  200 { "status": "not_registered", "email": "...", "message": "..." }
           tags={["Rate limit: 10/60с (IP)"]}
           title="Идэвхжсэн хэрэглэгчийн нэвтрэлт (status=password үед)."
         >
-          <Code>{`Req:  { "email": "manager@example.com", "password": "..." }
+          <Code>{`Req:  { "identifier": "manager@example.com" | "99112233", "password": "..." }
 Res:  200 {
   "accessToken": "<JWT>", "accessTokenExpiresInSeconds": 86400,
   "refreshToken": "<token>", "refreshTokenExpiresInSeconds": ..., "refreshTokenExpiresAt": "2026-...",
@@ -48,7 +54,7 @@ Res:  200 {
     "branchId": "..." | null, "tenant": { "id": "...", "name": "Инфосистемс" }
   }
 }
-401 { "error": "Имэйл эсвэл нууц үг буруу." }
+401 { "error": "Нэвтрэх нэр эсвэл нууц үг буруу." }
 423 { "error": "Хэт олон удаа буруу оролдсон тул аккаунт түгжигдсэн. Нууц үгээ сэргээнэ үү." }
 403 { "error": "Энэ аккаунт идэвхжээгүй байна. Веб дээр анхны нэвтрэлт хийж нууц үгээ үүсгэнэ үү." }
 403 { "error": "Таны байгууллага түр хугацаагаар зогссон байна." }`}</Code>
@@ -61,7 +67,7 @@ Res:  200 {
           tags={["Rate limit: 5/60с (IP)"]}
           title="Анхны идэвхжүүлэлт — бүртгэлтэй утас руу 6 оронтой код илгээх (status=activate үед)."
         >
-          <Code>{`Req:  { "email": "manager@example.com" }
+          <Code>{`Req:  { "identifier": "manager@example.com" | "99112233" }
 Res:  200 { "sent": true, "maskedPhone": "99***33", "message": "..." }
 429 { "error": "<throttle мессеж>" }`}</Code>
         </Endpoint>
@@ -73,7 +79,7 @@ Res:  200 { "sent": true, "maskedPhone": "99***33", "message": "..." }
           tags={["Rate limit: 10/60с (IP)"]}
           title="OTP код баталгаажуулж, шинэ нууц үг тохируулан идэвхжүүлэх."
         >
-          <Code>{`Req:  { "email": "manager@example.com", "code": "123456", "password": "минимум 8 тэмдэгт" }
+          <Code>{`Req:  { "identifier": "manager@example.com" | "99112233", "code": "123456", "password": "минимум 8 тэмдэгт" }
 Res:  200 { same shape as /auth/login }
 400  { "error": "6 оронтой код шаардлагатай." } | { "error": "Нууц үг хамгийн багадаа 8 тэмдэгт байх ёстой." }
 401  { "error": "Кодны хугацаа дууссан. Шинээр код илгээнэ үү." }

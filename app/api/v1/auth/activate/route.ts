@@ -1,6 +1,7 @@
 import { enforceRateLimit, jsonError, jsonOk } from "@/lib/api";
 import { checkUserActive } from "@/lib/auth/active";
 import { buildApiLoginResponse } from "@/lib/auth/api-login";
+import { IDENTIFIER_ERROR, loginIdentifierFromBody } from "@/lib/auth/login-identifier";
 import { revokeAllOtps, verifyOtp } from "@/lib/auth/otp";
 import { hashPassword } from "@/lib/auth/password";
 import { logAudit } from "@/lib/audit";
@@ -8,7 +9,9 @@ import { prisma } from "@/lib/prisma";
 import { setBypassContext } from "@/lib/tenant-context";
 
 /**
- * POST /api/v1/auth/activate  { email, code, password } → access/refresh token
+ * POST /api/v1/auth/activate  { identifier, code, password } → access/refresh token
+ *
+ * `identifier` — имэйл эсвэл утасны дугаар (хуучин `{ email }` хэвээр ажиллана).
  *
  * Веб дэх activateAccountAction-ийн мобайл хувилбар. Идэвхжээгүй ажилтан
  * (passwordHash=null, verified=false) утсандаа ирсэн OTP-ээ оруулж шинэ нууц
@@ -31,20 +34,16 @@ export async function POST(req: Request) {
   } catch {
     return jsonError(400, "Body нь JSON байх ёстой.");
   }
-  const { email, code, password } = (body ?? {}) as {
-    email?: unknown;
+  const { code, password } = (body ?? {}) as {
     code?: unknown;
     password?: unknown;
   };
 
-  const normalizedEmail =
-    typeof email === "string" ? email.trim().toLowerCase() : "";
+  const id = loginIdentifierFromBody(body);
   const otpCode = typeof code === "string" ? code.trim() : "";
   const pwd = typeof password === "string" ? password : "";
 
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
-    return jsonError(400, "Имэйл хаяг буруу.");
-  }
+  if (!id) return jsonError(400, IDENTIFIER_ERROR);
   if (!/^\d{6}$/.test(otpCode)) {
     return jsonError(400, "6 оронтой код шаардлагатай.");
   }
@@ -52,8 +51,20 @@ export async function POST(req: Request) {
     return jsonError(400, "Нууц үг хамгийн багадаа 8 тэмдэгт байх ёстой.");
   }
 
+  const user = await prisma.user.findUnique({
+    where: id,
+    include: {
+      tenant: { select: { id: true, name: true, suspended: true } },
+      role: { select: { id: true, name: true, permissions: true } },
+    },
+  });
+  // Бүртгэлгүй нэвтрэх нэрийг "код буруу"-тай адил харуулна (enumeration-аас сэргийлнэ).
+  if (!user) {
+    return jsonError(401, "Код буруу байна.");
+  }
+
   const otp = await verifyOtp({
-    email: normalizedEmail,
+    email: user.email,
     type: "SET_PASSWORD",
     code: otpCode,
   });
@@ -65,17 +76,6 @@ export async function POST(req: Request) {
           ? "Хэт олон удаа буруу оролдсон. Шинээр код илгээнэ үү."
           : "Код буруу байна.";
     return jsonError(401, msg);
-  }
-
-  const user = await prisma.user.findUnique({
-    where: { email: normalizedEmail },
-    include: {
-      tenant: { select: { id: true, name: true, suspended: true } },
-      role: { select: { id: true, name: true, permissions: true } },
-    },
-  });
-  if (!user) {
-    return jsonError(404, "Хэрэглэгч олдсонгүй.");
   }
   if (user.verified) {
     return jsonError(
@@ -104,7 +104,7 @@ export async function POST(req: Request) {
       lockedAt: null,
     },
   });
-  await revokeAllOtps(normalizedEmail, "SET_PASSWORD");
+  await revokeAllOtps(user.email, "SET_PASSWORD");
 
   await logAudit({
     tenantId: user.tenantId,

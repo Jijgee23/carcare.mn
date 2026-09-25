@@ -1,14 +1,25 @@
 import { enforceRateLimit, jsonError, jsonOk } from "@/lib/api";
 import { issueOtp } from "@/lib/auth/otp";
+import {
+  IDENTIFIER_ERROR,
+  loginIdentifierFromBody,
+  loginIdentifierLabel,
+  loginIdentifierValue,
+} from "@/lib/auth/login-identifier";
 import { maskPhone } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
 import { sendOtpSms } from "@/lib/sms";
 import { setBypassContext } from "@/lib/tenant-context";
 
 /**
- * POST /api/v1/auth/check-email  { email } → нэвтрэлтийн дараагийн алхам
+ * POST /api/v1/auth/check-email  { identifier } → нэвтрэлтийн дараагийн алхам
  *
- * Веб дэх checkLoginEmailAction-ийн мобайл хувилбар. Имэйлээр ажилтны төлөвийг
+ * `identifier` — имэйл эсвэл утасны дугаар (хуучин `{ email }` хэвээр ажиллана).
+ * Хариуны `identifier` (канон утга)-г дараагийн /auth/login, /auth/activate-д
+ * дамжуулна. `email` талбар зөвхөн имэйлээр орсон үед (backward-compat) ирнэ —
+ * утсаар орсон клиентэд хэрэглэгчийн имэйлийг ил гаргахгүй.
+ *
+ * Веб дэх checkLoginEmailAction-ийн мобайл хувилбар. Ажилтны төлөвийг
  * шалгаж дараагийн алхмыг буцаана:
  *   - "password"        : бүртгэлтэй, идэвхжсэн → /auth/login руу нууц үг асууна
  *   - "activate"        : бүртгэлтэй ч идэвхжээгүй → утсанд OTP илгээж, нууц үг
@@ -35,32 +46,30 @@ export async function POST(req: Request) {
   } catch {
     return jsonError(400, "Body нь JSON байх ёстой.");
   }
-  const { email } = (body ?? {}) as { email?: unknown };
-  if (typeof email !== "string") {
-    return jsonError(400, "Имэйлээ текстээр илгээнэ үү.");
-  }
-  const normalizedEmail = email.trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
-    return jsonError(400, "Имэйл хаяг буруу.");
-  }
+  const id = loginIdentifierFromBody(body);
+  if (!id) return jsonError(400, IDENTIFIER_ERROR);
+  // Хариунд үргэлж орох талбарууд: identifier (+ имэйлээр орсон бол email).
+  const echo = {
+    identifier: loginIdentifierValue(id),
+    ...("email" in id ? { email: id.email } : {}),
+  };
 
   const user = await prisma.user.findUnique({
-    where: { email: normalizedEmail },
-    select: { id: true, verified: true, passwordHash: true, phone: true },
+    where: id,
+    select: { id: true, email: true, verified: true, passwordHash: true, phone: true },
   });
 
   if (!user) {
     return jsonOk({
       status: "not_registered",
-      email: normalizedEmail,
-      message:
-        "Энэ имэйл бүртгэлгүй байна. Байгууллагаа бүртгүүлэх эсвэл админтайгаа холбогдоно уу.",
+      ...echo,
+      message: `Энэ ${loginIdentifierLabel(id)} бүртгэлгүй байна. Байгууллагаа бүртгүүлэх эсвэл админтайгаа холбогдоно уу.`,
     });
   }
 
   // Идэвхжсэн — нууц үгээр нэвтэрнэ.
   if (user.verified && user.passwordHash) {
-    return jsonOk({ status: "password", email: normalizedEmail });
+    return jsonOk({ status: "password", ...echo });
   }
 
   // Идэвхжээгүй — анхны нэвтрэлт: утсанд OTP илгээж нууц үг үүсгүүлнэ.
@@ -71,7 +80,7 @@ export async function POST(req: Request) {
     null;
   try {
     const { code } = await issueOtp({
-      email: normalizedEmail,
+      email: user.email,
       type: "SET_PASSWORD",
       userId: user.id,
       userAgent: req.headers.get("user-agent"),
@@ -82,7 +91,7 @@ export async function POST(req: Request) {
     // Код илгээх амжилтгүй (ж: хэт олон хүсэлт) — алхмыг буцааж, шалтгааныг дамжуулна.
     return jsonOk({
       status: "activate",
-      email: normalizedEmail,
+      ...echo,
       maskedPhone,
       otpSent: false,
       message: e instanceof Error ? e.message : "Код илгээхэд алдаа гарлаа.",
@@ -91,7 +100,7 @@ export async function POST(req: Request) {
 
   return jsonOk({
     status: "activate",
-    email: normalizedEmail,
+    ...echo,
     maskedPhone,
     otpSent: true,
     message: "Бүртгэлтэй утсанд 6 оронтой код илгээлээ.",
