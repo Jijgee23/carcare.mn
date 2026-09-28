@@ -1,5 +1,6 @@
 import { jsonError, jsonOk } from "@/lib/api";
 import { revokeRefreshToken } from "@/lib/auth/refresh-token";
+import { setBypassContext } from "@/lib/tenant-context";
 
 /**
  * POST /api/v1/auth/logout
@@ -9,6 +10,11 @@ import { revokeRefreshToken } from "@/lib/auth/refresh-token";
  * эргэлзэхгүйгээр expire-руу үлдэнэ.
  */
 export async function POST(req: Request) {
+  // No session/tenant yet — the refresh token alone identifies the row.
+  // Without a context the Prisma client throws on every query, so logout used to
+  // 500 and never actually revoked the token.
+  setBypassContext();
+
   let body: unknown;
   try {
     body = await req.json();

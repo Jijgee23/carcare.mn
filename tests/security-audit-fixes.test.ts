@@ -175,3 +175,27 @@ test("API template duplicate (tenant app) keeps category (tenant-owned only), pr
   assert.match(fn, /where: \{ id: src\.categoryId, tenantId: actor\.tenantId \}/);
   assert.match(fn, /categoryId,\s*price: src\.price,\s*durationMin: src\.durationMin,/);
 });
+
+test("every pre-login auth route sets the bypass context before touching the DB", () => {
+  // lib/prisma.ts throws when no tenant context is set; a route that forgets
+  // it 500s on every call (auth/logout did, so tokens were never revoked).
+  for (const route of [
+    "check-email",
+    "login",
+    "logout",
+    "refresh",
+    "activate",
+    "activate/request-otp",
+    "password/request-otp",
+    "password/reset",
+  ]) {
+    const src = read(`app/api/v1/auth/${route}/route.ts`);
+    const body = src.slice(src.indexOf("export async function POST("));
+    const bypass = body.indexOf("setBypassContext();");
+    assert.ok(bypass >= 0, `${route} must call setBypassContext()`);
+    for (const dbCall of ["prisma.", "revokeRefreshToken(", "rotateRefreshToken("]) {
+      const use = body.indexOf(dbCall);
+      if (use >= 0) assert.ok(bypass < use, `${route}: setBypassContext() must run before ${dbCall}`);
+    }
+  }
+});
