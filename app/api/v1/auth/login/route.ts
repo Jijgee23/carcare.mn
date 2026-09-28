@@ -91,10 +91,20 @@ export async function POST(req: Request) {
     return jsonError(403, "Таны байгууллага түр хугацаагаар зогссон байна.");
   }
 
+  // Нууц үг зөв бол өөрөө хаасан бүртгэлийг сэргээнэ. isActive=false
+  // (админ хаалт) энэ замаар хэзээ ч цэвэрлэгдэхгүй.
+  let reactivated = false;
+  if (user.isActive && user.deactivatedAt) {
+    await prisma.user.update({ where: { id: user.id }, data: { deactivatedAt: null } });
+    user.deactivatedAt = null;
+    reactivated = true;
+  }
+
   // Идэвхгүй / хугацаа дууссан ажилтан нэвтрэхгүй (web login-тэй ижил).
   const active = checkUserActive({
     isActive: user.isActive,
     activeUntil: user.activeUntil,
+    deactivatedAt: user.deactivatedAt,
   });
   if (!active.ok) {
     return jsonError(403, active.message);
@@ -108,5 +118,5 @@ export async function POST(req: Request) {
     });
   }
 
-  return jsonOk(await buildApiLoginResponse(user, req));
+  return jsonOk({ ...(await buildApiLoginResponse(user, req)), reactivated });
 }

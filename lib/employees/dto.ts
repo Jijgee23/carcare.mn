@@ -25,7 +25,7 @@ export type FullEmployeeRow = Required<
     | "assignableBranchIds"
     | "verified"
   >
-> & { role?: { name: string } | null };
+> & { role?: { name: string } | null; deactivatedAt?: Date | null };
 
 export type EmployeeDto = {
   id: string;
@@ -42,6 +42,11 @@ export type EmployeeDto = {
   branchId: string | null;
   assignableBranchIds: string[];
   verified: boolean;
+  // Staff self-deactivation timestamp (reversible by logging in again) —
+  // distinct from isActive: false, which means admin-blocked. ISO string
+  // (or null) so the tenant Flutter app can read it directly off the JSON
+  // response without a Date parse step.
+  deactivatedAt: string | null;
 };
 
 export function toEmployeeDto(row: FullEmployeeRow): EmployeeDto {
@@ -63,5 +68,6 @@ export function toEmployeeDto(row: FullEmployeeRow): EmployeeDto {
     // itself (unlike passwordHash/failedLoginAttempts/lockedAt/OTP codes,
     // which this DTO never reads from `row` at all).
     verified: row.verified,
+    deactivatedAt: row.deactivatedAt ? row.deactivatedAt.toISOString() : null,
   };
 }

@@ -26,7 +26,8 @@ export type OtpType =
   | "CHANGE_PASSWORD"
   | "RESET_PASSWORD"
   | "CONSUMER_LOGIN"
-  | "SET_PASSWORD";
+  | "SET_PASSWORD"
+  | "ACCOUNT_CLOSE";
 
 export const OTP_CODE_LENGTH = 6;
 export const OTP_MAX_AGE_SECONDS = 60 * 10; // 10 минут
@@ -252,7 +253,7 @@ export async function revokeAllOtps(
 
 export type IssuePhoneOtpOptions = {
   phone: string; // канон 8 орон (lib/phone.ts)
-  type: Extract<OtpType, "CONSUMER_LOGIN">;
+  type: Extract<OtpType, "CONSUMER_LOGIN" | "ACCOUNT_CLOSE">;
   accountId?: string | null;
   userAgent?: string | null;
   ip?: string | null;
@@ -324,7 +325,7 @@ export async function issuePhoneOtp(
  */
 export async function verifyPhoneOtp(input: {
   phone: string;
-  type: Extract<OtpType, "CONSUMER_LOGIN">;
+  type: Extract<OtpType, "CONSUMER_LOGIN" | "ACCOUNT_CLOSE">;
   code: string;
 }): Promise<VerifyOtpResult> {
   const phone = normalizePhone(input.phone);

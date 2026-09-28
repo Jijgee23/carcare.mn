@@ -40,6 +40,6 @@ export async function getApiAccountFromRequest(req: Request) {
   const account = await prisma.account.findUnique({
     where: { id: payload.accountId },
   });
-  if (!account || !account.isActive) return null;
+  if (!account || !account.isActive || account.deactivatedAt || account.deletedAt) return null;
   return account;
 }

@@ -4,7 +4,7 @@
 
 export type ActiveCheck =
   | { ok: true }
-  | { ok: false; reason: "INACTIVE" | "EXPIRED"; message: string };
+  | { ok: false; reason: "INACTIVE" | "EXPIRED" | "DEACTIVATED"; message: string };
 
 /**
  * Хэрэглэгч идэвхтэй эсэх, түүний хугацаа дуусаагүй эсэхийг шалгана.
@@ -12,6 +12,7 @@ export type ActiveCheck =
 export function checkUserActive(user: {
   isActive: boolean;
   activeUntil: Date | null;
+  deactivatedAt?: Date | null;
 }): ActiveCheck {
   if (!user.isActive) {
     return {
@@ -19,6 +20,13 @@ export function checkUserActive(user: {
       reason: "INACTIVE",
       message:
         "Энэ хэрэглэгч идэвхгүй болсон. Менежертэйгээ холбоо барина уу.",
+    };
+  }
+  if (user.deactivatedAt) {
+    return {
+      ok: false,
+      reason: "DEACTIVATED",
+      message: "Та бүртгэлээ түр хаасан байна. Дахин нэвтэрч сэргээнэ үү.",
     };
   }
   if (user.activeUntil && user.activeUntil.getTime() <= Date.now()) {

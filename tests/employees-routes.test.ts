@@ -213,3 +213,37 @@ test("every employees route handler requires requireApiUser before any permissio
     assert.ok(earlyReturn > authIdx, `${rel} must early-return auth.response`);
   }
 });
+
+// --- deactivatedAt exposure + tombstone (deletedAt) list filtering
+
+test("GET /api/v1/employees and /api/v1/employees/[id] both select deactivatedAt", () => {
+  for (const rel of ["route.ts", "[id]/route.ts"]) {
+    const source = routeSource(rel);
+    assert.match(
+      source,
+      /EMPLOYEE_SELECT\s*=\s*\{[\s\S]*?deactivatedAt:\s*true[\s\S]*?\}\s*satisfies Prisma\.UserSelect/,
+      `${rel}'s EMPLOYEE_SELECT must include deactivatedAt`,
+    );
+  }
+});
+
+test("toEmployeeDto exposes deactivatedAt as an ISO string or null", () => {
+  const source = src("../lib/employees/dto.ts");
+  assert.match(source, /deactivatedAt:\s*string \| null/, "EmployeeDto must type deactivatedAt");
+  assert.match(
+    source,
+    /deactivatedAt:\s*row\.deactivatedAt\s*\?\s*row\.deactivatedAt\.toISOString\(\)\s*:\s*null/,
+    "toEmployeeDto must serialize deactivatedAt to an ISO string (or null)",
+  );
+});
+
+test("GET /api/v1/employees excludes tombstoned (deletedAt) users from its list where", () => {
+  const source = routeSource("route.ts");
+  const { GET } = fnSections(source, "GET", "POST");
+  assert.match(GET, /where:\s*Prisma\.UserWhereInput\s*=\s*\{\s*tenantId:\s*auth\.user\.tenantId,\s*deletedAt:\s*null,/);
+});
+
+test("dashboard employees list/export share a where-builder that filters deletedAt: null", () => {
+  const source = src("../app/dashboard/employees/data.ts");
+  assert.match(source, /where:\s*Prisma\.UserWhereInput\s*=\s*\{\s*tenantId,\s*deletedAt:\s*null\s*\}/);
+});

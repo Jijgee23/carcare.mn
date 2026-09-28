@@ -38,6 +38,7 @@ const EMPLOYEE_SELECT = {
   roleId: true,
   isActive: true,
   activeUntil: true,
+  deactivatedAt: true,
   tenantId: true,
   branchId: true,
   assignableBranchIds: true,
@@ -67,7 +68,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const { id } = await ctx.params;
 
   const employee = await prisma.user.findFirst({
-    where: { id, tenantId: auth.user.tenantId },
+    where: { id, tenantId: auth.user.tenantId, deletedAt: null },
     select: EMPLOYEE_SELECT,
   });
   if (!employee) return jsonError(404, "Ажилтан олдсонгүй.", { code: "NOT_FOUND" });

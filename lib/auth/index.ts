@@ -62,6 +62,7 @@ const loadCurrentUser = cache(async () => {
   const active = checkUserActive({
     isActive: user.isActive,
     activeUntil: user.activeUntil,
+    deactivatedAt: user.deactivatedAt,
   });
   if (!active.ok) {
     await clearSessionCookie();
@@ -112,7 +113,7 @@ export async function hasActiveUserSession(): Promise<boolean> {
   setBypassContext();
   const user = await prisma.user.findUnique({
     where: { id: session.userId },
-    select: { isActive: true, activeUntil: true },
+    select: { isActive: true, activeUntil: true, deactivatedAt: true },
   });
   return Boolean(user && checkUserActive(user).ok);
 }

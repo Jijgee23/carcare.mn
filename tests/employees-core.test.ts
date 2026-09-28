@@ -55,6 +55,7 @@ type FakeUser = {
   assignableBranchIds: string[];
   isActive: boolean;
   activeUntil: Date | null;
+  deletedAt?: Date | null;
 };
 type FakeBranch = { id: string; tenantId: string; name: string; isActive: boolean };
 type FakeRole = { id: string; tenantId: string; name: string; isActive: boolean };
@@ -87,7 +88,8 @@ function makeFakeDb(seed: { users?: FakeUser[]; branches?: FakeBranch[]; roles?:
         if (!(v as { in: string[] }).in.includes(u.id)) return false;
         continue;
       }
-      if ((u as unknown as Record<string, unknown>)[k] !== v) return false;
+      const actual = (u as unknown as Record<string, unknown>)[k] ?? null;
+      if (actual !== v) return false;
     }
     return true;
   }
@@ -410,6 +412,42 @@ test("updateEmployee: target not found in tenant", async () => {
   assert.equal(result.error, "Ажилтан олдсонгүй.");
 });
 
+test("updateEmployee: a tombstoned (deleted) target is treated as not found — no write", async () => {
+  const { db, users } = makeFakeDb({
+    users: [
+      {
+        id: "u1",
+        tenantId: "t1",
+        firstName: "Устгагдсан",
+        lastName: "ажилтан",
+        email: "deleted+u1@deleted.invalid",
+        phone: "deleted:u1",
+        passwordHash: null,
+        verified: false,
+        isOwner: false,
+        roleId: null,
+        branchId: null,
+        assignableBranchIds: [],
+        isActive: false,
+        activeUntil: null,
+        deletedAt: new Date("2026-01-01"),
+      },
+    ],
+  });
+  const before = { ...users[0] };
+  const result = await core.updateEmployee(
+    db,
+    ACTOR,
+    "u1",
+    fd({ firstName: "New", lastName: "Name", email: "new@b.com", phone: "99112233", roleId: "r1" }),
+  );
+  assert.equal(result.ok, false);
+  if (result.ok) throw new Error("unreachable");
+  assert.equal(result.code, "NOT_FOUND");
+  assert.equal(result.error, "Ажилтан олдсонгүй.");
+  assert.deepEqual(users[0], before);
+});
+
 test("updateEmployee: an owner's role cannot be edited", async () => {
   const { db } = makeFakeDb({
     users: [
@@ -608,6 +646,34 @@ test("toggleEmployeeActive: missing id or missing target is a silent no-op", asy
   assert.deepEqual(missingTarget, { ok: true, noop: true });
 });
 
+test("toggleEmployeeActive: a tombstoned (deleted) target is a silent no-op — no write", async () => {
+  const { db, users } = makeFakeDb({
+    users: [
+      {
+        id: "u1",
+        tenantId: "t1",
+        firstName: "Устгагдсан",
+        lastName: "ажилтан",
+        email: "deleted+u1@deleted.invalid",
+        phone: "deleted:u1",
+        passwordHash: null,
+        verified: false,
+        isOwner: false,
+        roleId: null,
+        branchId: null,
+        assignableBranchIds: [],
+        isActive: false,
+        activeUntil: null,
+        deletedAt: new Date("2026-01-01"),
+      },
+    ],
+  });
+  const before = { ...users[0] };
+  const result = await core.toggleEmployeeActive(db, ACTOR, fd({ id: "u1", isActive: "on" }));
+  assert.deepEqual(result, { ok: true, noop: true });
+  assert.deepEqual(users[0], before);
+});
+
 test("toggleEmployeeActive: success returns before/after for audit", async () => {
   const { db } = makeFakeDb({
     users: [
@@ -709,6 +775,33 @@ test("deleteEmployee: missing id or missing target is a silent no-op", async () 
   const { db } = makeFakeDb();
   assert.deepEqual(await core.deleteEmployee(db, ACTOR, fd({})), { ok: true, noop: true });
   assert.deepEqual(await core.deleteEmployee(db, ACTOR, fd({ id: "ghost" })), { ok: true, noop: true });
+});
+
+test("deleteEmployee: a tombstoned (deleted) target is a silent no-op — no write", async () => {
+  const { db, users } = makeFakeDb({
+    users: [
+      {
+        id: "u1",
+        tenantId: "t1",
+        firstName: "Устгагдсан",
+        lastName: "ажилтан",
+        email: "deleted+u1@deleted.invalid",
+        phone: "deleted:u1",
+        passwordHash: null,
+        verified: false,
+        isOwner: false,
+        roleId: null,
+        branchId: null,
+        assignableBranchIds: [],
+        isActive: false,
+        activeUntil: null,
+        deletedAt: new Date("2026-01-01"),
+      },
+    ],
+  });
+  const result = await core.deleteEmployee(db, ACTOR, fd({ id: "u1" }));
+  assert.deepEqual(result, { ok: true, noop: true });
+  assert.equal(users.length, 1);
 });
 
 // --- resetEmployeePassword ---------------------------------------------------

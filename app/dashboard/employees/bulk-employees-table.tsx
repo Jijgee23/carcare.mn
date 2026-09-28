@@ -30,6 +30,7 @@ export type BulkEmployeeRow = {
   verified: boolean;
   isActive: boolean;
   isOwner: boolean;
+  deactivatedAt: string | null;
   activeUntil: string | null;
   roleName: string | null;
   branchName: string | null;
@@ -153,7 +154,11 @@ export function BulkEmployeesTable({
                     {u.branchName ?? "—"}
                   </td>
                   <td className="px-5 py-4">
-                    <StatusPill isActive={u.isActive} activeUntil={u.activeUntil} />
+                    <StatusPill
+                      isActive={u.isActive}
+                      activeUntil={u.activeUntil}
+                      deactivatedAt={u.deactivatedAt}
+                    />
                   </td>
                   <td className="px-5 py-4 font-plex-mono text-xs text-[var(--oc-muted3)] whitespace-nowrap">
                     {u.activeUntil ? new Date(u.activeUntil).toLocaleDateString("mn-MN") : "—"}
@@ -191,11 +196,24 @@ export function BulkEmployeesTable({
 function StatusPill({
   isActive,
   activeUntil,
+  deactivatedAt,
 }: {
   isActive: boolean;
   activeUntil: string | null;
+  deactivatedAt: string | null;
 }) {
   const expired = activeUntil != null && new Date(activeUntil).getTime() <= Date.now();
+  // Self-deactivated (reversible on next login) is distinct from
+  // admin-blocked (isActive: false, deactivatedAt: null) — isActive stays
+  // true while deactivatedAt is set, so this must be checked before the
+  // isActive branch below.
+  if (deactivatedAt) {
+    return (
+      <span title="Ажилтан өөрөө бүртгэлээ түр хаасан — дахин нэвтэрснээр идэвхжинэ.">
+        <Chip tone="accent" bordered>Өөрөө түр хаасан</Chip>
+      </span>
+    );
+  }
   if (!isActive) {
     return <Chip tone="neutral">Идэвхгүй</Chip>;
   }

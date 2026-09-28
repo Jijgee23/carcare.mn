@@ -43,15 +43,18 @@ export async function POST(req: Request) {
   if (account && !account.isActive) {
     return jsonError(403, "Энэ дугаар түр хаагдсан байна.");
   }
+  let reactivated = false;
   if (!account) {
     account = await prisma.account.create({
       data: { phone, name: name || null, lastLoginAt: new Date() },
     });
   } else {
+    reactivated = Boolean(account.deactivatedAt);
     account = await prisma.account.update({
       where: { id: account.id },
       data: {
         lastLoginAt: new Date(),
+        deactivatedAt: null,
         ...(name && !account.name ? { name } : {}),
       },
     });
@@ -64,6 +67,7 @@ export async function POST(req: Request) {
 
   return jsonOk({
     accessToken,
+    reactivated,
     account: { id: account.id, phone: account.phone, name: account.name },
   });
 }

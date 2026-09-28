@@ -11,7 +11,10 @@ export function buildEmployeeWhere(
   branchId: string,
   status: EmployeeStatusFilter,
 ): Prisma.UserWhereInput {
-  const where: Prisma.UserWhereInput = { tenantId };
+  // Tombstoned (self-deleted) users no longer exist as people — hide them
+  // from every list/export; they stay resolvable by id elsewhere (e.g.
+  // orders' assignedTo) since only this shared list-where filters them.
+  const where: Prisma.UserWhereInput = { tenantId, deletedAt: null };
   // Хайлт болон "идэвхтэй" төлвийн OR-ууд хоёул where.OR-г ашиглавал
   // хоорондоо дарж бичих тул AND массивт тусад нь нэмнэ.
   const and: Prisma.UserWhereInput[] = [];

@@ -202,7 +202,7 @@ export async function updateEmployee(
     where: { id, tenantId: actor.tenantId },
     include: { role: { select: { id: true, name: true } } },
   });
-  if (!target) return { ok: false, code: "NOT_FOUND", error: "Ажилтан олдсонгүй." };
+  if (!target || target.deletedAt) return { ok: false, code: "NOT_FOUND", error: "Ажилтан олдсонгүй." };
 
   // OWNER (тенант админ)-ын үүрэг солих, эсвэл хасах боломжгүй — гэхдээ нэр,
   // утас, имэйл зэрэг профайлыг засах боломжтой. Өмнө нь ямар ч PATCH-ийг
@@ -356,7 +356,7 @@ export async function bulkUpdateEmployeeRoleBranch(
   if (ids.length === 0) return { ok: false, message: "Дор хаяж нэг ажилтан сонгоно уу." };
 
   const employees: EmployeeRow[] = await db.user.findMany({
-    where: { id: { in: ids }, tenantId: actor.tenantId },
+    where: { id: { in: ids }, tenantId: actor.tenantId, deletedAt: null },
     select: {
       id: true,
       firstName: true,
@@ -454,12 +454,12 @@ export async function toggleEmployeeActive(
 
   const target = await db.user.findFirst({
     where: { id, tenantId: actor.tenantId },
-    select: { isOwner: true, isActive: true, firstName: true, lastName: true },
+    select: { isOwner: true, isActive: true, firstName: true, lastName: true, deletedAt: true },
   });
-  if (!target) return { ok: true, noop: true };
+  if (!target || target.deletedAt) return { ok: true, noop: true };
   if (target.isOwner && !next) {
     const activeOwners = await db.user.count({
-      where: { tenantId: actor.tenantId, isOwner: true, isActive: true },
+      where: { tenantId: actor.tenantId, isOwner: true, isActive: true, deactivatedAt: null, deletedAt: null },
     });
     if (activeOwners <= 1) {
       return { ok: false, code: "LAST_OWNER", error: "Сүүлийн админыг идэвхгүй болгох боломжгүй." };
@@ -499,11 +499,11 @@ export async function deleteEmployee(
     where: { id, tenantId: actor.tenantId },
     include: { role: { select: { name: true } } },
   });
-  if (!target) return { ok: true, noop: true };
+  if (!target || target.deletedAt) return { ok: true, noop: true };
 
   if (target.isOwner) {
     const ownerCount = await db.user.count({
-      where: { tenantId: actor.tenantId, isOwner: true },
+      where: { tenantId: actor.tenantId, isOwner: true, deactivatedAt: null, deletedAt: null },
     });
     if (ownerCount <= 1) {
       return { ok: false, code: "LAST_OWNER", error: "Сүүлийн админыг устгах боломжгүй." };
@@ -557,9 +557,9 @@ export async function resetEmployeePassword(
 
   const target = await db.user.findFirst({
     where: { id, tenantId: actor.tenantId },
-    select: { firstName: true, lastName: true },
+    select: { firstName: true, lastName: true, deletedAt: true },
   });
-  if (!target) return { ok: true, noop: true };
+  if (!target || target.deletedAt) return { ok: true, noop: true };
 
   // Нууц үгийг сервер огт үүсгэдэггүй — зөвхөн хүчингүй болгоод OTP
   // урсгал руу оруулна.

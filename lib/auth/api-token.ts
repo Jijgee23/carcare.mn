@@ -78,6 +78,7 @@ export async function getApiUserFromRequest(req: Request) {
       },
       isActive: true,
       activeUntil: true,
+      deactivatedAt: true,
       lockedAt: true,
       tenant: { select: { suspended: true } },
     },
@@ -88,11 +89,11 @@ export async function getApiUserFromRequest(req: Request) {
   // the rest of the 24h access token and could refresh indefinitely.
   // Returning null makes the route answer 401, and the refresh that follows
   // is rejected too (auth/refresh), so the app signs out.
-  const { isActive, activeUntil, lockedAt, tenant, ...profile } = user;
+  const { isActive, activeUntil, deactivatedAt, lockedAt, tenant, ...profile } = user;
   if (
     lockedAt ||
     tenant.suspended ||
-    !checkUserActive({ isActive, activeUntil }).ok
+    !checkUserActive({ isActive, activeUntil, deactivatedAt }).ok
   ) {
     return null;
   }

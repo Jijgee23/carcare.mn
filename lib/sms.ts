@@ -30,6 +30,7 @@ const SUBJECT_BY_TYPE: Record<OtpType, string> = {
   RESET_PASSWORD: "Нууц үг сэргээх",
   CONSUMER_LOGIN: "Нэвтрэх код",
   SET_PASSWORD: "Аккаунт идэвхжүүлэх",
+  ACCOUNT_CLOSE: "Бүртгэл хаах код",
 };
 
 function normalizePhone(phone: string): string {

@@ -60,6 +60,7 @@ const EMPLOYEE_SELECT = {
   roleId: true,
   isActive: true,
   activeUntil: true,
+  deactivatedAt: true,
   tenantId: true,
   branchId: true,
   assignableBranchIds: true,
@@ -100,6 +101,7 @@ export async function GET(req: Request) {
 
   const where: Prisma.UserWhereInput = {
     tenantId: auth.user.tenantId,
+    deletedAt: null,
     ...(branchId && { branchId }),
     ...(roleId && { roleId }),
     ...(active === "yes" && { isActive: true }),
@@ -135,10 +137,10 @@ export async function GET(req: Request) {
     }),
     prisma.user.groupBy({
       by: ["branchId"],
-      where: { tenantId: auth.user.tenantId, branchId: { not: null } },
+      where: { tenantId: auth.user.tenantId, deletedAt: null, branchId: { not: null } },
       _count: { _all: true },
     }),
-    prisma.user.count({ where: { tenantId: auth.user.tenantId, branchId: null } }),
+    prisma.user.count({ where: { tenantId: auth.user.tenantId, deletedAt: null, branchId: null } }),
   ]);
 
   const countByBranch = new Map(branchCounts.map((b) => [b.branchId, b._count._all]));

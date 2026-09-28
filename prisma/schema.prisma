@@ -102,6 +102,11 @@ model User {
   // Түр ажиллах ажилтан үүсгэх үед энэ огноо тогтооно. Энэ огнооноос хойш
   // нэвтрэх оролдлого хийвэл automatically блоклогдоно. null бол байнгын.
   activeUntil DateTime?
+  // Хэрэглэгч өөрөө түр хаасан. Дахин нэвтрэхэд null болно (isActive-аас тусдаа —
+  // isActive=false бол админ блоклосон, нэвтрэлтээр сэргэхгүй).
+  deactivatedAt DateTime?
+  // Бүрмөсөн устгасан (PII арилгасан tombstone). Буцаагдахгүй.
+  deletedAt     DateTime?
 
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -1309,6 +1314,7 @@ enum OtpType {
   RESET_PASSWORD
   CONSUMER_LOGIN // онлайн цаг захиалгын Account утсаар нэвтрэх
   SET_PASSWORD // ажилтны анхны нэвтрэлт — нууц үг үүсгэж аккаунт идэвхжүүлэх
+  ACCOUNT_CLOSE // аккаунт хаах/устгах баталгаажуулалт
 }
 
 model Otp {
@@ -1348,6 +1354,11 @@ model Account {
   email     String?
   avatarUrl String?
   isActive  Boolean @default(true) // false бол нэвтрэлт блоклогдоно
+  // Хэрэглэгч өөрөө түр хаасан. Дахин нэвтрэхэд null болно (isActive-аас тусдаа —
+  // isActive=false бол админ блоклосон, нэвтрэлтээр сэргэхгүй).
+  deactivatedAt DateTime?
+  // Бүрмөсөн устгасан (PII арилгасан tombstone). Буцаагдахгүй.
+  deletedAt     DateTime?
 
   lastLoginAt DateTime?
   createdAt   DateTime  @default(now())

@@ -17,6 +17,7 @@ const TYPE_LABEL: Record<OtpType, string> = {
   RESET_PASSWORD: "Нууц үг сэргээх",
   CONSUMER_LOGIN: "Нэвтрэх (Account)",
   SET_PASSWORD: "Аккаунт идэвхжүүлэх",
+  ACCOUNT_CLOSE: "Бүртгэл хаах",
 };
 
 export default async function SystemOtpPage() {

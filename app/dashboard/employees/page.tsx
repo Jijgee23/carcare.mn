@@ -103,17 +103,18 @@ export default async function EmployeesPage({
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
-    prisma.user.count({ where: { tenantId: me.tenantId } }),
+    prisma.user.count({ where: { tenantId: me.tenantId, deletedAt: null } }),
     prisma.user.count({
       where: {
         tenantId: me.tenantId,
+        deletedAt: null,
         isActive: true,
         OR: [{ activeUntil: null }, { activeUntil: { gt: now } }],
       },
     }),
-    prisma.user.count({ where: { tenantId: me.tenantId, verified: false } }),
+    prisma.user.count({ where: { tenantId: me.tenantId, deletedAt: null, verified: false } }),
     prisma.user.count({
-      where: { tenantId: me.tenantId, activeUntil: { not: null, lte: now } },
+      where: { tenantId: me.tenantId, deletedAt: null, activeUntil: { not: null, lte: now } },
     }),
   ]);
   const meta = buildMeta(filteredTotal, page, pageSize);
@@ -220,6 +221,7 @@ export default async function EmployeesPage({
                 verified: u.verified,
                 isActive: u.isActive,
                 isOwner: u.isOwner,
+                deactivatedAt: u.deactivatedAt?.toISOString() ?? null,
                 activeUntil: u.activeUntil?.toISOString() ?? null,
                 roleName: u.role?.name ?? null,
                 branchName: u.branch?.name ?? null,

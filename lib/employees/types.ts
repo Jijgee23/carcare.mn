@@ -26,6 +26,8 @@ export type EmployeeRow = {
   lockedAt?: Date | null;
   isActive?: boolean;
   activeUntil?: Date | null;
+  deactivatedAt?: Date | null;
+  deletedAt?: Date | null;
   tenantId?: string;
   branchId?: string | null;
   assignableBranchIds?: string[];
