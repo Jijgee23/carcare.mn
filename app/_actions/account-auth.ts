@@ -143,6 +143,7 @@ export async function accountLoginAction(
       where: { id: account.id },
       data: {
         lastLoginAt: new Date(),
+        deactivatedAt: null,
       },
     });
   }

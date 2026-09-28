@@ -22,6 +22,7 @@ import {
 import type { EmployeeActor } from "@/lib/employees/types";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { enforceCountLimit } from "@/lib/plan-limits-server";
+import { purgeStaffAccess } from "@/lib/account-closure/staff";
 import { prisma } from "@/lib/prisma";
 
 export type EmployeeActionState = {
@@ -67,7 +68,7 @@ export async function createEmployeeAction(
   const limit = await enforceCountLimit(
     user.tenantId,
     PLAN_LIMIT_CODES.MAX_USERS,
-    () => prisma.user.count({ where: { tenantId: user.tenantId } }),
+    () => prisma.user.count({ where: { tenantId: user.tenantId, deletedAt: null } }),
   );
   if (!limit.allowed) {
     return { ok: false, message: limit.message };
@@ -192,6 +193,8 @@ export async function deleteEmployeeAction(formData: FormData): Promise<ConfirmA
   if (!result.ok) {
     return { error: result.error };
   }
+
+  await purgeStaffAccess(result.id);
 
   await logAudit({
     tenantId: me.tenantId,

@@ -40,6 +40,7 @@ test("owners and active assignable users are eligible", () => {
 
 test("inactive users, inactive roles and users without assignment permission are excluded", () => {
   assert.equal(isAssignableUserEligible(user({ isActive: false }), TENANT, BRANCH), false);
+  assert.equal(isAssignableUserEligible(user({ deactivatedAt: new Date() }), TENANT, BRANCH), false);
   assert.equal(
     isAssignableUserEligible(
       user({ role: { permissions: ["orders.assignable"], isActive: false } }),
@@ -82,6 +83,7 @@ test("Prisma predicate keeps tenant, active, assignable role and branch lock con
   assert.ok(Array.isArray(where.AND));
   assert.deepEqual(where.AND, [
     {
+      deactivatedAt: null,
       OR: [
         { isOwner: true },
         { role: { permissions: { has: "orders.assignable" } } },

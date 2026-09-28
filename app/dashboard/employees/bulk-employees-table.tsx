@@ -209,8 +209,8 @@ function StatusPill({
   // isActive branch below.
   if (deactivatedAt) {
     return (
-      <span title="Ажилтан өөрөө бүртгэлээ түр хаасан — дахин нэвтэрснээр идэвхжинэ.">
-        <Chip tone="accent" bordered>Өөрөө түр хаасан</Chip>
+      <span title="Ажилтан өөрөө бүртгэлээ идэвхгүй болгосон — дахин нэвтэрснээр идэвхжинэ.">
+        <Chip tone="accent" bordered>Өөрөө идэвхгүй болгосон</Chip>
       </span>
     );
   }

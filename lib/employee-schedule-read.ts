@@ -182,6 +182,8 @@ export async function loadEmployeeScheduleGrid(
       where: {
         tenantId,
         isActive: true,
+        // Өөрөө хаасан ажилтан isActive=true хэвээр — хуваарийн жагсаалтаас хасна.
+        deactivatedAt: null,
         ...(branchId ? { branchId } : {}),
         ...searchWhere,
       },
@@ -207,7 +209,7 @@ export async function loadEmployeeScheduleGrid(
     // (хайлт/шүүлтээс хамаарахгүй, нийт дүн).
     db.user.groupBy({
       by: ["branchId"],
-      where: { tenantId, isActive: true },
+      where: { tenantId, isActive: true, deactivatedAt: null },
       _count: { _all: true },
     }),
   ]);

@@ -73,6 +73,7 @@ export async function POST(req: Request) {
       isOwner: true,
       isActive: true,
       activeUntil: true,
+      deactivatedAt: true,
       lockedAt: true,
       tenant: { select: { suspended: true } },
     },
@@ -89,9 +90,12 @@ export async function POST(req: Request) {
       "Хэт олон удаа буруу оролдсон тул аккаунт түгжигдсэн. Нууц үгээ сэргээнэ үү.",
     );
   }
+  // Refresh нууц үгийн баталгаагүй тул deactivatedAt-ийг цэвэрлэхгүй — зөвхөн
+  // татгалзана; сэргээх нь /auth/login-оор л болно.
   const active = checkUserActive({
     isActive: user.isActive,
     activeUntil: user.activeUntil,
+    deactivatedAt: user.deactivatedAt,
   });
   if (!active.ok) return jsonError(403, active.message);
 

@@ -107,7 +107,7 @@ export async function loadOverviewData(
     planLimits,
   ] = await Promise.all([
     prisma.branch.count({ where: { tenantId: user.tenantId } }),
-    prisma.user.count({ where: { tenantId: user.tenantId } }),
+    prisma.user.count({ where: { tenantId: user.tenantId, deletedAt: null } }),
     prisma.customer.count({ where: { tenantId: user.tenantId } }),
     prisma.tenantVehicle.count({ where: { tenantId: user.tenantId } }),
     prisma.serviceOrder.count({

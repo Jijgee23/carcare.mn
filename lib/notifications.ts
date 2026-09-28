@@ -14,6 +14,7 @@ export const NOTIFICATION_TYPES = [
   "appointment_rejected",
   "appointment_reminder",
   "appointment_created",
+  "appointment_booked_by_staff",
   "appointment_cancelled",
   "appointment_expired",
   "appointment_no_show",
@@ -46,6 +47,7 @@ export const NOTIFICATION_TYPE_LABEL: Record<NotificationType, string> = {
   appointment_rejected: "Цаг батлагдаагүй",
   appointment_reminder: "Цаг сануулга",
   appointment_created: "Шинэ цаг захиалга",
+  appointment_booked_by_staff: "Шинэ цаг захиалга",
   appointment_cancelled: "Цаг цуцлагдсан",
   appointment_expired: "Цаг хугацаа хэтэрсэн",
   appointment_no_show: "Цагт ирээгүй",
@@ -143,6 +145,21 @@ export const NOTIFICATION_REGISTRY: Record<NotificationType, NotificationDef> = 
       data: { type: "appointment_created", appointmentId: i.appointmentId ?? "" },
     }),
     href: (d) => staffAppointmentHref(d.appointmentId),
+  },
+  // D-191: ажилтан үйлчлүүлэгчийн ӨМНӨӨС (утсаар) цаг бүртгэхэд account-д
+  // очих мэдэгдэл. `appointment_created`-тай НЭР төстэй ч тэр нь
+  // "онлайн хүсэлт ирлээ" гэсэн STAFF-realm мэдэгдэл (өөр утга, өөр
+  // хүлээн авагч) — registry нэг key-д нэг realm-тай тул тусдаа key.
+  // Body-г дуудагч тал (registerAppointmentByStaffCommand) салбарын нэр +
+  // Asia/Ulaanbaatar цагаар угсарч `input.body`-оор дамжуулна.
+  appointment_booked_by_staff: {
+    realm: "account",
+    build: (i) => ({
+      title: "Шинэ цаг захиалга",
+      body: i.body ?? "Танд шинэ цаг захиалга бүртгэгдлээ.",
+      data: { type: "appointment_booked_by_staff", appointmentId: i.appointmentId ?? "" },
+    }),
+    href: (d) => appointmentHref(d),
   },
   appointment_cancelled: {
     realm: "staff",

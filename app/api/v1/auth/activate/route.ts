@@ -102,6 +102,9 @@ export async function POST(req: Request) {
       verified: true,
       failedLoginAttempts: 0,
       lockedAt: null,
+      // Өөрөө хаасан ажилтныг админ нууц үг шинэчилсэн бол — login-той адил сэргээнэ,
+      // эс бөгөөс шинэ session дараагийн хүсэлтэд 401 болно.
+      deactivatedAt: null,
     },
   });
   await revokeAllOtps(user.email, "SET_PASSWORD");

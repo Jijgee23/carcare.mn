@@ -634,11 +634,19 @@ export async function signInAction(
     };
   }
 
+  // Өөрөө хаасан ажилтан нууц үгээр нэвтэрвэл сэргээнэ (api/v1/auth/login-той
+  // адил). isActive=false (админ блок) бол хөндөхгүй — доорх шалгалт блоклоно.
+  if (user.isActive && user.deactivatedAt) {
+    await prisma.user.update({ where: { id: user.id }, data: { deactivatedAt: null } });
+    user.deactivatedAt = null;
+  }
+
   // Хэрэглэгчийн идэвхтэй эсэх / хугацаа дуусаагүй эсэхийг шалгах
   const { checkUserActive } = await import("@/lib/auth/active");
   const active = checkUserActive({
     isActive: user.isActive,
     activeUntil: user.activeUntil,
+    deactivatedAt: user.deactivatedAt,
   });
   if (!active.ok) {
     return { ok: false, message: active.message };
@@ -1061,6 +1069,9 @@ export async function activateAccountAction(
       verified: true,
       failedLoginAttempts: 0,
       lockedAt: null,
+      // Өөрөө хаасан ажилтныг админ нууц үг шинэчилсэн бол — login-той адил сэргээнэ,
+      // эс бөгөөс шинэ session дараагийн хүсэлтэд 401 болно.
+      deactivatedAt: null,
     },
   });
   await revokeAllOtps(email, "SET_PASSWORD");

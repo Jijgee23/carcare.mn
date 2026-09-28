@@ -161,6 +161,9 @@ export function workingBranchScopeId(user: {
  * isOwner=true бүх админ + `orders.assignable` permission-той Role-той ажилтнууд.
  */
 export const ORDER_ASSIGNABLE_WHERE = {
+  // Өөрөө хаасан ажилтан isActive=true хэвээр (админ блокоос тусдаа) тул
+  // тусад нь хасна — эс бөгөөс нэвтэрч чадахгүй хүнд захиалга оноогдоно.
+  deactivatedAt: null,
   OR: [
     { isOwner: true },
     { role: { permissions: { has: "orders.assignable" } } },

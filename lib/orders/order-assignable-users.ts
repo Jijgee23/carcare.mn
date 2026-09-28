@@ -3,6 +3,7 @@ import { ORDER_ASSIGNABLE_WHERE } from "@/lib/auth/roles";
 
 export type AssignableUserEligibilityInput = {
   isActive: boolean;
+  deactivatedAt?: Date | null;
   tenantId: string;
   isOwner: boolean;
   branchId: string | null;
@@ -36,7 +37,7 @@ export function isAssignableUserEligible(
   tenantId: string,
   branchId?: string | null,
 ): boolean {
-  if (!user.isActive || user.tenantId !== tenantId) return false;
+  if (!user.isActive || user.deactivatedAt || user.tenantId !== tenantId) return false;
   if (user.role?.isActive === false) return false;
 
   const isAssignable =

@@ -185,7 +185,7 @@ export async function POST(req: Request) {
   const limit = await enforceCountLimit(
     actor.tenantId,
     PLAN_LIMIT_CODES.MAX_USERS,
-    () => prisma.user.count({ where: { tenantId: actor.tenantId } }),
+    () => prisma.user.count({ where: { tenantId: actor.tenantId, deletedAt: null } }),
   );
   if (!limit.allowed) {
     return jsonError(403, limit.message ?? "Ажилтны хязгаарт хүрсэн байна.", { code: "PLAN_LIMIT_REACHED" });

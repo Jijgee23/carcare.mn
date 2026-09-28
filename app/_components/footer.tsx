@@ -64,6 +64,9 @@ export async function Footer() {
           <Link href="/privacy" className="text-[var(--oc-muted)] hover:text-[var(--oc-accent-hi)] transition-colors">
             Нууцлалын бодлого
           </Link>
+          <Link href="/account-deletion" className="text-[var(--oc-muted)] hover:text-[var(--oc-accent-hi)] transition-colors">
+            Бүртгэл устгах
+          </Link>
           <Link href="/contact" className="text-[var(--oc-muted)] hover:text-[var(--oc-accent-hi)] transition-colors">
             Холбоо барих
           </Link>

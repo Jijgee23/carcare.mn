@@ -96,7 +96,7 @@ model User {
   failedLoginAttempts Int       @default(0)
   lockedAt            DateTime?
 
-  // Гар идэвхгүй болгох flag. true бол ажилтан хэвийн ажиллана. Манагер цаг
+  // Гар түр хаах flag. true бол ажилтан хэвийн ажиллана. Манагер цаг
   // үе гарваал false болгож login-г блоклож болно (бичлэг нь хадгалагдана).
   isActive    Boolean   @default(true)
   // Түр ажиллах ажилтан үүсгэх үед энэ огноо тогтооно. Энэ огнооноос хойш

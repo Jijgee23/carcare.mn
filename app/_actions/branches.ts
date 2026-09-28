@@ -548,7 +548,8 @@ export async function deleteBranchAction(formData: FormData): Promise<ConfirmAct
   try {
     employeeCount = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "Branch" WHERE id = ${id} AND "tenantId" = ${user.tenantId} FOR UPDATE`;
-      const count = await tx.user.count({ where: { branchId: id, tenantId: user.tenantId } });
+      // Tombstone (устгагдсан) ажилтан салбарыг түгжихгүй — захиалгын FK-д л үлддэг.
+      const count = await tx.user.count({ where: { branchId: id, tenantId: user.tenantId, deletedAt: null } });
       if (count > 0) return count;
       await tx.branch.delete({ where: { id, tenantId: user.tenantId } });
       return 0;

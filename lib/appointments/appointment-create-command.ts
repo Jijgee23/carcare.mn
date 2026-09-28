@@ -2,6 +2,8 @@ import { canCreate, workingBranchScopeId } from "@/lib/auth/roles";
 import { assertActiveSubscription } from "@/lib/subscription-server";
 import { SUBSCRIPTION_LOCKED_MESSAGE } from "@/lib/subscription";
 import { logAudit } from "@/lib/audit";
+import { createNotification } from "@/lib/notifications";
+import { buildAppointmentBookedByStaffBody } from "@/lib/appointments/appointment-booked-by-staff-notification";
 import { prisma } from "@/lib/prisma";
 import {
   reserveAppointment,
@@ -75,7 +77,7 @@ export async function registerAppointmentByStaffCommand(
   }
 
   const [branch, customer, vehicle] = await Promise.all([
-    prisma.branch.findFirst({ where: { id: branchId, tenantId: actor.tenantId }, select: { id: true } }),
+    prisma.branch.findFirst({ where: { id: branchId, tenantId: actor.tenantId }, select: { id: true, name: true } }),
     prisma.customer.findFirst({
       where: { id: customerId, tenantId: actor.tenantId },
       select: { id: true, accountId: true },
@@ -144,6 +146,26 @@ export async function registerAppointmentByStaffCommand(
     summary: "Утсаар цаг бүртгэсэн",
     after: { customerId, vehicleId, requestedAt: requestedAt.toISOString(), status: "CONFIRMED" },
   });
+
+  // D-191: ажилтан утсаар бүртгэсэн ч энэ Customer нь онлайн Account-тай
+  // холбоотой байвал (`customer.accountId`) тухайн хэрэглэгчид мэдэгдэнэ —
+  // "Миний захиалгууд" хуудас нээлттэй байхад автоматаар шинэчлэгдэхийн тулд
+  // (харах: customer app router.dart `_activeOnlyPushTypes`). Best-effort:
+  // мэдэгдэл бичих/push илгээхэд алдаа гарсан ч захиалга буцаагдахгүй.
+  if (customer.accountId) {
+    try {
+      await createNotification({
+        type: "appointment_booked_by_staff",
+        recipient: { accountId: customer.accountId },
+        input: {
+          appointmentId: created.id,
+          body: buildAppointmentBookedByStaffBody(branch.name, requestedAt),
+        },
+      });
+    } catch (e) {
+      console.warn("[notify] registerAppointmentByStaffCommand:", e);
+    }
+  }
 
   return { appointmentId: created.id };
 }

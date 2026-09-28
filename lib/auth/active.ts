@@ -26,7 +26,7 @@ export function checkUserActive(user: {
     return {
       ok: false,
       reason: "DEACTIVATED",
-      message: "Та бүртгэлээ түр хаасан байна. Дахин нэвтэрч сэргээнэ үү.",
+      message: "Та бүртгэлээ идэвхгүй болгосон байна. Дахин нэвтэрч сэргээнэ үү.",
     };
   }
   if (user.activeUntil && user.activeUntil.getTime() <= Date.now()) {

@@ -48,18 +48,50 @@ function chunk<T>(arr: T[], size: number): T[][] {
 }
 
 /**
- * Өгөгдсөн FCM token-ууд руу push илгээнэ. Тохируулга байхгүй бол чимээгүй
- * 0 буцаана. Хүчингүй болсон token-уудыг Device-ээс цэвэрлэнэ. Түр зуурын
- * алдаатай token-уудыг богино саатал (400мс)-тайгаар нэг удаа дахин оролдоно.
- *
- * `apns` тохиргоог мессеж бүрт үргэлж хавсаргана — FCM токены платформоор нь
- * тохирох хэсгийг өөрөө сонгож хэрэглэдэг тул push бүрийг платформоор
- * (WEB/ANDROID/IOS) тусад нь илгээх шаардлагагүй. 500-аас олон token ирвэл
- * (жишээ: broadcast) FCM-ийн нэг дуудлагын дээд хязгаараар автоматаар хуваана.
+ * FCM руу илгээх бэлэн мессеж (multicast dry runs/pure тестэд ашиглаж болно).
  */
-export async function sendPushToTokens(
+export type SilentPushMessage = {
+  tokens: string[];
+  data: Record<string, string>;
+  android: { priority: "high" };
+  apns: {
+    headers: { "apns-push-type": "background"; "apns-priority": "5" };
+    payload: { aps: { "content-available": 1 } };
+  };
+};
+
+/**
+ * Дуут/харагдах хэсэггүй, зөвхөн өгөгдөлтэй (silent/data-only) FCM мессеж
+ * бүтээнэ — жишээ нь account хаагдсаны дараа апп-ыг чимээгүй гарган
+ * (sign out) орхихын тулд. `notification` түлхүүр огт байхгүй.
+ */
+export function buildSilentMessage(
   tokens: string[],
-  payload: PushPayload,
+  data: Record<string, string>,
+): SilentPushMessage {
+  return {
+    tokens,
+    data,
+    android: { priority: "high" },
+    apns: {
+      headers: { "apns-push-type": "background", "apns-priority": "5" },
+      payload: { aps: { "content-available": 1 } },
+    },
+  };
+}
+
+type SendOptions = {
+  /** Батчид явуулах мессежийг тохируулах — payload-той (notification) эсвэл silent (data-only). */
+  buildMessage: (batch: string[]) => Record<string, unknown>;
+};
+
+/**
+ * `sendPushToTokens`/`sendSilentPushToTokens`-ийн хамтарсан дотоод логик:
+ * chunking, дахин оролдлого (retry) болон хүчингүй token цэвэрлэлт.
+ */
+async function sendMessagesToTokens(
+  tokens: string[],
+  { buildMessage }: SendOptions,
 ): Promise<PushResult> {
   const messaging = getFirebaseMessaging();
   let pending = [...new Set(tokens)].filter(Boolean);
@@ -74,15 +106,9 @@ export async function sendPushToTokens(
 
     const retry: string[] = [];
     for (const batch of chunk(pending, FCM_MAX_TOKENS_PER_CALL)) {
-      const res = await messaging.sendEachForMulticast({
-        tokens: batch,
-        notification: { title: payload.title, body: payload.body },
-        ...(payload.data ? { data: payload.data } : {}),
-        apns: {
-          headers: { "apns-priority": "10" },
-          payload: { aps: { sound: "default" } },
-        },
-      });
+      const res = await messaging.sendEachForMulticast(
+        buildMessage(batch) as unknown as Parameters<typeof messaging.sendEachForMulticast>[0],
+      );
 
       res.responses.forEach((r, i) => {
         if (r.success) {
@@ -104,6 +130,8 @@ export async function sendPushToTokens(
   }
 
   if (stale.length > 0) {
+    // Device мөрүүд аль хэдийн устсан байсан ч (account/user хаагдсаны дараа)
+    // энэ updateMany 0 мөр олдож чимээгүй дуусна — хор хөнөөлгүй.
     await prisma.device.updateMany({
       where: { firebaseToken: { in: stale } },
       data: { firebaseToken: null },
@@ -111,6 +139,47 @@ export async function sendPushToTokens(
   }
 
   return { sent, failed };
+}
+
+/**
+ * Өгөгдсөн FCM token-ууд руу push илгээнэ. Тохируулга байхгүй бол чимээгүй
+ * 0 буцаана. Хүчингүй болсон token-уудыг Device-ээс цэвэрлэнэ. Түр зуурын
+ * алдаатай token-уудыг богино саатал (400мс)-тайгаар нэг удаа дахин оролдоно.
+ *
+ * `apns` тохиргоог мессеж бүрт үргэлж хавсаргана — FCM токены платформоор нь
+ * тохирох хэсгийг өөрөө сонгож хэрэглэдэг тул push бүрийг платформоор
+ * (WEB/ANDROID/IOS) тусад нь илгээх шаардлагагүй. 500-аас олон token ирвэл
+ * (жишээ: broadcast) FCM-ийн нэг дуудлагын дээд хязгаараар автоматаар хуваана.
+ */
+export async function sendPushToTokens(
+  tokens: string[],
+  payload: PushPayload,
+): Promise<PushResult> {
+  return sendMessagesToTokens(tokens, {
+    buildMessage: (batch) => ({
+      tokens: batch,
+      notification: { title: payload.title, body: payload.body },
+      ...(payload.data ? { data: payload.data } : {}),
+      apns: {
+        headers: { "apns-priority": "10" },
+        payload: { aps: { sound: "default" } },
+      },
+    }),
+  });
+}
+
+/**
+ * Дуут/харагдах хэсэггүй, зөвхөн өгөгдөлтэй (data-only) push илгээнэ — жишээ
+ * нь account хаагдсаны дараа нээлттэй апп-ыг шууд гаргах (sign out) зорилгоор.
+ * `notification` талбар байхгүй тул апп дэлгэц дээр юу ч харуулахгүй.
+ */
+export async function sendSilentPushToTokens(
+  tokens: string[],
+  data: Record<string, string>,
+): Promise<PushResult> {
+  return sendMessagesToTokens(tokens, {
+    buildMessage: (batch) => buildSilentMessage(batch, data),
+  });
 }
 
 /** Ажилтны (User) бүх төхөөрөмж рүү push. */

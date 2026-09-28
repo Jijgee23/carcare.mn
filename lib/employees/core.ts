@@ -12,7 +12,7 @@
 // `logAudit` itself has no `server-only`/Next import and accepts an
 // injectable client, so this stays framework-free and fake-able.
 
-import { isForeignKeyViolation } from "@/lib/prisma-errors";
+import { userTombstone } from "@/lib/account-closure/tombstone";
 import { logAudit } from "@/lib/audit";
 import { parseIdsJson } from "@/lib/bulk-action";
 import { duplicateUserFields, ensureRoleBelongsToTenant, filterOwnBranchIds } from "./guards";
@@ -482,7 +482,7 @@ export async function toggleEmployeeActive(
 export type DeleteResult =
   | Noop
   | { ok: true; id: string; summary: string }
-  | { ok: false; code: "SELF_ACTION" | "LAST_OWNER" | "FK_CONFLICT"; error: string };
+  | { ok: false; code: "SELF_ACTION" | "LAST_OWNER" | "OPEN_ORDERS"; error: string };
 
 export async function deleteEmployee(
   db: EmployeesClient,
@@ -503,26 +503,31 @@ export async function deleteEmployee(
 
   if (target.isOwner) {
     const ownerCount = await db.user.count({
-      where: { tenantId: actor.tenantId, isOwner: true, deactivatedAt: null, deletedAt: null },
+      where: { tenantId: actor.tenantId, isOwner: true, isActive: true, deactivatedAt: null, deletedAt: null },
     });
     if (ownerCount <= 1) {
       return { ok: false, code: "LAST_OWNER", error: "Сүүлийн админыг устгах боломжгүй." };
     }
   }
 
-  try {
-    await db.user.delete({ where: { id: target.id } });
-  } catch (e) {
-    if (isP2003(e)) {
-      return {
-        ok: false,
-        code: "FK_CONFLICT",
-        error: "Энэ ажилтан засварын хуудастай холбоотой тул устгах боломжгүй.",
-      };
-    }
-    // Original action re-throws unrecognized errors as-is, not a mapped result.
-    throw e;
+  // assignedToId нь SetNull тул устгавал нээлттэй захиалга чимээгүй хуваарилалтгүй
+  // үлдэнэ — эхлээд өөр ажилтанд шилжүүлэхийг шаардана.
+  const openOrders = await db.serviceOrder.count({
+    where: { tenantId: actor.tenantId, assignedToId: target.id, status: { in: ["SCHEDULED", "IN_PROGRESS"] } },
+  });
+  if (openOrders > 0) {
+    return {
+      ok: false,
+      code: "OPEN_ORDERS",
+      error: `Энэ ажилтанд ${openOrders} нээлттэй захиалга хуваарилагдсан байна. Эхлээд өөр ажилтанд шилжүүлнэ үү.`,
+    };
   }
+
+  // Хатуу DELETE хийхгүй — өөрөө устгах урсгалтай (lib/account-closure/staff.ts)
+  // ижил tombstone: захиалга, онош, цагийн FK хадгалагдаж "Устгагдсан ажилтан"
+  // гэж харагдана, утас/имэйл чөлөөлөгдөнө. Session/device цэвэрлэгээ, silent
+  // push-ийг дуудагч талд purgeStaffAccess() хийнэ.
+  await db.user.update({ where: { id: target.id }, data: userTombstone(target.id, new Date()) });
 
   return {
     ok: true,
@@ -576,10 +581,6 @@ export async function resetEmployeePassword(
 
 function isP2002(e: unknown): boolean {
   return isPrismaErrorCode(e, "P2002");
-}
-
-function isP2003(e: unknown): boolean {
-  return isForeignKeyViolation(e);
 }
 
 function isPrismaErrorCode(e: unknown, code: string): boolean {

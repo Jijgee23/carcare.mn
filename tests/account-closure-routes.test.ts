@@ -52,6 +52,49 @@ test("delete anonymizes in one transaction and unlinks tenant customers", () => 
   assert.match(s, /accountVehicle\.deleteMany/);
 });
 
+test("delete cancels future-cancellable appointments inside the SAME transaction, before the unlink", () => {
+  const s = src("lib/account-closure/customer.ts");
+  // Callback-style transaction (needed to read-then-write within one tx).
+  assert.match(s, /\$transaction\(async \(tx\)/);
+  const cancelIdx = s.search(/futureCancellableWhere\(accountId, now\)/);
+  const cancelUpdateIdx = s.search(/tx\.appointment\.updateMany\(\s*\{\s*where:\s*\{\s*id:\s*\{\s*in:/);
+  const unlinkIdx = s.search(/tx\.appointment\.updateMany\(\s*\{\s*where:\s*\{\s*accountId\s*\},\s*data:\s*\{\s*accountId:\s*null/);
+  assert.ok(cancelIdx >= 0, "expected the cancellable-appointment lookup");
+  assert.ok(cancelUpdateIdx >= 0, "expected the cancel updateMany");
+  assert.ok(unlinkIdx >= 0, "expected the unlink updateMany");
+  assert.ok(
+    cancelIdx < cancelUpdateIdx && cancelUpdateIdx < unlinkIdx,
+    "cancel must be looked up and applied before the account unlink",
+  );
+});
+
+test("delete flags PAID-and-unrefunded cancelled appointments for manual refund without a schema change", () => {
+  const s = src("lib/account-closure/customer.ts");
+  assert.match(s, /payment\?\.status === "PAID" && !appt\.payment\.refundedAt/);
+  assert.doesNotMatch(s, /prisma\/migrations/);
+});
+
+test("delete notifies staff per branch AFTER the transaction commits, best-effort", () => {
+  const s = src("lib/account-closure/customer.ts");
+  const txIdx = s.indexOf("prisma.$transaction(async (tx)");
+  const txEndIdx = s.lastIndexOf("await notifyAccountClosed(tokens,");
+  const notifyIdx = s.indexOf("notifyStaff({");
+  assert.ok(txIdx >= 0 && txEndIdx > txIdx, "expected the transaction to appear before notifyAccountClosed");
+  assert.ok(notifyIdx > txEndIdx, "expected notifyStaff to run after the transaction/notifyAccountClosed");
+  assert.match(s, /try\s*\{[\s\S]*notifyStaff\(\{[\s\S]*\}\s*catch/);
+  assert.match(s, /buildAccountDeletionCancelNotificationBody\(group\.appointments\)/);
+});
+
+test("delete passes the single cancelled appointment's id to notifyStaff (tap opens it), like cancelAppointmentByAccount does", () => {
+  const s = src("lib/account-closure/customer.ts");
+  assert.match(
+    s,
+    /group\.appointments\.length === 1 \? group\.appointments\[0\]\.id : undefined/,
+  );
+  assert.match(s, /input: appointmentId \? \{ appointmentId, body \} : \{ body \}/);
+});
+
+
 const STAFF = ["close/request-otp", "deactivate", "delete"].map((r) => `app/api/v1/me/${r}/route.ts`);
 
 test("staff closure routes require auth", async () => {

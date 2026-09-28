@@ -15,7 +15,7 @@
 //
 // Errors (every branch): 401, 403 (permission / SUBSCRIPTION_EXPIRED),
 // 404 (NOT_FOUND), 409 (OWNER_ROLE_LOCKED / LAST_OWNER / SELF_ACTION /
-// FK_CONFLICT), 422 (VALIDATION / DUPLICATE fieldErrors) — always
+// OPEN_ORDERS), 422 (VALIDATION / DUPLICATE fieldErrors) — always
 // `{error, code, fieldErrors?}`.
 
 import type { Prisma } from "@/app/generated/prisma/client";
@@ -25,6 +25,7 @@ import { deleteEmployee, updateEmployee } from "@/lib/employees/core";
 import { toEmployeeDto, type FullEmployeeRow } from "@/lib/employees/dto";
 import type { EmployeeActor, EmployeeErrorCode } from "@/lib/employees/types";
 import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
+import { purgeStaffAccess } from "@/lib/account-closure/staff";
 import { prisma } from "@/lib/prisma";
 import { employeeBodyToFormData, type EmployeeJsonBody } from "../_form-data";
 
@@ -56,6 +57,7 @@ const ERROR_STATUS: Record<EmployeeErrorCode, number> = {
   SELF_ACTION: 409,
   LAST_OWNER: 409,
   FK_CONFLICT: 409,
+  OPEN_ORDERS: 409,
   PLAN_LIMIT_REACHED: 403,
   UNKNOWN: 500,
 };
@@ -143,6 +145,8 @@ export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }
   if (!result.ok) {
     return jsonError(ERROR_STATUS[result.code], result.error, { code: result.code });
   }
+
+  await purgeStaffAccess(result.id);
 
   await logAudit({
     tenantId: actor.tenantId,

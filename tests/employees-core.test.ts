@@ -67,8 +67,11 @@ function p2003(): Error & { code: string; clientVersion: string } {
   return Object.assign(new Error("FK constraint failed"), { code: "P2003", clientVersion: "x" });
 }
 
-function makeFakeDb(seed: { users?: FakeUser[]; branches?: FakeBranch[]; roles?: FakeRole[] } = {}) {
+function makeFakeDb(
+  seed: { users?: FakeUser[]; branches?: FakeBranch[]; roles?: FakeRole[]; openOrdersByUser?: Record<string, number> } = {},
+) {
   const users = seed.users ?? [];
+  const openOrdersByUser = seed.openOrdersByUser ?? {};
   const branches = seed.branches ?? [];
   const roles = seed.roles ?? [];
   const auditRows: unknown[] = [];
@@ -161,6 +164,11 @@ function makeFakeDb(seed: { users?: FakeUser[]; branches?: FakeBranch[]; roles?:
     role: {
       async findFirst({ where }: { where: Record<string, unknown> }) {
         return roles.find((r) => r.id === where.id && r.tenantId === where.tenantId) ?? null;
+      },
+    },
+    serviceOrder: {
+      async count({ where }: { where: { assignedToId: string } }) {
+        return openOrdersByUser[where.assignedToId] ?? 0;
       },
     },
     auditLog: {
@@ -742,7 +750,51 @@ test("deleteEmployee: cannot delete the last owner", async () => {
   assert.equal(result.error, "Сүүлийн админыг устгах боломжгүй.");
 });
 
-test("deleteEmployee: FK conflict maps to the friendly message", async () => {
+test("deleteEmployee: an admin-blocked co-owner does not count toward LAST_OWNER", async () => {
+  const { db, users } = makeFakeDb({
+    users: [
+      {
+        id: "o1",
+        tenantId: "t1",
+        firstName: "O",
+        lastName: "o1",
+        email: "o1@b.com",
+        phone: "99112231",
+        passwordHash: "x",
+        verified: true,
+        isOwner: true,
+        roleId: null,
+        branchId: null,
+        assignableBranchIds: [],
+        isActive: true,
+        activeUntil: null,
+      },
+      {
+        id: "o2",
+        tenantId: "t1",
+        firstName: "O",
+        lastName: "o2",
+        email: "o2@b.com",
+        phone: "99112232",
+        passwordHash: "x",
+        verified: true,
+        isOwner: true,
+        roleId: null,
+        branchId: null,
+        assignableBranchIds: [],
+        isActive: false,
+        activeUntil: null,
+      },
+    ],
+  });
+  const result = await core.deleteEmployee(db, { id: "admin1", tenantId: "t1", isOwner: false }, fd({ id: "o1" }));
+  assert.equal(result.ok, false);
+  if (result.ok) throw new Error("unreachable");
+  assert.equal(result.code, "LAST_OWNER");
+  assert.equal((users[0] as unknown as { deletedAt?: Date }).deletedAt, undefined);
+});
+
+test("deleteEmployee: tombstones the row instead of hard-deleting it", async () => {
   const { db, users } = makeFakeDb({
     users: [
       {
@@ -752,8 +804,8 @@ test("deleteEmployee: FK conflict maps to the friendly message", async () => {
         lastName: "B",
         email: "a@b.com",
         phone: "99112233",
-        passwordHash: null,
-        verified: false,
+        passwordHash: "x",
+        verified: true,
         isOwner: false,
         roleId: null,
         branchId: null,
@@ -763,12 +815,48 @@ test("deleteEmployee: FK conflict maps to the friendly message", async () => {
       },
     ],
   });
-  (users[0] as unknown as { hasOrders: boolean }).hasOrders = true;
+  const result = await core.deleteEmployee(db, ACTOR, fd({ id: "u1" }));
+  assert.equal(result.ok, true);
+  if (!result.ok || "noop" in result) throw new Error("unreachable");
+  assert.equal(result.summary, "B A · —", "summary uses the pre-tombstone name");
+  assert.equal(users.length, 1, "row must be kept so order FKs survive");
+  const u = users[0] as unknown as Record<string, unknown>;
+  assert.equal(u.firstName, "Устгагдсан");
+  assert.equal(u.phone, "deleted:u1");
+  assert.equal(u.email, "deleted+u1@deleted.invalid");
+  assert.equal(u.passwordHash, null);
+  assert.equal(u.isActive, false);
+  assert.ok(u.deletedAt instanceof Date);
+});
+
+test("deleteEmployee: blocked while the target has open orders", async () => {
+  const { db, users } = makeFakeDb({
+    users: [
+      {
+        id: "u1",
+        tenantId: "t1",
+        firstName: "A",
+        lastName: "B",
+        email: "a@b.com",
+        phone: "99112233",
+        passwordHash: "x",
+        verified: true,
+        isOwner: false,
+        roleId: null,
+        branchId: null,
+        assignableBranchIds: [],
+        isActive: true,
+        activeUntil: null,
+      },
+    ],
+    openOrdersByUser: { u1: 2 },
+  });
   const result = await core.deleteEmployee(db, ACTOR, fd({ id: "u1" }));
   assert.equal(result.ok, false);
   if (result.ok) throw new Error("unreachable");
-  assert.equal(result.code, "FK_CONFLICT");
-  assert.equal(result.error, "Энэ ажилтан засварын хуудастай холбоотой тул устгах боломжгүй.");
+  assert.equal(result.code, "OPEN_ORDERS");
+  assert.match(result.error, /2 нээлттэй захиалга/);
+  assert.equal(users.length, 1, "user must not be deleted");
 });
 
 test("deleteEmployee: missing id or missing target is a silent no-op", async () => {

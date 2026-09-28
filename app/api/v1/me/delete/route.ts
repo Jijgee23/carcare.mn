@@ -5,7 +5,7 @@ import { verifyOtp } from "@/lib/auth/otp";
 
 // POST /api/v1/me/delete  { code } — зөвхөн auth.user.id дээр ажиллана.
 // Бүрмөсөн устгах — буцаагдахгүй (D2: anonymize). Тухайн тенантын цорын ганц
-// идэвхтэй owner бол 409 LAST_OWNER.
+// идэвхтэй owner бол 409 LAST_OWNER; нээлттэй захиалгатай бол 409 OPEN_ORDERS.
 export async function POST(req: Request) {
   const auth = await requireApiUser(req);
   if (auth.response) return auth.response;
@@ -41,6 +41,13 @@ export async function POST(req: Request) {
   try {
     await deleteStaffUser(auth.user.id);
   } catch (e) {
+    if (e instanceof ClosureError && e.code === "OPEN_ORDERS") {
+      return jsonError(
+        409,
+        `Танд ${e.openOrders} нээлттэй захиалга хуваарилагдсан байна. Эхлээд админаар өөр ажилтанд шилжүүлүүлнэ үү.`,
+        { code: "OPEN_ORDERS" },
+      );
+    }
     if (e instanceof ClosureError) {
       return jsonError(409, "Байгууллагын цорын ганц эзэмшигч аккаунтаа устгаж болохгүй.", {
         code: "LAST_OWNER",

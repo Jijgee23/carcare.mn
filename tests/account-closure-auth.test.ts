@@ -29,3 +29,16 @@ test("customer bearer rejects deactivated/deleted; verify-otp reactivates", () =
   assert.match(v, /deactivatedAt:\s*null/);
   assert.match(v, /reactivated/);
 });
+
+test("staff refresh rejects self-deactivated users without clearing the flag", () => {
+  const r = src("app/api/v1/auth/refresh/route.ts");
+  assert.match(r, /deactivatedAt:\s*user\.deactivatedAt/);
+  assert.doesNotMatch(r, /deactivatedAt:\s*null/);
+});
+
+test("web staff login and activation clear self-deactivation", () => {
+  const a = src("app/_actions/auth.ts");
+  assert.match(a, /deactivatedAt:\s*user\.deactivatedAt/);
+  assert.ok((a.match(/deactivatedAt:\s*null/g) ?? []).length >= 2);
+  assert.match(src("app/api/v1/auth/activate/route.ts"), /deactivatedAt:\s*null/);
+});

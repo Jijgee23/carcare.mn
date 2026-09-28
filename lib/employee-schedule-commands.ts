@@ -58,7 +58,8 @@ export async function authorizeScheduleTarget(
     return { ok: false, code: "FORBIDDEN", message: ERR_NO_SCHEDULE_PERMISSION };
   }
   const target = await db.user.findFirst({
-    where: { id: input.userId, tenantId: input.tenantId },
+    // Өөрөө хаасан / устгагдсан ажилтны хуваарийг засахгүй (жагсаалтаас ч хасагдсан).
+    where: { id: input.userId, tenantId: input.tenantId, deactivatedAt: null, deletedAt: null },
     select: { id: true, firstName: true, lastName: true },
   });
   if (!target) {
@@ -285,7 +286,7 @@ export async function bulkUpsertEmployeeShiftCommand(
 
   const userIds = [...new Set(targets.map((t) => t.userId))];
   const validUsers = await db.user.findMany({
-    where: { id: { in: userIds }, tenantId: input.tenantId },
+    where: { id: { in: userIds }, tenantId: input.tenantId, deactivatedAt: null, deletedAt: null },
     select: { id: true },
   });
   const validUserIds = new Set(validUsers.map((u) => u.id));

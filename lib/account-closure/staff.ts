@@ -1,11 +1,25 @@
 import { prisma } from "@/lib/prisma";
 import { revokeAllForUser } from "@/lib/auth/refresh-token";
+import { getFirebaseTokensForUser } from "@/lib/devices";
+import { notifyAccountClosed } from "./notify";
 import { userTombstone } from "./tombstone";
 
 export class ClosureError extends Error {
-  constructor(public code: "LAST_OWNER") {
+  constructor(
+    public code: "LAST_OWNER" | "OPEN_ORDERS",
+    public openOrders = 0,
+  ) {
     super(code);
   }
+}
+
+// Нээлттэй (SCHEDULED/IN_PROGRESS) захиалга хуваарилагдсан бол устгахыг
+// хориглоно — lib/employees/core.ts deleteEmployee-ийн OPEN_ORDERS дүрэмтэй ижил.
+export async function assertNoOpenOrders(userId: string): Promise<void> {
+  const openOrders = await prisma.serviceOrder.count({
+    where: { assignedToId: userId, status: { in: ["SCHEDULED", "IN_PROGRESS"] } },
+  });
+  if (openOrders > 0) throw new ClosureError("OPEN_ORDERS", openOrders);
 }
 
 // Тенантад өөр идэвхтэй owner үлдэхгүй бол хаахыг хориглоно
@@ -38,22 +52,41 @@ export async function assertNotLastOwner(userId: string): Promise<void> {
 export async function deactivateStaffUser(userId: string): Promise<void> {
   await assertNotLastOwner(userId);
   await revokeAllForUser(userId);
+  const tokens = await getFirebaseTokensForUser(userId);
   await prisma.$transaction([
     prisma.user.update({ where: { id: userId }, data: { deactivatedAt: new Date() } }),
     prisma.userSession.deleteMany({ where: { userId } }),
     prisma.device.deleteMany({ where: { userId } }),
   ]);
+  await notifyAccountClosed(tokens, "deactivated");
 }
 
 // Бүрмөсөн устгах — буцаагдахгүй. Захиалга/цагийн assignedTo зэрэг FK
 // tombstone User-т үлдэж "Устгагдсан ажилтан" гэж харагдана.
 export async function deleteStaffUser(userId: string): Promise<void> {
   await assertNotLastOwner(userId);
+  await assertNoOpenOrders(userId);
   await revokeAllForUser(userId);
+  const tokens = await getFirebaseTokensForUser(userId);
   await prisma.$transaction([
     prisma.userSession.deleteMany({ where: { userId } }),
     prisma.device.deleteMany({ where: { userId } }),
     prisma.notification.deleteMany({ where: { userId } }),
     prisma.user.update({ where: { id: userId }, data: userTombstone(userId, new Date()) }),
   ]);
+  await notifyAccountClosed(tokens, "deleted");
+}
+
+// Админ ажилтныг устгасны дараа (lib/employees/core.ts deleteEmployee нь
+// tombstone бичсэн) — өөрөө устгахтай ижил цэвэрлэгээ: token/session/device/
+// мэдэгдэл устгаж, нээлттэй апп-ыг silent push-оор гаргана.
+export async function purgeStaffAccess(userId: string): Promise<void> {
+  await revokeAllForUser(userId);
+  const tokens = await getFirebaseTokensForUser(userId);
+  await prisma.$transaction([
+    prisma.userSession.deleteMany({ where: { userId } }),
+    prisma.device.deleteMany({ where: { userId } }),
+    prisma.notification.deleteMany({ where: { userId } }),
+  ]);
+  await notifyAccountClosed(tokens, "deleted");
 }

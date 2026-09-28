@@ -51,7 +51,7 @@ const loadRequiredAccount = cache(async () => {
   const account = await prisma.account.findUnique({
     where: { id: session.accountId },
   });
-  if (!account || !account.isActive) {
+  if (!account || !account.isActive || account.deactivatedAt || account.deletedAt) {
     await clearAccountSessionCookie();
     redirect(ACCOUNT_LOGIN_PATH);
   }
@@ -76,7 +76,7 @@ const loadOptionalAccount = cache(async () => {
   const account = await prisma.account.findUnique({
     where: { id: session.accountId },
   });
-  if (!account || !account.isActive) return null;
+  if (!account || !account.isActive || account.deactivatedAt || account.deletedAt) return null;
   return account;
 });
 

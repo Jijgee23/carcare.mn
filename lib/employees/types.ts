@@ -71,6 +71,9 @@ export type EmployeesClient = {
   role: {
     findFirst(args: Args): Promise<Args>;
   };
+  serviceOrder: {
+    count(args: Args): Promise<Args>;
+  };
 };
 
 // Minimal shape of the acting user the core functions need. `requireUser()`'s
@@ -92,6 +95,7 @@ export type EmployeeErrorCode =
   | "PLAN_LIMIT_REACHED"
   | "DUPLICATE"
   | "FK_CONFLICT"
+  | "OPEN_ORDERS"
   | "UNKNOWN";
 
 export type CoreErr = {

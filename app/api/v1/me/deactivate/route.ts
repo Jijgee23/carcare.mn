@@ -35,7 +35,7 @@ export async function POST(req: Request) {
   // deactivate-ийн дараа өөрчлөгдөхгүй ч LAST_OWNER алдаа гарвал огт лог
   // бичихгүй байх ёстой (сүүлийн-owner шалгалт нь lib дотор нэг л удаа
   // ажиллана — routes давхар шалгахгүй).
-  const summary = `${auth.user.lastName} ${auth.user.firstName} · өөрийн бүртгэлээ түр хаав`;
+  const summary = `${auth.user.lastName} ${auth.user.firstName} · өөрийн бүртгэлээ идэвхгүй болгов`;
 
   try {
     await deactivateStaffUser(auth.user.id);
