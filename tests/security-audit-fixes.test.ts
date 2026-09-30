@@ -145,7 +145,8 @@ test("branch delete is refused while employees are assigned (count + delete in o
   const src = read("app/_actions/branches.ts");
   const fn = src.slice(src.indexOf("export async function deleteBranchAction"));
   assert.match(fn, /FOR UPDATE/);
-  assert.match(fn, /tx\.user\.count\(\{ where: \{ branchId: id, tenantId: user\.tenantId \} \}\)/);
+  // Tombstoned (deleted) staff don't pin the branch — they only keep order FKs.
+  assert.match(fn, /tx\.user\.count\(\{ where: \{ branchId: id, tenantId: user\.tenantId, deletedAt: null \} \}\)/);
   assert.ok(fn.indexOf("tx.user.count") < fn.indexOf("tx.branch.delete"));
   assert.match(fn, /ажилтан бүртгэлтэй/);
 });
