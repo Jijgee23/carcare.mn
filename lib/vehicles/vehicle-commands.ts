@@ -39,6 +39,7 @@ import {
   ownerFromCustomer,
   resolveVehicleForOwner,
 } from "@/lib/vehicles";
+import { isNoPlate } from "@/lib/vehicle-plate";
 
 export type VehicleCommandActor = {
   id: string;
@@ -194,6 +195,10 @@ export function validateVehicleInput(
   const wheelPosition = normalizeWheelPosition(toTrimmedString(input.wheelPosition) || null);
 
   if (!plate) fieldErrors.plate = "Улсын дугаар оруулна уу.";
+  // Дугааргүй машиныг зөвхөн VIN-ээр ялгана.
+  if (isNoPlate(plate) && !vin) {
+    fieldErrors.vin = "Улсын дугааргүй машинд арлын дугаар (VIN) заавал.";
+  }
   if (!make) fieldErrors.make = "Маркаа оруулна уу.";
   if (!model) fieldErrors.model = "Моделоо оруулна уу.";
   if (options.requireCustomerId && !customerId) {
@@ -337,11 +342,13 @@ export async function createVehicleCommand(input: {
   const canonPlate = normalizePlate(data.plate);
 
   if (input.rejectDuplicate) {
+    // Дугааргүй машинууд бүгд ижил тэмдэгтэй тул давхардлыг VIN-ээр шалгана.
+    const noPlate = isNoPlate(canonPlate);
     const duplicate = await prisma.tenantVehicle.findFirst({
       where: {
         tenantId: actor.tenantId,
         customerId: data.customerId,
-        vehicle: { plate: canonPlate },
+        vehicle: noPlate ? { plate: canonPlate, vin: data.vin } : { plate: canonPlate },
       },
       select: { id: true },
     });
@@ -350,11 +357,13 @@ export async function createVehicleCommand(input: {
         "Хүсэлт буруу.",
         422,
         "VEHICLE_DUPLICATE",
-        {
-          plate: data.customerId
-            ? "Энэ үйлчлүүлэгчид ийм дугаартай машин аль хэдийн бүртгэлтэй байна."
-            : "Энэ улсын дугаартай эзэнгүй машин аль хэдийн бүртгэлтэй байна.",
-        },
+        noPlate
+          ? { vin: "Энэ арлын дугаартай (VIN) дугааргүй машин аль хэдийн бүртгэлтэй байна." }
+          : {
+              plate: data.customerId
+                ? "Энэ үйлчлүүлэгчид ийм дугаартай машин аль хэдийн бүртгэлтэй байна."
+                : "Энэ улсын дугаартай эзэнгүй машин аль хэдийн бүртгэлтэй байна.",
+            },
       );
     }
   }
@@ -405,8 +414,9 @@ export async function updateVehicleCommand(input: {
   }
 
   // Улсын дугаар бүртгэсний дараа ХӨДӨЛШГҮЙ — оролтын plate-г үл тооно.
-  const { customerId, isPostpaid, plate: _plate, ...attrs } = data;
-  void _plate;
+  // Ганц үл хамаарах зүйл: дугааргүй (NO_PLATE) машинд дараа нь жинхэнэ
+  // дугаар НЭГ удаа оноож болно (доор).
+  const { customerId, isPostpaid, plate: inputPlate, ...attrs } = data;
 
   const link = await prisma.tenantVehicle.findUnique({
     where: { tenantId_vehicleId: { tenantId: actor.tenantId, vehicleId } },
@@ -441,8 +451,24 @@ export async function updateVehicleCommand(input: {
     );
   }
 
+  const current = await prisma.vehicle.findUnique({ where: { id: vehicleId }, select: { plate: true } });
+  const assignPlate =
+    current != null && isNoPlate(current.plate) && inputPlate && !isNoPlate(inputPlate)
+      ? normalizePlate(inputPlate)
+      : null;
+  // Дугааргүй хэвээр бол VIN-гүй болгохгүй (validateVehicleInput-ийн дүрэм —
+  // оролтын plate биш, хадгалагдсан plate-ээр шалгана).
+  if (current && isNoPlate(current.plate) && !assignPlate && !attrs.vin) {
+    throw new VehicleCommandError("Хүсэлт буруу.", 422, "VALIDATION_FAILED", {
+      vin: "Улсын дугааргүй машинд арлын дугаар (VIN) заавал.",
+    });
+  }
+
   const record = await prisma.$transaction(async (tx) => {
-    await tx.vehicle.update({ where: { id: vehicleId }, data: attrs });
+    await tx.vehicle.update({
+      where: { id: vehicleId },
+      data: { ...attrs, ...(assignPlate ? { plate: assignPlate } : {}) },
+    });
     await tx.tenantVehicle.update({
       where: { id: link.id },
       data: { customerId, isPostpaid },

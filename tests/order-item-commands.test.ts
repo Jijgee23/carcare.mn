@@ -178,3 +178,38 @@ test("item add ignores a client price unless the actor holds orders.itemPrice", 
   assert.match(add, /!canSetPrice && !serviceId && !diagnosticTemplateId[\s\S]*ITEM_PRICE_FORBIDDEN/);
   assert.ok(add.indexOf("canSetPrice") < add.indexOf("unitPrice ??= service.price"));
 });
+
+test("money-changing item commands are rejected once a PAID payment exists (QA №1)", () => {
+  const source = readFileSync(new URL("../lib/orders/order-item-commands.ts", import.meta.url), "utf8");
+  const blockOf = (name: string) => {
+    const start = source.indexOf(`export async function ${name}`);
+    assert.notEqual(start, -1, `${name} must exist`);
+    const end = source.indexOf("export async function", start + 10);
+    return source.slice(start, end === -1 ? source.length : end);
+  };
+  for (const name of [
+    "updateOrderItemCommand",
+    "patchOrderItemCommand",
+    "cancelOrderItemCommand",
+    "changeOrderItemPriceCommand",
+  ]) {
+    assert.match(blockOf(name), /assertNoPaidPayments\(tx, actor\.tenantId, orderId\)/, `${name} must guard paid orders`);
+  }
+  // Шинэ мөр нэмэх нь зөвхөн үлдэгдэл нэмдэг тул зөвшөөрөгдөнө.
+  assert.doesNotMatch(blockOf("addOrderItemCommand"), /assertNoPaidPayments/);
+  assert.match(source, /status: "PAID"[\s\S]{0,400}"PAID_PAYMENT_EXISTS"/);
+});
+
+test("re-adding the same catalog labor/part merges into the open line instead of a new row", () => {
+  const source = readFileSync(new URL("../lib/orders/order-item-commands.ts", import.meta.url), "utf8");
+  const start = source.indexOf("export async function addOrderItemCommand");
+  const block = source.slice(start, source.indexOf("export async function", start + 10));
+  // Ижил service + kind + үнэ, дуусаагүй мөрийг хайна.
+  assert.match(block, /serviceItem\.findFirst\(\{[\s\S]{0,200}serviceId,[\s\S]{0,40}kind,[\s\S]{0,40}unitPrice,[\s\S]{0,80}status: \{ in: \["PENDING", "IN_PROGRESS"\] \}/);
+  // Нэгтгэхдээ тоо хэмжээг нэмж, үлдэгдлийг хасаж, нийт дүнг дахин тооцно.
+  assert.match(block, /mergeTarget\.quantity\.plus\(input\.quantity\)/);
+  const merge = block.slice(block.indexOf("if (mergeTarget)"), block.indexOf("const data = {"));
+  assert.match(merge, /stock: \{ decrement: input\.quantity \}/);
+  assert.match(merge, /recomputeOrderTotal\(tx, orderId\)/);
+  assert.doesNotMatch(merge, /serviceItem\.create/);
+});

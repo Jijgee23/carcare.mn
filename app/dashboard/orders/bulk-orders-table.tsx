@@ -332,6 +332,8 @@ function BulkAssignModal({
     bulkAssignOrderAction,
     null,
   );
+  // Хариуцах мастер заавал — "хариуцагчгүй болгох" сонголт байхгүй.
+  const [assigneeId, setAssigneeId] = useState("");
 
   useEffect(() => {
     if (!state) return;
@@ -362,8 +364,11 @@ function BulkAssignModal({
             </label>
             <Select
               name="assignedToId"
-              defaultValue=""
-              placeholder="— Хариуцагчгүй болгох —"
+              value={assigneeId}
+              onChange={setAssigneeId}
+              required
+              searchable
+              searchPlaceholder="Нэрээр хайх…"
               options={employees.map((e) => ({ value: e.id, label: e.label }))}
             />
           </div>
@@ -387,7 +392,7 @@ function BulkAssignModal({
           <Btn type="button" variant="ghost" onClick={onClose}>
             Болих
           </Btn>
-          <Btn type="submit" disabled={pending}>
+          <Btn type="submit" disabled={pending || (canAssign && !assigneeId)}>
             {pending ? "Хадгалж..." : "Хадгалах"}
           </Btn>
         </div>

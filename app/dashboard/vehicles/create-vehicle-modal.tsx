@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { quickCreateCustomerAction, quickCreateVehicleAction } from "@/app/_actions/quick-create";
 import { Field, FormError } from "@/app/_components/auth-shell";
 import {
@@ -19,9 +19,12 @@ import {
   normalizeWheelPosition,
   ownerKindFromRegnum,
 } from "@/lib/hur_service";
+import { NO_PLATE } from "@/lib/vehicle-plate";
 
 // Монгол улсын дугаарын хэлбэр: 4 цифр + 3 үсэг (Кирилл эсвэл Латин) —
-// vehicle-form.tsx-тэй ижил (харах: тэнд тайлбарласан шалтгаан).
+// vehicle-form.tsx-тэй ижил (харах: тэнд тайлбарласан шалтгаан). Зөвхөн HUR
+// lookup дуудах эсэхийг шийднэ — стандарт бус дугаарыг (транзит г.м.) гараар
+// бүртгэж болно.
 const PLATE_PATTERN = /^\d{4}[А-ЯЁӨҮA-Z]{3}$/;
 const PLATE_FETCH_DEBOUNCE_MS = 400;
 
@@ -124,7 +127,14 @@ function CreateVehicleForm({
   const [hurSource, setHurSource] = useState<"global" | "hur">("hur");
   const [alreadyRegistered, setAlreadyRegistered] = useState(false);
   const [detailsExpanded, setDetailsExpanded] = useState(false);
-  const lastFetchedRef = useRef<string | null>(null);
+  // HUR-д олдоогүй / марк-модель дутуу ирсэн үед гараар оруулах талбарууд.
+  const [make, setMake] = useState("");
+  const [model, setModel] = useState("");
+  const [year, setYear] = useState("");
+  const [vin, setVin] = useState("");
+  // «Улсын дугааргүй машин бүртгэх» горим — дугаар/HUR алгасаж, марк, загвар,
+  // VIN-ийг гараар (VIN заавал). plate-д NO_PLATE тэмдэг хадгалагдана.
+  const [noPlate, setNoPlate] = useState(false);
 
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [registeringOwner, setRegisteringOwner] = useState(false);
@@ -167,7 +177,17 @@ function CreateVehicleForm({
 
   const trimmedPlate = plate.trim().toUpperCase();
   const isValidPlate = PLATE_PATTERN.test(trimmedPlate);
-  const showFormatError = trimmedPlate.length > 0 && !isValidPlate;
+  const nonStandardPlate = trimmedPlate.length > 0 && !isValidPlate;
+
+  // Дугаар өөрчлөгдвөл өмнөх дугаарын HUR мэдээллийг хаяна — эс бөгөөс
+  // хуучин машины марк/VIN шинэ дугаартай хадгалагдана.
+  const [prevPlate, setPrevPlate] = useState(trimmedPlate);
+  if (prevPlate !== trimmedPlate) {
+    setPrevPlate(trimmedPlate);
+    setHurInfo(null);
+    setHurError(null);
+    setAlreadyRegistered(false);
+  }
 
   function matchCustomerByPhone(phone: string | null): string | null {
     if (!phone) return null;
@@ -179,11 +199,9 @@ function CreateVehicleForm({
 
   useEffect(() => {
     if (!isValidPlate) return;
-    if (lastFetchedRef.current === trimmedPlate) return;
 
     const controller = new AbortController();
     const timer = setTimeout(async () => {
-      lastFetchedRef.current = trimmedPlate;
       setHurLoading(true);
       setHurError(null);
       setHurInfo(null);
@@ -199,6 +217,11 @@ function CreateVehicleForm({
         }
         const vehicle = data.vehicle as HurVehicle;
         setHurInfo(vehicle);
+        // Дутуу ирсэн мэдээллийг гараар нөхөх талбарт урьдчилан бөглөнө.
+        setMake(vehicle.make ?? "");
+        setModel(vehicle.model ?? "");
+        setYear(vehicle.year ? String(vehicle.year) : "");
+        setVin(vehicle.vin ?? "");
         setHurSource(data.source === "global" ? "global" : "hur");
         setAlreadyRegistered(Boolean(data.registered));
         if (!customerId && vehicle.owner?.phone) {
@@ -208,7 +231,6 @@ function CreateVehicleForm({
       } catch (e) {
         if (controller.signal.aborted) return;
         setHurError(e instanceof Error ? e.message : "Алдаа гарлаа.");
-        lastFetchedRef.current = null;
       } finally {
         if (!controller.signal.aborted) setHurLoading(false);
       }
@@ -223,21 +245,35 @@ function CreateVehicleForm({
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!hurInfo) return;
+    if (!canSubmit) return;
     setPending(true);
     setMessage(null);
     setFieldErrors({});
     try {
-      const res = await quickCreateVehicleAction({
-        plate: trimmedPlate,
-        vin: hurInfo.vin || null,
-        make: hurInfo.make ?? "",
-        model: hurInfo.model ?? "",
-        year: hurInfo.year ?? null,
-        fuelType: hurInfo.fuelType ?? null,
-        wheelPosition: hurInfo.wheelPosition ?? null,
-        customerId,
-      });
+      const yearNum = Number.parseInt(year.trim(), 10);
+      const res = await quickCreateVehicleAction(
+        !noPlate && hurComplete && hurInfo
+          ? {
+              plate: trimmedPlate,
+              vin: hurInfo.vin || null,
+              make: hurInfo.make ?? "",
+              model: hurInfo.model ?? "",
+              year: hurInfo.year ?? null,
+              fuelType: hurInfo.fuelType ?? null,
+              wheelPosition: hurInfo.wheelPosition ?? null,
+              customerId,
+            }
+          : {
+              plate: noPlate ? NO_PLATE : trimmedPlate,
+              vin: vin.trim() || null,
+              make: make.trim(),
+              model: model.trim(),
+              year: Number.isFinite(yearNum) ? yearNum : null,
+              fuelType: hurInfo?.fuelType ?? null,
+              wheelPosition: hurInfo?.wheelPosition ?? null,
+              customerId,
+            },
+      );
       if (res.ok && res.vehicle) {
         onCreated(res.vehicle);
         return;
@@ -255,36 +291,70 @@ function CreateVehicleForm({
   const ownerKind = hurInfo?.owner ? ownerKindFromRegnum(hurInfo.owner.regnum) : null;
   // Ижил дугаартай машин бүртгэлд байгаа ч өөр эзэнд шинээр бүртгэж болно —
   // анхааруулга л харуулна, хаахгүй.
-  const canSubmit = Boolean(hurInfo) && Boolean(customerId);
+  const hurComplete = Boolean(hurInfo?.make && hurInfo?.model);
+  // Гараар оруулах: HUR-д олдоогүй, стандарт бус дугаар, эсвэл марк/модель
+  // дутуу ирсэн үед.
+  const showManual =
+    noPlate ||
+    (!hurLoading &&
+      trimmedPlate.length > 0 &&
+      !hurComplete &&
+      (hurError != null || nonStandardPlate || hurInfo != null));
+  const canSubmit =
+    Boolean(customerId) &&
+    (noPlate
+      ? Boolean(make.trim() && model.trim() && vin.trim())
+      : trimmedPlate.length > 0 &&
+        (hurComplete || (showManual && Boolean(make.trim()) && Boolean(model.trim()))));
+
+  function switchToNoPlate() {
+    setNoPlate(true);
+    setPlate("");
+    setFieldErrors({});
+    setMessage(null);
+  }
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
       <FormError message={message ?? undefined} />
 
+      {noPlate ? (
+        <div className="flex items-center justify-between gap-3 rounded-[10px] border border-[var(--oc-accent)]/30 bg-[var(--oc-accent)]/[0.07] px-4 py-3 text-sm">
+          <span className="text-[var(--oc-ink2)]">Улсын дугааргүй машин</span>
+          <button
+            type="button"
+            onClick={() => setNoPlate(false)}
+            className="text-xs text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]"
+          >
+            ← Улсын дугаартай
+          </button>
+        </div>
+      ) : (
+      <>
       <Field
         label="Улсын дугаар"
         htmlFor="cv-plate"
         hint={
           hurLoading
             ? "HUR-аас татаж байна..."
-            : isValidPlate
-              ? undefined
-              : "Жишээ: 1234УБА"
+            : nonStandardPlate
+              ? "Стандарт бус дугаар — улсын бүртгэлээс шалгахгүй, мэдээллийг гараар оруулна."
+              : isValidPlate
+                ? undefined
+                : "Жишээ: 1234УБА"
         }
-        error={
-          showFormatError ? "Дугаар буруу хэлбэртэй." : (hurError ?? fieldErrors.plate)
-        }
+        error={fieldErrors.plate}
       >
         <div className="relative">
           <input
             id="cv-plate"
             type="text"
             required
-            maxLength={7}
+            maxLength={12}
             value={plate}
             onChange={(e) => setPlate(e.target.value.toUpperCase())}
             className={`auth-input uppercase pr-10 font-plex-mono ${
-              showFormatError || fieldErrors.plate
+              fieldErrors.plate
                 ? "border-red-500/50"
                 : isValidPlate && hurInfo
                   ? "border-emerald-500/40"
@@ -307,8 +377,17 @@ function CreateVehicleForm({
           </div>
         </div>
       </Field>
+      <button
+        type="button"
+        onClick={switchToNoPlate}
+        className="-mt-2 self-start text-xs text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]"
+      >
+        + Улсын дугааргүй машин бүртгэх
+      </button>
+      </>
+      )}
 
-      {alreadyRegistered ? (
+      {!noPlate && alreadyRegistered ? (
         <div className="rounded-[10px] border border-[var(--oc-warn)]/30 bg-[var(--oc-warn)]/10 px-4 py-3 text-xs text-[var(--oc-warn)]">
           Танай бүртгэлд ижил дугаартай машин байна. Өөр эзэн бол шинээр
           бүртгэж болно — түүх өмнөх эзэнд үлдэнэ.{" "}
@@ -321,7 +400,7 @@ function CreateVehicleForm({
         </div>
       ) : null}
 
-      {hurInfo ? (
+      {!noPlate && hurInfo ? (
         <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel2)] px-4 py-3 text-xs">
           <div className="text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] mb-1.5">
             {hurSource === "global" ? "Системийн бүртгэлээс" : "HUR-аас татсан мэдээлэл"}
@@ -372,6 +451,65 @@ function CreateVehicleForm({
               ) : null}
             </div>
           ) : null}
+        </div>
+      ) : null}
+
+      {showManual ? (
+        <div className="flex flex-col gap-3 rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel2)] px-4 py-3">
+          <p className="text-xs text-[var(--oc-muted3)]">
+            {noPlate
+              ? "Марк, загвар, арлын дугаар (VIN) заавал — дугааргүй машиныг VIN-ээр ялгана."
+              : hurInfo
+              ? "Улсын бүртгэлээс ирсэн мэдээлэл дутуу байна — гараар нөхнө үү."
+              : hurError
+                ? `Улсын бүртгэлээс олдсонгүй (${hurError}) — мэдээллийг гараар оруулна уу.`
+                : "Мэдээллийг гараар оруулна уу."}
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Марк" htmlFor="cv-make" error={fieldErrors.make}>
+              <input
+                id="cv-make"
+                type="text"
+                required
+                value={make}
+                onChange={(e) => setMake(e.target.value)}
+                className="auth-input"
+                placeholder="Toyota"
+              />
+            </Field>
+            <Field label="Загвар" htmlFor="cv-model" error={fieldErrors.model}>
+              <input
+                id="cv-model"
+                type="text"
+                required
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                className="auth-input"
+                placeholder="Prius"
+              />
+            </Field>
+            <Field label="Үйлдвэрлэгдсэн он" htmlFor="cv-year" error={fieldErrors.year}>
+              <input
+                id="cv-year"
+                type="text"
+                inputMode="numeric"
+                maxLength={4}
+                value={year}
+                onChange={(e) => setYear(e.target.value.replace(/\D/g, ""))}
+                className="auth-input font-plex-mono"
+                placeholder="2015"
+              />
+            </Field>
+            <Field label={noPlate ? "VIN (арлын дугаар)" : "VIN"} htmlFor="cv-vin" error={fieldErrors.vin}>
+              <input
+                id="cv-vin"
+                type="text"
+                value={vin}
+                onChange={(e) => setVin(e.target.value.toUpperCase())}
+                className="auth-input uppercase font-plex-mono"
+              />
+            </Field>
+          </div>
         </div>
       ) : null}
 

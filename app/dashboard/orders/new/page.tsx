@@ -2,8 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
 import { requireUser } from "@/lib/auth";
+import { canAssignOrders } from "@/lib/auth/order-access";
 import {
-  ORDER_ASSIGNABLE_WHERE,
+  orderAssignableWhere,
   canCreate,
   workingBranchScopeId,
 } from "@/lib/auth/roles";
@@ -114,7 +115,7 @@ export default async function NewOrderPage({
           customerId: true,
           isPostpaid: true,
           vehicle: {
-            select: { id: true, plate: true, make: true, model: true },
+            select: { id: true, plate: true, vin: true, make: true, model: true },
           },
         },
       })
@@ -129,7 +130,7 @@ export default async function NewOrderPage({
       where: {
         tenantId: user.tenantId,
         isActive: true,
-        ...ORDER_ASSIGNABLE_WHERE,
+        ...orderAssignableWhere(),
       },
       orderBy: { firstName: "asc" },
       select: {
@@ -149,7 +150,7 @@ export default async function NewOrderPage({
           select: {
             vehicleId: true,
             vehicle: {
-              select: { id: true, plate: true, make: true, model: true },
+              select: { id: true, plate: true, vin: true, make: true, model: true },
             },
           },
         })
@@ -236,6 +237,8 @@ export default async function NewOrderPage({
           bookingDurationMinutes={appointment?.estimatedDurationMinutes ?? null}
           backHref={backTarget}
           next={sp.next ? backTarget : undefined}
+          // Оноох эрхгүй ажилтан зөвхөн өөрийгөө оноож болно (createOrderAction).
+          defaultAssignedToId={canAssignOrders(user) ? undefined : user.id}
         />
       </div>
     </div>

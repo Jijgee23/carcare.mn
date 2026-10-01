@@ -1,13 +1,14 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { createNotification } from "@/lib/notifications";
 import { canAssignOrders, canEditOrder, type OrderAccessUser } from "@/lib/auth/order-access";
-import { ORDER_ASSIGNABLE_WHERE } from "@/lib/auth/roles";
+import { orderAssignableWhere } from "@/lib/auth/roles";
 import { parseDurationInput, MIN_CATEGORY_DURATION_MINUTES, MAX_CATEGORY_DURATION_MINUTES } from "@/lib/category-duration";
 import { calculateServiceItemDurationMinutes, type ServiceDurationItem } from "@/lib/service-duration";
 import { closeOpenOrderTimeBooking, openOrderTimeBooking, withOrderTransaction } from "@/lib/order-time-booking";
 import { logAudit } from "@/lib/audit";
 import { prisma, type PrismaTransactionClient } from "@/lib/prisma";
 import { recomputeOrderTotal } from "@/lib/orders/order-item-commands";
+import { paidLedger } from "@/lib/orders/order-payment-totals";
 import {
   ORDER_STATUS_TRANSITIONS,
   isOrderLocked,
@@ -102,6 +103,8 @@ export function parseCommandDuration(
 
 export type AssigneeEligibilityInput = {
   isActive: boolean;
+  deactivatedAt?: Date | null;
+  activeUntil?: Date | null;
   tenantId: string;
   isOwner: boolean;
   branchId: string | null;
@@ -115,8 +118,12 @@ export function isAssigneeEligible(
   assignee: AssigneeEligibilityInput,
   tenantId: string,
   orderBranchId: string,
+  now: Date = new Date(),
 ): boolean {
   if (!assignee.isActive || assignee.tenantId !== tenantId) return false;
+  // Өөрөө хаасан эсвэл түр ажилтны хугацаа дууссан бол хариуцагч болохгүй.
+  if (assignee.deactivatedAt) return false;
+  if (assignee.activeUntil && assignee.activeUntil.getTime() <= now.getTime()) return false;
   if (assignee.role?.isActive === false) return false;
   const assignableByRole =
     assignee.isOwner || Boolean(assignee.role?.permissions.includes("orders.assignable"));
@@ -152,11 +159,13 @@ export async function validateOrderAssignee(
     }
   }
   const assignee = await tx.user.findFirst({
-    where: { id: input.assigneeId, tenantId: input.tenantId, isActive: true, ...ORDER_ASSIGNABLE_WHERE },
+    where: { id: input.assigneeId, tenantId: input.tenantId, isActive: true, ...orderAssignableWhere() },
     select: {
       id: true,
       tenantId: true,
       isActive: true,
+      deactivatedAt: true,
+      activeUntil: true,
       isOwner: true,
       branchId: true,
       assignableBranchIds: true,
@@ -239,6 +248,8 @@ export async function applyOrderPatchCommand(input: {
       assignedToId: true,
       startedAt: true,
       estimatedDurationMinutes: true,
+      isPostpaid: true,
+      totalAmount: true,
       items: {
         where: { status: { not: "CANCELLED" } },
         select: {
@@ -264,6 +275,8 @@ export async function applyOrderPatchCommand(input: {
         assignedToId: string | null;
         startedAt: Date | null;
         estimatedDurationMinutes: number | null;
+        isPostpaid: boolean;
+        totalAmount: Prisma.Decimal | null;
         items: Array<ServiceDurationItem & { serviceId: string | null }>;
       } | null;
       if (!order) throw new OrderCommandError("Засварын хуудас олдсонгүй.", 404, "ORDER_NOT_FOUND");
@@ -272,6 +285,15 @@ export async function applyOrderPatchCommand(input: {
       if (editsOrderFields) assertCanEdit(actor, order);
       if (input.assignedToId !== undefined && !canAssignOrders(actor)) {
         throw new OrderCommandError("Зөвхөн orders.assign эрхтэй хэрэглэгч хариуцагч өөрчилж болно.", 403, "ORDER_ASSIGN_FORBIDDEN");
+      }
+      // Хариуцах мастер заавал — оноосон мастерыг арилгахгүй (сольж л болно).
+      if (input.assignedToId === null && order.assignedToId) {
+        throw new OrderCommandError(
+          "Хариуцах мастерыг арилгах боломжгүй — өөр мастер сонгоно уу.",
+          422,
+          "ASSIGNEE_REQUIRED",
+          { assignedToId: "Хариуцах мастер сонгоно уу." },
+        );
       }
       if (isOrderLocked(order.status) && nextStatus == null) {
         throw new OrderCommandError(
@@ -315,6 +337,27 @@ export async function applyOrderPatchCommand(input: {
             422,
             "DIAGNOSTIC_REPORT_REQUIRED",
           );
+        }
+        // Ажил/оношилгоо/хураамжийн мөр бүгд дууссан байх (сэлбэгт явц байхгүй).
+        const unfinished = order.items.filter((item) => item.kind !== "PART" && item.status !== "COMPLETED").length;
+        if (unfinished > 0) {
+          throw new OrderCommandError(
+            `Дуусаагүй ${unfinished} ажил байна. Бүх ажлыг дуусгасны дараа засварын хуудсыг дуусгана уу.`,
+            422,
+            "ITEMS_NOT_COMPLETED",
+          );
+        }
+        // Дараа төлбөрт биш бол бүрэн төлөгдсөн байх — эс бөгөөс өр харагдахгүй болно.
+        if (!order.isPostpaid) {
+          const total = order.totalAmount ?? new Prisma.Decimal(0);
+          const { paid } = await paidLedger(tx, actor.tenantId, orderId);
+          if (paid.lt(total)) {
+            throw new OrderCommandError(
+              `Төлбөр бүрэн төлөгдөөгүй (үлдэгдэл ${total.minus(paid).toString()}₮). Төлбөрөө бүрэн авсны дараа засварын хуудсыг дуусгана уу.`,
+              422,
+              "PAYMENT_INCOMPLETE",
+            );
+          }
         }
       }
 
@@ -362,7 +405,9 @@ export async function applyOrderPatchCommand(input: {
       let assigneeDisplayName: string | null = null;
       if (nextStatus != null || input.notes !== undefined || input.assignedToId !== undefined) {
         if (input.assignedToId !== undefined) {
-          if (input.assignedToId) {
+          // Ижил хариуцагчийг дахин илгээвэл шалгахгүй — дараа нь ажлаас гарсан /
+          // хугацаа дууссан мастертай хуудсыг бусад талбараар засаж болно.
+          if (input.assignedToId && input.assignedToId !== order.assignedToId) {
             const assignee = await validateOrderAssignee(tx, {
               tenantId: actor.tenantId,
               assigneeId: input.assignedToId,

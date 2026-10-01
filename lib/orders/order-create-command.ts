@@ -67,6 +67,15 @@ async function enforceCreateLimits(tenantId: string): Promise<void> {
 export async function createOrderCommand(
   input: CreateOrderCommandInput,
 ): Promise<CreateOrderCommandResult> {
+  // Хариуцах мастер заавал — web, mobile бүх замд.
+  if (!input.assignedToId) {
+    throw new OrderCommandError(
+      "Хариуцах мастер сонгоно уу.",
+      422,
+      "ASSIGNEE_REQUIRED",
+      { assignedToId: "Хариуцах мастер сонгоно уу." },
+    );
+  }
   if (input.workingBranchId && input.workingBranchId !== "ALL" && input.branchId !== input.workingBranchId) {
     throw new OrderCommandError(
       "Зөвхөн өөрийн салбарт засварын хуудас үүсгэх боломжтой.",

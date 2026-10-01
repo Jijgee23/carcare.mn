@@ -11,6 +11,7 @@ import { Field, FormError } from "@/app/_components/auth-shell";
 import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
 import { Select } from "@/app/_components/select";
 import { customerLabel } from "@/lib/customers";
+import { NO_PLATE, isNoPlate } from "@/lib/vehicle-plate";
 import {
   type HurVehicle,
   normalizeWheelPosition,
@@ -99,7 +100,11 @@ export function VehicleForm({
 
   const fe = state?.fieldErrors ?? {};
 
-  const [plate, setPlate] = useState(initial?.plate ?? "");
+  // Улсын дугааргүй машин: шинээр бүртгэхэд сонгоно; засахад дугааргүй
+  // машинд жинхэнэ дугаар НЭГ удаа оноож болно (хоосон бол дугааргүй хэвээр).
+  const initialNoPlate = isEdit && isNoPlate(initial?.plate);
+  const [noPlate, setNoPlate] = useState(initialNoPlate);
+  const [plate, setPlate] = useState(initialNoPlate ? "" : (initial?.plate ?? ""));
   const [vin, setVin] = useState(initial?.vin ?? "");
   const [make, setMake] = useState(initial?.make ?? "");
   const [model, setModel] = useState(initial?.model ?? "");
@@ -138,6 +143,11 @@ export function VehicleForm({
   const trimmedPlate = plate.trim().toUpperCase();
   const isValidPlate = PLATE_PATTERN.test(trimmedPlate);
   const showFormatError = trimmedPlate.length > 0 && !isValidPlate;
+  // Дугаар засах боломжтой эсэх: шинэ бүртгэл эсвэл дугааргүй машинд оноох.
+  const plateEditable = !isEdit || initialNoPlate;
+  // Сервер рүү илгээх дугаар: дугааргүй горимд (оноогоогүй бол) NO_PLATE.
+  const submittedPlate = noPlate ? (initialNoPlate && trimmedPlate ? trimmedPlate : NO_PLATE) : plate;
+  const vinRequired = noPlate && !(initialNoPlate && trimmedPlate);
 
   function matchCustomerByPhone(phone: string | null): string | null {
     if (!phone) return null;
@@ -152,18 +162,24 @@ export function VehicleForm({
   // HUR-аас ирсэн мэдээллийг form талбаруудад тавина.
   function applyHurVehicle(v: HurVehicle) {
     setHurInfo(v);
+    // Дугааргүй бүртгэлтэй машинд дугаар оноож байхад бүртгэлийн мэдээлэл
+    // байгаа утгыг (марк/VIN г.м.) ДАРЖ БИЧИХГҮЙ — зөвхөн хоосныг нөхнө.
+    const fill = (current: string, next: string | number | null | undefined, set: (x: string) => void) => {
+      if (!next) return;
+      if (initialNoPlate && current.trim()) return;
+      set(String(next));
+    };
     if (v.plate) setPlate(v.plate);
-    if (v.make) setMake(v.make);
-    if (v.model) setModel(v.model);
-    if (v.year) setYear(String(v.year));
-    if (v.vin) setVin(v.vin);
-    if (v.fuelType) setFuelType(v.fuelType);
-    const normalizedWheel = normalizeWheelPosition(v.wheelPosition);
-    if (normalizedWheel) setWheelPosition(normalizedWheel);
-    if (v.color) setColorName(v.color);
-    if (v.capacity) setCapacity(String(v.capacity));
-    if (v.purpose) setPurpose(v.purpose);
-    if (v.owner?.regnum) setOwnerRegnum(v.owner.regnum);
+    fill(make, v.make, setMake);
+    fill(model, v.model, setModel);
+    fill(year, v.year, setYear);
+    fill(vin, v.vin, setVin);
+    fill(fuelType, v.fuelType, setFuelType);
+    fill(wheelPosition, normalizeWheelPosition(v.wheelPosition), setWheelPosition);
+    fill(colorName, v.color, setColorName);
+    fill(capacity, v.capacity, setCapacity);
+    fill(purpose, v.purpose, setPurpose);
+    fill(ownerRegnum, v.owner?.regnum, setOwnerRegnum);
     if (!customerId && v.owner?.phone) {
       const matched = matchCustomerByPhone(v.owner.phone);
       if (matched) setCustomerId(matched);
@@ -271,11 +287,29 @@ export function VehicleForm({
           />
         </Field>
 
+        {noPlate && !isEdit ? (
+          <Field label="Улсын дугаар" htmlFor="noPlateBack" error={fe.plate} className={FIELD_MW}>
+            <input type="hidden" name="plate" value={NO_PLATE} />
+            <div className="auth-input flex items-center justify-between gap-2 opacity-90">
+              <span className="text-[var(--oc-ink2)]">Улсын дугааргүй</span>
+              <button
+                id="noPlateBack"
+                type="button"
+                onClick={() => setNoPlate(false)}
+                className="text-xs text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]"
+              >
+                ← Дугаартай
+              </button>
+            </div>
+          </Field>
+        ) : (
         <Field
           label="Улсын дугаар"
           htmlFor="plate"
           hint={
-            isEdit
+            initialNoPlate
+              ? "Одоогоор дугааргүй. Дугаар авсан бол оруулна уу — нэг л удаа оноогдоно."
+              : isEdit
               ? "Дугаар засагдахгүй. Буруу бол устгаад дахин бүртгэнэ."
               : hurLoading
                 ? "HUR-аас татаж байна..."
@@ -294,23 +328,23 @@ export function VehicleForm({
           <div className="relative">
             {/* Засах горимд дугаар ХӨДӨЛШГҮЙ (readOnly — form-д submit хийгдэх
                 хэвээр, сервер үл тоодог). Шинэ эзэн бол шинээр бүртгэнэ. */}
+            <input type="hidden" name="plate" value={submittedPlate} />
             <input
               id="plate"
-              name="plate"
               type="text"
-              required
-              maxLength={7}
+              required={!initialNoPlate}
+              maxLength={12}
               value={plate}
-              readOnly={isEdit}
+              readOnly={!plateEditable}
               onChange={(e) => setPlate(e.target.value.toUpperCase())}
               aria-invalid={showFormatError || Boolean(fe.plate)}
-              className={`auth-input uppercase pr-10 ${isEdit ? "opacity-70 cursor-not-allowed" : ""} ${fe.plate || showFormatError
+              className={`auth-input uppercase pr-10 ${!plateEditable ? "opacity-70 cursor-not-allowed" : ""} ${fe.plate || showFormatError
                   ? "border-red-500/50"
                   : isValidPlate
                     ? "border-emerald-500/40"
                     : ""
                 }`}
-              placeholder="1234УБА"
+              placeholder={initialNoPlate ? "Дугааргүй" : "1234УБА"}
             />
             <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
               {hurLoading ? (
@@ -329,9 +363,28 @@ export function VehicleForm({
               ) : null}
             </div>
           </div>
+          {!isEdit ? (
+            <button
+              type="button"
+              onClick={() => {
+                setNoPlate(true);
+                setPlate("");
+              }}
+              className="mt-1 self-start text-xs text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]"
+            >
+              + Улсын дугааргүй машин бүртгэх
+            </button>
+          ) : null}
         </Field>
+        )}
 
-        <Field label={<HurLabel>VIN</HurLabel>} htmlFor="vin" hint="17 тэмдэгт, заавал биш" error={fe.vin} className={FIELD_MW}>
+        <Field
+          label={<HurLabel>VIN</HurLabel>}
+          htmlFor="vin"
+          hint={vinRequired ? "17 тэмдэгт, дугааргүй машинд заавал" : "17 тэмдэгт, заавал биш"}
+          error={fe.vin}
+          className={FIELD_MW}
+        >
           <input
             id="vin"
             name="vin"

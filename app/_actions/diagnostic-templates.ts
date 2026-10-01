@@ -20,14 +20,9 @@ import {
   validateSchema,
 } from "@/lib/diagnostics";
 import { prisma } from "@/lib/prisma";
+import { parseNonNegativeDecimal } from "@/lib/decimal-input";
 
-function parseDecimal(v: string): Prisma.Decimal | null {
-  if (!v) return null;
-  const cleaned = v.replace(/[,\s]/g, "");
-  const n = Number.parseFloat(cleaned);
-  if (!Number.isFinite(n) || n < 0) return null;
-  return new Prisma.Decimal(cleaned);
-}
+const parseDecimal = parseNonNegativeDecimal;
 
 export type TemplateActionState = {
   ok: boolean;

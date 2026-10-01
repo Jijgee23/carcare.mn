@@ -670,6 +670,12 @@ html.light .nav-item:hover {
   border-color: rgba(139, 107, 255, 0.6);
   box-shadow: 0 0 0 3px rgba(108, 71, 255, 0.15);
 }
+/* Алдаатай талбар. `.auth-input` нь layer-гүй тул Tailwind-ийн
+   `border-red-500/50` utility (@layer utilities)-г дардаг — `Select` болон
+   aria-invalid тавьсан input-ийн улаан хүрээг энд тогтооно. */
+.auth-input[aria-invalid="true"] {
+  border-color: rgba(239, 68, 68, 0.5);
+}
 
 /* Compact input — dashboard form-уудад: padding/радиус багатай */
 .compact-input {

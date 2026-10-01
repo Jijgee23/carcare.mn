@@ -41,6 +41,17 @@ test("owners and active assignable users are eligible", () => {
 test("inactive users, inactive roles and users without assignment permission are excluded", () => {
   assert.equal(isAssignableUserEligible(user({ isActive: false }), TENANT, BRANCH), false);
   assert.equal(isAssignableUserEligible(user({ deactivatedAt: new Date() }), TENANT, BRANCH), false);
+  // Түр ажилтны хугацаа дууссан бол сонгогдохгүй; дуусаагүй бол болно.
+  const now = new Date("2026-10-01T00:00:00Z");
+  assert.equal(
+    isAssignableUserEligible(user({ activeUntil: new Date("2026-09-30T00:00:00Z") }), TENANT, BRANCH, now),
+    false,
+  );
+  assert.equal(isAssignableUserEligible(user({ activeUntil: now }), TENANT, BRANCH, now), false);
+  assert.equal(
+    isAssignableUserEligible(user({ activeUntil: new Date("2026-12-31T00:00:00Z") }), TENANT, BRANCH, now),
+    true,
+  );
   assert.equal(
     isAssignableUserEligible(
       user({ role: { permissions: ["orders.assignable"], isActive: false } }),
@@ -77,13 +88,15 @@ test("working-branch lock rejects a different requested branch", () => {
 });
 
 test("Prisma predicate keeps tenant, active, assignable role and branch lock conjunctive", () => {
-  const where = buildAssignableUserWhere({ tenantId: TENANT, branchId: BRANCH });
+  const now = new Date("2026-10-01T00:00:00Z");
+  const where = buildAssignableUserWhere({ tenantId: TENANT, branchId: BRANCH, now });
   assert.equal(where.tenantId, TENANT);
   assert.equal(where.isActive, true);
   assert.ok(Array.isArray(where.AND));
   assert.deepEqual(where.AND, [
     {
       deactivatedAt: null,
+      AND: [{ OR: [{ activeUntil: null }, { activeUntil: { gt: now } }] }],
       OR: [
         { isOwner: true },
         { role: { permissions: { has: "orders.assignable" } } },

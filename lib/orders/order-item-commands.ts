@@ -70,6 +70,25 @@ function assertOrderItemAccess(
   }
 }
 
+/**
+ * Төлөгдсөн (PAID) төлбөртэй захиалгын мөнгөн дүнг (үнэ/тоо/төрөл, мөр цуцлах)
+ * өөрчлөхгүй — эс бөгөөс төлсөн дүн ба нийт дүн зөрнө. Эхлээд төлбөрийг буцаана.
+ * Шинэ мөр нэмэх, тайлбар засах, ажлын явц өөрчлөхийг зөвшөөрнө.
+ */
+async function assertNoPaidPayments(tx: PrismaTransactionClient, tenantId: string, orderId: string): Promise<void> {
+  const paid = await tx.orderPayment.findFirst({
+    where: { orderId, tenantId, status: "PAID" },
+    select: { id: true },
+  });
+  if (paid) {
+    throw new OrderCommandError(
+      "Төлбөр төлөгдсөн тул мөрийн үнэ, тоо хэмжээг өөрчлөх эсвэл мөр цуцлах боломжгүй. Эхлээд төлбөрийг буцаана уу.",
+      422,
+      "PAID_PAYMENT_EXISTS",
+    );
+  }
+}
+
 function assertItemValues(input: Pick<OrderItemData, "kind" | "description" | "quantity" | "unitPrice">): void {
   if (!(ITEM_KINDS as readonly string[]).includes(input.kind)) {
     throw new OrderCommandError("Мөрийн төрөл буруу.", 422, "ITEM_KIND_INVALID", { kind: "Мөрийн төрөл буруу." });
@@ -224,6 +243,51 @@ export async function addOrderItemCommand(input: {
     }
 
     if (!unitPrice) throw new OrderCommandError("Үнэ буруу.", 422, "ITEM_PRICE_INVALID", { unitPrice: "Үнэ буруу." });
+
+    // Ижил каталогийн ажил/сэлбэгийг дахин нэмбэл шинэ мөр үүсгэхгүй — байгаа
+    // мөрийн тоо хэмжээг нэмнэ. Зөвхөн ижил үнэтэй, дуусаагүй (PENDING /
+    // IN_PROGRESS) мөрт нэгтгэнэ: өөр үнэ эсвэл дууссан ажил бол тусдаа мөр.
+    if (serviceId) {
+      const mergeTarget = await tx.serviceItem.findFirst({
+        where: {
+          orderId,
+          serviceId,
+          kind,
+          unitPrice,
+          status: { in: ["PENDING", "IN_PROGRESS"] },
+        },
+        orderBy: { createdAt: "asc" },
+        select: { id: true, description: true, quantity: true, total: true },
+      });
+      if (mergeTarget) {
+        const quantity = mergeTarget.quantity.plus(input.quantity);
+        assertItemValues({ kind, description: mergeTarget.description, quantity, unitPrice });
+        const total = roundItemTotal(quantity, unitPrice);
+        const item = await tx.serviceItem.update({
+          where: { id: mergeTarget.id },
+          data: { quantity, total },
+          select: orderItemSelect(),
+        });
+        await logAudit({
+          tenantId: actor.tenantId,
+          userId: actor.id,
+          entity: "ServiceOrder",
+          entityId: orderId,
+          action: "ITEM_UPDATED",
+          summary: `${kind} · ${mergeTarget.description} +${input.quantity.toString()} (нэгтгэв) → × ${quantity.toString()}`,
+          before: { itemId: mergeTarget.id, quantity: mergeTarget.quantity.toString(), total: mergeTarget.total.toString() },
+          after: { itemId: mergeTarget.id, quantity: quantity.toString(), total: total.toString(), merged: input.quantity.toString() },
+        }, tx);
+        if (isGoods) {
+          const updated = await tx.service.update({ where: { id: serviceId }, data: { stock: { decrement: input.quantity } }, select: { stock: true } });
+          if (updated.stock != null && updated.stock.lt(0)) throw new OrderCommandError("Үлдэгдэл хүрэлцэхгүй байна.", 422, "INSUFFICIENT_STOCK", { quantity: "Үлдэгдэл хүрэхгүй байна." });
+          await logAudit({ tenantId: actor.tenantId, userId: actor.id, entity: "Service", entityId: serviceId, action: "STOCK_CHANGE", summary: `-${input.quantity.toString()} (засварын хуудас #${orderId})`, after: { delta: `-${input.quantity.toString()}`, reason: "ORDER_ITEM_ADD" } }, tx);
+        }
+        await recomputeOrderTotal(tx, orderId);
+        return item;
+      }
+    }
+
     const data = { kind, description, quantity: input.quantity, unitPrice, serviceId, diagnosticTemplateId };
     assertItemValues(data);
     const total = roundItemTotal(input.quantity, unitPrice);
@@ -278,6 +342,9 @@ export async function updateOrderItemCommand(input: {
       throw new OrderCommandError("Каталогийн үйлчилгээний мөрийн төрлийг өөрчлөх боломжгүй.", 422, "ITEM_KIND_SERVICE_MISMATCH", { kind: "Каталогийн үйлчилгээний мөрийн төрлийг өөрчлөх боломжгүй." });
     }
     assertItemValues(next);
+    if (next.kind !== existing.kind || !next.quantity.equals(existing.quantity) || !next.unitPrice.equals(existing.unitPrice)) {
+      await assertNoPaidPayments(tx, actor.tenantId, orderId);
+    }
     const total = roundItemTotal(next.quantity, next.unitPrice);
     const isGoods = existing.serviceId != null && existing.service?.type === "GOODS";
     const delta = isGoods ? next.quantity.minus(existing.quantity) : null;
@@ -344,6 +411,9 @@ export async function patchOrderItemCommand(input: {
       throw new OrderCommandError("Каталогийн үйлчилгээний мөрийн төрлийг өөрчлөх боломжгүй.", 422, "ITEM_KIND_SERVICE_MISMATCH", { kind: "Каталогийн үйлчилгээний мөрийн төрлийг өөрчлөх боломжгүй." });
     }
     if (hasDetails || priceChanged) assertItemValues(next);
+    if (priceChanged || next.kind !== existing.kind || !next.quantity.equals(existing.quantity)) {
+      await assertNoPaidPayments(tx, actor.tenantId, orderId);
+    }
     if (hasStatus) {
       if (!canChangeServiceItemStatus(existing.status)) throw new OrderCommandError("Цуцлагдсан мөрийн явцыг өөрчлөх боломжгүй.", 422, "ITEM_CANCELLED");
       if (next.kind === "PART") throw new OrderCommandError("Сэлбэг мөрийн явц байхгүй.", 422, "PART_STATUS_UNSUPPORTED");
@@ -390,6 +460,7 @@ export async function cancelOrderItemCommand(input: { actor: OrderCommandActor; 
     const item = await tx.serviceItem.findFirst({ where: { id: itemId, orderId }, select: { ...orderItemSelect(), service: { select: { type: true } } } });
     if (!item) throw new OrderCommandError("Мөр олдсонгүй.", 404, "ITEM_NOT_FOUND");
     if (!isServiceItemCancellable(item.status)) throw new OrderCommandError("Энэ мөрийг цуцлах боломжгүй.", 422, "ITEM_NOT_CANCELLABLE");
+    if (!item.total.isZero()) await assertNoPaidPayments(tx, actor.tenantId, orderId);
     const now = new Date();
     await tx.serviceItem.update({ where: { id: itemId }, data: { status: "CANCELLED", cancelledAt: now, cancelledById: actor.id }, select: { id: true } });
     await logAudit({ tenantId: actor.tenantId, userId: actor.id, entity: "ServiceOrder", entityId: orderId, action: "ITEM_CANCELLED", summary: `цуцалсан мөр ${item.id}`, before: { itemId: item.id, serviceId: item.serviceId, quantity: item.quantity.toString() } }, tx);
@@ -445,6 +516,7 @@ export async function changeOrderItemPriceCommand(input: { actor: OrderCommandAc
     if (item.status === "CANCELLED") throw new OrderCommandError("Цуцлагдсан мөрийн үнийг өөрчлөх боломжгүй.", 422, "ITEM_CANCELLED");
     if (unitPrice.equals(item.unitPrice)) return item;
     assertItemValues({ kind: item.kind, description: item.description, quantity: item.quantity, unitPrice });
+    await assertNoPaidPayments(tx, actor.tenantId, orderId);
     const total = roundItemTotal(item.quantity, unitPrice);
     const updated = await tx.serviceItem.update({ where: { id: itemId }, data: { unitPrice, total }, select: orderItemSelect() });
     await logAudit({ tenantId: actor.tenantId, userId: actor.id, entity: "ServiceOrder", entityId: orderId, action: "ITEM_UPDATED", summary: `Үнэ: ${item.unitPrice.toString()} → ${unitPrice.toString()} (мөр ${item.id})`, before: { unitPrice: item.unitPrice.toString(), total: item.total.toString() }, after: { unitPrice: unitPrice.toString(), total: total.toString() } }, tx);

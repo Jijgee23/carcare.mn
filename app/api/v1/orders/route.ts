@@ -1,7 +1,7 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { jsonError, jsonOk, requireApiUser, requirePermission } from "@/lib/api";
 import { resolveWorkingBranch } from "@/lib/auth/api-branch";
-import { orderReadWhere } from "@/lib/auth/order-access";
+import { canAssignOrders, orderReadWhere } from "@/lib/auth/order-access";
 import { requireActiveSubscriptionApi } from "@/lib/subscription-server";
 import { buildMeta } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
@@ -92,12 +92,16 @@ export async function POST(req: Request) {
   if (!parsed.ok) {
     return jsonError(parsed.status, parsed.message, parsed.fieldErrors ? { fieldErrors: parsed.fieldErrors } : undefined);
   }
-  const { branchId, customerId, vehicleId, assignedToId, scheduledAt, notes, appointmentId, estimatedDurationMinutes } =
+  const { branchId, customerId, vehicleId, scheduledAt, notes, appointmentId, estimatedDurationMinutes } =
     parsed.value;
+  let { assignedToId } = parsed.value;
 
   if (assignedToId) {
     const assignDenied = requirePermission(auth.user, "orders.assign");
     if (assignDenied) return assignDenied;
+  } else if (!canAssignOrders(auth.user)) {
+    // Хариуцах мастер заавал — оноох эрхгүй бол өөрийгөө (web createOrderAction-тэй ижил).
+    assignedToId = auth.user.id;
   }
 
   const scopeResult = await resolveWorkingBranch(req, auth.user);

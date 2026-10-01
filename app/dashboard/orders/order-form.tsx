@@ -16,6 +16,7 @@ import { Btn, BtnLink, SquareAddButton } from "@/app/_components/landing-ops-ui"
 import { Select } from "@/app/_components/select";
 import { SchedulePreviewGrid } from "@/app/_components/schedule-preview-grid";
 import { customerLabel } from "@/lib/customers";
+import { plateLabel } from "@/lib/vehicle-plate";
 import { DurationHmInput } from "@/app/dashboard/services/duration-input";
 import {
   CreateCustomerModal,
@@ -41,6 +42,7 @@ type Customer = { id: string; fullName: string; phone: string };
 type Vehicle = {
   id: string;
   plate: string;
+  vin?: string | null;
   make: string;
   model: string;
   customerId: string | null;
@@ -75,6 +77,7 @@ export function OrderForm({
   backHref = "/dashboard/orders",
   appointmentId,
   next,
+  defaultAssignedToId,
 }: {
   initial?: Initial;
   branches: Branch[];
@@ -89,6 +92,8 @@ export function OrderForm({
   // Амжилттай хадгалсны дараа буцах зам (жишээ нь: хуваарийн хуудас) —
   // ирээгүй бол одоогийн адил үүсгэсэн захиалга руугаа орно.
   next?: string;
+  // Шинэ хуудасны анхны мастер (оноох эрхгүй ажилтанд — өөрөө).
+  defaultAssignedToId?: string;
 }) {
   const isEdit = Boolean(initial?.id);
   const action = isEdit
@@ -104,7 +109,9 @@ export function OrderForm({
   const [vehicles, setVehicles] = useState<Vehicle[]>(initialVehicles);
 
   const [branchId, setBranchId] = useState(initial?.branchId ?? "");
-  const [assignedToId, setAssignedToId] = useState(initial?.assignedToId ?? "");
+  const [assignedToId, setAssignedToId] = useState(
+    initial?.assignedToId ?? defaultAssignedToId ?? "",
+  );
   const [customerId, setCustomerId] = useState(initial?.customerId ?? "");
   const [vehicleId, setVehicleId] = useState(initial?.vehicleId ?? "");
 
@@ -117,7 +124,39 @@ export function OrderForm({
   // button label that went with it have all been removed. Working-hours
   // violations still come back as an ordinary `scheduledAt` field error.
 
-  const fe = state?.fieldErrors ?? {};
+  // Заавал талбарыг (салбар/үйлчлүүлэгч/машин) илгээхээс өмнө client дээр
+  // шалгаж алдааг шууд харуулна. Утга сонгосон талбарын алдааг (серверийнхийг
+  // ч) арилгана — шинэ серверийн хариу ирэхэд дахин эхэлнэ.
+  const [clientErrors, setClientErrors] = useState<Record<string, string>>({});
+  const [clearedFields, setClearedFields] = useState<ReadonlySet<string>>(() => new Set());
+  const [prevState, setPrevState] = useState(state);
+  if (state !== prevState) {
+    setPrevState(state);
+    setClearedFields(new Set());
+  }
+  const fe: Record<string, string> = { ...(state?.fieldErrors ?? {}) };
+  for (const key of clearedFields) delete fe[key];
+  Object.assign(fe, clientErrors);
+
+  function clearFieldError(...keys: string[]) {
+    setClientErrors((prev) => {
+      if (!keys.some((k) => k in prev)) return prev;
+      const next = { ...prev };
+      for (const k of keys) delete next[k];
+      return next;
+    });
+    setClearedFields((prev) => new Set([...prev, ...keys]));
+  }
+
+  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    const missing: Record<string, string> = {};
+    if (!branchId) missing.branchId = "Салбар сонгоно уу.";
+    if (!customerId) missing.customerId = "Үйлчлүүлэгчээ сонгоно уу.";
+    if (!vehicleId) missing.vehicleId = "Машинаа сонгоно уу.";
+    if (!assignedToId) missing.assignedToId = "Хариуцах мастер сонгоно уу.";
+    setClientErrors(missing);
+    if (Object.keys(missing).length > 0) e.preventDefault();
+  }
 
   // Шинэ захиалгад "одоо" гэсэн анхны утгыг зөвхөн client дээр mount-ын дараа
   // тавина (server/client hydration-ий хооронд минут шилжвэл текст зөрж,
@@ -221,6 +260,7 @@ export function OrderForm({
   // Салбар солиход одоо сонгогдсон мастер шинэ салбарт хамаарахгүй бол цэвэрлэнэ.
   function onBranchChange(v: string) {
     setBranchId(v);
+    clearFieldError("branchId");
     const tech = technicians.find((t) => t.id === assignedToId);
     if (tech && !isTechAssignableAt(tech, v)) {
       setAssignedToId("");
@@ -230,9 +270,21 @@ export function OrderForm({
   // Машин сонгоход эзэмшигчийг нь автоматаар үйлчлүүлэгч болгож тавина.
   function onVehicleChange(v: string) {
     setVehicleId(v);
+    // Цэвэрлэвэл: эзэмшигч ганц машинтай бол сонгох өөр машин байхгүй тул
+    // үйлчлүүлэгчийг ч цэвэрлэж бүх машиныг дахин харуулна; олон машинтай
+    // бол үйлчлүүлэгч хэвээр — тэр эзэмшигчийн өөр машиныг сонгоно.
+    if (!v) {
+      if (customerId && vehicles.filter((x) => x.customerId === customerId).length <= 1) {
+        setCustomerId("");
+      }
+      return;
+    }
     const veh = vehicles.find((x) => x.id === v);
     if (veh?.customerId && veh.customerId !== customerId) {
       setCustomerId(veh.customerId);
+      clearFieldError("vehicleId", "customerId");
+    } else {
+      clearFieldError("vehicleId");
     }
   }
 
@@ -240,6 +292,12 @@ export function OrderForm({
   // Тухайн үйлчлүүлэгч яг ганц машинтай бол уг машиныг автоматаар сонгоно.
   function onCustomerChange(v: string) {
     setCustomerId(v);
+    // Цэвэрлэвэл машиныг ч цэвэрлэж бүх машиныг дахин харуулна.
+    if (!v) {
+      setVehicleId("");
+      return;
+    }
+    clearFieldError("customerId");
     const veh = vehicles.find((x) => x.id === vehicleId);
     if (veh && veh.customerId === v) return;
     const owned = vehicles.filter((x) => x.customerId === v);
@@ -249,6 +307,7 @@ export function OrderForm({
   function onCustomerCreated(c: CreatedCustomer) {
     setCustomers((prev) => [c, ...prev]);
     setCustomerId(c.id);
+    clearFieldError("customerId");
     setVehicleId("");
     setShowCustomerForm(false);
   }
@@ -256,11 +315,12 @@ export function OrderForm({
   function onVehicleCreated(v: CreatedVehicle) {
     setVehicles((prev) => [v, ...prev]);
     setVehicleId(v.id);
+    clearFieldError("vehicleId");
     setShowVehicleForm(false);
   }
 
   return (
-    <form id={ORDER_FORM_ID} action={formAction} className="flex flex-col gap-4" noValidate>
+    <form id={ORDER_FORM_ID} action={formAction} onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
       {appointmentId && !isEdit ? (
         <input type="hidden" name="appointmentId" value={appointmentId} />
       ) : null}
@@ -328,16 +388,23 @@ export function OrderForm({
         <Field
           label="Хариуцах мастер"
           htmlFor="assignedToId"
-          hint="заавал биш"
           error={fe.assignedToId}
           className={FIELD_MW}
         >
           <Select
             id="assignedToId"
             name="assignedToId"
+            required
             value={assignedToId}
-            onChange={setAssignedToId}
+            onChange={(v) => {
+              setAssignedToId(v);
+              if (v) clearFieldError("assignedToId");
+            }}
             error={fe.assignedToId}
+            clearable
+            clearLabel="Мастерыг цэвэрлэх"
+            searchable
+            searchPlaceholder="Нэрээр хайх…"
             options={filteredTechnicians.map((t) => ({
               value: t.id,
               label: `${t.lastName} ${t.firstName}`,
@@ -355,6 +422,10 @@ export function OrderForm({
                 value={customerId}
                 onChange={onCustomerChange}
                 error={fe.customerId}
+                clearable
+                clearLabel="Үйлчлүүлэгчийг цэвэрлэх"
+                searchable
+                searchPlaceholder="Нэр, утсаар хайх…"
                 placeholder={
                   customers.length === 0 ? "— Бүртгэгдээгүй —" : "— Сонгох —"
                 }
@@ -396,6 +467,10 @@ export function OrderForm({
                 value={vehicleId}
                 onChange={onVehicleChange}
                 error={fe.vehicleId}
+                clearable
+                clearLabel="Машиныг цэвэрлэх"
+                searchable
+                searchPlaceholder="Дугаар, марк, эзэмшигчээр хайх…"
                 options={filteredVehicles.map((v) => {
                   const owner = v.customerId
                     ? customerById.get(v.customerId)
@@ -411,7 +486,8 @@ export function OrderForm({
                       : base;
                   return {
                     value: v.id,
-                    label: v.plate,
+                    // Дугааргүй машиныг VIN-ээр нь ялгаж харуулна/хайна.
+                    label: plateLabel(v.plate, v.vin),
                     hint,
                   };
                 })}

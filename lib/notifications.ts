@@ -553,7 +553,7 @@ export async function createNotification(args: {
  * Тенант/салбарт холбогдох ажилтны мэдэгдэл хүлээн авах хүрээ.
  * Эзэн (isOwner) + `appointments.view` эрхтэй идэвхтэй ажилтнууд. Салбарт
  * оноогдсон ажилтан зөвхөн өөрийн салбарын, оноогдоогүй (branchId=null) ба эзэн
- * бүх салбарын мэдэгдэл авна. (lib/auth/roles.ts ORDER_ASSIGNABLE_WHERE загвар.)
+ * бүх салбарын мэдэгдэл авна. (lib/auth/roles.ts orderAssignableWhere загвар.)
  */
 export function staffRecipientWhere(
   tenantId: string,

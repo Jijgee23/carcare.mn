@@ -35,6 +35,7 @@ export function StatusControls({
   currentStatus,
   estimatedDurationMinutes,
   serviceItemDurationMinutes = null,
+  completeBlockedReason = null,
 }: {
   orderId: string;
   transitions: OrderStatus[];
@@ -42,6 +43,8 @@ export function StatusControls({
   currentStatus: OrderStatus;
   estimatedDurationMinutes: number | null;
   serviceItemDurationMinutes?: number | null;
+  /** «Дуусгах» боломжгүй шалтгаан (дуусаагүй ажил, дутуу төлбөр) — сервер ч шалгана. */
+  completeBlockedReason?: string | null;
 }) {
   const toast = useToast();
   const [state, formAction, pending] = useActionState<
@@ -155,11 +158,15 @@ export function StatusControls({
             <input type="hidden" name="status" value={next} />
             <button
               type="submit"
-              disabled={disabled || pending}
+              disabled={disabled || pending || (next === "COMPLETED" && Boolean(completeBlockedReason))}
+              title={next === "COMPLETED" ? completeBlockedReason ?? undefined : undefined}
               className={`w-full text-sm font-medium px-4 py-2 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${STATUS_BTN_STYLE[next]}`}
             >
               {STATUS_BTN_LABEL[next]}
             </button>
+            {next === "COMPLETED" && completeBlockedReason ? (
+              <p className="mt-1 px-1 text-xs text-[var(--oc-muted3)]">{completeBlockedReason}</p>
+            ) : null}
           </ConfirmForm>
         ),
             )}

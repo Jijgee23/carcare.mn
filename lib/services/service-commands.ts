@@ -84,6 +84,7 @@ import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { SERVICE_KINDS, type ServiceKind } from "@/lib/services";
+import { parseNonNegativeDecimal } from "@/lib/decimal-input";
 
 export type ServiceCommandActor = {
   id: string;
@@ -109,15 +110,8 @@ function toTrimmedString(v: string | null | undefined): string {
   return (v ?? "").trim();
 }
 
-/** Mirrors `parseDecimal` in `app/_actions/services.ts` — kept here as the
- * one canonical implementation for the four commands in this module. */
 function parseDecimalField(raw: DecimalInput): Prisma.Decimal | null {
-  const str = typeof raw === "number" ? String(raw) : typeof raw === "string" ? raw : "";
-  if (!str.trim()) return null;
-  const cleaned = str.replace(/[,\s]/g, "");
-  const n = Number.parseFloat(cleaned);
-  if (!Number.isFinite(n) || n < 0) return null;
-  return new Prisma.Decimal(cleaned);
+  return parseNonNegativeDecimal(raw);
 }
 
 // --- update -----------------------------------------------------------------

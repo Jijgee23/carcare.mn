@@ -21,6 +21,7 @@ import {
   deleteServiceCommand,
   updateServiceCommand,
 } from "@/lib/services/service-commands";
+import { parseNonNegativeDecimal } from "@/lib/decimal-input";
 
 export type ServiceActionState = {
   ok: boolean;
@@ -33,13 +34,7 @@ function s(fd: FormData, key: string): string {
   return typeof v === "string" ? v.trim() : "";
 }
 
-function parseDecimal(v: string): Prisma.Decimal | null {
-  if (!v) return null;
-  const cleaned = v.replace(/[,\s]/g, "");
-  const n = Number.parseFloat(cleaned);
-  if (!Number.isFinite(n) || n < 0) return null;
-  return new Prisma.Decimal(cleaned);
-}
+const parseDecimal = parseNonNegativeDecimal;
 
 async function authorize(action: "create" | "edit" | "delete") {
   const user = await requireUser();

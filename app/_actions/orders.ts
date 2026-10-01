@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
-import { Prisma } from "@/app/generated/prisma/client";
 import { logAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
 import { type BulkActionState, parseIdsJson } from "@/lib/bulk-action";
@@ -65,6 +64,7 @@ import {
   rescheduleOrderCommand,
   OrderScheduleCommandError,
 } from "@/lib/orders/order-schedule-commands";
+import { parseNonNegativeDecimal } from "@/lib/decimal-input";
 
 export type OrderActionState = {
   ok: boolean;
@@ -118,17 +118,7 @@ function s(fd: FormData, key: string): string {
   return typeof v === "string" ? v.trim() : "";
 }
 
-function parseDecimal(v: string): Prisma.Decimal | null {
-  if (!v) return null;
-  const cleaned = v.replace(/[,\s]/g, "");
-  if (!/^\d+(?:\.\d+)?$/.test(cleaned)) return null;
-  try {
-    const parsed = new Prisma.Decimal(cleaned);
-    return parsed.isNegative() ? null : parsed;
-  } catch {
-    return null;
-  }
-}
+const parseDecimal = parseNonNegativeDecimal;
 
 async function authorize(action: "create" | "edit" | "delete") {
   const user = await requireUser();
@@ -330,6 +320,7 @@ export async function createOrderAction(
     }
     data.assignedToId = user.id;
   }
+  if (!data.assignedToId) errors.assignedToId = "Хариуцах мастер сонгоно уу.";
 
   const appointmentId = s(formData, "appointmentId") || null;
   let estimatedDurationMinutes: number | null = null;
@@ -500,7 +491,17 @@ export async function updateOrderAction(
         if (!canAssignOrders(user) && data.assignedToId !== fresh.assignedToId) {
           throw new OrderActionValidationError("Зөвхөн orders.assign эрхтэй хэрэглэгч хариуцагч өөрчилж болно.");
         }
-        if (data.assignedToId) {
+        // Хариуцах мастер заавал: оноосон мастерыг арилгахгүй; оноох эрхтэй бол
+        // мастергүй хуучин хуудсанд ч сонгуулна.
+        if (!data.assignedToId && (fresh.assignedToId || canAssignOrders(user))) {
+          throw new OrderActionValidationError("Хариуцах мастер сонгоно уу.", { assignedToId: "Хариуцах мастер сонгоно уу." });
+        }
+        // Хариуцагч эсвэл салбар өөрчлөгдсөн үед л шалгана — эс бөгөөс дараа нь
+        // ажлаас гарсан / хугацаа дууссан мастертай хуучин хуудсыг засаж чадахгүй.
+        if (
+          data.assignedToId &&
+          (data.assignedToId !== fresh.assignedToId || data.branchId !== fresh.branchId)
+        ) {
           await validateOrderAssignee(tx, {
             tenantId: user.tenantId,
             assigneeId: data.assignedToId,

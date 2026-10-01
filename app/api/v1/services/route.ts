@@ -118,24 +118,32 @@ export async function POST(req: Request) {
     return jsonError(400, Object.values(refErrors)[0], { fieldErrors: refErrors });
   }
 
-  const service = await prisma.service.create({
-    data: {
-      type: type as (typeof KINDS)[number],
-      name: (name as string).trim(),
-      code: typeof code === "string" && code.trim() ? code.trim() : null,
-      price: priceNum,
-      costPrice: costPriceNum,
-      stock: stockNum,
-      description: typeof description === "string" && description.trim() ? description.trim() : null,
-      isActive: isActive !== false,
-      unitId: refs.unitId,
-      categoryId: refs.categoryId,
-      durationValue: durationNum,
-      durationUnitId: refs.durationUnitId,
-      tenantId: auth.user.tenantId,
-    },
-    select: SERVICE_SELECT,
-  });
+  let service;
+  try {
+    service = await prisma.service.create({
+      data: {
+        type: type as (typeof KINDS)[number],
+        name: (name as string).trim(),
+        code: typeof code === "string" && code.trim() ? code.trim().toUpperCase() : null,
+        price: priceNum,
+        costPrice: costPriceNum,
+        stock: stockNum,
+        description: typeof description === "string" && description.trim() ? description.trim() : null,
+        isActive: isActive !== false,
+        unitId: refs.unitId,
+        categoryId: refs.categoryId,
+        durationValue: durationNum,
+        durationUnitId: refs.durationUnitId,
+        tenantId: auth.user.tenantId,
+      },
+      select: SERVICE_SELECT,
+    });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      return jsonError(409, "Ийм кодтой бүртгэл аль хэдийн байна.", { fieldErrors: { code: "Код давхардаж байна." } });
+    }
+    throw e;
+  }
 
   await logAudit({
     tenantId: auth.user.tenantId,

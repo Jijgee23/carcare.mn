@@ -9,6 +9,38 @@ export type SelectOption = {
   hint?: string;
 };
 
+// Латин үсгийг дуудлагаар нь кирилл болгоно — хэрэглэгч кирилл гаргүй үед
+// улсын дугаарыг "1234uba" гэж бичдэг (≈ "1234УБА"). Хоёр талыг (хайлт ба
+// бичлэг) ижил хөрвүүлдэг тул латин нэр ("Toyota") латинаар ч олдоно.
+const LATIN_TO_CYRILLIC: Record<string, string> = {
+  a: "а", b: "б", c: "ц", d: "д", e: "е", f: "ф", g: "г", h: "х", i: "и",
+  j: "ж", k: "к", l: "л", m: "м", n: "н", o: "о", p: "п", q: "к", r: "р",
+  s: "с", t: "т", u: "у", v: "в", w: "в", x: "х", y: "у", z: "з",
+};
+// Гараас бичихэд андуурагддаг кирилл үсгийг нэгтгэнэ (ө≈о, ү≈у, э≈е).
+const CYRILLIC_FOLD: Record<string, string> = { "ө": "о", "ү": "у", "э": "е", "ё": "е", "й": "и" };
+
+/** Хайлтын харьцуулалтад: жижиг үсэг, зай/зураас/цэг хасна, латиныг кирилл болгоно. */
+function foldSearch(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[\s\-_.()+]/g, "")
+    .replace(/[a-z]/g, (ch) => LATIN_TO_CYRILLIC[ch] ?? ch)
+    .replace(/[өүэёй]/g, (ch) => CYRILLIC_FOLD[ch] ?? ch);
+}
+
+/** Үг бүр (зайгаар тусгаарласан) label эсвэл hint-д агуулагдаж байвал таарна. */
+export function matchesSelectQuery(option: SelectOption, query: string): boolean {
+  const tokens = query.split(/\s+/).map(foldSearch).filter(Boolean);
+  if (tokens.length === 0) return true;
+  const haystack = foldSearch(`${option.label} ${option.hint ?? ""}`);
+  return tokens.every((t) => haystack.includes(t));
+}
+
+// Олон мянган бичлэгтэй үед DOM-ыг хүндрүүлэхгүй — эхний N-ийг харуулж,
+// үлдсэнийг "нарийвчлан бичнэ үү" гэж мэдэгдэнэ.
+const MAX_VISIBLE_OPTIONS = 100;
+
 /**
  * Form-д зориулсан modern dropdown — native <select>-ийн оронд.
  * Hidden input-ээр form submission-д утга илгээнэ. Click-outside + ESC
@@ -33,6 +65,10 @@ export function Select({
   disabled,
   id,
   ariaInvalid,
+  clearable = false,
+  clearLabel = "Цэвэрлэх",
+  searchable = false,
+  searchPlaceholder = "Бичиж хайх…",
 }: {
   name: string;
   options: SelectOption[];
@@ -45,6 +81,14 @@ export function Select({
   disabled?: boolean;
   id?: string;
   ariaInvalid?: boolean;
+  /** Сонгосон утгыг × товчоор арилгах боломж (`required` талбарт ч — буруу
+   * сонголтыг цэвэрлэж дахин сонгоход). */
+  clearable?: boolean;
+  clearLabel?: string;
+  /** Нээхэд талбарт шууд бичиж жагсаалтыг шүүнэ (↑/↓, Enter, Esc). Хаалттай
+   * үед товч дээр үсэг бичихэд ч нээгдэж хайлт эхэлнэ. */
+  searchable?: boolean;
+  searchPlaceholder?: string;
 }) {
   const isControlled = controlledValue !== undefined;
   const [internalValue, setInternalValue] = useState<string>(
@@ -58,7 +102,17 @@ export function Select({
   );
   const btnRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const selected = options.find((o) => o.value === value);
+
+  const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
+  const searching = searchable && open;
+  const filtered = searching && query.trim()
+    ? options.filter((o) => matchesSelectQuery(o, query))
+    : options;
+  const visible = filtered.slice(0, MAX_VISIBLE_OPTIONS);
+  const hiddenCount = filtered.length - visible.length;
 
   function updatePosition() {
     const el = btnRef.current;
@@ -67,21 +121,89 @@ export function Select({
     setPos({ top: r.bottom + 4, left: r.left, width: r.width });
   }
 
+  function openList(initialQuery = "") {
+    if (disabled) return;
+    updatePosition();
+    setQuery(initialQuery);
+    // Хайлтгүй нээхэд одоогийн сонголт дээр, хайлттай бол эхний үр дүн дээр.
+    const current = initialQuery ? -1 : options.findIndex((o) => o.value === value);
+    setActiveIndex(current >= 0 ? current : 0);
+    setOpen(true);
+  }
+
+  function closeList() {
+    setOpen(false);
+    setQuery("");
+  }
+
   function toggle() {
     if (disabled) return;
-    if (!open) updatePosition();
-    setOpen((p) => !p);
+    if (open) closeList();
+    else openList();
   }
+
+  function moveActive(delta: number) {
+    if (visible.length === 0) return;
+    setActiveIndex((i) => (i + delta + visible.length) % visible.length);
+  }
+
+  // Хаалттай товч дээр үсэг бичвэл нээж, тэр үсгээр хайлт эхлүүлнэ.
+  function onTriggerKeyDown(e: React.KeyboardEvent<HTMLButtonElement>) {
+    if (!searchable || open || disabled) return;
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && e.key !== " ") {
+      e.preventDefault();
+      openList(e.key);
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      openList();
+    }
+  }
+
+  function onSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      moveActive(1);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      moveActive(-1);
+    } else if (e.key === "Enter") {
+      // Form submit болохоос сэргийлнэ — идэвхтэй мөрийг сонгоно.
+      e.preventDefault();
+      const option = visible[activeIndex];
+      if (option) pick(option.value);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      closeList();
+      btnRef.current?.focus();
+    } else if (e.key === "Tab") {
+      closeList();
+    }
+  }
+
+  // Идэвхтэй мөрийг харагдах хэсэгт байлгана.
+  useEffect(() => {
+    if (!open) return;
+    const el = listRef.current?.querySelector<HTMLElement>(`[data-index="${activeIndex}"]`);
+    el?.scrollIntoView({ block: "nearest" });
+  }, [open, activeIndex]);
 
   useEffect(() => {
     if (!open) return;
     function onDocMouseDown(e: MouseEvent) {
       const t = e.target as Node;
-      if (btnRef.current?.contains(t) || listRef.current?.contains(t)) return;
+      if (
+        btnRef.current?.contains(t) ||
+        listRef.current?.contains(t) ||
+        searchRef.current?.contains(t)
+      ) return;
       setOpen(false);
+      setQuery("");
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") {
+        setOpen(false);
+        setQuery("");
+      }
     }
     function onReflow() {
       updatePosition();
@@ -100,11 +222,13 @@ export function Select({
 
   function pick(v: string) {
     setOpen(false);
+    setQuery("");
     if (!isControlled) setInternalValue(v);
     onChange?.(v);
   }
 
   const hasError = Boolean(error) || ariaInvalid;
+  const showClear = clearable && !disabled && value !== "";
 
   return (
     <div style={{ position: "relative", width: "100%" }}>
@@ -119,6 +243,7 @@ export function Select({
         type="button"
         id={id}
         onClick={toggle}
+        onKeyDown={onTriggerKeyDown}
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -139,6 +264,10 @@ export function Select({
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
+            // × товчны зай (chevron-ий зүүн талд байрлана).
+            ...(showClear ? { paddingRight: "1.75rem" } : {}),
+            // Хайлтын input (хагас тунгалаг дэвсгэртэй) дээр давхарлан харагдахгүй.
+            ...(searching ? { visibility: "hidden" as const } : {}),
           }}
         >
           {selected ? selected.label : placeholder}
@@ -163,12 +292,79 @@ export function Select({
         </svg>
       </button>
 
+      {/* Хайлт: нээлттэй үед товчны яг дээр ижил хэмжээтэй input давхарлана —
+          хэрэглэгч талбарт шууд бичиж байгаа мэт. */}
+      {searching ? (
+        <input
+          ref={searchRef}
+          type="text"
+          autoFocus
+          role="combobox"
+          aria-expanded
+          aria-controls={id ? `${id}-listbox` : undefined}
+          aria-autocomplete="list"
+          aria-label={searchPlaceholder}
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setActiveIndex(0);
+          }}
+          onKeyDown={onSearchKeyDown}
+          placeholder={selected ? selected.label : searchPlaceholder}
+          autoComplete="off"
+          className="auth-input"
+          style={{ position: "absolute", inset: 0, zIndex: 1 }}
+        />
+      ) : null}
+
+      {/* Товч доторх товч хүчингүй тул × нь тусдаа, chevron-ий зүүн талд. */}
+      {showClear && !searching ? (
+        <button
+          type="button"
+          onClick={() => {
+            pick("");
+            btnRef.current?.focus();
+          }}
+          aria-label={clearLabel}
+          title={clearLabel}
+          className="text-[var(--placeholder)] hover:text-[var(--input-fg)] hover:bg-[var(--hover-bg)]"
+          style={{
+            position: "absolute",
+            top: "50%",
+            right: "2.25rem",
+            transform: "translateY(-50%)",
+            width: "1.5rem",
+            height: "1.5rem",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: "9999px",
+            transition: "color 0.15s, background 0.15s",
+          }}
+        >
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            aria-hidden="true"
+          >
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </svg>
+        </button>
+      ) : null}
+
       {open && pos && typeof document !== "undefined"
         ? createPortal(
             <div className="landing-ops">
               <div
                 ref={listRef}
                 role="listbox"
+                id={id ? `${id}-listbox` : undefined}
                 style={{
                   position: "fixed",
                   zIndex: 200,
@@ -185,7 +381,7 @@ export function Select({
                   overflowY: "auto",
                 }}
               >
-                {!required ? (
+                {!required && !query.trim() ? (
                   <SelectOptionRow
                     label={placeholder}
                     active={value === ""}
@@ -193,15 +389,27 @@ export function Select({
                     muted
                   />
                 ) : null}
-                {options.map((o) => (
+                {visible.map((o, i) => (
                   <SelectOptionRow
                     key={o.value}
+                    index={i}
                     label={o.label}
                     hint={o.hint}
                     active={o.value === value}
+                    highlighted={searching && i === activeIndex}
                     onClick={() => pick(o.value)}
                   />
                 ))}
+                {searching && filtered.length === 0 ? (
+                  <div style={{ padding: "0.6rem 0.75rem", fontSize: "0.8125rem", color: "var(--placeholder)" }}>
+                    Олдсонгүй
+                  </div>
+                ) : null}
+                {hiddenCount > 0 ? (
+                  <div style={{ padding: "0.45rem 0.75rem", fontSize: "0.75rem", color: "var(--placeholder)" }}>
+                    +{hiddenCount} бичлэг — нарийвчлан бичиж хайна уу
+                  </div>
+                ) : null}
               </div>
             </div>,
             document.body,
@@ -217,12 +425,16 @@ function SelectOptionRow({
   active,
   onClick,
   muted = false,
+  index,
+  highlighted = false,
 }: {
   label: string;
   hint?: string;
   active: boolean;
   onClick: () => void;
   muted?: boolean;
+  index?: number;
+  highlighted?: boolean;
 }) {
   const [hover, setHover] = useState(false);
   return (
@@ -230,6 +442,9 @@ function SelectOptionRow({
       type="button"
       role="option"
       aria-selected={active}
+      data-index={index}
+      // Хайлтын input-аас focus авахгүй.
+      onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
@@ -244,7 +459,7 @@ function SelectOptionRow({
         fontSize: "0.875rem",
         background: active
           ? "var(--select-option-active-bg, rgba(139, 107, 255, 0.18))"
-          : hover
+          : hover || highlighted
             ? "var(--hover-bg)"
             : "transparent",
         color: active

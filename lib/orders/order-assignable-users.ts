@@ -1,9 +1,10 @@
 import type { Prisma } from "@/app/generated/prisma/client";
-import { ORDER_ASSIGNABLE_WHERE } from "@/lib/auth/roles";
+import { orderAssignableWhere } from "@/lib/auth/roles";
 
 export type AssignableUserEligibilityInput = {
   isActive: boolean;
   deactivatedAt?: Date | null;
+  activeUntil?: Date | null;
   tenantId: string;
   isOwner: boolean;
   branchId: string | null;
@@ -36,8 +37,10 @@ export function isAssignableUserEligible(
   user: AssignableUserEligibilityInput,
   tenantId: string,
   branchId?: string | null,
+  now: Date = new Date(),
 ): boolean {
   if (!user.isActive || user.deactivatedAt || user.tenantId !== tenantId) return false;
+  if (user.activeUntil && user.activeUntil.getTime() <= now.getTime()) return false;
   if (user.role?.isActive === false) return false;
 
   const isAssignable =
@@ -56,10 +59,11 @@ export function isAssignableUserEligible(
 export function buildAssignableUserWhere(options: {
   tenantId: string;
   branchId?: string | null;
+  now?: Date;
 }): Prisma.UserWhereInput {
   const predicates: Prisma.UserWhereInput[] = [
-    ORDER_ASSIGNABLE_WHERE,
-    // ORDER_ASSIGNABLE_WHERE predates role deactivation. Keep its owner path,
+    orderAssignableWhere(options.now),
+    // orderAssignableWhere predates role deactivation. Keep its owner path,
     // but do not expose users whose role has since been disabled.
     { OR: [{ isOwner: true }, { role: { isActive: true } }] },
   ];

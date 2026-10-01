@@ -223,7 +223,9 @@ Res: 200 { "orders": [{ "id": "...", "number": "...", "status": "...", "paymentS
 
         <Endpoint method="POST" path="/api/v1/orders" auth="bearer" bearerLabel={BEARER} tags={["Эрх: orders.create", "Багц идэвхтэй байх шаардлагатай"]} title="Шинэ засварын хуудас үүсгэх.">
           <Code>{`Req:  { "branchId": "...", "customerId": "...", "vehicleId": "...", "assignedToId": "...", "scheduledAt": "...", "notes": "..." }
+      // assignedToId заавал. orders.assign эрхгүй бол илгээхгүй байж болно — өөрөө оноогдоно.
 Res:  201 { "order": {...} }
+422  { "error": "Хариуцах мастер сонгоно уу.", "fieldErrors": { "assignedToId": "..." } }   // ASSIGNEE_REQUIRED
 422  { "error": "Хүсэлт буруу.", "fieldErrors": { "branchId": "...", "customerId": "...", "vehicleId": "..." } }
 422  { "error": "Хүсэлт буруу.", "fieldErrors": { "branchId": "Зөвхөн өөрийн салбарт засварын хуудас үүсгэх боломжтой." } }
 403  { "error": "Та зөвхөн өөрийгөө хариуцагчаар оноож болно." }   // orders.assign эрхгүй ажилтан өөр хүн оноох гэвэл
@@ -241,6 +243,7 @@ Res:  201 { "order": {...} }
         <Endpoint method="PATCH" path="/api/v1/orders/[id]" auth="bearer" bearerLabel={BEARER} tags={["Эрх: orders.edit (эсвэл orders.editOwn — өөрийн хариуцсан)", "Багц идэвхтэй байх шаардлагатай"]} title="Засварын хуудасны статус/тэмдэглэл/хариуцагч засах — зөвшөөрөгдсөн шилжилтээр л статус солигдоно. IN_PROGRESS руу шилжихэд ажлын хугацаа тодорхойгүй бол (мөрүүдээс тооцоолох боломжгүй) durationMinutes заавал.">
           <Code>{`Req:  { "status": "IN_PROGRESS", "durationMinutes": 90, "notes": "...", "assignedToId": "..." }  // бүгд заавал биш
 Res:  200 { "order": {...} }
+422  { "error": "Хариуцах мастерыг арилгах боломжгүй — өөр мастер сонгоно уу." }   // assignedToId: null (ASSIGNEE_REQUIRED)
 403  { "error": "Танд энэ засварын хуудсыг засах эрх байхгүй." } | { "error": "Зөвхөн orders.assign эрхтэй хэрэглэгч хариуцагч өөрчилж болно." }
 404  { "error": "Засварын хуудас олдсонгүй." }
 422  { "error": "Дууссан / цуцлагдсан засварын хуудасны мэдээллийг засах боломжгүй." }

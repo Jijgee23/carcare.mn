@@ -12,18 +12,13 @@ import {
   validateSchema,
 } from "@/lib/diagnostics";
 import { prisma } from "@/lib/prisma";
+import { parseNonNegativeDecimal } from "@/lib/decimal-input";
 
 // Тенантын app/_actions/diagnostic-templates.ts-тэй адил, ялгаа: ангилал
 // (categoryId) шаардахгүй, тенантын багц/эрхийн шалгалт (subscription,
 // feature flag, тоо-хязгаар) хамаарахгүй — эдгээр нь тенантын өөрийн багцын
 // ойлголт тул систем admin-д хамаагүй.
-function parseDecimal(v: string): Prisma.Decimal | null {
-  if (!v) return null;
-  const cleaned = v.replace(/[,\s]/g, "");
-  const n = Number.parseFloat(cleaned);
-  if (!Number.isFinite(n) || n < 0) return null;
-  return new Prisma.Decimal(cleaned);
-}
+const parseDecimal = parseNonNegativeDecimal;
 
 export type SystemTemplateActionState = {
   ok: boolean;

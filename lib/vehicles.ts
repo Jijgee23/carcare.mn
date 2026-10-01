@@ -2,6 +2,7 @@ import type { Prisma } from "@/app/generated/prisma/client";
 import { normalizePhone } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
 import type { PrismaTransactionClient } from "@/lib/prisma";
+import { isNoPlate } from "@/lib/vehicle-plate";
 
 type Client = PrismaTransactionClient;
 
@@ -264,12 +265,17 @@ export async function resolveVehicleForOwner(
   const vin = normalizeVin(input.vin);
   const attrs = input;
 
-  const where = input.owner ? ownerMatchWhere(plate, input.owner) : null;
+  const noPlate = isNoPlate(plate);
+  // Дугааргүй машинууд бүгд ижил тэмдэгтэй тул ЗӨВХӨН ижил VIN-тэйг нэг машин
+  // гэж үзнэ — эс бөгөөс нэг эзний өөр өөр дугааргүй машин нэгтгэгдэнэ.
+  const ownerWhere = input.owner ? ownerMatchWhere(plate, input.owner) : null;
+  const where = ownerWhere && noPlate ? (vin ? { ...ownerWhere, vin } : null) : ownerWhere;
   // Vehicle нь глобал (unique constraint-гүй) тул ижил дугаарын зэрэгцээ
   // "шалгаад үүсгэх" хоёр хүсэлт давхар мөр үүсгэж болно. Дугаараар advisory
   // xact lock авч цувуулна — транзакц дуусахад автоматаар суллагдана.
   if (where) {
-    await client.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`vehicle-plate:${plate}`}))`;
+    const lockKey = noPlate ? `vehicle-vin:${vin}` : `vehicle-plate:${plate}`;
+    await client.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
   }
   const existing = where
     ? await client.vehicle.findFirst({

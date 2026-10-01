@@ -1,3 +1,4 @@
+import type { Prisma } from "@/app/generated/prisma/client";
 import { ALL_BRANCHES } from "./session";
 import type { PermissionCode, ResourceKey } from "./permissions";
 import { orderEditScope, orderViewScope } from "./order-access";
@@ -159,13 +160,20 @@ export function workingBranchScopeId(user: {
 /**
  * Захиалгад хариуцагч болж болох хэрэглэгчдийн filter (Prisma where-д).
  * isOwner=true бүх админ + `orders.assignable` permission-той Role-той ажилтнууд.
+ * Ажлаас гарсан (isActive=false / устгагдсан) шүүлтийг дуудагч `isActive: true`-ээр
+ * нэмнэ; энд өөрөө хаасан болон хугацаа (activeUntil) дууссан ажилтныг хасна.
+ * `now`-оос хамаарах тул тогтмол биш функц — дуудах бүрт шинэ огноо.
  */
-export const ORDER_ASSIGNABLE_WHERE = {
-  // Өөрөө хаасан ажилтан isActive=true хэвээр (админ блокоос тусдаа) тул
-  // тусад нь хасна — эс бөгөөс нэвтэрч чадахгүй хүнд захиалга оноогдоно.
-  deactivatedAt: null,
-  OR: [
-    { isOwner: true },
-    { role: { permissions: { has: "orders.assignable" } } },
-  ],
-};
+export function orderAssignableWhere(now: Date = new Date()) {
+  return {
+    // Өөрөө хаасан ажилтан isActive=true хэвээр (админ блокоос тусдаа) тул
+    // тусад нь хасна — эс бөгөөс нэвтэрч чадахгүй хүнд захиалга оноогдоно.
+    deactivatedAt: null,
+    // Түр ажилтны хугацаа дууссан бол нэвтэрч чадахгүй (lib/auth/active.ts).
+    AND: [{ OR: [{ activeUntil: null }, { activeUntil: { gt: now } }] }],
+    OR: [
+      { isOwner: true },
+      { role: { permissions: { has: "orders.assignable" } } },
+    ],
+  } satisfies Prisma.UserWhereInput;
+}

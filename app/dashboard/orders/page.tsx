@@ -11,7 +11,7 @@ import { Pagination } from "@/app/_components/pagination";
 import { buildMeta, getPageInfo } from "@/lib/pagination";
 import { customerLabel } from "@/lib/customers";
 import { requireUser } from "@/lib/auth";
-import { canCreate, canEdit, canView, workingBranchScopeId } from "@/lib/auth/roles";
+import { canCreate, canEdit, canView, orderAssignableWhere, workingBranchScopeId } from "@/lib/auth/roles";
 import { canAssignOrders, orderReadWhere } from "@/lib/auth/order-access";
 import { redirect } from "next/navigation";
 import {
@@ -163,7 +163,9 @@ export default async function OrdersPage({
       .then((rows) => rows.map((r) => r.vehicle)),
     canBulkEdit
       ? prisma.user.findMany({
-          where: { tenantId: user.tenantId, isActive: true },
+          // Хариуцагч оноох сонголт — ажлаас гарсан / хугацаа дууссан /
+          // orders.assignable эрхгүй ажилтныг харуулахгүй (сервер ч татгалзана).
+          where: { tenantId: user.tenantId, isActive: true, ...orderAssignableWhere() },
           orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
           select: { id: true, firstName: true, lastName: true },
         })

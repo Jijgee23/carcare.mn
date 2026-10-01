@@ -281,13 +281,15 @@ test("owner-change on update is blocked by the same history check", () => {
   assert.match(body, /VEHICLE_OWNER_CHANGE_BLOCKED/);
 });
 
-test("plate is immutable on update — the normalised plate is discarded before the Vehicle write", () => {
+test("plate is immutable on update — only a no-plate (NO_PLATE) vehicle can be given a plate, once", () => {
   const commandSource = src("../lib/vehicles/vehicle-commands.ts");
   const start = commandSource.indexOf("export async function updateVehicleCommand");
   const end = commandSource.indexOf("export async function deleteVehicleCommand");
   const body = commandSource.slice(start, end);
-  assert.match(body, /const \{ customerId, isPostpaid, plate: _plate, \.\.\.attrs \} = data;/);
-  assert.match(body, /tx\.vehicle\.update\(\{ where: \{ id: vehicleId \}, data: attrs \}\)/);
+  // Оролтын plate нь attrs-д орохгүй — Vehicle-д зөвхөн assignPlate-ээр бичигдэнэ.
+  assert.match(body, /const \{ customerId, isPostpaid, plate: inputPlate, \.\.\.attrs \} = data;/);
+  assert.match(body, /current != null && isNoPlate\(current\.plate\) && inputPlate && !isNoPlate\(inputPlate\)/);
+  assert.match(body, /data: \{ \.\.\.attrs, \.\.\.\(assignPlate \? \{ plate: assignPlate \} : \{\}\) \}/);
 });
 
 test("every path returns the link's actual owner, never the requested customerId verbatim (the fixed divergence 9)", () => {
@@ -388,4 +390,27 @@ test("no P2002 handling remains in the vehicle command paths — plate/vin are n
 test("the cross-tenant owner-import branch stays gone (D-153) — no cross-tenant vehicle lookup exists", () => {
   const commandSource = src("../lib/vehicles/vehicle-commands.ts");
   assert.doesNotMatch(commandSource, /importOwner|crossTenant|otherTenant/i);
+});
+
+test("no-plate vehicles require a VIN and are matched by VIN, plate can be assigned once", async () => {
+  const { NO_PLATE, isNoPlate, plateLabel } = await import("../lib/vehicle-plate");
+  assert.equal(isNoPlate(" дугааргүй "), true);
+  assert.equal(isNoPlate("1234УБА"), false);
+  assert.equal(plateLabel(NO_PLATE, "JT2BF22K1W0123456"), "Дугааргүй · JT2BF22K1W0123456");
+  assert.equal(plateLabel("1234УБА", "X"), "1234УБА");
+
+  const missingVin = commands.validateVehicleInput({ plate: NO_PLATE, make: "Toyota", model: "Prius" });
+  assert.ok(missingVin.fieldErrors.vin);
+  const withVin = commands.validateVehicleInput({ plate: NO_PLATE, vin: "jt2bf22k1w0123456", make: "Toyota", model: "Prius" });
+  assert.deepEqual(withVin.fieldErrors, {});
+  assert.equal(withVin.data.vin, "JT2BF22K1W0123456");
+  // Энгийн дугаартай машинд VIN заавал биш хэвээр.
+  assert.deepEqual(commands.validateVehicleInput({ plate: "1234abc", make: "T", model: "P" }).fieldErrors, {});
+
+  // Дугааргүй машиныг ижил эзэнд VIN-ээр л тааруулна (бүгд ижил тэмдэгтэй).
+  const vehiclesSrc = src("../lib/vehicles.ts");
+  assert.match(vehiclesSrc, /ownerWhere && noPlate \? \(vin \? \{ \.\.\.ownerWhere, vin \} : null\) : ownerWhere/);
+  // Засахад зөвхөн дугааргүй машинд жинхэнэ дугаар оноогдоно.
+  const commandsSrc = src("../lib/vehicles/vehicle-commands.ts");
+  assert.match(commandsSrc, /isNoPlate\(current\.plate\) && inputPlate && !isNoPlate\(inputPlate\)/);
 });

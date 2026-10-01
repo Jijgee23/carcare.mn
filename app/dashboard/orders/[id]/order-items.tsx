@@ -84,6 +84,7 @@ export function OrderItems({
   canChangePrice,
   canViewHistory,
   orderStarted,
+  paymentLocked = false,
 }: {
   items: OrderItemLite[];
   orderId: string;
@@ -92,6 +93,8 @@ export function OrderItems({
   canChangePrice: boolean;
   canViewHistory: boolean;
   orderStarted: boolean;
+  /** Төлөгдсөн төлбөртэй — үнэ засах, мөр цуцлахыг хаана (сервер ч хориглоно). */
+  paymentLocked?: boolean;
 }) {
   const showActionColumn = canEdit || canChangeStatus;
   const cancelledCount = items.filter((i) => i.status === "CANCELLED").length;
@@ -178,6 +181,12 @@ export function OrderItems({
           </button>
         ) : null}
       </div>
+
+      {paymentLocked && (canEdit || canChangePrice) ? (
+        <p className="px-5 py-2 text-xs text-sky-400/90 light:text-sky-700 border-b border-[var(--oc-line)]">
+          Төлбөр төлөгдсөн тул мөрийн үнэ засах, мөр цуцлах боломжгүй. Өөрчлөх бол эхлээд төлбөрийг буцаана уу.
+        </p>
+      ) : null}
 
       {/* Мөрүүд — багана толгойтой хүснэгт: Тоо / Нэгж үнэ / Дүн зэрэгцэнэ */}
       <table className="w-full text-sm">
@@ -301,7 +310,7 @@ export function OrderItems({
                       <PriceCell
                         itemId={it.id}
                         unitPrice={it.unitPrice}
-                        editable={canChangePrice && !cancelled}
+                        editable={canChangePrice && !cancelled && !paymentLocked}
                       />
                     </td>
                     <td
@@ -328,7 +337,7 @@ export function OrderItems({
                               }
                             />
                           ) : null}
-                          {canEdit && isServiceItemCancellable(status) ? (
+                          {canEdit && !paymentLocked && isServiceItemCancellable(status) ? (
                             <ConfirmForm
                               action={cancelOrderItemAction}
                               message={`\"${it.description}\" мөрийг цуцлах уу?`}

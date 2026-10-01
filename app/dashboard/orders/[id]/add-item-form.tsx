@@ -308,7 +308,7 @@ function FormContent({
               options={partServices.map((s) => ({
                 value: s.id,
                 label: `${s.name}${s.code ? ` · ${s.code}` : ""}`,
-                hint: `${s.stock != null ? `${s.stock} ${s.unit} · ` : ""}${formatTugrik(s.price)}`,
+                hint: `${s.stock != null ? (Number(s.stock) > 0 ? `${s.stock} ${s.unit} · ` : "Үлдэгдэлгүй · ") : ""}${formatTugrik(s.price)}`,
               }))}
             />
             {fe.serviceId ? (

@@ -6,7 +6,7 @@ import { ConfirmForm } from "@/app/_components/confirm-form";
 import { Btn } from "@/app/_components/landing-ops-ui";
 import { requireUser } from "@/lib/auth";
 import {
-  ORDER_ASSIGNABLE_WHERE,
+  orderAssignableWhere,
   canCreate,
   canDelete,
   canEdit,
@@ -122,7 +122,7 @@ export default async function OrderDetailPage({
           customerId: true,
           isPostpaid: true,
           vehicle: {
-            select: { id: true, plate: true, make: true, model: true },
+            select: { id: true, plate: true, vin: true, make: true, model: true },
           },
         },
       })
@@ -137,7 +137,7 @@ export default async function OrderDetailPage({
       where: {
         tenantId: user.tenantId,
         isActive: true,
-        ...ORDER_ASSIGNABLE_WHERE,
+        ...orderAssignableWhere(),
       },
       orderBy: { firstName: "asc" },
       select: {
@@ -154,7 +154,10 @@ export default async function OrderDetailPage({
       where: {
         tenantId: user.tenantId,
         isActive: true,
-        OR: [{ type: "LABOR" }, { type: "GOODS", stock: { gt: 0 } }],
+        // Үлдэгдэлгүй сэлбэгийг ч жагсаана ("Үлдэгдэлгүй" гэж тэмдэглэнэ) — эс
+        // бөгөөс шинэ сэлбэг огт харагдахгүй, «Сэлбэг» tab идэвхгүй болдог.
+        // Үлдэгдэл хүрэхгүй бол addOrderItemCommand тодорхой алдаа буцаана.
+        type: { in: ["LABOR", "GOODS"] },
       },
       orderBy: [{ type: "asc" }, { name: "asc" }],
       select: {
@@ -244,6 +247,22 @@ export default async function OrderDetailPage({
     (it) => !it.diagnosticReportId,
   );
   const filledDiagnosticCount = diagnosticItems.length - unfilledDiagnosticItems.length;
+
+  // Төлөгдсөн төлбөртэй бол мөрийн мөнгөн дүнг өөрчлөхгүй (сервер ч хориглоно).
+  const hasPaidPayment = orderPayments.some((p) => p.status === "PAID");
+  // «Дуусгах»-ын урьдчилсан нөхцөл — applyOrderPatchCommand-ийн шалгалттай ижил.
+  const unfinishedItemsCount = activeItems.length - completedItemsCount;
+  const remainingDecimal = (order.totalAmount ?? new Prisma.Decimal(0)).minus(
+    order.paidAmount ?? new Prisma.Decimal(0),
+  );
+  const completeBlockedReason =
+    unfilledDiagnosticItems.length > 0
+      ? "Бөглөгдөөгүй оношилгоо байна."
+      : unfinishedItemsCount > 0
+        ? `Дуусаагүй ${unfinishedItemsCount} ажил байна.`
+        : !order.isPostpaid && remainingDecimal.gt(0)
+          ? `Төлбөр бүрэн төлөгдөөгүй (үлдэгдэл ${formatTugrik(remainingDecimal.toString())}).`
+          : null;
   // Ижил оношилгоо нэг засварын хуудсанд давхардаж болохгүй тул аль хэдийн
   // нэмэгдсэн загваруудыг "+ Мөр нэмэх" сонголтоос хасна.
   const usedDiagnosticTemplateIds = new Set(
@@ -369,6 +388,7 @@ export default async function OrderDetailPage({
                 canChangePrice={isEditable && canChangeItemPrice}
                 canViewHistory={canViewItemHistory}
                 orderStarted={orderStarted}
+                paymentLocked={hasPaidPayment}
               />
             )}
 
@@ -437,6 +457,7 @@ export default async function OrderDetailPage({
                 currentStatus={order.status as OrderStatus}
                 estimatedDurationMinutes={order.estimatedDurationMinutes}
                 serviceItemDurationMinutes={serviceItemDurationMinutes}
+                completeBlockedReason={completeBlockedReason}
               />
             </div>
           ) : null}

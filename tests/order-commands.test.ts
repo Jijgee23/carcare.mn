@@ -113,6 +113,27 @@ test("assignee must be active, same tenant, assignable and branch eligible", () 
     commands.isAssigneeEligible({ ...base, branchId: "branch-b", assignableBranchIds: ["branch-a"] }, "tenant-a", "branch-a"),
     true,
   );
+  // Ажлаас гарсан (өөрөө хаасан) болон хугацаа дууссан түр ажилтан мастер болохгүй.
+  const now = new Date("2026-10-01T00:00:00Z");
+  assert.equal(commands.isAssigneeEligible({ ...base, deactivatedAt: now }, "tenant-a", "branch-a", now), false);
+  assert.equal(
+    commands.isAssigneeEligible({ ...base, activeUntil: new Date("2026-09-30T00:00:00Z") }, "tenant-a", "branch-a", now),
+    false,
+  );
+  assert.equal(
+    commands.isAssigneeEligible({ ...base, activeUntil: new Date("2026-12-31T00:00:00Z") }, "tenant-a", "branch-a", now),
+    true,
+  );
+});
+
+test("assignee query excludes expired staff and unchanged assignees are not revalidated", () => {
+  const source = readFileSync(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../lib/orders/order-commands.ts"),
+    "utf8",
+  );
+  assert.match(source, /isActive: true, \.\.\.orderAssignableWhere\(\) \}/);
+  assert.match(source, /deactivatedAt: true,\s+activeUntil: true,/);
+  assert.match(source, /input\.assignedToId && input\.assignedToId !== order\.assignedToId/);
 });
 
 test("duration parser rejects malformed and out-of-range values", () => {
@@ -170,15 +191,55 @@ test("bulk assignment requires orders.assign and does not expose unexpected erro
   assert.match(body, /Серверийн алдаа гарлаа\./);
 });
 
-test("web decimal parsing is strict and caught", () => {
+test("web decimal parsing is strict and never throws", async () => {
+  const { parseNonNegativeDecimal } = await import("../lib/decimal-input");
+  assert.equal(parseNonNegativeDecimal("1,250.50")?.toString(), "1250.5");
+  assert.equal(parseNonNegativeDecimal(" 10 ")?.toString(), "10");
+  assert.equal(parseNonNegativeDecimal(3)?.toString(), "3");
+  for (const bad of ["", "10ш", "1.2.3", "-5", "1e5", "abc", null, undefined]) {
+    assert.equal(parseNonNegativeDecimal(bad), null, String(bad));
+  }
+  // Сэлбэг/үйлчилгээ, оношилгооны загвар, захиалгын form бүгд нэг parser ашиглана.
+  const here = dirname(fileURLToPath(import.meta.url));
+  for (const file of [
+    "../app/_actions/orders.ts",
+    "../app/_actions/services.ts",
+    "../app/_actions/diagnostic-templates.ts",
+    "../app/_actions/system-diagnostic-templates.ts",
+    "../lib/services/service-commands.ts",
+  ]) {
+    const source = readFileSync(resolve(here, file), "utf8");
+    assert.match(source, /parseNonNegativeDecimal/, file);
+    assert.doesNotMatch(source, /Number\.parseFloat\(cleaned\)/, file);
+  }
+});
+
+test("completing an order requires finished work and full payment unless postpaid (QA №6/№11)", () => {
   const source = readFileSync(
-    resolve(dirname(fileURLToPath(import.meta.url)), "../app/_actions/orders.ts"),
+    resolve(dirname(fileURLToPath(import.meta.url)), "../lib/orders/order-commands.ts"),
     "utf8",
   );
-  const start = source.indexOf("function parseDecimal");
-  const body = source.slice(start, source.indexOf("async function authorize", start));
-  assert.match(body, /new Prisma\.Decimal\(cleaned\)/);
-  assert.match(body, /try \{/);
-  assert.match(body, /catch \{/);
-  assert.doesNotMatch(body, /Number\.parseFloat/);
+  const start = source.indexOf('if (nextStatus === "COMPLETED") {');
+  const end = source.indexOf("const enteringInProgress", start);
+  assert.notEqual(start, -1);
+  const block = source.slice(start, end);
+  assert.match(block, /item\.kind !== "PART" && item\.status !== "COMPLETED"/);
+  assert.match(block, /"ITEMS_NOT_COMPLETED"/);
+  assert.match(block, /if \(!order\.isPostpaid\)/);
+  assert.match(block, /paidLedger\(tx, actor\.tenantId, orderId\)/);
+  assert.match(block, /"PAYMENT_INCOMPLETE"/);
+});
+
+test("assigned master is required on create and cannot be removed afterwards", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const read = (f: string) => readFileSync(resolve(here, f), "utf8");
+  const create = read("../lib/orders/order-create-command.ts");
+  assert.match(create, /if \(!input\.assignedToId\) \{[\s\S]{0,200}"ASSIGNEE_REQUIRED"/);
+  const patch = read("../lib/orders/order-commands.ts");
+  assert.match(patch, /input\.assignedToId === null && order\.assignedToId[\s\S]{0,200}"ASSIGNEE_REQUIRED"/);
+  // Оноох эрхгүй mobile хэрэглэгч өөрөө (web-тэй ижил).
+  const route = read("../app/api/v1/orders/route.ts");
+  assert.match(route, /else if \(!canAssignOrders\(auth\.user\)\) \{[\s\S]{0,160}assignedToId = auth\.user\.id;/);
+  const web = read("../app/_actions/orders.ts");
+  assert.match(web, /if \(!data\.assignedToId\) errors\.assignedToId = "Хариуцах мастер сонгоно уу\.";/);
 });
