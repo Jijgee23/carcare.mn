@@ -17,6 +17,8 @@ import {
 } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
 import { customerOwnershipFilters } from "@/lib/vehicles";
+import { OrderIntakeView } from "@/app/(app)/account/_components/order-intake-view";
+import { INTAKE_VIEW_SELECT, toIntakeView } from "@/lib/orders/order-intake-view";
 import {
   DIAGNOSTIC_TYPE_BADGE,
   DIAGNOSTIC_TYPE_LABEL,
@@ -43,6 +45,19 @@ function fmtDateTime(d: Date | null): string {
       hour12: false,
     })
     : "—";
+}
+
+// Хүлээн авах бүртгэлийн огноо — server дээр UB цагаар форматлана.
+function fmtIntakeTime(iso: string): string {
+  return new Date(iso).toLocaleString("mn-MN", {
+    timeZone: "Asia/Ulaanbaatar",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 }
 
 function qtyText(q: string): string {
@@ -76,6 +91,7 @@ export default async function AccountHistoryDetailPage({
       notes: true,
       totalAmount: true,
       paidAmount: true,
+      ...INTAKE_VIEW_SELECT,
       tenant: { select: { name: true } },
       branch: { select: { name: true, phone: true } },
       vehicle: { select: { plate: true, make: true, model: true, year: true } },
@@ -104,6 +120,7 @@ export default async function AccountHistoryDetailPage({
   });
 
   if (!order) notFound();
+  const intake = toIntakeView(order, { includeRecordedBy: false });
 
   return (
     <div className="w-full max-w-full flex flex-col gap-5">
@@ -157,6 +174,15 @@ export default async function AccountHistoryDetailPage({
           </span>
         </Info>
       </div>
+
+      {intake ? (
+        <OrderIntakeView
+          notes={intake.notes}
+          photos={intake.photos}
+          signatureUrl={intake.signatureUrl}
+          recordedAtLabel={fmtIntakeTime(intake.recordedAt)}
+        />
+      ) : null}
 
       {/* Үйлчилгээний мөрүүд */}
       <div>

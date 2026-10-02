@@ -18,6 +18,8 @@ import {
   type ServiceItemStatus,
 } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
+import { OrderIntakeView } from "@/app/(app)/account/_components/order-intake-view";
+import { INTAKE_VIEW_SELECT, toIntakeView } from "@/lib/orders/order-intake-view";
 import {
   DIAGNOSTIC_TYPE_BADGE,
   DIAGNOSTIC_TYPE_LABEL,
@@ -40,6 +42,19 @@ export const dynamic = "force-dynamic";
 
 function fmtDateTime(d: Date): string {
   return d.toLocaleString("mn-MN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+// Хүлээн авах бүртгэлийн огноо — server дээр UB цагаар форматлана.
+function fmtIntakeTime(iso: string): string {
+  return new Date(iso).toLocaleString("mn-MN", {
+    timeZone: "Asia/Ulaanbaatar",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -74,6 +89,7 @@ export default async function AccountWalkInOrderDetailPage({
       completedAt: true,
       totalAmount: true,
       paidAmount: true,
+      ...INTAKE_VIEW_SELECT,
       tenant: { select: { name: true } },
       branch: { select: { name: true, phone: true } },
       vehicle: { select: { plate: true, make: true, model: true, year: true } },
@@ -102,6 +118,7 @@ export default async function AccountWalkInOrderDetailPage({
     },
   });
   if (!order) notFound();
+  const intake = toIntakeView(order, { includeRecordedBy: false });
 
   // Дууссан + бүрэн төлөгдсөн ажлыг Үйлчилгээний түүхэнд харуулна (харах:
   // app/account/history) — /api/v1/app/appointments-ийн ижил дүрэм.
@@ -210,6 +227,15 @@ export default async function AccountWalkInOrderDetailPage({
           ) : null}
         </div>
       </div>
+
+      {intake ? (
+        <OrderIntakeView
+          notes={intake.notes}
+          photos={intake.photos}
+          signatureUrl={intake.signatureUrl}
+          recordedAtLabel={fmtIntakeTime(intake.recordedAt)}
+        />
+      ) : null}
 
       {order.reports.length > 0 ? (
         <div>

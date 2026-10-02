@@ -126,6 +126,7 @@ model User {
   updatedAt DateTime @updatedAt
 
   assignedOrders           ServiceOrder[]              @relation("AssignedTo")
+  intakeRecordedOrders     ServiceOrder[]              @relation("IntakeRecordedBy")
   diagnosticTemplates      DiagnosticTemplate[]        @relation("DiagnosticTemplateCreatedBy")
   diagnosticReports        DiagnosticReport[]          @relation("DiagnosticReportFilledBy")
   cancelledServiceItems    ServiceItem[]               @relation("ServiceItemCancelledBy")
@@ -524,6 +525,13 @@ model ServiceOrder {
   occupiesCapacity         Boolean?
   paidAt                   DateTime?
   notes                    String?
+  // QA #14: машин хүлээн авах үеийн чөлөөт тэмдэглэл (гүйлт, шатахуун, гэмтэл…).
+  intakeNotes              String?
+  // Хүлээн авах хэсэг зөвхөн захиалга үүсгэх үед бичигдэж, дараа нь түгжигдэнэ.
+  intakeRecordedAt         DateTime?
+  intakeRecordedById       String?
+  intakeRecordedBy         User?         @relation("IntakeRecordedBy", fields: [intakeRecordedById], references: [id], onDelete: SetNull)
+  intakeSignaturePath      String?
   totalAmount              Decimal?      @db.Decimal(12, 2)
   paidAmount               Decimal?      @db.Decimal(12, 2)
 
@@ -548,6 +556,7 @@ model ServiceOrder {
   reports      DiagnosticReport[]
   payments     OrderPayment[]
   appointment  Appointment?
+  intakePhotos ServiceOrderIntakePhoto[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -791,6 +800,20 @@ enum ReportSeverity {
   GOOD
   WARN
   BAD
+}
+
+// QA #14: машин хүлээн авах үеийн зургууд (тоо хязгааргүй биш — lib/orders/order-intake.ts).
+model ServiceOrderIntakePhoto {
+  id       String @id @default(cuid())
+  tenantId String
+  orderId  String
+  order    ServiceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  path     String   @unique
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([tenantId])
 }
 
 model DiagnosticReport {

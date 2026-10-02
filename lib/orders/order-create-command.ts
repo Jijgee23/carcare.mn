@@ -6,6 +6,7 @@ import { openOrderTimeBooking } from "@/lib/order-time-booking";
 import { nextOrderNumber } from "@/lib/order-number";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { enforceCountLimit } from "@/lib/plan-limits-server";
+import { INTAKE_PATH_CLAIMED_MESSAGE, type IntakeInput } from "@/lib/orders/order-intake-server";
 import { prisma, withBookingTransaction, type PrismaTransactionClient } from "@/lib/prisma";
 import { ensureTenantVehicle } from "@/lib/vehicles";
 import { validateOrderAssignee, OrderCommandError } from "@/lib/orders/order-commands";
@@ -20,6 +21,8 @@ export type CreateOrderCommandInput = {
   assignedToId: string | null;
   scheduledAt: Date | null;
   notes: string | null;
+  // QA #14: үүсгэх үед л бичигдэх хүлээн авах хэсэг (шалгагдсан staged замууд).
+  intake?: IntakeInput | null;
   appointmentId?: string | null;
   estimatedDurationMinutes?: number | null;
   workingBranchId?: string | null;
@@ -203,6 +206,17 @@ export async function createOrderCommand(
             assignedToId: input.assignedToId,
             scheduledAt: input.scheduledAt,
             notes: input.notes,
+            ...(input.intake
+              ? {
+                  intakeNotes: input.intake.notes,
+                  intakeSignaturePath: input.intake.signaturePath,
+                  intakeRecordedAt: new Date(),
+                  intakeRecordedById: input.actorId,
+                  intakePhotos: input.intake.photoPaths.length > 0
+                    ? { create: input.intake.photoPaths.map((path) => ({ tenantId: input.tenantId, path })) }
+                    : undefined,
+                }
+              : {}),
             isPostpaid: vehicle?.isPostpaid ?? false,
             estimatedDurationMinutes: durationMinutes,
             categories: appointment && (appointment.categories.length > 0 || (appointment.categoryId && appointment.category))
@@ -281,6 +295,13 @@ export async function createOrderCommand(
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        // Intake зургийн зам давхардсан (race) — дугаарын retry биш, 422.
+        const target = String(error.meta?.target ?? error.message);
+        if (input.intake && /ServiceOrderIntakePhoto|path/.test(target)) {
+          throw new OrderCommandError(INTAKE_PATH_CLAIMED_MESSAGE, 422, "INTAKE_PATH_CLAIMED", {
+            intake: INTAKE_PATH_CLAIMED_MESSAGE,
+          });
+        }
         continue;
       }
       throw error;

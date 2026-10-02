@@ -1,5 +1,6 @@
 import { jsonError, jsonOk } from "@/lib/api";
 import { getApiAccountFromRequest } from "@/lib/auth/account-api-token";
+import { INTAKE_VIEW_SELECT, omitIntakeColumns, toIntakeView } from "@/lib/orders/order-intake-view";
 import { prisma } from "@/lib/prisma";
 import { customerOwnershipFilters } from "@/lib/vehicles";
 
@@ -33,6 +34,7 @@ export async function GET(
       notes: true,
       totalAmount: true,
       paidAmount: true,
+      ...INTAKE_VIEW_SELECT,
       tenant: { select: { name: true, slug: true } },
       branch: { select: { name: true, phone: true } },
       vehicle: {
@@ -67,10 +69,12 @@ export async function GET(
   });
   if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
 
-  const { reports, ...rest } = order;
+  // Intake-н raw багана болон ажилтны нэрийг ил гаргахгүй (recordedBy үргэлж null).
+  const { reports, ...rest } = omitIntakeColumns(order);
   return jsonOk({
     order: {
       ...rest,
+      intake: toIntakeView(order, { includeRecordedBy: false }),
       reports: reports.map((r) => ({
         id: r.id,
         type: r.template.type,

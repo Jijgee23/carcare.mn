@@ -1,0 +1,292 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { stageIntakeFileAction } from "@/app/_actions/order-intake";
+import { Field } from "@/app/_components/landing-ops-ui";
+import { INTAKE_NOTES_MAX, INTAKE_PHOTOS_MAX } from "@/lib/orders/order-intake";
+
+// QA #14: захиалга үүсгэх үеийн «Хүлээн авах» хэсэг. Утгууд hidden input-ээр
+// createOrderAction руу явна; үүссэний дараа бүрмөсөн түгжигдэнэ.
+
+const MAX_EDGE = 1600;
+const JPEG_QUALITY = 0.82;
+const COMPRESS_FAILED = "compress failed";
+
+/** Утасны том зургийг илгээхээс өмнө browser дээр жижигрүүлнэ (2MB хязгаар). */
+async function compressImage(file: File): Promise<File> {
+  const bitmap = await createImageBitmap(file).catch(() => {
+    throw new Error(COMPRESS_FAILED);
+  });
+  const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY));
+  if (!blob) throw new Error(COMPRESS_FAILED);
+  return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
+}
+
+async function stage(file: File): Promise<string> {
+  const fd = new FormData();
+  fd.set("file", file);
+  const res = await stageIntakeFileAction(fd);
+  if (!res.ok) throw new Error(res.message);
+  return res.path;
+}
+
+export function IntakeSection({
+  error,
+  onBusyChange,
+  className = "",
+}: {
+  error?: string;
+  onBusyChange: (busy: boolean) => void;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [notes, setNotes] = useState("");
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [signature, setSignature] = useState<string | null>(null);
+  const [uploading, setUploading] = useState<{ done: number; total: number } | null>(null);
+  const [savingSignature, setSavingSignature] = useState(false);
+  const [errors, setErrors] = useState<string[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const busy = uploading !== null || savingSignature;
+  useEffect(() => onBusyChange(busy), [busy, onBusyChange]);
+
+  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (files.length === 0) return;
+    const room = INTAKE_PHOTOS_MAX - photos.length;
+    const accepted = files.slice(0, Math.max(room, 0));
+    const nextErrors: string[] = [];
+    if (files.length > accepted.length) {
+      nextErrors.push(`Хамгийн ихдээ ${INTAKE_PHOTOS_MAX} зураг — ${files.length - accepted.length} файл алгасав.`);
+    }
+    setUploading({ done: 0, total: accepted.length });
+    for (const [i, file] of accepted.entries()) {
+      try {
+        const path = await stage(await compressImage(file));
+        setPhotos((prev) => [...prev, path]);
+      } catch (err) {
+        const message = err instanceof Error && err.message !== COMPRESS_FAILED ? err.message : "зургийг уншиж чадсангүй.";
+        nextErrors.push(`${file.name}: ${message}`);
+      }
+      setUploading({ done: i + 1, total: accepted.length });
+    }
+    setUploading(null);
+    setErrors(nextErrors);
+  }
+
+  async function onSignatureSaved(blob: Blob) {
+    setSavingSignature(true);
+    try {
+      setSignature(await stage(new File([blob], "signature.png", { type: "image/png" })));
+      setErrors([]);
+    } catch (err) {
+      setErrors([err instanceof Error ? err.message : "Гарын үсэг хадгалж чадсангүй."]);
+    } finally {
+      setSavingSignature(false);
+    }
+  }
+
+  const summary = [
+    notes.trim() ? "тэмдэглэл" : null,
+    photos.length > 0 ? `${photos.length} зураг` : null,
+    signature ? "гарын үсэг" : null,
+  ].filter(Boolean);
+  const allErrors = [...(error ? [error] : []), ...errors];
+
+  return (
+    <div className={`min-w-0 flex flex-col gap-3 ${className}`}>
+      {/* Хаасан ч бичсэн зүйл илгээгдэнэ — санамсаргүй алдахгүйн тулд. */}
+      <input type="hidden" name="intakeNotes" value={notes} />
+      {photos.map((p) => (
+        <input key={p} type="hidden" name="intakePhotoPaths" value={p} />
+      ))}
+      {signature ? <input type="hidden" name="intakeSignaturePath" value={signature} /> : null}
+
+      <div className="flex items-center gap-3 flex-wrap">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="rounded-md border border-[var(--oc-line)] px-3 py-1.5 text-sm font-medium text-[var(--oc-ink2)] hover:bg-[var(--oc-line2)]"
+        >
+          {open ? "▾" : "▸"} Хүлээн авах
+        </button>
+        <span className="text-xs text-[var(--oc-muted3)]">
+          {summary.length > 0
+            ? `Бүртгэсэн: ${summary.join(", ")}`
+            : "Машины одоогийн байдал (заавал биш). Үүсгэсний дараа засах боломжгүй."}
+        </span>
+      </div>
+
+      {open ? (
+        <div className="flex flex-col gap-4 rounded-[10px] border border-[var(--oc-line)] p-4">
+          <Field label="Тэмдэглэл" htmlFor="intakeNotesInput" hint="гүйлт, шатахуун, гэмтэл, үлдээсэн эд зүйл…">
+            <textarea
+              id="intakeNotesInput"
+              rows={5}
+              maxLength={INTAKE_NOTES_MAX}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="auth-input resize-y"
+              placeholder="Жишээ: 152,300 км, шатахуун 1/4, урд баруун хаалга зурагдсан..."
+            />
+          </Field>
+
+          <div className="flex flex-col gap-2">
+            <div className="text-xs font-medium text-[var(--oc-muted2)]">Зураг</div>
+            {photos.length > 0 ? (
+              <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                {photos.map((p) => (
+                  <div key={p} className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- /uploads нь runtime файл */}
+                    <img
+                      src={p}
+                      alt="Хүлээн авах зураг"
+                      className="aspect-square w-full rounded-md object-cover border border-[var(--oc-line)]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setPhotos((prev) => prev.filter((x) => x !== p))}
+                      aria-label="Зураг хасах"
+                      className="absolute top-1 right-1 rounded bg-black/60 px-1.5 text-xs text-white hover:bg-red-600"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <div className="flex items-center gap-3 flex-wrap">
+              <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={onPick} />
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading !== null || photos.length >= INTAKE_PHOTOS_MAX}
+                className="rounded-md border border-[var(--oc-line)] px-3 py-1.5 text-sm text-[var(--oc-ink2)] hover:bg-[var(--oc-line2)] disabled:opacity-50"
+              >
+                {uploading ? `Илгээж байна… ${uploading.done}/${uploading.total}` : "+ Зураг нэмэх"}
+              </button>
+              <span className="text-xs text-[var(--oc-muted3)]">
+                {photos.length}/{INTAKE_PHOTOS_MAX} · автоматаар жижигрүүлнэ
+              </span>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <div className="text-xs font-medium text-[var(--oc-muted2)]">Үйлчлүүлэгчийн гарын үсэг</div>
+            {signature ? (
+              <div className="flex items-center gap-3">
+                {/* eslint-disable-next-line @next/next/no-img-element -- /uploads нь runtime файл */}
+                <img src={signature} alt="Гарын үсэг" className="h-20 rounded-md border border-[var(--oc-line)] bg-white" />
+                <button type="button" onClick={() => setSignature(null)} className="text-xs text-[var(--oc-muted2)] underline">
+                  Дахин зурах
+                </button>
+              </div>
+            ) : (
+              <SignaturePad onSave={onSignatureSaved} saving={savingSignature} />
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      {allErrors.length > 0 ? (
+        <ul className="text-xs text-red-500 flex flex-col gap-0.5">
+          {allErrors.map((e, i) => (
+            <li key={i}>{e}</li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+function SignaturePad({ onSave, saving }: { onSave: (blob: Blob) => void; saving: boolean }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawing = useRef(false);
+  const [dirty, setDirty] = useState(false);
+
+  function point(e: React.PointerEvent<HTMLCanvasElement>) {
+    const c = canvasRef.current!;
+    const r = c.getBoundingClientRect();
+    return { x: ((e.clientX - r.left) * c.width) / r.width, y: ((e.clientY - r.top) * c.height) / r.height };
+  }
+
+  function onDown(e: React.PointerEvent<HTMLCanvasElement>) {
+    const ctx = canvasRef.current!.getContext("2d")!;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    drawing.current = true;
+    const p = point(e);
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#111";
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+  }
+
+  function onMove(e: React.PointerEvent<HTMLCanvasElement>) {
+    if (!drawing.current) return;
+    const ctx = canvasRef.current!.getContext("2d")!;
+    const p = point(e);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    setDirty(true);
+  }
+
+  function stop() {
+    drawing.current = false;
+  }
+
+  function clear() {
+    const c = canvasRef.current!;
+    c.getContext("2d")!.clearRect(0, 0, c.width, c.height);
+    setDirty(false);
+  }
+
+  function save() {
+    canvasRef.current!.toBlob((blob) => {
+      if (blob) onSave(blob);
+    }, "image/png");
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <canvas
+        ref={canvasRef}
+        width={600}
+        height={200}
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={stop}
+        onPointerLeave={stop}
+        className="w-full max-w-sm aspect-[3/1] rounded-md border border-[var(--oc-line)] bg-white touch-none cursor-crosshair"
+      />
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={save}
+          disabled={!dirty || saving}
+          className="rounded-md border border-[var(--oc-line)] px-3 py-1 text-sm text-[var(--oc-ink2)] hover:bg-[var(--oc-line2)] disabled:opacity-50"
+        >
+          {saving ? "Хадгалж байна…" : "Гарын үсэг хадгалах"}
+        </button>
+        <button
+          type="button"
+          onClick={clear}
+          disabled={!dirty || saving}
+          className="text-xs text-[var(--oc-muted2)] underline disabled:opacity-50"
+        >
+          Арилгах
+        </button>
+      </div>
+    </div>
+  );
+}

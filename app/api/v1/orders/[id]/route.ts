@@ -8,6 +8,7 @@ import {
   ORDER_STATUSES,
   type OrderStatus,
 } from "@/lib/orders";
+import { INTAKE_VIEW_SELECT, omitIntakeColumns, toIntakeView, type IntakeViewRow } from "@/lib/orders/order-intake-view";
 import {
   applyOrderPatchCommand,
   deleteOrderCommand,
@@ -44,6 +45,7 @@ const ORDER_DETAIL_SELECT = {
   },
   branch: { select: { id: true, name: true } },
   assignedTo: { select: { id: true, firstName: true, lastName: true } },
+  ...INTAKE_VIEW_SELECT,
   items: {
     orderBy: { createdAt: "asc" as const },
     select: {
@@ -74,6 +76,12 @@ const ORDER_DETAIL_SELECT = {
   },
 } satisfies Prisma.ServiceOrderSelect;
 
+// Intake-н raw багануудыг ил гаргахгүй — зөвхөн `intake` объект.
+function serializeOrderDetail<T extends IntakeViewRow>(order: T) {
+  const rest = omitIntakeColumns(order);
+  return { ...rest, intake: toIntakeView(order, { includeRecordedBy: true }) };
+}
+
 export async function GET(
   req: Request,
   ctx: { params: Promise<{ id: string }> },
@@ -96,7 +104,7 @@ export async function GET(
   });
 
   if (!order) return jsonError(404, "Засварын хуудас олдсонгүй.");
-  return jsonOk({ order });
+  return jsonOk({ order: serializeOrderDetail(order) });
 }
 
 export async function DELETE(
@@ -222,7 +230,7 @@ export async function PATCH(
         select: ORDER_DETAIL_SELECT,
       });
       if (!updated) return jsonError(404, "Засварын хуудас олдсонгүй.");
-      return jsonOk({ order: updated });
+      return jsonOk({ order: serializeOrderDetail(updated) });
     } catch (error) {
       if (error instanceof OrderCommandError) {
         return jsonError(error.status, error.message, {

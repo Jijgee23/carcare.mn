@@ -7,6 +7,7 @@ import { buildMeta } from "@/lib/pagination";
 import { prisma } from "@/lib/prisma";
 import { OrderCommandError } from "@/lib/orders/order-commands";
 import { createOrderCommand } from "@/lib/orders/order-create-command";
+import { readIntakeBody, validateIntakeFields, type IntakeInput } from "@/lib/orders/order-intake-server";
 import { parseCreateOrderBody } from "@/lib/orders/order-create-request";
 import { buildOrderListWhere, parseOrderListQuery } from "@/lib/orders/order-list-query";
 import { summarizeOrderProgress } from "@/lib/orders/order-progress";
@@ -107,6 +108,20 @@ export async function POST(req: Request) {
   const scopeResult = await resolveWorkingBranch(req, auth.user);
   if (scopeResult.response) return scopeResult.response;
 
+  // Хүлээн авах бүртгэл (заавал биш): зөвхөн үүсгэх үед бичигдэнэ.
+  const intakeBody = readIntakeBody((body as Record<string, unknown>).intake);
+  if (intakeBody.error) {
+    return jsonError(422, "Хүсэлт буруу.", { fieldErrors: { intake: intakeBody.error } });
+  }
+  let intake: IntakeInput | null = null;
+  if (intakeBody.fields) {
+    const checked = await validateIntakeFields(intakeBody.fields, auth.user.tenantId, auth.user.id);
+    if (checked.error) {
+      return jsonError(422, checked.error, { fieldErrors: { intake: checked.error } });
+    }
+    intake = checked.intake;
+  }
+
   try {
     const created = await createOrderCommand({
       tenantId: auth.user.tenantId,
@@ -120,6 +135,7 @@ export async function POST(req: Request) {
       appointmentId,
       estimatedDurationMinutes,
       workingBranchId: scopeResult.branchId,
+      intake,
     });
     const order = await prisma.serviceOrder.findFirst({
       where: { id: created.id, tenantId: auth.user.tenantId },

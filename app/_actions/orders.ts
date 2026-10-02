@@ -20,6 +20,7 @@ import {
   logUnexpectedActionError,
 } from "@/lib/action-errors";
 import { parseDurationInput } from "@/lib/category-duration";
+import { parseIntakeInput } from "@/lib/orders/order-intake-server";
 import {
   closeOpenOrderTimeBooking,
   openOrderTimeBooking,
@@ -321,6 +322,10 @@ export async function createOrderAction(
     data.assignedToId = user.id;
   }
   if (!data.assignedToId) errors.assignedToId = "Хариуцах мастер сонгоно уу.";
+  // QA #14: хүлээн авах хэсэг зөвхөн энд (үүсгэх үед) бичигдэнэ; update нь
+  // OrderInput-оор дамждаг тул түүнийг хэзээ ч өөрчлөхгүй.
+  const { intake, error: intakeError } = await parseIntakeInput(formData, user.tenantId, user.id);
+  if (intakeError) errors.intake = intakeError;
 
   const appointmentId = s(formData, "appointmentId") || null;
   let estimatedDurationMinutes: number | null = null;
@@ -350,6 +355,7 @@ export async function createOrderAction(
       assignedToId: data.assignedToId,
       scheduledAt: data.scheduledAt,
       notes: data.notes,
+      intake,
       appointmentId,
       estimatedDurationMinutes,
       workingBranchId: scope,

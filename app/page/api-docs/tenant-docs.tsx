@@ -233,11 +233,16 @@ Res: 200 { "orders": [{ "id": "...", "number": "...", "status": "...", "paymentS
         </Endpoint>
 
         <Endpoint method="POST" path="/api/v1/orders" auth="bearer" bearerLabel={BEARER} tags={["Эрх: orders.create", "Багц идэвхтэй байх шаардлагатай"]} title="Шинэ засварын хуудас үүсгэх.">
-          <Code>{`Req:  { "branchId": "...", "customerId": "...", "vehicleId": "...", "assignedToId": "...", "scheduledAt": "...", "notes": "..." }
+          <Code>{`Req:  { "branchId": "...", "customerId": "...", "vehicleId": "...", "assignedToId": "...", "scheduledAt": "...", "notes": "...",
+        "intake": { "notes": "...", "photoPaths": ["/uploads/..."], "signaturePath": "/uploads/..." } }
+      // intake заавал биш — машин хүлээн авах бүртгэл. ЗӨВХӨН үүсгэх үед бичигдэж, дараа нь засагдахгүй (PATCH хүлээн авахгүй).
+      // photoPaths/signaturePath нь POST /uploads (kind=intake)-ээр өөрөө байршуулсан замууд. Дээд тал нь 20 зураг, notes ≤ 5000 тэмдэгт.
       // assignedToId заавал. orders.assign эрхгүй бол илгээхгүй байж болно — өөрөө оноогдоно.
 Res:  201 { "order": {...} }
 422  { "error": "Хариуцах мастер сонгоно уу.", "fieldErrors": { "assignedToId": "..." } }   // ASSIGNEE_REQUIRED
 422  { "error": "Хүсэлт буруу.", "fieldErrors": { "branchId": "...", "customerId": "...", "vehicleId": "..." } }
+422  { "error": "Хүсэлт буруу.", "fieldErrors": { "intake": "..." } }   // intake буруу төрөлтэй
+422  { "error": "Хамгийн ихдээ 20 зураг.", "fieldErrors": { "intake": "..." } }   // intake шалгалт (тэмдэглэл урт, зураг олон/буруу/олдсонгүй)
 422  { "error": "Хүсэлт буруу.", "fieldErrors": { "branchId": "Зөвхөн өөрийн салбарт засварын хуудас үүсгэх боломжтой." } }
 403  { "error": "Та зөвхөн өөрийгөө хариуцагчаар оноож болно." }   // orders.assign эрхгүй ажилтан өөр хүн оноох гэвэл
 500  { "error": "Захиалгын дугаар үүсгэж чадсангүй. Дахин оролдоно уу." }`}</Code>
@@ -247,7 +252,10 @@ Res:  201 { "order": {...} }
           <Code>{`Res: 200 { "order": { ...list-ийн талбарууд, "paidAt", "updatedAt",
   "items": [{ "id": "...", "kind": "...", "description": "...", "quantity": 1, "unitPrice": 0, "total": 0, "serviceId": "...",
     "status": "PENDING|IN_PROGRESS|COMPLETED|CANCELLED", "cancelledAt": "..."|null, "cancelledById": "..."|null }],
-  "reports": [{ "id": "...", "createdAt": "...", "template": { "id": "...", "name": "...", "type": "..." } }] } }
+  "reports": [{ "id": "...", "createdAt": "...", "template": { "id": "...", "name": "...", "type": "..." } }],
+  "intake": { "notes": "..."|null, "photos": [{ "id": "...", "url": "/uploads/..." }], "signatureUrl": "/uploads/..."|null,
+    "recordedAt": "...", "recordedBy": "Овог Нэр"|null } | null } }
+      // intake: хүлээн авах бүртгэл (зөвхөн унших). Бүртгээгүй бол null. url-ууд нь харьцангуй зам.
 404 { "error": "Засварын хуудас олдсонгүй." }`}</Code>
         </Endpoint>
 
@@ -486,8 +494,10 @@ Res: 200 { "notifications": [{ "id": "...", "type": "...", "title": "...", "body
 
       {/* --- Файл --- */}
       <Section title="11. Файл байршуулах">
-        <Endpoint method="POST" path="/api/v1/uploads" auth="bearer" bearerLabel={BEARER} tags={["multipart/form-data"]} title="Оношилгооны зураг/гарын үсэг байршуулах.">
-          <Code>{`Req (form-data): file (заавал), kind: "diagnostics" | "signatures" (заавал биш, анхдагч "diagnostics")
+        <Endpoint method="POST" path="/api/v1/uploads" auth="bearer" bearerLabel={BEARER} tags={["multipart/form-data"]} title="Оношилгооны зураг/гарын үсэг, машин хүлээн авах зураг байршуулах.">
+          <Code>{`Req (form-data): file (заавал), kind: "diagnostics" | "signatures" | "intake" (заавал биш, анхдагч "diagnostics")
+      // kind=intake: Эрх orders.create + багц идэвхтэй шаардлагатай; файл өөрийн staging хавтсанд хадгалагдана.
+      // Буцсан url-ийг POST /orders-ийн intake.photoPaths / intake.signaturePath-д дамжуулна.
 Res:  201 { "url": "...", "size": 123456, "mime": "image/jpeg" }
 400  { "error": "Multipart form-data илгээнэ үү." } | { "error": "\`file\` талбарт зураг хавсаргана уу." }`}</Code>
         </Endpoint>

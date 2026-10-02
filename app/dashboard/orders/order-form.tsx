@@ -6,6 +6,7 @@ import {
   createOrderAction,
   updateOrderAction,
 } from "@/app/_actions/orders";
+import { IntakeSection } from "./intake-section";
 import {
   getBranchDaySchedulePreview,
   type BranchDaySchedulePreview,
@@ -176,6 +177,8 @@ export function OrderForm({
   // илгээсний дараа uncontrolled талбарыг дахин тохируулдаг тул сервер
   // validation алдаа буцахад бичсэн утга алга болдог байсан (QA #16).
   const [notes, setNotes] = useState(initial?.notes ?? "");
+  // Хүлээн авах зураг staging хийгдэж байх үед илгээхийг түр хориглоно.
+  const [intakeBusy, setIntakeBusy] = useState(false);
   const [durationValues, setDurationValues] = useState({ hours: "", minutes: "" });
   useEffect(() => {
     if (!isEdit && !initial?.scheduledAt) {
@@ -376,7 +379,7 @@ export function OrderForm({
         </div>
       ) : null}
 
-      <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 xl:grid-rows-[auto_auto_1fr]">
         <Field label="Салбар" required htmlFor="branchId" error={fe.branchId} className={FIELD_MW}>
           <Select
             id="branchId"
@@ -554,6 +557,28 @@ export function OrderForm({
             />
           </Field>
         ) : null}
+
+        <Field label="Тэмдэглэл" htmlFor="notes" hint="заавал биш" error={fe.notes} className="sm:col-span-2 lg:col-span-3 xl:col-span-2 xl:col-start-1 max-w-2xl self-start">
+          <textarea
+            id="notes"
+            name="notes"
+            rows={2}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            className="auth-input resize-y"
+            placeholder="Гомдол, тусгай хүсэлт..."
+          />
+        </Field>
+
+        {/* Хүлээн авах: xl дээр үйлчлүүлэгч/машины доор 2 мөр эзэлнэ (зүүн талд
+            огноо/хугацаа, тэмдэглэл); бусад өргөнд талбаруудын доор бүтэн мөр. */}
+        {!isEdit ? (
+          <IntakeSection
+            error={fe.intake}
+            onBusyChange={setIntakeBusy}
+            className="sm:col-span-2 lg:col-span-3 xl:col-span-2 xl:col-start-3 xl:row-start-2 xl:row-span-2"
+          />
+        ) : null}
       </div>
 
       {vehicles.find((v) => v.id === vehicleId)?.isPostpaid ? (
@@ -577,23 +602,11 @@ export function OrderForm({
         defaultCustomerId={customerId}
       />
 
-      <Field label="Тэмдэглэл" htmlFor="notes" hint="заавал биш" error={fe.notes} className="max-w-2xl">
-        <textarea
-          id="notes"
-          name="notes"
-          rows={2}
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          className="auth-input resize-y"
-          placeholder="Гомдол, тусгай хүсэлт..."
-        />
-      </Field>
-
       <div className="flex gap-2 pt-3 border-t border-[var(--oc-line2)]">
         <BtnLink href={backHref} variant="ghost">
           ← Буцах
         </BtnLink>
-        <Btn type="submit" disabled={pending}>
+        <Btn type="submit" disabled={pending || intakeBusy}>
           {pending ? "..." : isEdit ? "Хадгалах" : "Засварын хуудас үүсгэх"}
         </Btn>
       </div>

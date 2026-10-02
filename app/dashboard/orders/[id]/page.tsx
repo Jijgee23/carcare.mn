@@ -36,6 +36,7 @@ import { prisma } from "@/lib/prisma";
 import { calculateServiceItemDurationMinutes } from "@/lib/service-duration";
 import type { QPayBankUrl } from "@/lib/qpay-tenant";
 import { AddItemForm } from "./add-item-form";
+import { IntakeRecord } from "./intake-record";
 import { OrderItems } from "./order-items";
 import { OrderPaymentsList } from "./order-payments-list";
 import { QPayWidget } from "./qpay-widget";
@@ -87,6 +88,11 @@ export default async function OrderDetailPage({
         categories: {
           orderBy: { createdAt: "asc" },
         },
+        intakePhotos: {
+          orderBy: { createdAt: "asc" },
+          select: { id: true, path: true },
+        },
+        intakeRecordedBy: { select: { firstName: true, lastName: true } },
         customer: { select: { id: true, fullName: true, phone: true } },
         vehicle: {
           select: {
@@ -613,6 +619,23 @@ export default async function OrderDetailPage({
                   {order.completedAt.toLocaleString("mn-MN", { hour12: false })}
                 </Row>
               ) : null}
+              <div className="pt-2 border-t border-[var(--oc-line)]">
+                <IntakeRecord
+                  notes={order.intakeNotes}
+                  photos={order.intakePhotos}
+                  signaturePath={order.intakeSignaturePath}
+                  recordedAtLabel={
+                    order.intakeRecordedAt
+                      ? order.intakeRecordedAt.toLocaleString("mn-MN", { timeZone: "Asia/Ulaanbaatar", hour12: false })
+                      : null
+                  }
+                  recordedBy={
+                    order.intakeRecordedBy
+                      ? [order.intakeRecordedBy.lastName, order.intakeRecordedBy.firstName].filter(Boolean).join(" ")
+                      : null
+                  }
+                />
+              </div>
               {order.notes ? (
                 <div className="pt-2 border-t border-[var(--oc-line)]">
                   <div className="text-[var(--oc-muted3)] text-xs mb-1">Тэмдэглэл</div>

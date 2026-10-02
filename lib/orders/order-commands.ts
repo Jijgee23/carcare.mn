@@ -6,6 +6,7 @@ import { parseDurationInput, MIN_CATEGORY_DURATION_MINUTES, MAX_CATEGORY_DURATIO
 import { calculateServiceItemDurationMinutes, type ServiceDurationItem } from "@/lib/service-duration";
 import { closeOpenOrderTimeBooking, openOrderTimeBooking, withOrderTransaction } from "@/lib/order-time-booking";
 import { logAudit } from "@/lib/audit";
+import { deleteUpload } from "@/lib/storage";
 import { prisma, type PrismaTransactionClient } from "@/lib/prisma";
 import { recomputeOrderTotal } from "@/lib/orders/order-item-commands";
 import { paidLedger } from "@/lib/orders/order-payment-totals";
@@ -525,7 +526,8 @@ export async function deleteOrderCommand(input: {
   scope?: OrderCommandScope;
 }): Promise<{ orderId: string; number: string | null }> {
   const { actor, orderId, scope } = input;
-  return withOrderTransaction(
+  let intakeFilePaths: string[] = [];
+  const result = await withOrderTransaction(
     actor.tenantId,
     orderId,
     { id: true, number: true, branchId: true, assignedToId: true },
@@ -569,6 +571,14 @@ export async function deleteOrderCommand(input: {
           after: { delta: `+${item.quantity.toString()}`, reason: "ORDER_DELETE" },
         }, tx);
       }
+      // Хүлээн авах зургийн мөрүүд cascade-аар устана (гарын үсэг нь багана); файлыг commit-ийн дараа
+      // устгахын тулд замуудыг энд авна (QA #14).
+      const [intakePhotos, intakeOrder] = await Promise.all([
+        tx.serviceOrderIntakePhoto.findMany({ where: { orderId }, select: { path: true } }),
+        tx.serviceOrder.findUnique({ where: { id: orderId }, select: { intakeSignaturePath: true } }),
+      ]);
+      intakeFilePaths = intakePhotos.map((photo) => photo.path);
+      if (intakeOrder?.intakeSignaturePath) intakeFilePaths.push(intakeOrder.intakeSignaturePath);
       await tx.serviceOrder.delete({ where: { id: orderId, tenantId: actor.tenantId } });
       await logAudit(
         {
@@ -584,6 +594,14 @@ export async function deleteOrderCommand(input: {
       return { orderId, number: order.number };
     },
   );
+  // Transaction амжилттай бол л файлыг устгана — rollback болвол зураг хэвээр.
+  // Файл устгах алдаа захиалга устгалтыг буцаахгүй.
+  await Promise.all(
+    intakeFilePaths.map((path) =>
+      deleteUpload(path).catch((e) => console.warn("[order-delete] intake file:", path, e)),
+    ),
+  );
+  return result;
 }
 
 /** Adapter helper for the FormData action's hours/minutes inputs. */
