@@ -382,6 +382,7 @@ export async function registerAppointmentByStaff(
 
   const branchId = s(formData, "branchId");
   const customerId = s(formData, "customerId");
+  const vehicleId = s(formData, "vehicleId") || null;
   const requestedRaw = s(formData, "requestedAt");
   const note = s(formData, "note");
 
@@ -407,6 +408,7 @@ export async function registerAppointmentByStaff(
       actor: actorFrom(user),
       branchId,
       customerId,
+      vehicleId,
       requestedAt: requestedAt!,
       note: note || null,
       categoryIds: requestedCategoryIds,

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { enforceRateLimit, upstreamErrorResponse } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { HurService } from "@/lib/hur_service";
+import { findTenantCustomerIdByPhone, toLookupOwner } from "@/lib/hur-lookup";
 import { prisma } from "@/lib/prisma";
 import { normalizePlate, vehicleToLookupInfo } from "@/lib/vehicles";
 
@@ -51,26 +52,39 @@ export async function GET(req: Request) {
       orderBy: { updatedAt: "desc" },
       select: { customer: { select: { fullName: true, phone: true } } },
     });
+    // PII: бүтэн утас/регистр browser-д гарахгүй (QA #17) — маскалсан утас +
+    // харьяаллын төрөл л гарна. Бүртгэх үйлдлийг сервер action өөрөө дахин шийднэ.
     const owner = ownerLink?.customer
-      ? {
+      ? toLookupOwner({
           firstName: ownerLink.customer.fullName || null,
           lastName: null,
           phone: ownerLink.customer.phone,
           regnum: existing.ownerRegnum,
           type: null,
-          address: null,
-        }
+        })
+      : null;
+    const matchedCustomerId = ownerLink?.customer
+      ? await findTenantCustomerIdByPhone(session.tenantId, ownerLink.customer.phone)
       : null;
     return NextResponse.json({
       vehicle: { ...vehicleToLookupInfo(existing), owner },
       source: "global",
       registered: Boolean(ownerLink),
+      matchedCustomerId,
     });
   }
 
   try {
     const vehicle = await HurService.getVehicle(canonPlate);
-    return NextResponse.json({ vehicle, source: "hur" });
+    const { owner: rawOwner, ...rest } = vehicle;
+    const matchedCustomerId = rawOwner?.phone
+      ? await findTenantCustomerIdByPhone(session.tenantId, rawOwner.phone)
+      : null;
+    return NextResponse.json({
+      vehicle: { ...rest, owner: rawOwner ? toLookupOwner(rawOwner) : null },
+      source: "hur",
+      matchedCustomerId,
+    });
   } catch (e) {
     return upstreamErrorResponse("hur-lookup", e, "HUR алдаа гарлаа.");
   }

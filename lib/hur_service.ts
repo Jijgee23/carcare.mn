@@ -1,4 +1,5 @@
 import { PublicUpstreamError } from "@/lib/action-errors";
+import { hurUserMessage } from "@/lib/hur-message";
 
 /**
  * HUR (МАК-ын vehicle registry) API-тай харьцах wrapper.
@@ -171,7 +172,7 @@ function parseVehicleResponse(raw: unknown, fallbackPlate: string): HurVehicle {
 
   if (typeof block.resultCode === "number" && block.resultCode !== 0) {
     const msg = block.resultMessage || "HUR алдаа";
-    throw new PublicUpstreamError(`HUR: ${msg}`);
+    throw new PublicUpstreamError(hurUserMessage(msg));
   }
 
   const r = (block.response ?? (raw as Record<string, unknown>)) as Record<

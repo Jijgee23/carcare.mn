@@ -34,3 +34,12 @@ test("returns zeroes for an order with no actionable items", () => {
     { total: 0, completed: 0 },
   );
 });
+
+test("completing an item that never started stamps startedAt too", async () => {
+  const { serviceItemTimingPatch } = await import("../lib/orders");
+  const patch = serviceItemTimingPatch("COMPLETED", null);
+  assert.ok(patch.startedAt instanceof Date);
+  assert.ok(patch.completedAt instanceof Date);
+  const kept = serviceItemTimingPatch("COMPLETED", new Date("2026-09-28T08:00:00Z"));
+  assert.equal(kept.startedAt, undefined);
+});

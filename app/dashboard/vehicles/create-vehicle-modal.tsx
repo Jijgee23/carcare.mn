@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { quickCreateCustomerAction, quickCreateVehicleAction } from "@/app/_actions/quick-create";
+import { quickCreateCustomerFromPlateAction, quickCreateVehicleAction } from "@/app/_actions/quick-create";
 import { Field, FormError } from "@/app/_components/auth-shell";
 import {
   CreateCustomerModal,
@@ -14,11 +14,8 @@ import { Select } from "@/app/_components/select";
 import { useToast } from "@/app/_components/toast";
 import { useRouter } from "next/navigation";
 import { customerLabel } from "@/lib/customers";
-import {
-  type HurVehicle,
-  normalizeWheelPosition,
-  ownerKindFromRegnum,
-} from "@/lib/hur_service";
+import { normalizeWheelPosition } from "@/lib/hur_service";
+import type { LookupVehicle } from "@/lib/hur-lookup";
 import { NO_PLATE } from "@/lib/vehicle-plate";
 
 // Монгол улсын дугаарын хэлбэр: 4 цифр + 3 үсэг (Кирилл эсвэл Латин) —
@@ -123,7 +120,7 @@ function CreateVehicleForm({
 
   const [hurLoading, setHurLoading] = useState(false);
   const [hurError, setHurError] = useState<string | null>(null);
-  const [hurInfo, setHurInfo] = useState<HurVehicle | null>(null);
+  const [hurInfo, setHurInfo] = useState<LookupVehicle | null>(null);
   const [hurSource, setHurSource] = useState<"global" | "hur">("hur");
   const [alreadyRegistered, setAlreadyRegistered] = useState(false);
   const [detailsExpanded, setDetailsExpanded] = useState(false);
@@ -155,10 +152,7 @@ function CreateVehicleForm({
     if (!hurInfo?.owner?.phone) return;
     setRegisteringOwner(true);
     try {
-      const res = await quickCreateCustomerAction({
-        fullName: `${hurInfo.owner.lastName ?? ""} ${hurInfo.owner.firstName ?? ""}`.trim(),
-        phone: hurInfo.owner.phone,
-      });
+      const res = await quickCreateCustomerFromPlateAction({ plate: trimmedPlate });
       if (res.ok && res.customer) {
         setCustomersList((prev) => [res.customer!, ...prev]);
         setCustomerId(res.customer.id);
@@ -189,14 +183,6 @@ function CreateVehicleForm({
     setAlreadyRegistered(false);
   }
 
-  function matchCustomerByPhone(phone: string | null): string | null {
-    if (!phone) return null;
-    const normalized = phone.replace(/\D/g, "");
-    if (!normalized) return null;
-    const found = customersList.find((c) => c.phone.replace(/\D/g, "") === normalized);
-    return found?.id ?? null;
-  }
-
   useEffect(() => {
     if (!isValidPlate) return;
 
@@ -215,7 +201,7 @@ function CreateVehicleForm({
         if (!res.ok) {
           throw new Error(data?.error ?? "HUR-аас мэдээлэл татаж чадсангүй.");
         }
-        const vehicle = data.vehicle as HurVehicle;
+        const vehicle = data.vehicle as LookupVehicle;
         setHurInfo(vehicle);
         // Дутуу ирсэн мэдээллийг гараар нөхөх талбарт урьдчилан бөглөнө.
         setMake(vehicle.make ?? "");
@@ -224,9 +210,10 @@ function CreateVehicleForm({
         setVin(vehicle.vin ?? "");
         setHurSource(data.source === "global" ? "global" : "hur");
         setAlreadyRegistered(Boolean(data.registered));
-        if (!customerId && vehicle.owner?.phone) {
-          const matched = matchCustomerByPhone(vehicle.owner.phone);
-          if (matched) setCustomerId(matched);
+        // Сервер tenant-ийн үйлчлүүлэгчийг утсаар нь тааруулж id-г өгнө.
+        const matchedId = data.matchedCustomerId as string | null | undefined;
+        if (!customerId && matchedId && customersList.some((c) => c.id === matchedId)) {
+          setCustomerId(matchedId);
         }
       } catch (e) {
         if (controller.signal.aborted) return;
@@ -262,6 +249,7 @@ function CreateVehicleForm({
               fuelType: hurInfo.fuelType ?? null,
               wheelPosition: hurInfo.wheelPosition ?? null,
               customerId,
+              fromLookup: true,
             }
           : {
               plate: noPlate ? NO_PLATE : trimmedPlate,
@@ -288,7 +276,7 @@ function CreateVehicleForm({
   }
 
   const normalizedWheel = hurInfo ? normalizeWheelPosition(hurInfo.wheelPosition) : null;
-  const ownerKind = hurInfo?.owner ? ownerKindFromRegnum(hurInfo.owner.regnum) : null;
+  const ownerKind = hurInfo?.owner ? hurInfo.owner.kind ?? null : null;
   // Ижил дугаартай машин бүртгэлд байгаа ч өөр эзэнд шинээр бүртгэж болно —
   // анхааруулга л харуулна, хаахгүй.
   const hurComplete = Boolean(hurInfo?.make && hurInfo?.model);
@@ -333,6 +321,7 @@ function CreateVehicleForm({
       <>
       <Field
         label="Улсын дугаар"
+        required={!noPlate}
         htmlFor="cv-plate"
         hint={
           hurLoading
@@ -466,7 +455,7 @@ function CreateVehicleForm({
                 : "Мэдээллийг гараар оруулна уу."}
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Марк" htmlFor="cv-make" error={fieldErrors.make}>
+            <Field label="Марк" required htmlFor="cv-make" error={fieldErrors.make}>
               <input
                 id="cv-make"
                 type="text"
@@ -477,7 +466,7 @@ function CreateVehicleForm({
                 placeholder="Toyota"
               />
             </Field>
-            <Field label="Загвар" htmlFor="cv-model" error={fieldErrors.model}>
+            <Field label="Загвар" required htmlFor="cv-model" error={fieldErrors.model}>
               <input
                 id="cv-model"
                 type="text"
@@ -500,7 +489,7 @@ function CreateVehicleForm({
                 placeholder="2015"
               />
             </Field>
-            <Field label={noPlate ? "VIN (арлын дугаар)" : "VIN"} htmlFor="cv-vin" error={fieldErrors.vin}>
+            <Field label={noPlate ? "VIN (арлын дугаар)" : "VIN"} required={noPlate} htmlFor="cv-vin" error={fieldErrors.vin}>
               <input
                 id="cv-vin"
                 type="text"
@@ -513,7 +502,7 @@ function CreateVehicleForm({
         </div>
       ) : null}
 
-      <Field label="Эзэмшигч" htmlFor="cv-customerId" error={fieldErrors.customerId}>
+      <Field label="Эзэмшигч" required htmlFor="cv-customerId" error={fieldErrors.customerId}>
         <div className="flex items-center gap-2">
           <Select
             id="cv-customerId"

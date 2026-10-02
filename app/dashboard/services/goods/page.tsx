@@ -5,8 +5,8 @@ export const metadata = { title: "Сэлбэг / Бараа — Үйлчилгэ
 export default async function GoodsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; sort?: string; dir?: string }>;
 }) {
-  const { page } = await searchParams;
-  return <ServiceList type="GOODS" pageParam={page} />;
+  const { page, sort, dir } = await searchParams;
+  return <ServiceList type="GOODS" pageParam={page} sortParam={sort} dirParam={dir} />;
 }

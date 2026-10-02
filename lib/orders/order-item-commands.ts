@@ -140,11 +140,11 @@ export function isOrderItemKindCompatibleWithService(kind: ItemKind, serviceType
 }
 
 export async function recomputeOrderTotal(tx: PrismaTransactionClient, orderId: string): Promise<Prisma.Decimal> {
-  const items = await tx.serviceItem.findMany({
+  const agg = await tx.serviceItem.aggregate({
     where: { orderId, status: { not: "CANCELLED" } },
-    select: { total: true },
+    _sum: { total: true },
   });
-  const total = items.reduce((sum, item) => sum.plus(item.total), new Prisma.Decimal(0));
+  const total = agg._sum.total ?? new Prisma.Decimal(0);
   assertServiceOrderTotal(total);
   const order = await tx.serviceOrder.update({
     where: { id: orderId },

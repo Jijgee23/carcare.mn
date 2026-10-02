@@ -2,7 +2,7 @@ import type { Prisma } from "@/app/generated/prisma/client";
 import { normalizePhone } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
 import type { PrismaTransactionClient } from "@/lib/prisma";
-import { isNoPlate } from "@/lib/vehicle-plate";
+import { isNoPlate, normalizePlate } from "@/lib/vehicle-plate";
 
 type Client = PrismaTransactionClient;
 
@@ -72,25 +72,9 @@ export type VehicleAttrs = {
   mileage?: number | null;
 };
 
-// Латин ↔ кирилл нүдэнд ижил харагдах үсгүүд. Монгол дугаарын үсэг кирилл тул
-// латин хувилбарыг кирилл рүү хөрвүүлж канон болгоно — "1234ABC" (латин) болон
-// "1234АВС" (кирилл) нэг л машин.
-const PLATE_LATIN_TO_CYRILLIC: Record<string, string> = {
-  A: "А", B: "В", C: "С", E: "Е", H: "Н", K: "К",
-  M: "М", O: "О", P: "Р", T: "Т", X: "Х", Y: "У",
-};
-
-/**
- * Улсын дугаарын канон формат: том үсэг, зай/тэмдэгтгүй, латин төстэй үсгийг
- * кирилл болгоно. Ижил эзний мөрийг тааруулах, HUR prefill хайх гол түлхүүр
- * тул бүх бүртгэл/хайлт үүгээр нормчлогдох ёстой.
- */
-export function normalizePlate(p: string): string {
-  return p
-    .toUpperCase()
-    .replace(/[^0-9A-ZА-ЯЁӨҮ]/g, "")
-    .replace(/[ABCEHKMOPTXY]/g, (ch) => PLATE_LATIN_TO_CYRILLIC[ch] ?? ch);
-}
+// normalizePlate нь prisma-гүй `lib/vehicle-plate.ts`-д (pure query builder-ууд
+// ашиглана); энд дахин экспортолно.
+export { normalizePlate };
 
 /**
  * Global Vehicle бичлэгийг HUR lookup-ийн хариутай ижил (PublicHurVehicle)
@@ -129,6 +113,15 @@ export function vehicleToLookupInfo(v: {
 export function normalizeVin(v: string | null | undefined): string | null {
   const t = (v ?? "").trim().toUpperCase();
   return t || null;
+}
+
+/** 17 тэмдэгт ISO VIN (I/O/Q-гүй) эсвэл Япон рамын дугаар (нэг зураастай, зураасгүй 9–14 тэмдэгт). */
+export function isValidVin(v: string): boolean {
+  const t = v.trim().toUpperCase();
+  if (/^[A-HJ-NPR-Z0-9]{17}$/.test(t)) return true;
+  if (!/^[A-Z0-9]+(-[A-Z0-9]+)?$/.test(t)) return false;
+  const len = t.replace(/-/g, "").length;
+  return len >= 9 && len <= 14;
 }
 
 // Олдсон машины хоосон талбарыг шинэ мэдээллээр баяжуулна (байгаа утгыг

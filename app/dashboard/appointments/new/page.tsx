@@ -28,7 +28,7 @@ export default async function NewAppointmentPage({
       ? initialScheduledAt
       : null;
 
-  const [branches, customers, categories] = await Promise.all([
+  const [branches, customers, vehicles, categories] = await Promise.all([
     prisma.branch.findMany({
       where: {
         tenantId: user.tenantId,
@@ -49,6 +49,16 @@ export default async function NewAppointmentPage({
       orderBy: { fullName: "asc" },
       select: { id: true, fullName: true, phone: true },
     }),
+    prisma.tenantVehicle
+      .findMany({
+        where: { tenantId: user.tenantId, isActive: true },
+        orderBy: { createdAt: "desc" },
+        select: {
+          customerId: true,
+          vehicle: { select: { id: true, plate: true, make: true, model: true } },
+        },
+      })
+      .then((rows) => rows.map((r) => ({ ...r.vehicle, customerId: r.customerId }))),
     prisma.category
       .findMany({
         where: { tenantId: user.tenantId, isActive: true },
@@ -99,6 +109,7 @@ export default async function NewAppointmentPage({
             openWeekdays: openWeekdaysOf(b),
           }))}
           customers={customers}
+          vehicles={vehicles}
           categories={categories}
           defaultBranchId={scopeBranchId ?? sp.branchId ?? undefined}
           initialScheduledAt={validInitialScheduledAt?.toISOString()}

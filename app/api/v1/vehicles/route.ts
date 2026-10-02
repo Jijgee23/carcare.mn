@@ -78,7 +78,7 @@ export async function POST(req: Request) {
   }
   if (!body || typeof body !== "object") return jsonError(400, "Body буруу.");
 
-  const { plate, vin, make, model, year, mileage, customerId } = body as Record<
+  const { plate, vin, make, model, year, mileage, customerId, fromLookup } = body as Record<
     string,
     unknown
   >;
@@ -111,6 +111,9 @@ export async function POST(req: Request) {
       },
       rejectDuplicate: false,
       enforceYearUpperBound: false,
+      // HUR/global lookup-аас бөглөсөн бол регистрийг сервер талд шийднэ
+      // (dashboard action-тай ижил; masked регистрийг команд null болгодог).
+      resolveOwnerRegnum: fromLookup === true,
     });
   } catch (e) {
     if (e instanceof VehicleCommandError) {

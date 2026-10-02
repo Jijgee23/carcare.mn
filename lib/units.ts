@@ -14,3 +14,8 @@ export const DEFAULT_UNITS: { name: string; code: string | null }[] = [
 export const SYSTEM_UNIT_NAMES = new Set<string>(["хүн/цаг"]);
 
 export const DURATION_UNIT_NAMES = new Set(["мин", "цаг", "өдөр"]);
+
+/** Шинэ бичлэгийн анхдагч хэмжих нэгж: сэлбэг → `ширхэг`, бусад → `хүн/цаг`. */
+export function defaultUnitNameFor(type: string): string {
+  return type === "GOODS" ? "ширхэг" : "хүн/цаг";
+}

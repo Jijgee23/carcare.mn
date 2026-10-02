@@ -24,6 +24,7 @@ import {
   type PaymentStatus,
 } from "@/lib/orders";
 import { prisma } from "@/lib/prisma";
+import { formatShortDateTime, parseSort } from "@/lib/list-sort";
 import { BulkOrdersTable, type BulkOrderRow } from "./bulk-orders-table";
 
 export const metadata = {
@@ -44,6 +45,8 @@ export default async function OrdersPage({
     dateFrom?: string;
     dateTo?: string;
     page?: string;
+    sort?: string;
+    dir?: string;
   }>;
 }) {
   const user = await requireUser();
@@ -61,7 +64,20 @@ export default async function OrdersPage({
     dateFrom = "",
     dateTo = "",
     page: pageParam,
+    sort: sortParam,
+    dir: dirParam,
   } = await searchParams;
+  const sort = parseSort(
+    { sort: sortParam, dir: dirParam },
+    ["date", "amount", "created"] as const,
+    { key: "created", dir: "desc" },
+  );
+  const orderBy: Prisma.ServiceOrderOrderByWithRelationInput =
+    sort.key === "date"
+      ? { scheduledAt: { sort: sort.dir, nulls: "last" } }
+      : sort.key === "amount"
+        ? { totalAmount: { sort: sort.dir, nulls: "last" } }
+        : { createdAt: sort.dir };
   const status =
     statusParam && (ORDER_STATUSES as readonly string[]).includes(statusParam)
       ? (statusParam as OrderStatus)
@@ -111,7 +127,7 @@ export default async function OrdersPage({
     await Promise.all([
     prisma.serviceOrder.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      orderBy: [orderBy, { id: "asc" }],
       skip,
       take,
       include: {
@@ -191,14 +207,7 @@ export default async function OrdersPage({
       ? `${o.assignedTo.lastName} ${o.assignedTo.firstName}`
       : null,
     scheduledAtLabel: o.scheduledAt
-      ? o.scheduledAt.toLocaleString("mn-MN", {
-          year: "numeric",
-          month: "short",
-          day: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: false,
-        })
+      ? formatShortDateTime(o.scheduledAt)
       : null,
     totalLabel: formatTugrik(o.totalAmount ? o.totalAmount.toString() : null),
     paymentStatus: o.paymentStatus as PaymentStatus,
@@ -340,6 +349,7 @@ export default async function OrdersPage({
             canBulkEdit={canBulkEdit}
             canAssign={canAssign}
             currentUserId={user.id}
+            sort={sort}
           />
         )}
 
@@ -357,6 +367,8 @@ export default async function OrdersPage({
             postpaid,
             dateFrom,
             dateTo,
+            sort: sortParam ?? "",
+            dir: dirParam ?? "",
           }}
         />
       </div>

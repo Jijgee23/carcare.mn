@@ -220,8 +220,10 @@ export function Field({
   error,
   children,
   className = "",
+  required,
 }: {
   label: ReactNode;
+  required?: boolean;
   htmlFor?: string;
   hint?: string;
   error?: string;
@@ -232,6 +234,7 @@ export function Field({
     <div className={`flex flex-col gap-1.5 ${className}`}>
       <label htmlFor={htmlFor} className="text-sm font-medium text-white/70">
         {label}
+        {required ? <span className="text-red-400" aria-hidden> *</span> : null}
       </label>
       {children}
       {error ? (

@@ -168,7 +168,8 @@ export function canChangeServiceItemStatus(status: ServiceItemStatus): boolean {
  * солигддог тул "анх удаа" биш "одоогийн төлөвт нийцсэн" гэж үзнэ:
  * PENDING руу буцвал хоёуланг нь цэвэрлэнэ; IN_PROGRESS анх удаа ороход л
  * `startedAt` тавигдана (дараа дахин орвол ХЭВЭЭР — анхны эхэлсэн цагаа
- * хадгална); COMPLETED болгонд `completedAt` ШИНЭЧЛЭГДЭНЭ. CANCELLED-д
+ * хадгална); COMPLETED болгонд `completedAt` ШИНЭЧЛЭГДЭНЭ, `startedAt`
+ * байхгүй (PENDING→COMPLETED шууд) бол түүнийг ч мөн тавина. CANCELLED-д
  * хүрэхгүй (өөр action-аар зохицуулагдана).
  */
 export function serviceItemTimingPatch(
@@ -179,7 +180,10 @@ export function serviceItemTimingPatch(
   if (nextStatus === "IN_PROGRESS") {
     return { startedAt: currentStartedAt ?? new Date(), completedAt: null };
   }
-  if (nextStatus === "COMPLETED") return { completedAt: new Date() };
+  if (nextStatus === "COMPLETED") {
+    const now = new Date();
+    return currentStartedAt ? { completedAt: now } : { startedAt: now, completedAt: now };
+  }
   return {};
 }
 

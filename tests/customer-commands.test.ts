@@ -196,3 +196,33 @@ test("P2002 is handled as a phone conflict in both create and update, matching t
   const p2002Occurrences = commandSource.match(/code === "P2002"/g) ?? [];
   assert.equal(p2002Occurrences.length, 2, "create and update must each catch P2002");
 });
+
+test("full name is capped at 100 characters", () => {
+  const long = commands.validateCustomerInput({ phone: "99112233", fullName: "а".repeat(101) });
+  assert.equal(long.fieldErrors.fullName, "Нэр 100 тэмдэгтээс хэтрэхгүй.");
+  const ok = commands.validateCustomerInput({ phone: "99112233", fullName: "а".repeat(100) });
+  assert.equal(ok.fieldErrors.fullName, undefined);
+});
+
+test("an unchanged over-long existing name is not re-validated on update", () => {
+  const longName = "а".repeat(150);
+  const unchanged = commands.validateCustomerInput(
+    { phone: "99112233", fullName: ` ${longName} ` },
+    { existingFullName: longName },
+  );
+  assert.equal(unchanged.fieldErrors.fullName, undefined);
+  const changed = commands.validateCustomerInput(
+    { phone: "99112233", fullName: longName + "б" },
+    { existingFullName: longName },
+  );
+  assert.equal(changed.fieldErrors.fullName, "Нэр 100 тэмдэгтээс хэтрэхгүй.");
+  // create (no existing) always enforces
+  const created = commands.validateCustomerInput({ phone: "99112233", fullName: longName });
+  assert.equal(created.fieldErrors.fullName, "Нэр 100 тэмдэгтээс хэтрэхгүй.");
+});
+
+test("customer update loads the stored name before validating", () => {
+  const body = src("../lib/customers/customer-commands.ts");
+  const start = body.indexOf("export async function updateCustomerCommand");
+  assert.match(body.slice(start), /existingFullName: stored\?\.fullName/);
+});

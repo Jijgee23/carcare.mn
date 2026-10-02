@@ -41,6 +41,7 @@ export function buildEmployeeWhere(
   const now = new Date();
   if (status === "active") {
     where.isActive = true;
+    where.verified = true;
     and.push({ OR: [{ activeUntil: null }, { activeUntil: { gt: now } }] });
   } else if (status === "inactive") {
     where.isActive = false;

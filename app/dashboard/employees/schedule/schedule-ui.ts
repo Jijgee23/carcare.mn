@@ -60,3 +60,20 @@ export function formatHours(n: number): string {
 export function formatMonthDay(dateStr: string): string {
   return `${dateStr.slice(5, 7)}/${dateStr.slice(8, 10)}`;
 }
+
+/** Мөрийн нийт цаг ба ээлжийн тоо. Цаггүй (амралт) segment ээлж биш. */
+export function rowShiftStats(
+  cells: { segments: { startTime: string | null; endTime: string | null }[] }[],
+): { hours: number; shiftCount: number } {
+  let hours = 0;
+  let shiftCount = 0;
+  for (const cell of cells) {
+    for (const seg of cell.segments) {
+      const h = segmentHours(seg.startTime, seg.endTime);
+      if (h === null || h <= 0) continue;
+      shiftCount++;
+      hours += h;
+    }
+  }
+  return { hours, shiftCount };
+}

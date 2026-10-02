@@ -72,3 +72,16 @@ test("QPay command and actions preserve provider/control-flow safety guards", as
   assert.match(qpayCore, /checkPaymentExact/);
   assert.doesNotMatch(qpayCore, /parseFloat/);
 });
+
+test("cash tender above the balance is applied up to the balance with change", async () => {
+  const commands = await import("../lib/orders/order-payment-commands");
+  const D = (await import("../app/generated/prisma/client")).Prisma.Decimal;
+  const r = commands.applyTender("CASH", new D("300000"), new D("230000"), true);
+  assert.equal(r?.applied.toString(), "230000");
+  assert.equal(r?.change.toString(), "70000");
+  assert.equal(commands.applyTender("CARD", new D("300000"), new D("230000"), true), null);
+  assert.equal(commands.applyTender("CASH", new D("300000"), new D("230000"), false), null);
+  const exact = commands.applyTender("CARD", new D("100"), new D("230000"), false);
+  assert.equal(exact?.applied.toString(), "100");
+  assert.equal(exact?.change.toString(), "0");
+});

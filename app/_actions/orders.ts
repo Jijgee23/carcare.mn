@@ -928,9 +928,11 @@ export async function addOrderItemAction(orderId: string, _prev: OrderActionStat
   try {
     const created = await addOrderItemCommand({ actor: user, orderId, kind: s(formData, "kind") as ItemKind, description: s(formData, "description"), quantity, unitPrice, serviceId, diagnosticTemplateId, scope: workingBranchScopeId(user) });
     revalidatePath(`/dashboard/orders/${orderId}`);
+    // Stock changes for goods/part lines; labor/diagnostic lines change the
+    // service's "used" count (delete/archive gating). Narrow, non-layout paths only.
     if (created.serviceId) {
-      revalidatePath("/dashboard/services", "layout");
       revalidatePath(`/dashboard/services/${created.serviceId}`);
+      revalidatePath(created.kind === "PART" ? "/dashboard/services/goods" : "/dashboard/services/labor");
     }
     return { ok: true };
   } catch (e) { return orderActionErrorResult(e); }

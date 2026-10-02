@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   APPOINTMENT_STATUS_BADGE,
   APPOINTMENT_STATUS_LABEL,
+  isAppointmentOverdue,
   type AppointmentStatus,
 } from "@/lib/appointments";
 import { customerLabel } from "@/lib/customers";
@@ -140,8 +141,13 @@ export function buildDayRows(
       const appt = row.appt;
       const issue = appt ? issueBySourceId.get(`appointment:${appt.id}`) : undefined;
       const name = appt ? appointmentDisplayName(appt) : "—";
-      const statusLabel = appt ? APPOINTMENT_STATUS_LABEL[appt.status] : "";
-      const statusClass = appt ? APPOINTMENT_STATUS_BADGE[appt.status] : "";
+      const overdue = appt ? isAppointmentOverdue(appt) : false;
+      const statusLabel = appt ? (overdue ? "Хугацаа хэтэрсэн" : APPOINTMENT_STATUS_LABEL[appt.status]) : "";
+      const statusClass = appt
+        ? overdue
+          ? "bg-[var(--oc-panel2)] text-[var(--oc-muted2)] border border-[var(--oc-line)]"
+          : APPOINTMENT_STATUS_BADGE[appt.status]
+        : "";
       const paymentStatus = appt ? appointmentBookingPaymentStatus(appt) : null;
 
       const showConfirmReject = appt?.status === "PENDING" && canRespondAppointments;
@@ -189,7 +195,11 @@ export function buildDayRows(
           {showConfirmReject && appt ? (
             <AppointmentConfirmReject
               appointmentId={appt.id}
-              canConfirm={paymentStatus === "NOT_REQUIRED" || paymentStatus === "PAID"}
+              canConfirm={
+                !overdue &&
+                (paymentStatus === "NOT_REQUIRED" || paymentStatus === "PAID")
+              }
+              overdue={overdue}
             />
           ) : null}
           {showArrivalActions && appt ? (

@@ -63,6 +63,8 @@ export type CreateCustomerCommandResult = {
   outcome: CreateCustomerOutcome;
 };
 
+export const CUSTOMER_NAME_MAX = 100;
+
 const PHONE_CONFLICT_MESSAGE =
   "Энэ утасны дугаартай үйлчлүүлэгч аль хэдийн бүртгэлтэй байна.";
 
@@ -75,7 +77,13 @@ function isEmailFormat(value: string): boolean {
  * нэр заавал биш), утас Account ↔ Customer гүүрний канон 8 оронтой хэлбэрт
  * хадгалагдана, имэйл заавал биш ч бөглөвөл формат шалгагдана.
  */
-export function validateCustomerInput(input: CustomerCommandInput): {
+export function validateCustomerInput(
+  input: CustomerCommandInput,
+  options: {
+    /** Засахад: хадгалагдсан нэр. Өөрчлөгдөөгүй бол урт хязгаарыг шалгахгүй. */
+    existingFullName?: string | null;
+  } = {},
+): {
   data: NormalizedCustomerData;
   fieldErrors: Record<string, string>;
 } {
@@ -88,6 +96,12 @@ export function validateCustomerInput(input: CustomerCommandInput): {
   if (!phone) fieldErrors.phone = "Утасны дугаар оруулна уу.";
   else if (!isValidPhone(phone)) fieldErrors.phone = "Утасны дугаар 8 оронтой тоо байх ёстой.";
   if (email && !isEmailFormat(email)) fieldErrors.email = "Имэйл хаяг буруу.";
+  const nameUnchanged =
+    options.existingFullName !== undefined &&
+    (options.existingFullName ?? "").trim() === fullName;
+  if (fullName.length > CUSTOMER_NAME_MAX && !nameUnchanged) {
+    fieldErrors.fullName = `Нэр ${CUSTOMER_NAME_MAX} тэмдэгтээс хэтрэхгүй.`;
+  }
 
   return {
     data: {
@@ -230,7 +244,14 @@ export async function updateCustomerCommand(input: {
   data: CustomerCommandInput;
 }): Promise<NormalizedCustomerData & { id: string }> {
   const { actor, customerId } = input;
-  const { data, fieldErrors } = validateCustomerInput(input.data);
+  // Нэрний урт хязгаарыг зөвхөн нэр өөрчлөгдсөн үед шалгана.
+  const stored = await prisma.customer.findFirst({
+    where: { id: customerId, tenantId: actor.tenantId },
+    select: { fullName: true },
+  });
+  const { data, fieldErrors } = validateCustomerInput(input.data, {
+    existingFullName: stored?.fullName,
+  });
   if (Object.keys(fieldErrors).length > 0) {
     throw new CustomerCommandError("Хүсэлт буруу.", 422, "VALIDATION_FAILED", fieldErrors);
   }

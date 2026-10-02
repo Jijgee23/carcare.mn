@@ -60,47 +60,6 @@ export function AddItemForm({
   // бүтэн серверийн хуудсанд revalidatePath өөрөө шинэчилдэг тул шаардлагагүй.
   onAdded?: () => void;
 }) {
-  const action = addOrderItemAction.bind(null, orderId);
-  const [state, formAction, pending] = useActionState<
-    OrderActionState,
-    FormData
-  >(action, null);
-
-  useEffect(() => {
-    if (state?.ok) onAdded?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state]);
-
-  // Амжилттай нэмсний дараа формыг шинэчилнэ (key солигдоно).
-  const successKey = state?.ok ? "ok" : "idle";
-  return (
-    <FormContent
-      key={successKey}
-      formAction={formAction}
-      pending={pending}
-      state={state}
-      services={services}
-      diagnosticTemplates={diagnosticTemplates}
-      canChangePrice={canChangePrice}
-    />
-  );
-}
-
-function FormContent({
-  formAction,
-  pending,
-  state,
-  services,
-  diagnosticTemplates,
-  canChangePrice,
-}: {
-  formAction: (formData: FormData) => void;
-  pending: boolean;
-  state: OrderActionState;
-  services: ServiceOption[];
-  diagnosticTemplates: DiagnosticTemplateOption[];
-  canChangePrice: boolean;
-}) {
   const laborServices = useMemo(
     () => services.filter((s) => s.type === "LABOR"),
     [services],
@@ -124,7 +83,83 @@ function FormContent({
           ? "custom"
           : "labor";
 
+  // Tab-г энд (key-гүй эцэгт) хадгална — нэмсний дараа/алдааны дараа
+  // FormContent дахин mount болоход хэрэглэгчийн сонгосон tab алга болохгүй.
   const [tab, setTab] = useState<Tab>(initialTab);
+
+  const action = addOrderItemAction.bind(null, orderId);
+  const [state, formAction, pending] = useActionState<
+    OrderActionState,
+    FormData
+  >(action, null);
+
+  useEffect(() => {
+    if (state?.ok) onAdded?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
+  // Амжилттай нэмсний дараа формыг шинэчилнэ (key солигдоно).
+  // Счетчик: зөвхөн амжилттай нэмэлтээр өснө, алдаа гарахад форм дахин mount
+  // болж сонгосон сэлбэг/тоо алга болохгүй.
+  const [formKey, setFormKey] = useState(0);
+  const [seenState, setSeenState] = useState(state);
+  if (state !== seenState) {
+    setSeenState(state);
+    if (state?.ok) setFormKey((k) => k + 1);
+  }
+  return (
+    <FormContent
+      key={formKey}
+      formAction={formAction}
+      pending={pending}
+      state={state}
+      tab={tab}
+      setTab={setTab}
+      services={services}
+      diagnosticTemplates={diagnosticTemplates}
+      canChangePrice={canChangePrice}
+    />
+  );
+}
+
+function FormContent({
+  formAction,
+  pending,
+  state,
+  tab,
+  setTab,
+  services,
+  diagnosticTemplates,
+  canChangePrice,
+}: {
+  formAction: (formData: FormData) => void;
+  pending: boolean;
+  state: OrderActionState;
+  tab: Tab;
+  setTab: (tab: Tab) => void;
+  services: ServiceOption[];
+  diagnosticTemplates: DiagnosticTemplateOption[];
+  canChangePrice: boolean;
+}) {
+  const laborServices = useMemo(
+    () => services.filter((s) => s.type === "LABOR"),
+    [services],
+  );
+  const partServices = useMemo(
+    () => services.filter((s) => s.type === "GOODS"),
+    [services],
+  );
+  const hasLabor = laborServices.length > 0;
+  const hasDiag = diagnosticTemplates.length > 0;
+  const hasPart = partServices.length > 0;
+
+  // Шинэ state ирэх бүрд алдааг дахин харуулна; хэрэглэгч засвар хийвэл нууна.
+  const [dismissed, setDismissed] = useState(false);
+  const [seenState, setSeenState] = useState(state);
+  if (state !== seenState) {
+    setSeenState(state);
+    setDismissed(false);
+  }
   const [serviceId, setServiceId] = useState("");
   const [diagnosticTemplateId, setDiagnosticTemplateId] = useState("");
   const [description, setDescription] = useState("");
@@ -144,6 +179,7 @@ function FormContent({
   }, [unitPrice]);
 
   function switchTab(next: Tab) {
+    setDismissed(true);
     setTab(next);
     setServiceId("");
     setDiagnosticTemplateId("");
@@ -152,6 +188,7 @@ function FormContent({
   }
 
   function pickService(id: string) {
+    setDismissed(true);
     setServiceId(id);
     setDiagnosticTemplateId("");
     const svc = services.find((s) => s.id === id);
@@ -162,6 +199,7 @@ function FormContent({
   }
 
   function pickTemplate(id: string) {
+    setDismissed(true);
     setDiagnosticTemplateId(id);
     setServiceId("");
     const tpl = diagnosticTemplates.find((t) => t.id === id);
@@ -188,7 +226,7 @@ function FormContent({
     ? laborServices.filter((s) => s.laborCategoryId === laborCat)
     : laborServices;
 
-  const fe = state?.fieldErrors ?? {};
+  const fe = dismissed ? {} : (state?.fieldErrors ?? {});
 
   const canSubmit =
     tab === "custom"
@@ -210,7 +248,9 @@ function FormContent({
   return (
     <form action={formAction} className="flex flex-col gap-3" noValidate>
       <FormError
-        message={state?.message && !state.ok ? state.message : undefined}
+        message={
+          !dismissed && state?.message && !state.ok ? state.message : undefined
+        }
       />
 
       {/* Табууд */}
@@ -357,7 +397,10 @@ function FormContent({
             type="text"
             inputMode="decimal"
             value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
+            onChange={(e) => {
+              setDismissed(true);
+              setQuantity(e.target.value);
+            }}
             placeholder="Тоо"
             className={`auth-input ${fe.quantity ? "border-red-500/50" : ""}`}
           />

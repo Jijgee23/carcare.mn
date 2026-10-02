@@ -20,6 +20,7 @@ export type OrderPaymentActionState = {
   ok: boolean;
   message?: string;
   paymentId?: string;
+  change?: string;
 } | null;
 
 function s(fd: FormData, key: string): string {
@@ -95,11 +96,11 @@ export async function recordOrderPaymentAction(
     if (!(ORDER_PAYMENT_METHODS as readonly string[]).includes(method)) return { ok: false, message: "Төлбөрийн арга буруу." };
     const amount = parseOrderPaymentAmount(s(formData, "amount"));
     if (!amount) return { ok: false, message: "Дүнг зөв оруулна уу." };
-    const result = await createOrderPaymentCommand({ actor: user, orderId, method: method as OrderPaymentMethod, amount });
-    await notifyOrderPaymentReceived({ tenantId: user.tenantId, orderId: result.orderId, amount: amount.toString(), accountId: result.accountId, appointmentId: result.appointmentId });
+    const result = await createOrderPaymentCommand({ actor: user, orderId, method: method as OrderPaymentMethod, amount, allowCashChange: true });
+    await notifyOrderPaymentReceived({ tenantId: user.tenantId, orderId: result.orderId, amount: result.payment.amount.toString(), accountId: result.accountId, appointmentId: result.appointmentId });
     revalidatePath(`/dashboard/orders/${orderId}`);
     revalidatePath("/dashboard/orders");
-    return { ok: true, paymentId: result.payment.id };
+    return { ok: true, paymentId: result.payment.id, change: result.change.gt(0) ? result.change.toString() : undefined };
   } catch (error) {
     unstable_rethrow(error);
     return { ok: false, message: messageFrom(error, "Хадгалахад алдаа.") };

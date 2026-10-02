@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { canCreate } from "@/lib/auth/roles";
 import { assertActiveSubscription } from "@/lib/subscription-server";
 import { CustomerCommandError, createCustomerCommand } from "@/lib/customers/customer-commands";
+import { createCustomerFromPlate } from "@/lib/customers/customer-from-plate";
 import { VehicleCommandError, createVehicleCommand } from "@/lib/vehicles/vehicle-commands";
 
 // Захиалга үүсгэх явцад үйлчлүүлэгч / машин шинээр бүртгэх — хуудас сольж redirect
@@ -82,6 +83,43 @@ export async function quickCreateCustomerAction(input: {
   };
 }
 
+/**
+ * Дугаараар эзэмшигчийг СЕРВЕР талд дахин шийдээд (tenant холбоос → HUR)
+ * бодит утсаар нь үйлчлүүлэгч үүсгэнэ. Бүтэн утас browser-д огт очдоггүй (QA #17).
+ */
+export async function quickCreateCustomerFromPlateAction(input: {
+  plate: string;
+}): Promise<QuickCustomerResult> {
+  let user;
+  try {
+    user = await authorize("customers");
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Алдаа" };
+  }
+  try {
+    const result = await createCustomerFromPlate({
+      actor: user,
+      plate: input.plate,
+      auditSummarySuffix: "(засварын хуудаснаас түргэн)",
+    });
+    revalidatePath("/dashboard/customers");
+    return {
+      ok: true,
+      customer: {
+        id: result.customer.id,
+        fullName: result.customer.fullName,
+        phone: result.customer.phone,
+      },
+    };
+  } catch (e) {
+    if (e instanceof CustomerCommandError) {
+      if (e.fieldErrors) return { ok: false, fieldErrors: e.fieldErrors };
+      return { ok: false, message: e.message };
+    }
+    return { ok: false, message: e instanceof Error ? e.message : "Үүсгэх явцад алдаа гарлаа." };
+  }
+}
+
 // ---------- Vehicle -------------------------------------------------------
 
 export type QuickVehicleResult = {
@@ -107,6 +145,8 @@ export async function quickCreateVehicleAction(input: {
   fuelType: string | null;
   wheelPosition: string | null;
   customerId: string;
+  /** HUR/global lookup-аас бөглөсөн — регистрийг сервер талд шийднэ. */
+  fromLookup?: boolean;
 }): Promise<QuickVehicleResult> {
   let user;
   try {
@@ -141,6 +181,7 @@ export async function quickCreateVehicleAction(input: {
       },
       rejectDuplicate: false,
       requireCustomerId: true,
+      resolveOwnerRegnum: input.fromLookup === true,
       auditSummarySuffix: "(засварын хуудаснаас түргэн)",
     });
   } catch (e) {

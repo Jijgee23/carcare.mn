@@ -10,6 +10,8 @@ export function DurationHmInput({
   invalid,
   compact,
   onChange,
+  values,
+  onValuesChange,
 }: {
   defaultMinutes: number | null;
   invalid?: boolean;
@@ -19,6 +21,11 @@ export function DurationHmInput({
   // энэ талбар өөрөө хэвээрээ uncontrolled (defaultValue), зөвхөн нэмэлт
   // ажиглалт, төлөв удирдахгүй.
   onChange?: (minutes: number | null) => void;
+  // Заавал биш: өгвөл хоёр талбар controlled болно (React 19 form action
+  // илгээсний дараа uncontrolled талбарыг дахин тохируулдаг тул сервер
+  // алдаа буцахад бичсэн утга алдагдахгүй байлгахад ашиглана).
+  values?: { hours: string; minutes: string };
+  onValuesChange?: (values: { hours: string; minutes: string }) => void;
 }) {
   const split = defaultMinutes != null ? splitMinutes(defaultMinutes) : null;
   const w = compact ? "w-16" : "w-20";
@@ -43,12 +50,18 @@ export function DurationHmInput({
         min={0}
         max={12}
         step={1}
-        defaultValue={split ? String(split.hours) : ""}
+        {...(values
+          ? { value: values.hours }
+          : { defaultValue: split ? String(split.hours) : "" })}
         placeholder="0"
         aria-label="Цаг"
         onChange={
-          onChange
-            ? (e) => emit(e.target.value, (e.target.form?.elements.namedItem("durationMinutes") as HTMLInputElement | null)?.value ?? "")
+          onChange || onValuesChange
+            ? (e) => {
+                const mins = (e.target.form?.elements.namedItem("durationMinutes") as HTMLInputElement | null)?.value ?? "";
+                onValuesChange?.({ hours: e.target.value, minutes: mins });
+                emit(e.target.value, mins);
+              }
             : undefined
         }
         className={`auth-input ${w} ${border}`}
@@ -60,12 +73,18 @@ export function DurationHmInput({
         min={0}
         max={59}
         step={5}
-        defaultValue={split ? String(split.minutes) : ""}
+        {...(values
+          ? { value: values.minutes }
+          : { defaultValue: split ? String(split.minutes) : "" })}
         placeholder="00"
         aria-label="Минут"
         onChange={
-          onChange
-            ? (e) => emit((e.target.form?.elements.namedItem("durationHours") as HTMLInputElement | null)?.value ?? "", e.target.value)
+          onChange || onValuesChange
+            ? (e) => {
+                const hrs = (e.target.form?.elements.namedItem("durationHours") as HTMLInputElement | null)?.value ?? "";
+                onValuesChange?.({ hours: hrs, minutes: e.target.value });
+                emit(hrs, e.target.value);
+              }
             : undefined
         }
         className={`auth-input ${w} ${border}`}

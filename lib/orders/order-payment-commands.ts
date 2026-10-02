@@ -117,12 +117,24 @@ export type RecordedOrderPayment = {
   createdAt: Date;
 };
 
+export function applyTender(
+  method: string,
+  tendered: Prisma.Decimal,
+  remaining: Prisma.Decimal,
+  allowCashChange: boolean,
+): { applied: Prisma.Decimal; change: Prisma.Decimal } | null {
+  if (tendered.lte(remaining)) return { applied: tendered, change: new Prisma.Decimal(0) };
+  if (method !== "CASH" || !allowCashChange) return null;
+  return { applied: remaining, change: tendered.minus(remaining) };
+}
+
 export async function createOrderPaymentCommand(input: {
   actor: OrderPaymentCommandActor;
   orderId: string;
   method: AnyOrderPaymentMethod;
   amount: Prisma.Decimal | null;
   scope?: OrderCommandScope;
+  allowCashChange?: boolean;
 }) {
   if (input.amount && (!input.amount.isFinite() || input.amount.lte(0) || input.amount.gt(MAX_PAYMENT_AMOUNT) || input.amount.decimalPlaces() > 2)) {
     throw new OrderPaymentCommandError("Дүнг зөв оруулна уу.", 422, "PAYMENT_AMOUNT_INVALID", { amount: "Дүнг зөв оруулна уу." });
@@ -135,10 +147,11 @@ export async function createOrderPaymentCommand(input: {
     const total = order.totalAmount ?? new Prisma.Decimal(0);
     const remaining = total.minus(ledger.paid);
     if (remaining.lte(0)) throw new OrderPaymentCommandError("Энэ захиалга бүрэн төлөгдсөн байна.", 422, "PAYMENT_ALREADY_PAID");
-    const amount = input.amount ?? remaining;
-    if (amount.gt(remaining)) {
+    const tender = applyTender(input.method, input.amount ?? remaining, remaining, input.allowCashChange ?? false);
+    if (!tender) {
       throw new OrderPaymentCommandError(`Дүн үлдэгдэл (${formatTugrik(remaining.toString())})-ээс их байж болохгүй.`, 422, "PAYMENT_OVERPAYMENT", { amount: "Үлдэгдлээс их байна." });
     }
+    const amount = tender.applied;
     const paidAt = new Date();
     const payment = await tx.orderPayment.create({
       data: { tenantId: input.actor.tenantId, orderId: order.id, amount, method: input.method, status: "PAID", paidAt },
@@ -156,7 +169,7 @@ export async function createOrderPaymentCommand(input: {
       summary: `${ORDER_PAYMENT_METHOD_LABEL[input.method]} · ${formatTugrik(amount.toString())} бүртгэв`,
       after: { paymentId: payment.id, method: input.method, amount: amount.toString(), paidAmount: totals.paid.toString(), paymentStatus: totals.status },
     }, tx);
-    return { payment, orderId: order.id, accountId: order.appointment?.accountId ?? null, appointmentId: order.appointment?.id ?? null, totals };
+    return { payment, orderId: order.id, accountId: order.appointment?.accountId ?? null, appointmentId: order.appointment?.id ?? null, totals, change: tender.change };
   });
   return result;
 }

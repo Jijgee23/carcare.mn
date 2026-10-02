@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canEdit, canView } from "@/lib/auth/roles";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { parseSort } from "@/lib/list-sort";
 import {
   SERVICE_KIND_DESCRIPTION,
   SERVICE_KIND_LABEL,
@@ -17,9 +18,13 @@ import { BulkServiceList, type BulkServiceRow } from "./bulk-service-list";
 export async function ServiceList({
   type,
   pageParam,
+  sortParam,
+  dirParam,
 }: {
   type: ServiceKind;
   pageParam?: string;
+  sortParam?: string;
+  dirParam?: string;
 }) {
   const user = await requireUser();
   if (!canView(user, "services")) redirect("/dashboard");
@@ -29,10 +34,28 @@ export async function ServiceList({
 
   const where = { tenantId: user.tenantId, type };
   const { page, pageSize, skip, take } = getPageInfo(pageParam);
+  const sort = parseSort(
+    { sort: sortParam, dir: dirParam },
+    (type === "GOODS" ? ["name", "price", "stock"] : ["name", "price"]) as readonly (
+      | "name"
+      | "price"
+      | "stock"
+    )[],
+    { key: "name", dir: "asc" },
+  );
+  const orderBy = [
+    { isActive: "desc" as const },
+    sort.key === "price"
+      ? { price: sort.dir }
+      : sort.key === "stock"
+        ? { stock: { sort: sort.dir, nulls: "last" as const } }
+        : { name: sort.dir },
+    { id: "asc" as const },
+  ];
   const [services, total, categories] = await Promise.all([
     prisma.service.findMany({
       where,
-      orderBy: [{ isActive: "desc" }, { name: "asc" }],
+      orderBy,
       skip,
       take,
       include: {
@@ -100,11 +123,13 @@ export async function ServiceList({
             canBulkEdit={canBulkEdit}
             canRemove={canRemove}
             isGoods={isGoods}
+            sort={sort}
           />
           <Pagination
             page={meta.page}
             totalPages={meta.totalPages}
             total={meta.total}
+            params={{ sort: sortParam ?? "", dir: dirParam ?? "" }}
           />
         </div>
       )}

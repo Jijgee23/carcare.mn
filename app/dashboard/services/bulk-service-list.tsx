@@ -9,6 +9,8 @@ import {
 } from "@/app/_actions/services";
 import type { BulkActionState } from "@/lib/bulk-action";
 import { Btn } from "@/app/_components/landing-ops-ui";
+import { SortableTh, TH_CLASS } from "@/app/_components/sortable-th";
+import type { SortDir } from "@/lib/list-sort";
 import { ClickableRow } from "@/app/_components/clickable-row";
 import { ConfirmForm } from "@/app/_components/confirm-form";
 import { Chip } from "@/app/_components/landing-ops-ui";
@@ -60,12 +62,14 @@ export function BulkServiceList({
   canBulkEdit,
   canRemove,
   isGoods,
+  sort,
 }: {
   rows: BulkServiceRow[];
   categories: ServiceCategoryOption[];
   canBulkEdit: boolean;
   canRemove: boolean;
   isGoods: boolean;
+  sort: { key: string; dir: SortDir };
 }) {
   const selection = useRowSelection(rows);
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
@@ -97,14 +101,17 @@ export function BulkServiceList({
               {(isGoods
                 ? ["Код", "Нэр", "Ангилал", "Үлдэгдэл", "Өртөг", "Үнэ", "Статус", "Үйлдэл"]
                 : ["Код", "Нэр", "Ангилал", "Хугацаа", "Үнэ", "Хэрэглэсэн", "Төлөв", "Үйлдэл"]
-              ).map((h) => (
-                <th
-                  key={h}
-                  className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-5 py-3"
-                >
-                  {h}
-                </th>
-              ))}
+              ).map((h) => {
+                const sortKey =
+                  h === "Нэр" ? "name" : h === "Үнэ" ? "price" : h === "Үлдэгдэл" ? "stock" : null;
+                return sortKey ? (
+                  <SortableTh key={h} label={h} sortKey={sortKey} current={sort} />
+                ) : (
+                  <th key={h} className={TH_CLASS}>
+                    {h}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--oc-line)]" {...selection.dragArea}>

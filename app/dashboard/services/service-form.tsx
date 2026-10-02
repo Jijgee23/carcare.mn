@@ -17,7 +17,7 @@ import {
   SERVICE_KIND_SLUG,
   type ServiceKind,
 } from "@/lib/services";
-import { SYSTEM_UNIT_NAMES } from "@/lib/units";
+import { defaultUnitNameFor } from "@/lib/units";
 
 type Initial = {
   id?: string;
@@ -81,9 +81,12 @@ export function ServiceForm({
   const [categoryId, setCategoryId] = useState<string>(
     initial?.categoryId ?? "",
   );
-  // Шинэ бичлэгт хэмжих нэгжийг `хүн/цаг`-аар анхдагчаар сонгоно.
-  const defaultUnitId =
-    units.find((u) => u.isActive && SYSTEM_UNIT_NAMES.has(u.name))?.id ?? "";
+  // Шинэ бичлэгт: сэлбэг → `ширхэг`, ажил → `хүн/цаг`.
+  const unitIdFor = (t: string) => {
+    const name = defaultUnitNameFor(t);
+    return units.find((u) => u.isActive && u.name === name)?.id ?? "";
+  };
+  const defaultUnitId = unitIdFor(type);
   const [unitId, setUnitId] = useState<string>(
     initial?.unitId ?? (isEdit ? "" : defaultUnitId),
   );
@@ -161,7 +164,11 @@ export function ServiceForm({
                     name="type"
                     value={k}
                     checked={type === k}
-                    onChange={() => setType(k)}
+                    onChange={() => {
+                      setType(k);
+                      // Шинэ бичлэгт нэгж анхдагч хэвээр бол төрөлд нийцүүлж солино.
+                      if (!isEdit && unitId === defaultUnitId) setUnitId(unitIdFor(k));
+                    }}
                     className="accent-[var(--oc-accent)]"
                   />
                   <span className="text-sm font-medium text-[var(--oc-ink2)]">
@@ -206,7 +213,7 @@ export function ServiceForm({
           />
         </Field>
 
-        <Field label="Нэр" htmlFor="name" error={fe.name} className={FIELD_MW}>
+        <Field label="Нэр" required htmlFor="name" error={fe.name} className={FIELD_MW}>
           <input
             id="name"
             name="name"
@@ -269,6 +276,7 @@ export function ServiceForm({
         </Field>
         <Field
           label={isGoods ? "Борлуулах үнэ (₮)" : "Үнэ (₮)"}
+          required
           htmlFor="price"
           error={fe.price}
           className={FIELD_MW}

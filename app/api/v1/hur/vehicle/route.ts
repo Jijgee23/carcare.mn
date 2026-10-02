@@ -1,5 +1,6 @@
 import { enforceRateLimit, jsonError, jsonOk, requireApiUser, upstreamErrorResponse } from "@/lib/api";
 import { HurService } from "@/lib/hur_service";
+import { findTenantCustomerIdByPhone, toLookupOwner } from "@/lib/hur-lookup";
 import { prisma } from "@/lib/prisma";
 import { normalizePlate, vehicleToLookupInfo } from "@/lib/vehicles";
 
@@ -35,15 +36,44 @@ export async function GET(req: Request) {
     orderBy: { updatedAt: "desc" },
   });
   if (existing) {
+    // Эзний мэдээлэл зөвхөн ӨӨРИЙН tenant-ийн холбоосоос (өөр tenant-ийн PII
+    // задруулахгүй). Бүтэн утас/регистр/хаяг гарахгүй — маскалсан утас + kind.
+    const ownerLink = await prisma.tenantVehicle.findFirst({
+      where: { tenantId: auth.user.tenantId, vehicle: { plate: canonPlate } },
+      orderBy: { updatedAt: "desc" },
+      select: { customer: { select: { fullName: true, phone: true } } },
+    });
+    const owner = ownerLink?.customer
+      ? toLookupOwner({
+          firstName: ownerLink.customer.fullName || null,
+          lastName: null,
+          phone: ownerLink.customer.phone,
+          regnum: existing.ownerRegnum,
+          type: null,
+        })
+      : null;
+    const matchedCustomerId = ownerLink?.customer
+      ? await findTenantCustomerIdByPhone(auth.user.tenantId, ownerLink.customer.phone)
+      : null;
     return jsonOk({
-      vehicle: { ...vehicleToLookupInfo(existing), owner: null },
+      vehicle: { ...vehicleToLookupInfo(existing), owner },
       source: "global",
+      registered: Boolean(ownerLink),
+      matchedCustomerId,
     });
   }
 
   try {
     const vehicle = await HurService.getVehicle(canonPlate);
-    return jsonOk({ vehicle, source: "hur" });
+    const { owner: rawOwner, ...rest } = vehicle;
+    const matchedCustomerId = rawOwner?.phone
+      ? await findTenantCustomerIdByPhone(auth.user.tenantId, rawOwner.phone)
+      : null;
+    return jsonOk({
+      vehicle: { ...rest, owner: rawOwner ? toLookupOwner(rawOwner) : null },
+      source: "hur",
+      matchedCustomerId,
+    });
   } catch (e) {
     return upstreamErrorResponse("hur-vehicle", e, "HUR алдаа гарлаа.");
   }

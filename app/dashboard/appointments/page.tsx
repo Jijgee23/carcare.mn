@@ -9,6 +9,7 @@ import { Pagination } from "@/app/_components/pagination";
 import {
   APPOINTMENT_STATUSES,
   APPOINTMENT_STATUS_LABEL,
+  isAppointmentOverdue,
   type AppointmentStatus,
 } from "@/lib/appointments";
 import { appointmentSearchWhere } from "@/lib/appointments/appointment-list-query";
@@ -182,6 +183,7 @@ export default async function AppointmentsPage({
         ? [a.category.name]
         : [];
     const bookingPaymentStatus = appointmentBookingPaymentStatus(a);
+    const overdue = isAppointmentOverdue(a);
     return {
       id: a.id,
       displayName,
@@ -200,7 +202,9 @@ export default async function AppointmentsPage({
       serviceOrderId: a.serviceOrder?.id ?? null,
       serviceOrderNumber: a.serviceOrder?.number ?? null,
       orderHref,
-      canConfirm: bookingPaymentStatus === "NOT_REQUIRED" || bookingPaymentStatus === "PAID",
+      canConfirm:
+        !overdue && (bookingPaymentStatus === "NOT_REQUIRED" || bookingPaymentStatus === "PAID"),
+      overdue,
       arrived: !!a.arrivedAt,
     };
   });

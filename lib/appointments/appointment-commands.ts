@@ -1,7 +1,7 @@
 import { canEdit, workingBranchScopeId } from "@/lib/auth/roles";
 import { canEditOrder, type OrderAccessUser } from "@/lib/auth/order-access";
 import { assertActiveSubscription } from "@/lib/subscription-server";
-import { resolveCustomerForAccount } from "@/lib/appointments";
+import { isAppointmentOverdue, resolveCustomerForAccount } from "@/lib/appointments";
 import { ensureTenantVehicle } from "@/lib/vehicles";
 import { appointmentBookingPaymentStatus } from "@/lib/appointment-payment-status";
 import { createNotification } from "@/lib/notifications";
@@ -84,6 +84,7 @@ async function loadAppointmentForStaffAction(id: string) {
       status: true,
       accountId: true,
       arrivedAt: true,
+      requestedAt: true,
       account: { select: { id: true, phone: true, name: true, email: true } },
       accountVehicle: { select: { vehicleId: true } },
       feeAmount: true,
@@ -125,6 +126,9 @@ export async function confirmAppointmentCommand(input: {
   await assertStaffTenantScope(actor, appt);
   if (appt.status !== "PENDING") {
     throw new AppointmentCommandError("Энэ цаг аль хэдийн хариу авсан байна.", 422, "APPOINTMENT_NOT_PENDING");
+  }
+  if (isAppointmentOverdue(appt)) {
+    throw new AppointmentCommandError("Цагийн хугацаа өнгөрсөн тул баталгаажуулах боломжгүй.", 422, "APPOINTMENT_OVERDUE");
   }
   const bookingPaymentStatus = appointmentBookingPaymentStatus(appt);
   if (bookingPaymentStatus !== "NOT_REQUIRED" && bookingPaymentStatus !== "PAID") {

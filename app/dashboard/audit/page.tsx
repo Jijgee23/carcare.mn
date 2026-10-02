@@ -10,6 +10,7 @@ import { Pagination } from "@/app/_components/pagination";
 import { requireUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/auth/roles";
 import { type EntityType } from "@/lib/audit";
+import { extractAuditRefs, humanizeAuditSummary } from "@/lib/audit-summary";
 import {
   AUDIT_PAGE_SIZE,
   auditPagination,
@@ -157,6 +158,41 @@ export default async function AuditLogPage({
     }),
   ]);
 
+  const summaryRefs = logs.map((l) => extractAuditRefs(l.summary ?? ""));
+  const orderIds = Array.from(
+    new Set([
+      ...logs.filter((l) => l.entity === "ServiceOrder").map((l) => l.entityId),
+      ...summaryRefs.flatMap((r) => r.orderIds),
+    ]),
+  );
+  const itemIds = Array.from(new Set(summaryRefs.flatMap((r) => r.itemIds)));
+  const serviceIds = Array.from(
+    new Set(logs.filter((l) => l.entity === "Service").map((l) => l.entityId)),
+  );
+  const [orderRows, itemRows, serviceRows] = await Promise.all([
+    orderIds.length
+      ? prisma.serviceOrder.findMany({
+          where: { tenantId: me.tenantId, id: { in: orderIds } },
+          select: { id: true, number: true },
+        })
+      : [],
+    itemIds.length
+      ? prisma.serviceItem.findMany({
+          where: { order: { tenantId: me.tenantId }, id: { in: itemIds } },
+          select: { id: true, description: true },
+        })
+      : [],
+    serviceIds.length
+      ? prisma.service.findMany({
+          where: { tenantId: me.tenantId, id: { in: serviceIds } },
+          select: { id: true, name: true },
+        })
+      : [],
+  ]);
+  const orderNumbers = new Map(orderRows.map((o) => [o.id, o.number] as const));
+  const itemLabels = new Map(itemRows.map((i) => [i.id, i.description] as const));
+  const serviceNames = new Map(serviceRows.map((s) => [s.id, s.name] as const));
+
   const totalPages = Math.max(1, Math.ceil(total / AUDIT_PAGE_SIZE));
 
   return (
@@ -262,7 +298,11 @@ export default async function AuditLogPage({
                           <span className="text-[var(--oc-ink2)]">{entityLabel}</span>
                         )}
                         <div className="font-plex-mono text-xs text-[var(--oc-muted4)]">
-                          {l.entityId.slice(0, 10)}…
+                          {orderNumbers.has(l.entityId)
+                            ? `#${orderNumbers.get(l.entityId)}`
+                            : l.entity === "Service" && serviceNames.has(l.entityId)
+                              ? serviceNames.get(l.entityId)
+                              : `${l.entityId.slice(0, 10)}…`}
                         </div>
                       </td>
                       <td className="px-5 py-3">
@@ -271,7 +311,7 @@ export default async function AuditLogPage({
                         </Chip>
                       </td>
                       <td className="px-5 py-3 text-sm text-[var(--oc-ink2)]">
-                        {l.summary ?? "—"}
+                        {l.summary ? humanizeAuditSummary(l.summary, { orderNumbers, itemLabels }) : "—"}
                       </td>
                     </tr>
                   );

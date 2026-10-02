@@ -6,7 +6,7 @@ import {
   bulkChangeAppointmentCategoryAction,
 } from "@/app/_actions/appointments";
 import type { BulkActionState } from "@/lib/bulk-action";
-import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
+import { Btn, BtnLink, Chip } from "@/app/_components/landing-ops-ui";
 import {
   SelectAllCell,
   SelectRowCell,
@@ -48,6 +48,7 @@ export type BulkAppointmentRow = {
   serviceOrderNumber: string | null;
   orderHref: string;
   canConfirm: boolean;
+  overdue: boolean;
   arrived: boolean;
 };
 
@@ -148,11 +149,15 @@ export function BulkAppointmentsTable({
                   {a.note || "—"}
                 </td>
                 <td className="px-5 py-4">
-                  <span
-                    className={`font-plex-mono text-[11px] px-2.5 py-1 rounded-full ${APPOINTMENT_STATUS_BADGE[a.status]}`}
-                  >
-                    {APPOINTMENT_STATUS_LABEL[a.status]}
-                  </span>
+                  {a.overdue ? (
+                    <Chip tone="neutral">Хугацаа хэтэрсэн</Chip>
+                  ) : (
+                    <span
+                      className={`font-plex-mono text-[11px] px-2.5 py-1 rounded-full ${APPOINTMENT_STATUS_BADGE[a.status]}`}
+                    >
+                      {APPOINTMENT_STATUS_LABEL[a.status]}
+                    </span>
+                  )}
                   {a.bookingPaymentStatus !== "NOT_REQUIRED" ? (
                     <span
                       className={`block w-fit mt-1 font-plex-mono text-[10px] px-2 py-0.5 rounded-full border ${APPOINTMENT_BOOKING_PAYMENT_BADGE[a.bookingPaymentStatus]}`}
@@ -178,6 +183,7 @@ export function BulkAppointmentsTable({
                       <AppointmentConfirmReject
                         appointmentId={a.id}
                         canConfirm={a.canConfirm}
+                        overdue={a.overdue}
                       />
                     ) : null}
 

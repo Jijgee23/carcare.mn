@@ -79,6 +79,8 @@ export async function createVehicleAction(
       data: formInput(formData),
       // Хуучин зан төлөв хэвээр: зөвхөн dashboard-ын бүрэн create action
       rejectDuplicate: true,
+      // Форм HUR/global lookup-аас бөглөгдсөн бол регистрийг сервер шийднэ.
+      resolveOwnerRegnum: formData.get("fromLookup") === "1",
     });
   } catch (e) {
     if (e instanceof VehicleCommandError) {

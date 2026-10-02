@@ -414,3 +414,48 @@ test("no-plate vehicles require a VIN and are matched by VIN, plate can be assig
   const commandsSrc = src("../lib/vehicles/vehicle-commands.ts");
   assert.match(commandsSrc, /isNoPlate\(current\.plate\) && inputPlate && !isNoPlate\(inputPlate\)/);
 });
+
+test("invalid VIN is a field error, empty VIN is fine", () => {
+  const base = { plate: "1111УАА", make: "Toyota", model: "Prius" };
+  assert.equal(
+    commands.validateVehicleInput({ ...base, vin: "ABC" }).fieldErrors.vin,
+    "VIN 17 тэмдэгт эсвэл Япон рамын дугаар (9–14 тэмдэгт) байна.",
+  );
+  assert.equal(commands.validateVehicleInput({ ...base, vin: "" }).fieldErrors.vin, undefined);
+  // plate-less: required message wins, a bad VIN is still rejected
+  const noPlate = { plate: "ДУГААРГҮЙ", make: "Toyota", model: "Prius" };
+  assert.equal(
+    commands.validateVehicleInput({ ...noPlate, vin: "" }).fieldErrors.vin,
+    "Улсын дугааргүй машинд арлын дугаар (VIN) заавал.",
+  );
+  assert.equal(
+    commands.validateVehicleInput({ ...noPlate, vin: "ABC" }).fieldErrors.vin,
+    "VIN 17 тэмдэгт эсвэл Япон рамын дугаар (9–14 тэмдэгт) байна.",
+  );
+});
+
+test("an unchanged legacy VIN passes validation; a changed bad VIN or create still fails", () => {
+  const base = { plate: "1111УАА", make: "Toyota", model: "Prius" };
+  const legacy = "ABC123-4-5678901234"; // fails isValidVin
+  assert.equal(
+    commands.validateVehicleInput({ ...base, vin: legacy.toLowerCase() }, { existingVin: legacy }).fieldErrors.vin,
+    undefined,
+  );
+  assert.ok(commands.validateVehicleInput({ ...base, vin: "ABC" }, { existingVin: legacy }).fieldErrors.vin);
+  assert.ok(commands.validateVehicleInput({ ...base, vin: legacy }).fieldErrors.vin);
+});
+
+test("update loads stored VIN; create resolves owner regnum server-side without masked values", () => {
+  const body = src("../lib/vehicles/vehicle-commands.ts");
+  const upd = body.slice(body.indexOf("export async function updateVehicleCommand"));
+  assert.match(upd, /existingVin: stored\?\.vin/);
+  const crt = body.slice(body.indexOf("export async function createVehicleCommand"), body.indexOf("export async function updateVehicleCommand"));
+  assert.match(crt, /isMaskedValue\(attrs\.ownerRegnum\)/);
+  assert.match(crt, /input\.resolveOwnerRegnum && !attrs\.ownerRegnum/);
+  assert.match(src("../app/_actions/vehicles.ts"), /resolveOwnerRegnum: formData\.get\("fromLookup"\) === "1"/);
+  const hurSrc = src("../lib/hur-lookup.ts");
+  const fn = hurSrc.slice(hurSrc.indexOf("export async function resolveOwnerRegnumForNewVehicle"));
+  assert.ok(fn.indexOf("if (existing) return") < fn.indexOf("consumeRateLimit(`hur:${userId}`"));
+  assert.ok(fn.indexOf("consumeRateLimit") < fn.indexOf("HurService.getVehicle"));
+  assert.match(body, /where: \{ tenantId_vehicleId: \{ tenantId: actor\.tenantId, vehicleId \} \},\s*select: \{ vehicle: \{ select: \{ vin: true \}/);
+});

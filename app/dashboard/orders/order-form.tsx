@@ -172,6 +172,11 @@ export function OrderForm({
     toLocalDatetimeInput(initial?.scheduledAt ?? null),
   );
   const [durationMinutes, setDurationMinutes] = useState<number | null>(null);
+  // Тэмдэглэл + ойролцоо хугацааг controlled байлгана: React 19 form action
+  // илгээсний дараа uncontrolled талбарыг дахин тохируулдаг тул сервер
+  // validation алдаа буцахад бичсэн утга алга болдог байсан (QA #16).
+  const [notes, setNotes] = useState(initial?.notes ?? "");
+  const [durationValues, setDurationValues] = useState({ hours: "", minutes: "" });
   useEffect(() => {
     if (!isEdit && !initial?.scheduledAt) {
       const now = new Date();
@@ -372,7 +377,7 @@ export function OrderForm({
       ) : null}
 
       <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        <Field label="Салбар" htmlFor="branchId" error={fe.branchId} className={FIELD_MW}>
+        <Field label="Салбар" required htmlFor="branchId" error={fe.branchId} className={FIELD_MW}>
           <Select
             id="branchId"
             name="branchId"
@@ -387,6 +392,7 @@ export function OrderForm({
 
         <Field
           label="Хариуцах мастер"
+          required
           htmlFor="assignedToId"
           error={fe.assignedToId}
           className={FIELD_MW}
@@ -412,7 +418,7 @@ export function OrderForm({
           />
         </Field>
 
-        <Field label="Үйлчлүүлэгч" htmlFor="customerId" error={fe.customerId} className={FIELD_MW}>
+        <Field label="Үйлчлүүлэгч" required htmlFor="customerId" error={fe.customerId} className={FIELD_MW}>
           <div className="flex gap-2">
             <div className="flex-1 min-w-0">
               <Select
@@ -447,6 +453,7 @@ export function OrderForm({
 
         <Field
           label="Машин"
+          required
           htmlFor="vehicleId"
           hint={
             !customerId
@@ -540,6 +547,8 @@ export function OrderForm({
           >
             <DurationHmInput
               defaultMinutes={null}
+              values={durationValues}
+              onValuesChange={setDurationValues}
               invalid={Boolean(fe.durationMinutes)}
               onChange={setDurationMinutes}
             />
@@ -573,7 +582,8 @@ export function OrderForm({
           id="notes"
           name="notes"
           rows={2}
-          defaultValue={initial?.notes ?? ""}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
           className="auth-input resize-y"
           placeholder="Гомдол, тусгай хүсэлт..."
         />

@@ -1,6 +1,6 @@
 import { deleteCustomerAction } from "@/app/_actions/customers";
 import { ClickableRow } from "@/app/_components/clickable-row";
-import { ConfirmForm } from "@/app/_components/confirm-form";
+import { RowActionsMenu, RowMenuFormItem } from "@/app/_components/row-actions";
 import { BtnLink } from "@/app/_components/landing-ops-ui";
 import { ResetFilters, SearchBox } from "@/app/_components/list-filters";
 import { Pagination } from "@/app/_components/pagination";
@@ -12,6 +12,8 @@ import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canView, hasPermission } from "@/lib/auth/roles";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { parseSort } from "@/lib/list-sort";
+import { SortableTh, TH_CLASS } from "@/app/_components/sortable-th";
 import { CreateCustomerButton } from "./create-customer-modal";
 
 export const metadata = {
@@ -21,7 +23,7 @@ export const metadata = {
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; page?: string; sort?: string; dir?: string }>;
 }) {
   const user = await requireUser();
   if (!canView(user, "customers")) redirect("/dashboard");
@@ -29,7 +31,19 @@ export default async function CustomersPage({
   const canRemove = canDelete(user, "customers");
   const canNotify = hasPermission(user, "customers.notify");
 
-  const { q = "", page: pageParam } = await searchParams;
+  const { q = "", page: pageParam, sort: sortParam, dir: dirParam } =
+    await searchParams;
+  const sort = parseSort(
+    { sort: sortParam, dir: dirParam },
+    ["name", "date", "orders"] as const,
+    { key: "date", dir: "desc" },
+  );
+  const orderBy =
+    sort.key === "name"
+      ? { fullName: sort.dir }
+      : sort.key === "orders"
+        ? { serviceOrders: { _count: sort.dir } }
+        : { createdAt: sort.dir };
   const { page, pageSize, skip, take } = getPageInfo(pageParam);
   // P3-B6: канон where-builder — `lib/customers/customer-list-query.ts`.
   // Хайлтын талбарууд (fullName/phone/email) энэ хуудасны хуучин зан
@@ -39,10 +53,10 @@ export default async function CustomersPage({
     { q: q || undefined, page, pageSize, skip, take },
     { tenantId: user.tenantId },
   );
-  const [customers, total] = await Promise.all([
+  const [customers, total, allTotal] = await Promise.all([
     prisma.customer.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      orderBy: [orderBy, { id: "asc" }],
       skip,
       take,
       include: {
@@ -50,6 +64,7 @@ export default async function CustomersPage({
       },
     }),
     prisma.customer.count({ where }),
+    prisma.customer.count({ where: { tenantId: user.tenantId } }),
   ]);
   const meta = buildMeta(total, page, pageSize);
 
@@ -59,7 +74,7 @@ export default async function CustomersPage({
         <div>
           <h1 className="text-2xl font-semibold text-[var(--oc-ink)]">Үйлчлүүлэгчид</h1>
           <p className="text-sm text-[var(--oc-muted3)] mt-1">
-            Үйлчлүүлэгчдийн харилцагч мэдээлэл, түүх · {total} үйлчлүүлэгч
+            Үйлчлүүлэгчдийн харилцагч мэдээлэл, түүх · {allTotal} үйлчлүүлэгч
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -72,7 +87,7 @@ export default async function CustomersPage({
         </div>
       </div>
 
-      {total === 0 ? (
+      {allTotal === 0 ? (
         <EmptyState
           title="Үйлчлүүлэгч алга"
           description="Эхний үйлчлүүлэгчээ нэмж эхлээрэй."
@@ -83,7 +98,7 @@ export default async function CustomersPage({
       ) : (
         <div className="rounded-[10px] border border-[var(--oc-line)] bg-[var(--oc-panel)] overflow-hidden flex-1 min-h-0 flex flex-col">
           <div className="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-[var(--oc-line)]">
-            <SearchBox placeholder="Нэр, утас, имэйлээр хайх" />
+            <SearchBox placeholder="Нэр, утас, имэйл, дугаараар хайх" />
             <ResetFilters paramNames={["q"]} />
             <span className="ml-auto font-plex-mono text-xs text-[var(--oc-muted3)] whitespace-nowrap">
               {customers.length} / {total} харагдаж байна
@@ -99,22 +114,15 @@ export default async function CustomersPage({
               <table className="w-full min-w-[640px]">
                 <thead>
                   <tr className="border-b border-[var(--oc-line)]">
-                    {[
-                      "Үйлчлүүлэгч",
-                      "Утас",
-                      "Имэйл",
-                      "Машин",
-                      "Засварын хуудас",
-                      "Огноо",
-                      "Үйлдэл",
-                    ].map((h) => (
-                      <th
-                        key={h}
-                        className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-5 py-3"
-                      >
+                    <SortableTh label="Үйлчлүүлэгч" sortKey="name" current={sort} />
+                    {["Утас", "Имэйл", "Машин"].map((h) => (
+                      <th key={h} className={TH_CLASS}>
                         {h}
                       </th>
                     ))}
+                    <SortableTh label="Засварын хуудас" sortKey="orders" current={sort} />
+                    <SortableTh label="Огноо" sortKey="date" current={sort} />
+                    <th className={TH_CLASS}>Үйлдэл</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--oc-line)]">
@@ -124,11 +132,14 @@ export default async function CustomersPage({
                       href={`/dashboard/customers/${c.id}`}
                     >
                       <td className="px-5 py-4">
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 min-w-0 max-w-[280px]">
                           <div className="w-9 h-9 rounded-full border border-[var(--oc-line)] bg-[var(--oc-panel2)] flex items-center justify-center text-xs font-bold text-[var(--oc-ink2)] shrink-0">
                             {customerLabel(c)[0]?.toUpperCase() ?? "?"}
                           </div>
-                          <span className="text-sm font-medium text-[var(--oc-ink)]">
+                          <span
+                            className="text-sm font-medium text-[var(--oc-ink)] truncate"
+                            title={customerLabel(c)}
+                          >
                             {customerLabel(c)}
                           </span>
                         </div>
@@ -150,20 +161,16 @@ export default async function CustomersPage({
                       </td>
                       <td className="px-5 py-4">
                         {canRemove ? (
-                          <div className="flex items-center justify-end">
-                            <ConfirmForm
+                          <RowActionsMenu>
+                            <RowMenuFormItem
                               action={deleteCustomerAction}
-                              message={`"${customerLabel(c)}" үйлчлүүлэгчийг устгах уу?`}
+                              hidden={{ id: c.id }}
+                              confirmMessage={`"${customerLabel(c)}" үйлчлүүлэгчийг устгах уу?`}
+                              destructive
                             >
-                              <input type="hidden" name="id" value={c.id} />
-                              <button
-                                type="submit"
-                                className="text-xs text-red-400 hover:text-red-300 light:text-red-600 light:hover:text-red-700 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-red-500/10"
-                              >
-                                Устгах
-                              </button>
-                            </ConfirmForm>
-                          </div>
+                              Устгах
+                            </RowMenuFormItem>
+                          </RowActionsMenu>
                         ) : null}
                       </td>
                     </ClickableRow>
@@ -182,7 +189,7 @@ export default async function CustomersPage({
             page={meta.page}
             totalPages={meta.totalPages}
             total={meta.total}
-            params={{ q }}
+            params={{ q, sort: sortParam ?? "", dir: dirParam ?? "" }}
           />
         </div>
       )}

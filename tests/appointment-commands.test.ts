@@ -188,3 +188,20 @@ test("staff registration uses appointments.create, not the edit-only lifecycle g
   const body = source.slice(fnStart);
   assert.doesNotMatch(body, /assertStaffScope\(actor/);
 });
+
+test("pending appointment in the past is overdue; confirmed or future is not", async () => {
+  const { isAppointmentOverdue } = await import("../lib/appointments");
+  const now = new Date("2026-09-28T10:00:00Z");
+  assert.equal(isAppointmentOverdue({ status: "PENDING", requestedAt: new Date("2026-09-24T10:00:00Z") }, now), true);
+  assert.equal(isAppointmentOverdue({ status: "PENDING", requestedAt: new Date("2026-09-29T10:00:00Z") }, now), false);
+  assert.equal(isAppointmentOverdue({ status: "CONFIRMED", requestedAt: new Date("2026-09-24T10:00:00Z") }, now), false);
+});
+
+test("confirmAppointmentCommand rejects overdue appointments with APPOINTMENT_OVERDUE", () => {
+  const source = commandsSource();
+  const start = source.indexOf("export async function confirmAppointmentCommand");
+  assert.ok(start >= 0);
+  const body = source.slice(start, source.indexOf("export async function", start + 10));
+  assert.match(body, /isAppointmentOverdue\(appt\)/);
+  assert.match(body, /APPOINTMENT_OVERDUE/);
+});

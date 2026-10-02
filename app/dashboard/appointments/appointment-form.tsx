@@ -39,11 +39,13 @@ function toLocalDateKey(iso: string): string {
 
 type Branch = { id: string; name: string; openWeekdays: Weekday[] };
 type Customer = { id: string; fullName: string; phone: string };
+type Vehicle = { id: string; plate: string; make: string; model: string; customerId: string | null };
 type Category = { id: string; name: string; branchIds: string[] };
 
 export function AppointmentForm({
   branches,
   customers: initialCustomers,
+  vehicles = [],
   categories,
   defaultBranchId,
   initialScheduledAt,
@@ -52,6 +54,7 @@ export function AppointmentForm({
 }: {
   branches: Branch[];
   customers: Customer[];
+  vehicles?: Vehicle[];
   categories: Category[];
   defaultBranchId?: string;
   // Хуваарийн хуудаснаас хоосон цаг дээр дарж орж ирсэн бол тухайн цаг
@@ -69,7 +72,12 @@ export function AppointmentForm({
 
   const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
   const [branchId, setBranchId] = useState(defaultBranchId ?? "");
-  const [customerId, setCustomerId] = useState("");
+  const [customerId, setCustomerIdRaw] = useState("");
+  const [vehicleId, setVehicleId] = useState("");
+  function setCustomerId(id: string) {
+    setCustomerIdRaw(id);
+    setVehicleId("");
+  }
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [selectedIso, setSelectedIso] = useState("");
   // Дүүрсэн цагийг ажилтан зөвхөн баталгаажуулсны дараа бүртгэж болно —
@@ -265,6 +273,21 @@ export function AppointmentForm({
                 title="Шинэ үйлчлүүлэгч нэмэх"
               />
             </div>
+          </Field>
+
+          <Field label="Машин (заавал биш)" htmlFor="vehicleId" error={fe.vehicleId}>
+            <Select
+              id="vehicleId"
+              name="vehicleId"
+              value={vehicleId}
+              onChange={setVehicleId}
+              error={fe.vehicleId}
+              disabled={!customerId}
+              placeholder={customerId ? "— Сонгох —" : "— Эхлээд үйлчлүүлэгч сонгоно уу —"}
+              options={vehicles
+                .filter((v) => v.customerId === customerId)
+                .map((v) => ({ value: v.id, label: `${v.plate} · ${v.make} ${v.model}` }))}
+            />
           </Field>
 
           <CreateCustomerModal

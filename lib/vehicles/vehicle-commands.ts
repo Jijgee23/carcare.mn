@@ -29,13 +29,16 @@
 
 import { logAudit } from "@/lib/audit";
 import { normalizeWheelPosition } from "@/lib/hur_service";
+import { resolveOwnerRegnumForNewVehicle } from "@/lib/hur-lookup";
 import { PLAN_LIMIT_CODES } from "@/lib/plan-limits";
 import { enforceCountLimit } from "@/lib/plan-limits-server";
 import { prisma } from "@/lib/prisma";
 import type { PrismaTransactionClient } from "@/lib/prisma";
 import {
   ensureTenantVehicle,
+  isValidVin,
   normalizePlate,
+  normalizeVin,
   ownerFromCustomer,
   resolveVehicleForOwner,
 } from "@/lib/vehicles";
@@ -116,6 +119,13 @@ export type VehicleRecord = {
 };
 
 export type ValidateVehicleOptions = {
+  /**
+   * Засахад: хадгалагдсан VIN. Илгээсэн VIN үүнтэй (нормчилсны дараа) ижил бол
+   * форматын шалгалтыг алгасна — хуучин/HUR-аас ирсэн (15/16 тэмдэгт, I/O/Q,
+   * 2 зураастай) VIN-тэй машиныг бусад талбарыг засахад түгжихгүй. Create-д
+   * заахгүй (үргэлж шалгана).
+   */
+  existingVin?: string | null;
   /**
    * Он дээд хязгаар (2100) шалгах эсэх. Хуучин гурван хуулбар зөрсөн байсан:
    * dashboard action болон quick-create 1900–2100 хооронд шалгадаг байсан,
@@ -198,6 +208,12 @@ export function validateVehicleInput(
   // Дугааргүй машиныг зөвхөн VIN-ээр ялгана.
   if (isNoPlate(plate) && !vin) {
     fieldErrors.vin = "Улсын дугааргүй машинд арлын дугаар (VIN) заавал.";
+  } else if (
+    vin &&
+    normalizeVin(vin) !== normalizeVin(options.existingVin) &&
+    !isValidVin(vin)
+  ) {
+    fieldErrors.vin = "VIN 17 тэмдэгт эсвэл Япон рамын дугаар (9–14 тэмдэгт) байна.";
   }
   if (!make) fieldErrors.make = "Маркаа оруулна уу.";
   if (!model) fieldErrors.model = "Моделоо оруулна уу.";
@@ -246,6 +262,10 @@ export function validateVehicleInput(
  * эсэх. Устгах болон эзэн солихыг хориглох нэг ижил шалгуур
  * (`app/_actions/vehicles.ts`-с шилжсэн, зан төлөв өөрчлөгдөөгүй).
  */
+function isMaskedValue(v: string | null | undefined): boolean {
+  return !!v && /[•*]/.test(v);
+}
+
 async function vehicleHasHistory(tenantId: string, vehicleId: string): Promise<boolean> {
   const [orderCount, reportCount] = await Promise.all([
     prisma.serviceOrder.count({ where: { tenantId, vehicleId } }),
@@ -301,6 +321,12 @@ export async function createVehicleCommand(input: {
   requireCustomerId?: boolean;
   /** Audit summary-д нэмэх тэмдэглэгээ (quick-create-ыг ялгахад). */
   auditSummarySuffix?: string;
+  /**
+   * Машиныг HUR/global lookup-аас бөглөж байгаа бол `true`. Регистр browser-д
+   * огт гардаггүй (QA #17) тул оролтод `ownerRegnum` ирээгүй үед сервер талд
+   * шийднэ (global Vehicle.ownerRegnum байвал HUR дуудахгүй).
+   */
+  resolveOwnerRegnum?: boolean;
 }): Promise<VehicleRecord> {
   const { actor } = input;
   const { data, fieldErrors } = validateVehicleInput(input.data, {
@@ -370,6 +396,17 @@ export async function createVehicleCommand(input: {
 
   const { customerId, isPostpaid, ...attrs } = data;
 
+  // Lookup-аас үүсгэсэн, регистр ирээгүй бол сервер талд шийднэ. Маскалсан
+  // утга хэзээ ч хадгалахгүй.
+  if (isMaskedValue(attrs.ownerRegnum)) attrs.ownerRegnum = null;
+  if (input.resolveOwnerRegnum && !attrs.ownerRegnum && !isNoPlate(canonPlate)) {
+    try {
+      attrs.ownerRegnum = await resolveOwnerRegnumForNewVehicle(canonPlate, actor.id);
+    } catch {
+      // HUR унасан бол машиныг регистргүй үүсгэнэ — create-ийг хаахгүй.
+    }
+  }
+
   const record = await prisma.$transaction(async (tx) => {
     const owner = await ownerFromCustomer(tx, actor.tenantId, customerId);
     const vehicle = await resolveVehicleForOwner(tx, { ...attrs, owner });
@@ -406,8 +443,15 @@ export async function updateVehicleCommand(input: {
   enforceYearUpperBound?: boolean;
 }): Promise<VehicleRecord> {
   const { actor, vehicleId } = input;
+  // VIN-ийн форматыг зөвхөн өөрчилсөн үед шалгана (хуучин VIN-тэй машин засагдана).
+  const storedLink = await prisma.tenantVehicle.findUnique({
+    where: { tenantId_vehicleId: { tenantId: actor.tenantId, vehicleId } },
+    select: { vehicle: { select: { vin: true } } },
+  });
+  const stored = storedLink?.vehicle ?? null;
   const { data, fieldErrors } = validateVehicleInput(input.data, {
     enforceYearUpperBound: input.enforceYearUpperBound,
+    existingVin: stored?.vin ?? null,
   });
   if (Object.keys(fieldErrors).length > 0) {
     throw new VehicleCommandError("Хүсэлт буруу.", 422, "VALIDATION_FAILED", fieldErrors);

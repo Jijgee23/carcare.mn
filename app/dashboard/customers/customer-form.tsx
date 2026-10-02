@@ -80,13 +80,15 @@ export function CustomerForm({ initial }: { initial?: Initial }) {
               id="fullName"
               name="fullName"
               type="text"
+              // Хуучин урт нэртэй хэрэглэгчийн утгыг хэзээ ч таслахгүй.
+              maxLength={(initial?.fullName ?? "").length > 100 ? undefined : 100}
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               className={`auth-input ${fe.fullName ? "border-red-500/50" : ""}`}
               placeholder="Жишээ: Батын Болд"
             />
           </Field>
-          <Field label="Утас" htmlFor="phone" error={fe.phone}>
+          <Field label="Утас" required htmlFor="phone" error={fe.phone}>
             <input
               id="phone"
               name="phone"

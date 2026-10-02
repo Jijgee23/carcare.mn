@@ -139,9 +139,10 @@ export type ReportData = {
   techRows: { id: string; name: string; revenue: number; count: number }[];
   // Нэг ажлын мөр (Ажил/Оношилгоо) дунджаар хэдэн минутад гүйцэтгэгддэгийг —
   // харах: lib/orders.ts-ийн serviceItemTimingPatch (ServiceItem.startedAt/
-  // completedAt). `startedAt` тэмдэглэгдээгүй (ж: оношилгоо шууд
-  // PENDING→COMPLETED болсон) мөрүүд "хугацаа хэмжигдээгүй" гэж тооцооноос
-  // хасагдсан байна.
+  // completedAt). Зөвхөн энэ өөрчлөлтөөс өмнө дууссан хуучин мөрүүд
+  // (`startedAt` байхгүй, нөхөн бөглөөгүй) тооцооноос хасагдана; шууд
+  // PENDING→COMPLETED болсон мөр одоо startedAt = completedAt (0 минут)
+  // болж тооцогдоно.
   avgJobDurationMinutes: number;
   jobDurationRows: { id: string; name: string; count: number; avgMinutes: number }[];
   customerRows: {
@@ -239,10 +240,13 @@ export async function loadReportData(
     }),
     prisma.serviceOrder.groupBy({
       by: ["customerId"],
-      where: completedWhere,
+      // `_sum.totalAmount` NULL байвал Postgres DESC эрэмбэд хамгийн эхэнд
+      // гаргадаг тул null дүнтэй захиалгыг хасна (aggregate orderBy `nulls`
+      // дэмждэггүй).
+      where: { ...completedWhere, totalAmount: { not: null } },
       _sum: { totalAmount: true },
       _count: { _all: true },
-      orderBy: { _sum: { totalAmount: "desc" } },
+      orderBy: [{ _sum: { totalAmount: "desc" } }, { customerId: "asc" }],
       take: 5,
     }),
     prisma.serviceItem.groupBy({
@@ -278,6 +282,8 @@ export async function loadReportData(
 
   // Мөрийн гүйцэтгэх хугацаа (минут) — нийт дундаж (LABOR+DIAGNOSTIC) болон
   // зөвхөн LABOR-ийг ажлын төрлөөр (serviceId) бүлэглэсэн эрэмбэ.
+  // PENDING→COMPLETED шууд шилжсэн мөр (startedAt === completedAt, 0 минут)
+  // бодит хугацаа биш тул дунджид ОРУУЛАХГҮЙ (`mins > 0`).
   const jobDurationsMinutes = itemDurationRows
     .map((r) => (r.completedAt!.getTime() - r.startedAt!.getTime()) / 60000)
     .filter((mins) => mins > 0);

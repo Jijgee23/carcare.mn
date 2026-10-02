@@ -109,10 +109,18 @@ export default async function EmployeesPage({
         tenantId: me.tenantId,
         deletedAt: null,
         isActive: true,
+        verified: true,
         OR: [{ activeUntil: null }, { activeUntil: { gt: now } }],
       },
     }),
-    prisma.user.count({ where: { tenantId: me.tenantId, deletedAt: null, verified: false } }),
+    prisma.user.count({
+      where: {
+        tenantId: me.tenantId,
+        deletedAt: null,
+        verified: false,
+        OR: [{ activeUntil: null }, { activeUntil: { gt: now } }],
+      },
+    }),
     prisma.user.count({
       where: { tenantId: me.tenantId, deletedAt: null, activeUntil: { not: null, lte: now } },
     }),

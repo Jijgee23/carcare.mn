@@ -196,6 +196,16 @@ Res:  201 { "customer": { "id": "...", "fullName": "...", "phone": "...", "email
 409  { "error": "Энэ утасны дугаартай харилцагч аль хэдийн бүртгэлтэй байна." }`}</Code>
         </Endpoint>
 
+        <Endpoint method="POST" path="/api/v1/customers/from-plate" auth="bearer" bearerLabel={BEARER} tags={["Эрх: customers.create", "Багц идэвхтэй байх шаардлагатай", "20 хүсэлт/мин (HUR lookup-тай нэг хязгаар)"]} title="Улсын дугаараар эзэмшигчийг олж үйлчлүүлэгч үүсгэх (tenant холбоос → HUR).">
+          <Code>{`Req:  { "plate": "1234УБА" }
+Res:  201 { "customer": { "id": "...", "fullName": "...", "phone": "...", "email": null, "note": null, "createdAt": "..." } }  // аль хэдийн байсан бол 200
+403  { "error": "Танд энэ үйлдэл хийх эрх байхгүй." }
+422  { "error": "Хүсэлт буруу.", "fieldErrors": { "plate": "Улсын дугаар шаардлагатай." } }
+404  { "error": "Эзэмшигчийн мэдээлэл олдсонгүй.", "code": "OWNER_NOT_FOUND" }
+429  { "error": "Хэт олон хүсэлт илгээлээ. ...", "code": "RATE_LIMITED" }
+502  { "error": "...", "code": "HUR_UPSTREAM" }`}</Code>
+        </Endpoint>
+
         <Endpoint method="GET" path="/api/v1/vehicles" auth="bearer" bearerLabel={BEARER} title="Машинуудын жагсаалт (дугаар/загвар/vin-ээр хайлт, харилцагчаар шүүлт).">
           <Code>{`Query: ?q=&customerId=&page=&pageSize=
 Res: 200 { "vehicles": [{ "id": "...", "plate": "...", "vin": "...", "make": "...", "model": "...",
@@ -204,7 +214,8 @@ Res: 200 { "vehicles": [{ "id": "...", "plate": "...", "vin": "...", "make": "..
         </Endpoint>
 
         <Endpoint method="POST" path="/api/v1/vehicles" auth="bearer" bearerLabel={BEARER} tags={["Эрх: vehicles.create", "Багц идэвхтэй байх шаардлагатай"]} title="Шинэ машин нэмэх (plate/make/model заавал).">
-          <Code>{`Req:  { "plate": "1234УБА", "make": "Toyota", "model": "Prius", "vin": "...", "year": 2018, "mileage": 45000, "customerId": "..." }
+          <Code>{`Req:  { "plate": "1234УБА", "make": "Toyota", "model": "Prius", "vin": "...", "year": 2018, "mileage": 45000, "customerId": "...", "fromLookup": true }
+// fromLookup (заавал биш): HUR/системийн бүртгэлээс бөглөсөн бол true — эзэмшигчийн регистрийг сервер шийднэ.
 Res:  201 { "vehicle": { "id": "...", "plate": "...", "vin": "...", "make": "...", "model": "...", "year": 2018, "mileage": 45000, "customerId": "..." } }
 422  { "error": "Хүсэлт буруу.", "fieldErrors": { "plate": "Улсын дугаар шаардлагатай." } }
 422  { "error": "Хүсэлт буруу.", "fieldErrors": { "customerId": "Үйлчлүүлэгч олдсонгүй." } }`}</Code>
@@ -328,7 +339,9 @@ Res:  200 { "appointment": {...} }
 400  { "error": "status шаардлагатай." } | { "error": "Онлайн бус захиалгыг энэ замаар баталгаажуулах боломжгүй." }
 403  { "error": "Зөвхөн өөрийн салбарын цаг захиалгыг удирдана." }
 404  { "error": "Цаг захиалга олдсонгүй." }
-409  { "error": "PENDING → COMPLETED шилжилт боломжгүй." }`}</Code>
+409  { "error": "PENDING → COMPLETED шилжилт боломжгүй." }
+422  { "error": "Цагийн хугацаа өнгөрсөн тул баталгаажуулах боломжгүй.", "code": "APPOINTMENT_OVERDUE" }
+     // PENDING цагийн товлосон хугацаа өнгөрсөн бол CONFIRMED болгох үед (POST /api/v1/appointments/[id]/confirm-д мөн адил)`}</Code>
         </Endpoint>
       </Section>
 
@@ -484,8 +497,12 @@ Res:  201 { "url": "...", "size": 123456, "mime": "image/jpeg" }
       <Section title="12. Улсын дугаараар лавлах (HUR)">
         <Endpoint method="GET" path="/api/v1/hur/vehicle" auth="bearer" bearerLabel={BEARER} tags={["Rate limit: 20/60с (хэрэглэгчээр)"]} title="Улсын дугаараар машин лавлах — систем дотор байвал тэндээс, үгүй бол улсын бүртгэлийн (HUR) системээс. Account realm-ийн /api/v1/app/hur/lookup-аас тусдаа endpoint.">
           <Code>{`Query: ?plate=1234УБА
-Res: 200 { "vehicle": {...}, "owner": null, "source": "global" }
-   | 200 { "vehicle": {...}, "source": "hur" }
+Res: 200 { "vehicle": { ..., "owner": { "firstName", "lastName", "phone": "99••••82", "regnum": null, "type", "address": null, "kind": "Байгууллага" | "Хувь хүн" | null } | null },
+          "source": "global", "registered": true, "matchedCustomerId": "<id>" | null }
+   | 200 { "vehicle": { ..., "owner": {...дээрхтэй ижил} | null }, "source": "hur", "matchedCustomerId": "<id>" | null }
+Тайлбар: эзэмшигчийн бүтэн утас/регистр/хаяг ХЭЗЭЭ Ч гарахгүй (утас маскалсан, regnum/address null, kind-ийг сервер тооцно).
+"global" үед owner нь өөрийн tenant-ийн холбоосоос л гарна (байхгүй бол null).
+matchedCustomerId — эзэмшигчийн утсаар таарсан ЭНЭ tenant-ийн үйлчлүүлэгчийн id (байхгүй бол null).
 400 { "error": "Улсын дугаар шаардлагатай." }
 502 { "error": "HUR алдаа гарлаа." }`}</Code>
         </Endpoint>

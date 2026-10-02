@@ -24,9 +24,11 @@ import { useToast } from "@/app/_components/toast";
 export function AppointmentConfirmReject({
   appointmentId,
   canConfirm = true,
+  overdue = false,
 }: {
   appointmentId: string;
   canConfirm?: boolean;
+  overdue?: boolean;
 }) {
   const toast = useToast();
   const [confirmState, confirmAction, confirmPending] = useActionState<
@@ -63,14 +65,22 @@ export function AppointmentConfirmReject({
         <button
           type="submit"
           disabled={pending || !canConfirm}
-          title={canConfirm ? undefined : "Захиалгын хураамж төлөгдсөний дараа батална."}
+          title={
+            overdue
+              ? "Цагийн хугацаа өнгөрсөн."
+              : canConfirm
+                ? undefined
+                : "Захиалгын хураамж төлөгдсөний дараа батална."
+          }
           className="text-xs px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 light:bg-emerald-100 light:hover:bg-emerald-200 light:border-emerald-300 light:text-emerald-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {confirmPending
             ? "Батлаж байна..."
-            : canConfirm
-              ? "Батлах"
-              : "Төлбөрийн дараа батална"}
+            : overdue
+              ? "Хугацаа хэтэрсэн"
+              : canConfirm
+                ? "Батлах"
+                : "Төлбөрийн дараа батална"}
         </button>
       </form>
       <ConfirmForm action={rejectAction} message="Энэ цагийн хүсэлтийг татгалзах уу?">

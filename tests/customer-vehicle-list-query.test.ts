@@ -68,7 +68,7 @@ test("customers: rejects invalid and unknown parameters instead of dropping them
   }
 });
 
-test("customers: search covers fullName, phone and email — unchanged from the pre-slice callers", () => {
+test("customers: search covers fullName, email and a normalised plate match (phone only when digits)", () => {
   const where = buildCustomerListWhere(customerQuery("q=Jane%20Doe"), {
     tenantId: "tenant-a",
   });
@@ -76,10 +76,18 @@ test("customers: search covers fullName, phone and email — unchanged from the 
     tenantId: "tenant-a",
     OR: [
       { fullName: { contains: "Jane Doe", mode: "insensitive" } },
-      { phone: { contains: "Jane Doe" } },
       { email: { contains: "Jane Doe", mode: "insensitive" } },
+      { tenantVehicles: { some: { vehicle: { plate: { contains: "JАNЕDОЕ" } } } } },
     ],
   });
+});
+
+test("customers: plate search is canonicalised (dashes, Latin letters) like stored plates", () => {
+  const where = buildCustomerListWhere(customerQuery("q=1111-UAA"), { tenantId: "tenant-a" });
+  assert.deepEqual(where.OR?.[2], {
+    tenantVehicles: { some: { vehicle: { plate: { contains: "1111UАА" } } } },
+  });
+  assert.deepEqual(where.OR?.[3], { phone: { contains: "1111UAA" } });
 });
 
 test("customers: tenantId is always present, even with no search text", () => {

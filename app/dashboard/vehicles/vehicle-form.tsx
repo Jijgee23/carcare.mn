@@ -10,13 +10,15 @@ import {
 import { Field, FormError } from "@/app/_components/auth-shell";
 import { Btn, BtnLink } from "@/app/_components/landing-ops-ui";
 import { Select } from "@/app/_components/select";
+import { useToast } from "@/app/_components/toast";
+import { quickCreateCustomerFromPlateAction } from "@/app/_actions/quick-create";
 import { customerLabel } from "@/lib/customers";
 import { NO_PLATE, isNoPlate } from "@/lib/vehicle-plate";
 import {
-  type HurVehicle,
   normalizeWheelPosition,
   ownerKindFromRegnum,
 } from "@/lib/hur_service";
+import type { LookupVehicle } from "@/lib/hur-lookup";
 
 // Монгол улсын дугаарын хэлбэр: 4 цифр + 3 үсэг (Кирилл эсвэл Латин).
 // 4 цифр + 3 үсэг. Кирилл `А-Я` муж нь Монгол тусгай үсэг Ө/Ү/Ё-г агуулдаггүй
@@ -129,11 +131,14 @@ export function VehicleForm({
   const [customerId, setCustomerId] = useState(
     initial?.customerId ?? defaultCustomerId ?? "",
   );
+  const toast = useToast();
+  const [customersList, setCustomersList] = useState(customers);
+  const [registeringOwner, setRegisteringOwner] = useState(false);
   const [isPostpaid, setIsPostpaid] = useState(initial?.isPostpaid ?? false);
 
   const [hurLoading, setHurLoading] = useState(false);
   const [hurError, setHurError] = useState<string | null>(null);
-  const [hurInfo, setHurInfo] = useState<HurVehicle | null>(null);
+  const [hurInfo, setHurInfo] = useState<LookupVehicle | null>(null);
   // Мэдээллийн эх сурвалж: системийн global бүртгэл эсвэл HUR registry.
   const [hurSource, setHurSource] = useState<"global" | "hur">("hur");
   // Энэ tenant-д аль хэдийн бүртгэлтэй — хадгалахад алдаа өгөх тул урьдчилан анхааруулна.
@@ -149,18 +154,29 @@ export function VehicleForm({
   const submittedPlate = noPlate ? (initialNoPlate && trimmedPlate ? trimmedPlate : NO_PLATE) : plate;
   const vinRequired = noPlate && !(initialNoPlate && trimmedPlate);
 
-  function matchCustomerByPhone(phone: string | null): string | null {
-    if (!phone) return null;
-    const normalized = phone.replace(/\D/g, "");
-    if (!normalized) return null;
-    const found = customers.find(
-      (c) => c.phone.replace(/\D/g, "") === normalized,
-    );
-    return found?.id ?? null;
+  // Эзэмшигчийг сервер талд дахин шийдэж (бүтэн утас browser-д ирэхгүй) бүртгэнэ.
+  async function registerOwnerFromPlate() {
+    setRegisteringOwner(true);
+    try {
+      const res = await quickCreateCustomerFromPlateAction({ plate: trimmedPlate });
+      if (res.ok && res.customer) {
+        setCustomersList((prev) => [res.customer!, ...prev]);
+        setCustomerId(res.customer.id);
+      } else {
+        toast.error(
+          "Эзэмшигч бүртгэж чадсангүй",
+          res.message ?? Object.values(res.fieldErrors ?? {})[0],
+        );
+      }
+    } catch (e) {
+      toast.error("Алдаа гарлаа", e instanceof Error ? e.message : undefined);
+    } finally {
+      setRegisteringOwner(false);
+    }
   }
 
   // HUR-аас ирсэн мэдээллийг form талбаруудад тавина.
-  function applyHurVehicle(v: HurVehicle) {
+  function applyLookupVehicle(v: LookupVehicle, matchedCustomerId?: string | null) {
     setHurInfo(v);
     // Дугааргүй бүртгэлтэй машинд дугаар оноож байхад бүртгэлийн мэдээлэл
     // байгаа утгыг (марк/VIN г.м.) ДАРЖ БИЧИХГҮЙ — зөвхөн хоосныг нөхнө.
@@ -179,10 +195,10 @@ export function VehicleForm({
     fill(colorName, v.color, setColorName);
     fill(capacity, v.capacity, setCapacity);
     fill(purpose, v.purpose, setPurpose);
-    fill(ownerRegnum, v.owner?.regnum, setOwnerRegnum);
-    if (!customerId && v.owner?.phone) {
-      const matched = matchCustomerByPhone(v.owner.phone);
-      if (matched) setCustomerId(matched);
+    // Регистр browser-д ирэхгүй (QA #17) — ownerRegnum талбарыг автоматаар
+    // бөглөхгүй; харьяаллын төрлийг (kind) л харуулна.
+    if (!customerId && matchedCustomerId && customersList.some((c) => c.id === matchedCustomerId)) {
+      setCustomerId(matchedCustomerId);
     }
   }
 
@@ -205,7 +221,7 @@ export function VehicleForm({
       if (!res.ok) {
         throw new Error(data?.error ?? "HUR-аас мэдээлэл татаж чадсангүй.");
       }
-      applyHurVehicle(data.vehicle as HurVehicle);
+      applyLookupVehicle(data.vehicle as LookupVehicle, data.matchedCustomerId);
       setHurSource(data.source === "global" ? "global" : "hur");
       setAlreadyRegistered(Boolean(data.registered) && !isEdit);
       lastFetchedRef.current = p;
@@ -235,7 +251,7 @@ export function VehicleForm({
         if (!res.ok) {
           throw new Error(data?.error ?? "HUR-аас мэдээлэл татаж чадсангүй.");
         }
-        applyHurVehicle(data.vehicle as HurVehicle);
+        applyLookupVehicle(data.vehicle as LookupVehicle, data.matchedCustomerId);
         setHurSource(data.source === "global" ? "global" : "hur");
         setAlreadyRegistered(Boolean(data.registered) && !isEdit);
       } catch (e) {
@@ -279,7 +295,7 @@ export function VehicleForm({
             onChange={setCustomerId}
             disabled={ownerLocked}
             error={fe.customerId}
-            options={customers.map((c) => ({
+            options={customersList.map((c) => ({
               value: c.id,
               label: customerLabel(c),
               hint: c.phone,
@@ -305,6 +321,7 @@ export function VehicleForm({
         ) : (
         <Field
           label="Улсын дугаар"
+          required
           htmlFor="plate"
           hint={
             initialNoPlate
@@ -381,7 +398,8 @@ export function VehicleForm({
         <Field
           label={<HurLabel>VIN</HurLabel>}
           htmlFor="vin"
-          hint={vinRequired ? "17 тэмдэгт, дугааргүй машинд заавал" : "17 тэмдэгт, заавал биш"}
+          required={vinRequired}
+          hint={vinRequired ? "17 тэмдэгт (Япон рам 9–14), дугааргүй машинд заавал" : "17 тэмдэгт (Япон рам 9–14), заавал биш"}
           error={fe.vin}
           className={FIELD_MW}
         >
@@ -397,7 +415,7 @@ export function VehicleForm({
           />
         </Field>
 
-        <Field label={<HurLabel>Марк</HurLabel>} htmlFor="make" error={fe.make} className={FIELD_MW}>
+        <Field label={<HurLabel>Марк</HurLabel>} required htmlFor="make" error={fe.make} className={FIELD_MW}>
           <input
             id="make"
             name="make"
@@ -409,7 +427,7 @@ export function VehicleForm({
             placeholder="Toyota"
           />
         </Field>
-        <Field label={<HurLabel>Модель</HurLabel>} htmlFor="model" error={fe.model} className={FIELD_MW}>
+        <Field label={<HurLabel>Модель</HurLabel>} required htmlFor="model" error={fe.model} className={FIELD_MW}>
           <input
             id="model"
             name="model"
@@ -515,6 +533,7 @@ export function VehicleForm({
             placeholder="Суудал"
           />
         </Field>
+        {hurInfo ? <input type="hidden" name="fromLookup" value="1" /> : null}
         <Field
           label={<HurLabel>Эзэмшигчийн регистр</HurLabel>}
           htmlFor="ownerRegnum"
@@ -613,19 +632,17 @@ export function VehicleForm({
             <div>
               <span className="text-[var(--oc-muted3)]">Эзэмшигч:</span>{" "}
               {hurInfo.owner.lastName ?? ""} {hurInfo.owner.firstName ?? "—"}
-              {ownerKindFromRegnum(hurInfo.owner.regnum)
-                ? ` · ${ownerKindFromRegnum(hurInfo.owner.regnum)}`
-                : ""}
+              {hurInfo.owner.kind ? ` · ${hurInfo.owner.kind}` : ""}
               {hurInfo.owner.phone ? ` · ${hurInfo.owner.phone}` : ""}
-              {hurInfo.owner.address ? ` · ${hurInfo.owner.address}` : ""}
               {!customerId && hurInfo.owner.phone ? (
-                <Link
-                  href={`/dashboard/customers/new?fullName=${encodeURIComponent(`${hurInfo.owner.lastName ?? ""} ${hurInfo.owner.firstName ?? ""}`.trim())}&phone=${encodeURIComponent(hurInfo.owner.phone)}`}
-                  target="_blank"
-                  className="ml-2 text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)]"
+                <button
+                  type="button"
+                  onClick={registerOwnerFromPlate}
+                  disabled={registeringOwner}
+                  className="ml-2 text-[var(--oc-accent)] hover:text-[var(--oc-accent-hi)] disabled:opacity-50"
                 >
-                  → Үйлчлүүлэгч нэмэх
-                </Link>
+                  {registeringOwner ? "Бүртгэж..." : "→ Үйлчлүүлэгч нэмэх"}
+                </button>
               ) : null}
             </div>
           ) : null}

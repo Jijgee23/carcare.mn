@@ -361,7 +361,7 @@ export default async function DashboardPage({
           <dl className="space-y-3 text-sm">
             <InfoRow label="Нэр" value={user.tenant.name} />
             <InfoRow label="Регистр" value={user.tenant.registerNumber} />
-            <InfoRow label="Gmail" value={user.tenant.email} />
+            <InfoRow label="Имэйл" value={user.tenant.email} />
             <InfoRow label="Утас" value={user.tenant.phone1} />
             {user.tenant.phone2 ? (
               <InfoRow label="Утас 2" value={user.tenant.phone2} />

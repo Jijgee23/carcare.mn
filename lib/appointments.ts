@@ -44,6 +44,18 @@ export const APPOINTMENT_STATUS_TRANSITIONS: Record<
   NO_SHOW: [],
 };
 
+/**
+ * Хүлээгдэж буй (PENDING) цаг эхлэх цагаасаа хэтэрсэн эсэх. Expiry cron
+ * (app/api/cron/expire-appointments) хугацаа хэтэрсэн PENDING-г CANCELLED
+ * болгодог ч гаднаас ажилладаг тул UI/command түвшинд мөн хамгаална.
+ */
+export function isAppointmentOverdue(
+  a: { status: string; requestedAt: Date },
+  now: Date = new Date(),
+): boolean {
+  return a.status === "PENDING" && a.requestedAt.getTime() < now.getTime();
+}
+
 // Мэдэгдэлд цаг харуулах нэг мөрийн формат.
 export function formatWhen(d: Date): string {
   return d.toLocaleString("mn-MN", {

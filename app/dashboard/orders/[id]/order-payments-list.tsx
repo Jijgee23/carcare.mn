@@ -69,10 +69,13 @@ export function OrderPaymentsList({
   // Амжилттай бүртгэсний дараа талбарыг хоослоно (effect биш — render үед
   // өмнөх action state-тэй харьцуулж тохируулах React-ийн зөвлөсөн хэв маяг).
   const [amount, setAmount] = useState("");
+  const [method, setMethod] = useState("CASH");
+  const [lastChange, setLastChange] = useState<string | null>(null);
   const [seenState, setSeenState] = useState(state);
   if (state !== seenState) {
     setSeenState(state);
     if (state?.ok) setAmount("");
+    setLastChange(state?.ok ? state.change ?? null : null);
   }
 
   return (
@@ -82,12 +85,12 @@ export function OrderPaymentsList({
           {payments.map((p) => (
             <li
               key={p.id}
-              className={`flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${p.status === "CANCELLED"
+              className={`flex items-start justify-between gap-3 rounded-lg border px-2.5 py-1.5 text-xs ${p.status === "CANCELLED"
                 ? "border-[var(--oc-line)] opacity-50"
                 : "border-[var(--oc-line)] bg-[var(--oc-panel2)]"
                 }`}
             >
-              <div className="flex items-center gap-2 min-w-0">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0 flex-1">
                 <span
                   className={`shrink-0 font-plex-mono text-[10px] px-1.5 py-0.5 rounded-full ${ORDER_PAYMENT_METHOD_BADGE[p.method] ?? ORDER_PAYMENT_METHOD_BADGE.OTHER
                     }`}
@@ -109,7 +112,7 @@ export function OrderPaymentsList({
                 ) : null}
               </div>
               {canReverse && p.status === "PAID" ? (
-                <form action={reverseOrderPaymentAction}>
+                <form action={reverseOrderPaymentAction} className="shrink-0">
                   <input type="hidden" name="paymentId" value={p.id} />
                   <button
                     type="submit"
@@ -125,6 +128,10 @@ export function OrderPaymentsList({
         </ul>
       ) : null}
 
+      {lastChange ? (
+        <p className="text-xs text-emerald-500">Хариулт өгөх: {formatTugrik(lastChange)}</p>
+      ) : null}
+
       {canRecord && hasRemaining ? (
         <form action={formAction} className="flex flex-col gap-2">
           <input type="hidden" name="orderId" value={orderId} />
@@ -134,7 +141,8 @@ export function OrderPaymentsList({
           <div className="flex gap-2">
             <select
               name="method"
-              defaultValue="CASH"
+              value={method}
+              onChange={(e) => setMethod(e.target.value)}
               className="compact-input flex-1"
             >
               {MANUAL_PAYMENT_METHODS.map((m) => (
@@ -160,6 +168,15 @@ export function OrderPaymentsList({
               </span>
             </div>
           </div>
+          {(() => {
+            const tendered = Number.parseFloat(amount.replace(/,/g, ""));
+            if (method !== "CASH" || !Number.isFinite(tendered) || tendered <= remainingNum) return null;
+            return (
+              <p className="text-xs text-[var(--oc-ink2)]">
+                Хариулт: <span className="font-semibold tabular-nums">{formatTugrik(String(tendered - remainingNum))}</span>
+              </p>
+            );
+          })()}
           <Btn type="submit" size="md" disabled={pending}>
             {pending ? "Бүртгэж..." : "Төлбөр бүртгэх"}
           </Btn>

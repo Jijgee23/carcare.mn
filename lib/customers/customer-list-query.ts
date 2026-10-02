@@ -13,6 +13,7 @@
 // exactly like `buildOrderListWhere` leaves ordering to its callers.
 
 import { Prisma } from "@/app/generated/prisma/client";
+import { normalizePlate } from "@/lib/vehicle-plate";
 import {
   optionalText,
   parsePagination,
@@ -64,11 +65,22 @@ export function buildCustomerListWhere(
 ): Prisma.CustomerWhereInput {
   const where: Prisma.CustomerWhereInput = { tenantId: options.tenantId };
   if (query.q) {
-    where.OR = [
+    const digits = query.q.replace(/[\s-]/g, "");
+    // Хадгалагдсан дугаарууд normalizePlate-ээр канончлогдсон (зураасгүй,
+    // Латин→Кирилл) тул хайлтыг ЯГ ингэж нормчилно. Нэг query хэвээр —
+    // харин текст хайлт бүр tenantVehicles→vehicle.plate EXISTS нэмдэг.
+    const plateQuery = normalizePlate(query.q);
+    const or: Prisma.CustomerWhereInput[] = [
       { fullName: { contains: query.q, mode: "insensitive" } },
-      { phone: { contains: query.q } },
       { email: { contains: query.q, mode: "insensitive" } },
     ];
+    if (plateQuery) {
+      or.push({
+        tenantVehicles: { some: { vehicle: { plate: { contains: plateQuery } } } },
+      });
+    }
+    if (/\d/.test(digits)) or.push({ phone: { contains: digits } });
+    where.OR = or;
   }
   return where;
 }

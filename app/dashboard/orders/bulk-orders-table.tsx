@@ -32,6 +32,8 @@ import {
   type OrderStatus,
   type PaymentStatus,
 } from "@/lib/orders";
+import { SortableTh } from "@/app/_components/sortable-th";
+import type { SortDir } from "@/lib/list-sort";
 import { OrderRow } from "./order-row";
 
 export type BulkOrderRow = {
@@ -64,12 +66,14 @@ export function BulkOrdersTable({
   canBulkEdit,
   canAssign,
   currentUserId,
+  sort,
 }: {
   rows: BulkOrderRow[];
   employees: AssignableEmployee[];
   canBulkEdit: boolean;
   canAssign: boolean;
   currentUserId: string;
+  sort: { key: string; dir: SortDir };
 }) {
   const selection = useRowSelection(rows);
   const [statusPickerOpen, setStatusPickerOpen] = useState(false);
@@ -109,9 +113,6 @@ export function BulkOrdersTable({
                 "Үйлчилгээ",
                 "Салбар",
                 "Хариуцагч",
-                "Огноо",
-                "Дүн",
-                "Статус",
               ].map((h) => (
                 <th
                   key={h}
@@ -120,6 +121,11 @@ export function BulkOrdersTable({
                   {h}
                 </th>
               ))}
+              <SortableTh label="Огноо" sortKey="date" current={sort} className="text-left text-xs text-[var(--oc-muted3)] font-medium px-5 py-3" />
+              <SortableTh label="Дүн" sortKey="amount" current={sort} className="text-left text-xs text-[var(--oc-muted3)] font-medium px-5 py-3" />
+              <th className="text-left text-xs text-[var(--oc-muted3)] font-medium px-5 py-3">
+                Статус
+              </th>
             </tr>
           </thead>
           <tbody {...selection.dragArea}>
@@ -178,7 +184,7 @@ export function BulkOrdersTable({
                 <td className="px-5 py-4 text-sm text-[var(--oc-muted2)]">
                   {o.assignedToLabel ?? "—"}
                 </td>
-                <td className="px-5 py-4 text-xs text-[var(--oc-muted3)]">
+                <td className="px-5 py-4 text-xs text-[var(--oc-muted3)] whitespace-nowrap">
                   {o.scheduledAtLabel ?? "—"}
                 </td>
                 <td className="px-5 py-4 text-sm">

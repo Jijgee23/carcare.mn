@@ -18,7 +18,7 @@ import {
   formatHours,
   formatMonthDay,
   initialsOf,
-  segmentHours,
+  rowShiftStats,
 } from "./schedule-ui";
 
 // 24 цагийн формат, 30 минутын алхамтай — native `<input type="time">`-ийн
@@ -247,17 +247,8 @@ export function ScheduleGrid({
   // Мөр бүрийн нийт цаг/ээлжийн тоо (харагдаж буй өдрүүдээр).
   const rowStats = new Map(
     rows.map((r) => {
-      let hours = 0;
-      let shiftCount = 0;
-      for (const d of dates) {
-        const cell = r.cells[d];
-        if (!cellHasBranches(cell)) continue;
-        for (const seg of cell.segments) {
-          shiftCount++;
-          hours += segmentHours(seg.startTime, seg.endTime) ?? 0;
-        }
-      }
-      return [r.id, { hours, shiftCount }];
+      const cells = dates.map((d) => r.cells[d]).filter((cell) => cellHasBranches(cell));
+      return [r.id, rowShiftStats(cells)];
     }),
   );
   const totalHours = [...rowStats.values()].reduce((n, s) => n + s.hours, 0);

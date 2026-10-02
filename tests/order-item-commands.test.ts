@@ -95,7 +95,7 @@ test("web item add/cancel revalidate the committed service catalog identity", ()
   const source = readFileSync(new URL("../app/_actions/orders.ts", import.meta.url), "utf8");
   assert.match(source, /const created = await addOrderItemCommand\(/);
   assert.match(source, /const cancelled = await cancelOrderItemCommand\(/);
-  assert.match(source, /if \(created\.serviceId\) \{[\s\S]*revalidatePath\("\/dashboard\/services", "layout"\)/);
+  assert.match(source, /if \(created\.serviceId\) \{[\s\S]*revalidatePath\(`\/dashboard\/services\/\$\{created\.serviceId\}`\)/);
   assert.match(source, /if \(cancelled\.serviceId\) \{[\s\S]*revalidatePath\(`\/dashboard\/services\/\$\{cancelled\.serviceId\}`\)/);
   assert.match(readFileSync(new URL("../lib/orders/order-item-commands.ts", import.meta.url), "utf8"), /return \{ itemId, serviceId: item\.serviceId, total \}/);
 });

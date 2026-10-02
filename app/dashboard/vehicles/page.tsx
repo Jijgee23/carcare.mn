@@ -23,6 +23,8 @@ import { requireUser } from "@/lib/auth";
 import { canCreate, canDelete, canView } from "@/lib/auth/roles";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { parseSort } from "@/lib/list-sort";
+import { SortableTh, TH_CLASS } from "@/app/_components/sortable-th";
 
 export const metadata = {
   title: "Машинууд",
@@ -36,6 +38,8 @@ export default async function VehiclesPage({
     assigned?: string;
     postpaid?: string;
     page?: string;
+    sort?: string;
+    dir?: string;
   }>;
 }) {
   const user = await requireUser();
@@ -48,7 +52,20 @@ export default async function VehiclesPage({
     assigned = "",
     postpaid = "",
     page: pageParam,
+    sort: sortParam,
+    dir: dirParam,
   } = await searchParams;
+  const sort = parseSort(
+    { sort: sortParam, dir: dirParam },
+    ["plate", "mileage", "date"] as const,
+    { key: "date", dir: "desc" },
+  );
+  const orderBy =
+    sort.key === "plate"
+      ? { vehicle: { plate: sort.dir } }
+      : sort.key === "mileage"
+        ? { vehicle: { mileage: { sort: sort.dir, nulls: "last" as const } } }
+        : { createdAt: sort.dir };
   const { page, pageSize, skip, take } = getPageInfo(pageParam);
   // P3-B6: канон where-builder — `lib/vehicles/vehicle-list-query.ts`.
   // Тенантын "машинууд" = TenantVehicle link-үүд (global Vehicle руу заана),
@@ -70,7 +87,7 @@ export default async function VehiclesPage({
     await Promise.all([
       prisma.tenantVehicle.findMany({
         where,
-        orderBy: { createdAt: "desc" },
+        orderBy: [orderBy, { id: "asc" }],
         skip,
         take,
         select: {
@@ -191,21 +208,12 @@ export default async function VehiclesPage({
             <table className="w-full min-w-[720px]">
               <thead>
                 <tr className="border-b border-[var(--oc-line)]">
-                  {[
-                    "Машин",
-                    "Дугаар",
-                    "Эзэмшигч",
-                    "Гүйлт",
-                    "Засварын хуудас",
-                    "",
-                  ].map((h) => (
-                    <th
-                      key={h}
-                      className="text-left font-plex-mono text-[10.5px] uppercase tracking-[0.08em] text-[var(--oc-muted3)] font-medium px-5 py-3"
-                    >
-                      {h}
-                    </th>
-                  ))}
+                  <th className={TH_CLASS}>Машин</th>
+                  <SortableTh label="Дугаар" sortKey="plate" current={sort} />
+                  <th className={TH_CLASS}>Эзэмшигч</th>
+                  <SortableTh label="Гүйлт" sortKey="mileage" current={sort} />
+                  <th className={TH_CLASS}>Засварын хуудас</th>
+                  <th className={TH_CLASS} />
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--oc-line)]">
@@ -292,7 +300,13 @@ export default async function VehiclesPage({
             page={meta.page}
             totalPages={meta.totalPages}
             total={meta.total}
-            params={{ q, assigned, postpaid }}
+            params={{
+              q,
+              assigned,
+              postpaid,
+              sort: sortParam ?? "",
+              dir: dirParam ?? "",
+            }}
           />
         </div>
       )}
