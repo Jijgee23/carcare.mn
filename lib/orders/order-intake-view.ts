@@ -7,6 +7,7 @@ export const INTAKE_VIEW_SELECT = {
   intakeNotes: true,
   intakeRecordedAt: true,
   intakeSignaturePath: true,
+  intakeMileageKm: true,
   intakePhotos: {
     orderBy: { createdAt: "asc" as const },
     select: { id: true, path: true },
@@ -18,6 +19,7 @@ export type IntakeViewRow = {
   intakeNotes: string | null;
   intakeRecordedAt: Date | null;
   intakeSignaturePath: string | null;
+  intakeMileageKm: number | null;
   intakePhotos: { id: string; path: string }[];
   intakeRecordedBy: { firstName: string | null; lastName: string | null } | null;
 };
@@ -26,6 +28,7 @@ export type IntakeView = {
   notes: string | null;
   photos: { id: string; url: string }[];
   signatureUrl: string | null;
+  mileageKm: number | null;
   recordedAt: string;
   recordedBy: string | null;
 };
@@ -50,6 +53,7 @@ export function toIntakeView(
     notes: row.intakeNotes,
     photos: row.intakePhotos.map((p) => ({ id: p.id, url: p.path })),
     signatureUrl: row.intakeSignaturePath,
+    mileageKm: row.intakeMileageKm,
     recordedAt: row.intakeRecordedAt.toISOString(),
     recordedBy: opts.includeRecordedBy ? name || null : null,
   };

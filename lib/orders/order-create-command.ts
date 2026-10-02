@@ -210,6 +210,7 @@ export async function createOrderCommand(
               ? {
                   intakeNotes: input.intake.notes,
                   intakeSignaturePath: input.intake.signaturePath,
+                  intakeMileageKm: input.intake.mileageKm,
                   intakeRecordedAt: new Date(),
                   intakeRecordedById: input.actorId,
                   intakePhotos: input.intake.photoPaths.length > 0

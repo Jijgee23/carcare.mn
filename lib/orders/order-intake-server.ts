@@ -1,6 +1,12 @@
 import { stat } from "node:fs/promises";
 import { resolveUploadPath } from "@/lib/storage";
-import { INTAKE_NOTES_MAX, INTAKE_PHOTOS_MAX, intakeStagingSubdir } from "@/lib/orders/order-intake";
+import {
+  INTAKE_MILEAGE_ERROR,
+  INTAKE_MILEAGE_MAX,
+  INTAKE_NOTES_MAX,
+  INTAKE_PHOTOS_MAX,
+  intakeStagingSubdir,
+} from "@/lib/orders/order-intake";
 
 const SAFE_ID = /^[A-Za-z0-9_-]+$/;
 const FILE_NAME = /^[0-9a-f]{24}\.(png|jpg|webp)$/;
@@ -32,6 +38,7 @@ export type IntakeInput = {
   notes: string | null;
   photoPaths: string[];
   signaturePath: string | null;
+  mileageKm: number | null;
 };
 
 /**
@@ -39,7 +46,7 @@ export type IntakeInput = {
  * хоёрт нийтлэг). Хоосон бол `null` (хүлээн авах бүртгээгүй захиалга).
  */
 export async function validateIntakeFields(
-  fields: { notes?: string | null; photoPaths?: string[]; signaturePath?: string | null },
+  fields: { notes?: string | null; photoPaths?: string[]; signaturePath?: string | null; mileageKm?: number | null },
   tenantId: string,
   userId: string,
   isClaimed: IntakePathClaimedLookup = defaultClaimedLookup,
@@ -48,7 +55,15 @@ export async function validateIntakeFields(
   const photoPaths = [...new Set((fields.photoPaths ?? []).filter(Boolean))];
   const signaturePath = (fields.signaturePath ?? "").trim() || null;
 
-  if (!notes && photoPaths.length === 0 && !signaturePath) return { intake: null };
+  const mileageKm = fields.mileageKm ?? null;
+  if (
+    mileageKm !== null &&
+    (typeof mileageKm !== "number" || !Number.isInteger(mileageKm) || mileageKm < 0 || mileageKm > INTAKE_MILEAGE_MAX)
+  ) {
+    return { intake: null, error: INTAKE_MILEAGE_ERROR };
+  }
+
+  if (!notes && photoPaths.length === 0 && !signaturePath && mileageKm === null) return { intake: null };
   if (notes.length > INTAKE_NOTES_MAX) {
     return { intake: null, error: `Хүлээн авах тэмдэглэл ${INTAKE_NOTES_MAX} тэмдэгтээс хэтрэхгүй.` };
   }
@@ -74,7 +89,17 @@ export async function validateIntakeFields(
   if (all.length > 0 && (await isClaimed(tenantId, all))) {
     return { intake: null, error: INTAKE_PATH_CLAIMED_MESSAGE };
   }
-  return { intake: { notes: notes || null, photoPaths, signaturePath } };
+  return { intake: { notes: notes || null, photoPaths, signaturePath, mileageKm } };
+}
+
+/**
+ * Web form-ын `intakeMileageKm` (таслалтай байж болно) → тоо. Хоосон = null;
+ * тоо биш утга NaN болж validateIntakeFields дээр алдаа өгнө.
+ */
+function parseMileageField(raw: FormDataEntryValue | null): number | null {
+  const cleaned = String(raw ?? "").replace(/,/g, "").trim();
+  if (cleaned === "") return null;
+  return /^\d+$/.test(cleaned) ? Number(cleaned) : Number.NaN;
 }
 
 /** FormData-аас хүлээн авах хэсгийг уншиж `validateIntakeFields`-ээр шалгана. */
@@ -88,6 +113,7 @@ export async function parseIntakeInput(
       notes: String(fd.get("intakeNotes") ?? ""),
       photoPaths: fd.getAll("intakePhotoPaths").map(String),
       signaturePath: String(fd.get("intakeSignaturePath") ?? ""),
+      mileageKm: parseMileageField(fd.get("intakeMileageKm")),
     },
     tenantId,
     userId,
@@ -99,15 +125,18 @@ export async function parseIntakeInput(
  * Буруу төрөл бол `error`.
  */
 export function readIntakeBody(raw: unknown): {
-  fields: { notes: string | null; photoPaths: string[]; signaturePath: string | null } | null;
+  fields: { notes: string | null; photoPaths: string[]; signaturePath: string | null; mileageKm: number | null } | null;
   error?: string;
 } {
   if (raw === undefined || raw === null) return { fields: null };
-  const bad = { fields: null, error: "intake нь { notes, photoPaths, signaturePath } object байна." };
+  const bad = { fields: null, error: "intake нь { notes, photoPaths, signaturePath, mileageKm } object байна." };
   if (typeof raw !== "object" || Array.isArray(raw)) return bad;
   const r = raw as Record<string, unknown>;
   if (r.notes !== undefined && r.notes !== null && typeof r.notes !== "string") return bad;
   if (r.signaturePath !== undefined && r.signaturePath !== null && typeof r.signaturePath !== "string") return bad;
+  if (r.mileageKm !== undefined && r.mileageKm !== null && typeof r.mileageKm !== "number") {
+    return { fields: null, error: INTAKE_MILEAGE_ERROR };
+  }
   if (r.photoPaths !== undefined && r.photoPaths !== null) {
     if (!Array.isArray(r.photoPaths) || r.photoPaths.some((p) => typeof p !== "string")) return bad;
   }
@@ -116,6 +145,7 @@ export function readIntakeBody(raw: unknown): {
       notes: (r.notes as string | null | undefined) ?? null,
       photoPaths: (r.photoPaths as string[] | null | undefined) ?? [],
       signaturePath: (r.signaturePath as string | null | undefined) ?? null,
+      mileageKm: (r.mileageKm as number | null | undefined) ?? null,
     },
   };
 }

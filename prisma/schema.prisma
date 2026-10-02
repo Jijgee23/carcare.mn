@@ -532,6 +532,8 @@ model ServiceOrder {
   intakeRecordedById       String?
   intakeRecordedBy         User?         @relation("IntakeRecordedBy", fields: [intakeRecordedById], references: [id], onDelete: SetNull)
   intakeSignaturePath      String?
+  // Хүлээн авах үеийн гүйлт (км, 0–2,000,000). Заавал биш.
+  intakeMileageKm          Int?
   totalAmount              Decimal?      @db.Decimal(12, 2)
   paidAmount               Decimal?      @db.Decimal(12, 2)
 

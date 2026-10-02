@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { INTAKE_NOTES_MAX, INTAKE_PHOTOS_MAX, intakeStagingSubdir } from "../lib/orders/order-intake";
+import { INTAKE_MILEAGE_ERROR, INTAKE_NOTES_MAX, INTAKE_PHOTOS_MAX, formatMileageKm, intakeStagingSubdir } from "../lib/orders/order-intake";
 import { INTAKE_PATH_CLAIMED_MESSAGE, readIntakeBody, validateIntakeFields } from "../lib/orders/order-intake-server";
 import { toIntakeView, type IntakeViewRow } from "../lib/orders/order-intake-view";
 
@@ -49,14 +49,53 @@ test("readIntakeBody: type guards", () => {
     assert.ok(readIntakeBody(bad).error, `expected error for ${JSON.stringify(bad)}`);
   }
   assert.deepEqual(readIntakeBody({ notes: "n" }), {
-    fields: { notes: "n", photoPaths: [], signaturePath: null },
+    fields: { notes: "n", photoPaths: [], signaturePath: null, mileageKm: null },
   });
+  assert.equal(readIntakeBody({ mileageKm: 152300 }).fields?.mileageKm, 152300);
+  assert.equal(readIntakeBody({ mileageKm: null }).fields?.mileageKm, null);
+  for (const bad of [{ mileageKm: "5" }, { mileageKm: true }, { mileageKm: {} }]) {
+    assert.equal(readIntakeBody(bad).error, INTAKE_MILEAGE_ERROR);
+  }
+});
+
+test("validateIntakeFields: mileage valid, missing, and bounds", async () => {
+  const ok = await validateIntakeFields({ mileageKm: 152300 }, T, U);
+  assert.deepEqual(ok, { intake: { notes: null, photoPaths: [], signaturePath: null, mileageKm: 152300 } });
+  assert.equal((await validateIntakeFields({ mileageKm: 0 }, T, U)).intake?.mileageKm, 0);
+  assert.equal((await validateIntakeFields({ mileageKm: 2_000_000 }, T, U)).intake?.mileageKm, 2_000_000);
+  // Missing / null mileage: still empty intake.
+  assert.deepEqual(await validateIntakeFields({ mileageKm: null }, T, U), { intake: null });
+  assert.equal((await validateIntakeFields({ notes: "n" }, T, U)).intake?.mileageKm, null);
+  for (const bad of [-1, 2_000_001, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+    const r = await validateIntakeFields({ mileageKm: bad }, T, U);
+    assert.equal(r.intake, null);
+    assert.equal(r.error, INTAKE_MILEAGE_ERROR, `mileage ${bad}`);
+  }
+});
+
+test("parseIntakeInput: strips commas from intakeMileageKm and rejects junk", async () => {
+  const { parseIntakeInput } = await import("../lib/orders/order-intake-server");
+  const fd = (v: string) => {
+    const f = new FormData();
+    f.set("intakeMileageKm", v);
+    return f;
+  };
+  assert.equal((await parseIntakeInput(fd("152,300"), T, U)).intake?.mileageKm, 152300);
+  assert.deepEqual(await parseIntakeInput(fd(""), T, U), { intake: null });
+  assert.equal((await parseIntakeInput(fd("12a"), T, U)).error, INTAKE_MILEAGE_ERROR);
+  assert.equal((await parseIntakeInput(fd("2,000,001"), T, U)).error, INTAKE_MILEAGE_ERROR);
+});
+
+test("formatMileageKm groups thousands", () => {
+  assert.equal(formatMileageKm(152300), "152,300 км");
+  assert.equal(formatMileageKm(0), "0 км");
 });
 
 const recorded: IntakeViewRow = {
   intakeNotes: "Scratch on door",
   intakeRecordedAt: new Date("2026-10-02T09:30:00.000Z"),
   intakeSignaturePath: "/uploads/sig.png",
+  intakeMileageKm: 152300,
   intakePhotos: [
     { id: "p2", path: "/uploads/b.jpg" },
     { id: "p1", path: "/uploads/a.jpg" },
@@ -78,9 +117,14 @@ test("toIntakeView: staff view includes recordedBy and keeps photo order", () =>
       { id: "p1", url: "/uploads/a.jpg" },
     ],
     signatureUrl: "/uploads/sig.png",
+    mileageKm: 152300,
     recordedAt: "2026-10-02T09:30:00.000Z",
     recordedBy: "Dorj Bat",
   });
+});
+
+test("toIntakeView: mileageKm is null when not entered", () => {
+  assert.equal(toIntakeView({ ...recorded, intakeMileageKm: null }, { includeRecordedBy: true })?.mileageKm, null);
 });
 
 test("toIntakeView: customer view hides recordedBy; missing user gives null", () => {

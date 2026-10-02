@@ -234,14 +234,16 @@ Res: 200 { "orders": [{ "id": "...", "number": "...", "status": "...", "paymentS
 
         <Endpoint method="POST" path="/api/v1/orders" auth="bearer" bearerLabel={BEARER} tags={["Эрх: orders.create", "Багц идэвхтэй байх шаардлагатай"]} title="Шинэ засварын хуудас үүсгэх.">
           <Code>{`Req:  { "branchId": "...", "customerId": "...", "vehicleId": "...", "assignedToId": "...", "scheduledAt": "...", "notes": "...",
-        "intake": { "notes": "...", "photoPaths": ["/uploads/..."], "signaturePath": "/uploads/..." } }
+        "intake": { "notes": "...", "photoPaths": ["/uploads/..."], "signaturePath": "/uploads/...", "mileageKm": 152300 } }
       // intake заавал биш — машин хүлээн авах бүртгэл. ЗӨВХӨН үүсгэх үед бичигдэж, дараа нь засагдахгүй (PATCH хүлээн авахгүй).
       // photoPaths/signaturePath нь POST /uploads (kind=intake)-ээр өөрөө байршуулсан замууд. Дээд тал нь 20 зураг, notes ≤ 5000 тэмдэгт.
+      // mileageKm заавал биш — гүйлт (км), бүхэл тоо 0–2,000,000. Дангаараа ч хүлээн авах бүртгэл болно.
       // assignedToId заавал. orders.assign эрхгүй бол илгээхгүй байж болно — өөрөө оноогдоно.
 Res:  201 { "order": {...} }
 422  { "error": "Хариуцах мастер сонгоно уу.", "fieldErrors": { "assignedToId": "..." } }   // ASSIGNEE_REQUIRED
 422  { "error": "Хүсэлт буруу.", "fieldErrors": { "branchId": "...", "customerId": "...", "vehicleId": "..." } }
 422  { "error": "Хүсэлт буруу.", "fieldErrors": { "intake": "..." } }   // intake буруу төрөлтэй
+422  { "error": "Гүйлт 0–2,000,000 км байх ёстой.", "fieldErrors": { "intake": "..." } }   // mileageKm бүхэл тоо биш / сөрөг / хэт том
 422  { "error": "Хамгийн ихдээ 20 зураг.", "fieldErrors": { "intake": "..." } }   // intake шалгалт (тэмдэглэл урт, зураг олон/буруу/олдсонгүй)
 422  { "error": "Хүсэлт буруу.", "fieldErrors": { "branchId": "Зөвхөн өөрийн салбарт засварын хуудас үүсгэх боломжтой." } }
 403  { "error": "Та зөвхөн өөрийгөө хариуцагчаар оноож болно." }   // orders.assign эрхгүй ажилтан өөр хүн оноох гэвэл
@@ -253,7 +255,7 @@ Res:  201 { "order": {...} }
   "items": [{ "id": "...", "kind": "...", "description": "...", "quantity": 1, "unitPrice": 0, "total": 0, "serviceId": "...",
     "status": "PENDING|IN_PROGRESS|COMPLETED|CANCELLED", "cancelledAt": "..."|null, "cancelledById": "..."|null }],
   "reports": [{ "id": "...", "createdAt": "...", "template": { "id": "...", "name": "...", "type": "..." } }],
-  "intake": { "notes": "..."|null, "photos": [{ "id": "...", "url": "/uploads/..." }], "signatureUrl": "/uploads/..."|null,
+  "intake": { "notes": "..."|null, "photos": [{ "id": "...", "url": "/uploads/..." }], "signatureUrl": "/uploads/..."|null, "mileageKm": 152300|null,
     "recordedAt": "...", "recordedBy": "Овог Нэр"|null } | null } }
       // intake: хүлээн авах бүртгэл (зөвхөн унших). Бүртгээгүй бол null. url-ууд нь харьцангуй зам.
 404 { "error": "Засварын хуудас олдсонгүй." }`}</Code>

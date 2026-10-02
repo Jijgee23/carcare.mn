@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Modal } from "@/app/_components/modal";
+import { formatMileageKm } from "@/lib/orders/order-intake";
 
 // Хүлээн авах бүртгэл (intake) — үйлчлүүлэгчид зөвхөн унших. Хуудсыг уртасгахгүйн
 // тулд товч хураангуй + modal-д бүрэн харагдана. Staff-ийн intake-record.tsx-тэй
@@ -11,6 +12,7 @@ type Props = {
   notes: string | null;
   photos: { id: string; url: string }[];
   signatureUrl: string | null;
+  mileageKm: number | null;
   // Огноог server дээр UB цагаар форматлана (hydration зөрөхгүй).
   recordedAtLabel: string;
 };
@@ -18,9 +20,10 @@ type Props = {
 export function OrderIntakeView(props: Props) {
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
-  const { notes, photos, signatureUrl } = props;
+  const { notes, photos, signatureUrl, mileageKm } = props;
 
   const summary = [
+    mileageKm !== null ? formatMileageKm(mileageKm) : null,
     notes ? "тэмдэглэл" : null,
     photos.length > 0 ? `${photos.length} зураг` : null,
     signatureUrl ? "гарын үсэг" : null,
@@ -49,7 +52,7 @@ export function OrderIntakeView(props: Props) {
   );
 }
 
-function IntakeDetails({ notes, photos, signatureUrl, recordedAtLabel }: Props) {
+function IntakeDetails({ notes, photos, signatureUrl, mileageKm, recordedAtLabel }: Props) {
   const [viewing, setViewing] = useState<number | null>(null);
 
   // Томруулсан зураг дээр ←/→ товчоор шилжинэ.
@@ -112,6 +115,10 @@ function IntakeDetails({ notes, photos, signatureUrl, recordedAtLabel }: Props) 
         <span>Бүртгэсэн: {recordedAtLabel}</span>
         <span>Үүсгэсний дараа засагдахгүй</span>
       </div>
+
+      {mileageKm !== null ? (
+        <p className="text-sm text-[var(--oc-ink2)]">Гүйлт: {formatMileageKm(mileageKm)}</p>
+      ) : null}
 
       <section>
         <h3 className="mb-1.5 text-xs font-medium text-[var(--oc-muted3)]">Тэмдэглэл</h3>

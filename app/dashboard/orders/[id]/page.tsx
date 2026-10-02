@@ -624,6 +624,7 @@ export default async function OrderDetailPage({
                   notes={order.intakeNotes}
                   photos={order.intakePhotos}
                   signaturePath={order.intakeSignaturePath}
+                  mileageKm={order.intakeMileageKm}
                   recordedAtLabel={
                     order.intakeRecordedAt
                       ? order.intakeRecordedAt.toLocaleString("mn-MN", { timeZone: "Asia/Ulaanbaatar", hour12: false })

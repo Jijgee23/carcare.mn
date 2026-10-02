@@ -180,6 +180,7 @@ export default async function AccountHistoryDetailPage({
           notes={intake.notes}
           photos={intake.photos}
           signatureUrl={intake.signatureUrl}
+          mileageKm={intake.mileageKm}
           recordedAtLabel={fmtIntakeTime(intake.recordedAt)}
         />
       ) : null}

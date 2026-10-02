@@ -64,6 +64,9 @@ export async function GET(req: Request) {
           expectedFinishAt: true,
           totalAmount: true,
           paidAmount: true,
+          // Зөвхөн "хүлээн авсан" эсэхийг мэдэхэд хангалттай — зураг/тэмдэглэл
+          // энд ачаалахгүй (GET /orders/[id] дээр бүтнээрээ).
+          intakeRecordedAt: true,
           vehicle: { select: { plate: true, make: true, model: true, year: true } },
           items: {
             orderBy: { createdAt: "asc" },
@@ -132,6 +135,7 @@ export async function GET(req: Request) {
       expectedFinishAt: true,
       totalAmount: true,
       paidAmount: true,
+      intakeRecordedAt: true,
       tenant: { select: { name: true, slug: true } },
       branch: { select: { id: true, name: true } },
       vehicle: { select: { plate: true, make: true, model: true, year: true } },
@@ -193,6 +197,7 @@ export async function GET(req: Request) {
             a.serviceOrder.paidAmount != null
               ? Number.parseFloat(a.serviceOrder.paidAmount.toString())
               : null,
+          hasIntake: a.serviceOrder.intakeRecordedAt != null,
           vehicle: a.serviceOrder.vehicle,
           items: a.serviceOrder.items.map((it) => ({
             id: it.id,
@@ -229,6 +234,7 @@ export async function GET(req: Request) {
       o.totalAmount != null ? Number.parseFloat(o.totalAmount.toString()) : null,
     paidAmount:
       o.paidAmount != null ? Number.parseFloat(o.paidAmount.toString()) : null,
+    hasIntake: o.intakeRecordedAt != null,
     tenant: o.tenant,
     branch: o.branch,
     vehicle: o.vehicle,

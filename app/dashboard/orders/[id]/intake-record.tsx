@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Modal } from "@/app/_components/modal";
+import { formatMileageKm } from "@/lib/orders/order-intake";
 
 // QA #14: хүлээн авах бүртгэл — захиалга үүсгэх үед бичигдсэн, зөвхөн унших.
 // Хуудсыг уртасгахгүйн тулд товч хураангуй + modal-д бүрэн харагдана.
@@ -10,12 +11,13 @@ type Props = {
   notes: string | null;
   photos: { id: string; path: string }[];
   signaturePath: string | null;
+  mileageKm: number | null;
   // Огноог server дээр UB цагаар форматлана (hydration зөрөхгүй).
   recordedAtLabel: string | null;
   recordedBy: string | null;
 };
 
-export function IntakeRecord({ notes, photos, signaturePath, recordedAtLabel, recordedBy }: Props) {
+export function IntakeRecord({ notes, photos, signaturePath, mileageKm, recordedAtLabel, recordedBy }: Props) {
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
 
@@ -24,6 +26,7 @@ export function IntakeRecord({ notes, photos, signaturePath, recordedAtLabel, re
   }
 
   const summary = [
+    mileageKm !== null ? formatMileageKm(mileageKm) : null,
     notes ? "тэмдэглэл" : null,
     photos.length > 0 ? `${photos.length} зураг` : null,
     signaturePath ? "гарын үсэг" : null,
@@ -50,6 +53,7 @@ export function IntakeRecord({ notes, photos, signaturePath, recordedAtLabel, re
           notes={notes}
           photos={photos}
           signaturePath={signaturePath}
+          mileageKm={mileageKm}
           recordedAtLabel={recordedAtLabel}
           recordedBy={recordedBy}
         />
@@ -58,7 +62,7 @@ export function IntakeRecord({ notes, photos, signaturePath, recordedAtLabel, re
   );
 }
 
-function IntakeDetails({ notes, photos, signaturePath, recordedAtLabel, recordedBy }: Props) {
+function IntakeDetails({ notes, photos, signaturePath, mileageKm, recordedAtLabel, recordedBy }: Props) {
   const [viewing, setViewing] = useState<number | null>(null);
 
   // Томруулсан зураг дээр ←/→ товчоор шилжинэ.
@@ -124,6 +128,10 @@ function IntakeDetails({ notes, photos, signaturePath, recordedAtLabel, recorded
         <span>{recordedAtLabel}</span>
         <span>🔒 Үүсгэсний дараа засагдахгүй</span>
       </div>
+
+      {mileageKm !== null ? (
+        <p className="text-sm text-[var(--oc-ink2)]">Гүйлт: {formatMileageKm(mileageKm)}</p>
+      ) : null}
 
       <section>
         <h3 className="mb-1.5 text-xs font-medium text-[var(--oc-muted3)]">Тэмдэглэл</h3>

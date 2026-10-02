@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { stageIntakeFileAction } from "@/app/_actions/order-intake";
 import { Field } from "@/app/_components/landing-ops-ui";
-import { INTAKE_NOTES_MAX, INTAKE_PHOTOS_MAX } from "@/lib/orders/order-intake";
+import { INTAKE_NOTES_MAX, INTAKE_PHOTOS_MAX, formatMileageKm } from "@/lib/orders/order-intake";
 
 // QA #14: захиалга үүсгэх үеийн «Хүлээн авах» хэсэг. Утгууд hidden input-ээр
 // createOrderAction руу явна; үүссэний дараа бүрмөсөн түгжигдэнэ.
@@ -47,6 +47,8 @@ export function IntakeSection({
 }) {
   const [open, setOpen] = useState(false);
   const [notes, setNotes] = useState("");
+  // Гүйлт: цифрийг тайлбартайгаар таслалаар бүлэглэнэ ("152,300"); илгээхдээ таслалгүй тоо.
+  const [mileage, setMileage] = useState("");
   const [photos, setPhotos] = useState<string[]>([]);
   const [signature, setSignature] = useState<string | null>(null);
   const [uploading, setUploading] = useState<{ done: number; total: number } | null>(null);
@@ -94,7 +96,9 @@ export function IntakeSection({
     }
   }
 
+  const mileageDigits = mileage.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
   const summary = [
+    mileageDigits ? formatMileageKm(Number(mileageDigits)) : null,
     notes.trim() ? "тэмдэглэл" : null,
     photos.length > 0 ? `${photos.length} зураг` : null,
     signature ? "гарын үсэг" : null,
@@ -105,6 +109,7 @@ export function IntakeSection({
     <div className={`min-w-0 flex flex-col gap-3 ${className}`}>
       {/* Хаасан ч бичсэн зүйл илгээгдэнэ — санамсаргүй алдахгүйн тулд. */}
       <input type="hidden" name="intakeNotes" value={notes} />
+      <input type="hidden" name="intakeMileageKm" value={mileageDigits} />
       {photos.map((p) => (
         <input key={p} type="hidden" name="intakePhotoPaths" value={p} />
       ))}
@@ -128,6 +133,23 @@ export function IntakeSection({
 
       {open ? (
         <div className="flex flex-col gap-4 rounded-[10px] border border-[var(--oc-line)] p-4">
+          <div className="w-40">
+            <Field label="Гүйлт (км)" htmlFor="intakeMileageInput">
+              <input
+                id="intakeMileageInput"
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                value={mileage}
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/\D/g, "").replace(/^0+(?=\d)/, "").slice(0, 7);
+                  setMileage(digits.replace(/\B(?=(\d{3})+(?!\d))/g, ","));
+                }}
+                className="auth-input"
+                placeholder="152,300"
+              />
+            </Field>
+          </div>
           <Field label="Тэмдэглэл" htmlFor="intakeNotesInput" hint="гүйлт, шатахуун, гэмтэл, үлдээсэн эд зүйл…">
             <textarea
               id="intakeNotesInput"
